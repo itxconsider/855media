@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>MediaTag.Core</AssemblyName>
+    <Product>MediaTag.Core</Product>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CSharpier.MsBuild" PrivateAssets="all" />
+    <PackageReference Include="PowerKit" />
+    <PackageReference Include="Gress" />
+    <PackageReference Include="JsonExtensions" />
+    <PackageReference Include="TagLibSharp" />
+    <PackageReference Include="YoutubeExplode" />
+    <PackageReference Include="YoutubeExplode.Converter" />
+  </ItemGroup>
+</Project>

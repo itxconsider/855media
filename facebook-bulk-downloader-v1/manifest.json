@@ -1,0 +1,22 @@
+﻿{
+  "manifest_version": 3,
+  "name": "Facebook Bulk Downloader v1",
+  "version": "1.0.0",
+  "description": "Collect and bulk download Facebook images with captions and templates.",
+  "permissions": ["activeTab", "storage", "downloads", "tabs"],
+  "host_permissions": ["https://*.facebook.com/*", "https://*.fbcdn.net/*", "https://*.fbsbx.com/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Facebook Bulk Downloader"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://*.facebook.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

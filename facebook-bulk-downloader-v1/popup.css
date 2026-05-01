@@ -1,0 +1,20 @@
+﻿body { font-family: Segoe UI, Arial, sans-serif; margin: 0; background: #171a18; color: #eceee9; min-width: 390px; }
+main { padding: 12px; }
+h1 { margin: 0 0 10px; font-size: 17px; }
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+label { display: block; font-size: 12px; }
+input[type="text"], input[type="number"] { width: 100%; box-sizing: border-box; margin-top: 4px; padding: 7px; border-radius: 7px; border: 1px solid #4d5750; background: #0f120f; color: #f0f3ee; }
+button { border: 1px solid #1e7d5d; background: #1e7d5d; color: #fff; font-weight: 600; padding: 8px; border-radius: 8px; cursor: pointer; }
+button.secondary { background: #212723; color: #c9d5ca; border-color: #4c5b50; }
+button.mode { background: #212723; color: #c9d5ca; border-color: #4c5b50; }
+button.mode.active { background: #1e7d5d; color: #fff; border-color: #1e7d5d; }
+.checkbox { display: flex; align-items: center; gap: 8px; margin: 6px 0 10px; }
+#stats { border: 1px solid #3d4940; background: #1f2421; border-radius: 8px; padding: 8px; font-size: 12px; white-space: pre-wrap; line-height: 1.5; margin-top: 8px; }
+#thumbs { margin-top: 8px; display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; }
+.thumb { width: 100%; aspect-ratio: 1 / 1; object-fit: cover; border-radius: 4px; border: 2px solid transparent; }
+.thumb.done { border-color: #2ecf8f; }
+.thumb.fail { border-color: #ef4a4a; }
+.thumb.pending { border-color: #6f7b71; opacity: 0.9; }
+.thumb.downloading { border-color: #4ba3ff; }
+#msg { margin: 8px 0 0; font-size: 12px; color: #c6d2c8; }

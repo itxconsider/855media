@@ -1,0 +1,19 @@
+﻿{
+  "manifest_version": 3,
+  "name": "Facebook Photo Exporter",
+  "version": "1.0.0",
+  "description": "Collect and export direct Facebook photo CDN URLs from profile/page photo views.",
+  "permissions": ["storage", "activeTab", "scripting", "downloads"],
+  "host_permissions": ["https://*.facebook.com/*", "https://*.fbcdn.net/*", "https://*.fbsbx.com/*"],
+  "action": {
+    "default_title": "Facebook Photo Exporter",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://*.facebook.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
