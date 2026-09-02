@@ -1,0 +1,159 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v10.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v10.0": {
+      "MediaTag.Core/999.9.9-dev": {
+        "dependencies": {
+          "CSharpier.MsBuild": "1.2.6",
+          "Gress": "2.2.0",
+          "JsonExtensions": "1.2.0",
+          "TagLibSharp": "2.3.0",
+          "YoutubeExplode": "6.6.0",
+          "YoutubeExplode.Converter": "6.6.0"
+        },
+        "runtime": {
+          "MediaTag.Core.dll": {}
+        }
+      },
+      "AngleSharp/1.4.0": {
+        "runtime": {
+          "lib/net10.0/AngleSharp.dll": {
+            "assemblyVersion": "1.4.0.0",
+            "fileVersion": "1.4.0.0"
+          }
+        }
+      },
+      "CliWrap/3.10.1": {
+        "runtime": {
+          "lib/net10.0/CliWrap.dll": {
+            "assemblyVersion": "3.10.1.0",
+            "fileVersion": "3.10.1.0"
+          }
+        }
+      },
+      "CSharpier.MsBuild/1.2.6": {
+        "runtime": {
+          "lib/net10.0/CSharpier.MsBuild.dll": {
+            "assemblyVersion": "1.2.6.0",
+            "fileVersion": "1.2.6.0"
+          }
+        }
+      },
+      "Gress/2.2.0": {
+        "runtime": {
+          "lib/net10.0/Gress.dll": {
+            "assemblyVersion": "2.2.0.0",
+            "fileVersion": "2.2.0.0"
+          }
+        }
+      },
+      "JsonExtensions/1.2.0": {
+        "runtime": {
+          "lib/net5.0/JsonExtensions.dll": {
+            "assemblyVersion": "1.2.0.0",
+            "fileVersion": "1.2.0.0"
+          }
+        }
+      },
+      "TagLibSharp/2.3.0": {
+        "runtime": {
+          "lib/netstandard2.0/TagLibSharp.dll": {
+            "assemblyVersion": "2.3.0.0",
+            "fileVersion": "2.3.0.0"
+          }
+        }
+      },
+      "YoutubeExplode/6.6.0": {
+        "dependencies": {
+          "AngleSharp": "1.4.0",
+          "JsonExtensions": "1.2.0"
+        },
+        "runtime": {
+          "lib/net10.0/YoutubeExplode.dll": {
+            "assemblyVersion": "6.6.0.0",
+            "fileVersion": "6.6.0.0"
+          }
+        }
+      },
+      "YoutubeExplode.Converter/6.6.0": {
+        "dependencies": {
+          "CliWrap": "3.10.1",
+          "YoutubeExplode": "6.6.0"
+        },
+        "runtime": {
+          "lib/net10.0/YoutubeExplode.Converter.dll": {
+            "assemblyVersion": "6.6.0.0",
+            "fileVersion": "6.6.0.0"
+          }
+        }
+      }
+    }
+  },
+  "libraries": {
+    "MediaTag.Core/999.9.9-dev": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "AngleSharp/1.4.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-6ph8mpaQx0KL0COYRt0kI8MB9gSp1PtKijKMhJU//+aVFgKAJLKDesG/+26JSaVCOrHNgPf12wpfoyRcMYOeXg==",
+      "path": "anglesharp/1.4.0",
+      "hashPath": "anglesharp.1.4.0.nupkg.sha512"
+    },
+    "CliWrap/3.10.1": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-C+WzXwzpQsJVNqvuh19ZO/bw/vR43L+DC/CmvK+PATUBkail2AWYE6an17dOGgWaVGzF9sU28YwRwfNfkPrQdg==",
+      "path": "cliwrap/3.10.1",
+      "hashPath": "cliwrap.3.10.1.nupkg.sha512"
+    },
+    "CSharpier.MsBuild/1.2.6": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-KMSJG+jfk7vjP52QkWB99qWespXCPAzG/IaMCMRHYWumJEAGKQYm2HtyWG6eqnOwDitH96i1cqq5EVesyOtPmg==",
+      "path": "csharpier.msbuild/1.2.6",
+      "hashPath": "csharpier.msbuild.1.2.6.nupkg.sha512"
+    },
+    "Gress/2.2.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-gl+DYQ7NExH5JBKAF8dcEQMAH3oMjysKXtQPdr6saEpyl5YNvAPwnJ4667M7BUGhEDiUyrEF90XgZfFGdfMVVw==",
+      "path": "gress/2.2.0",
+      "hashPath": "gress.2.2.0.nupkg.sha512"
+    },
+    "JsonExtensions/1.2.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-ujtrK6m5BQVQLEteLfl54upN7Z59c1ZqEKmU3OlYriqnV74dIgIlNM2vkcgn2AuZEItQDNORD/2H1biI/asOdg==",
+      "path": "jsonextensions/1.2.0",
+      "hashPath": "jsonextensions.1.2.0.nupkg.sha512"
+    },
+    "TagLibSharp/2.3.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-Qo4z6ZjnIfbR3Us1Za5M2vQ97OWZPmODvVmepxZ8XW0UIVLGdO2T63/N3b23kCcyiwuIe0TQvMEQG8wUCCD1mA==",
+      "path": "taglibsharp/2.3.0",
+      "hashPath": "taglibsharp.2.3.0.nupkg.sha512"
+    },
+    "YoutubeExplode/6.6.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-DCFAmPvADs/ZB3pB24kLFzVY/1o6iECqJ7IL9LKi4zkSZLgcXDwFbOJe3vd2K3FBw36Xa3O/QMv10zelT7hjfA==",
+      "path": "youtubeexplode/6.6.0",
+      "hashPath": "youtubeexplode.6.6.0.nupkg.sha512"
+    },
+    "YoutubeExplode.Converter/6.6.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-kARdxk9iw785lmQ6ekWwMIN+4+wA/la4zyxyuuVOB+s0Jj4+JpGGaofmquxK9UbD8QrHZSUtu8dHLftTfuYkfA==",
+      "path": "youtubeexplode.converter/6.6.0",
+      "hashPath": "youtubeexplode.converter.6.6.0.nupkg.sha512"
+    }
+  }
+}

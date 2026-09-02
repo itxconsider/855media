@@ -1,4 +1,4 @@
-﻿(() => {
+(() => {
   const $ = id => document.getElementById(id);
   const ui = {
     modeAll: $('modeAll'), modeCount: $('modeCount'), modeDays: $('modeDays'),
@@ -41,12 +41,13 @@
     return { collect: c, bg: b?.state || {} };
   }
 
-  function renderThumbs(queue) {
+  function renderThumbs(items) {
     ui.thumbs.innerHTML = '';
-    const last = (queue || []).slice(0, 64);
+    const last = (items || []).slice(0, 64);
     for (const it of last) {
       const img = document.createElement('img');
       img.className = `thumb ${it.status || 'pending'}`;
+      img.referrerPolicy = 'no-referrer';
       img.src = it.url;
       img.title = `${it.status || 'pending'} | ${it.caption || ''}`;
       ui.thumbs.appendChild(img);
@@ -62,15 +63,16 @@
     try {
       const s = await getStates();
       const q = s.bg.queue || [];
+      const collected = s.collect?.items || [];
       ui.stats.textContent = [
         `Collecting: ${s.collect?.running ? 'yes' : 'no'}`,
-        `Collected: ${s.collect?.items?.length || 0}`,
+        `Collected: ${collected.length}`,
         `Queue: ${q.length}`,
         `Downloading: ${s.bg.running ? 'yes' : 'no'} | Active: ${s.bg.active || 0}`,
         `Completed: ${s.bg.completed || 0} | Failed: ${s.bg.failed || 0}`,
         `Page: ${s.collect?.pageUrl || '-'}`,
       ].join('\n');
-      renderThumbs(q);
+      renderThumbs(collected.length ? collected : q);
     } catch (e) {
       msg(`Error: ${e.message || e}`);
     }
@@ -158,6 +160,29 @@
     await navigator.clipboard.writeText(text);
     msg(`Copied ${items.length} lines.`);
   });
+
+  const syncBtn = $('syncToApp');
+  if (syncBtn) {
+    syncBtn.addEventListener('click', async () => {
+      const c = await toContent('FBD_COLLECT_STATE');
+      const items = c?.items || [];
+      if (!items.length) return msg('No items collected.');
+      try {
+        const res = await fetch('http://127.0.0.1:5855/api/receive-media', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pageUrl: c?.pageUrl || '', items })
+        });
+        if (res.ok) {
+          msg(`Synced ${items.length} items to 855Media Desktop App!`);
+        } else {
+          msg('855Media Desktop App not listening on port 5855.');
+        }
+      } catch (err) {
+        msg('Error connecting to 855Media Desktop App.');
+      }
+    });
+  }
 
   setInterval(refresh, 1500);
   refresh();

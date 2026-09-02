@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>855Media.Core</AssemblyName>
+    <Product>855Media.Core</Product>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AngleSharp" />
+    <PackageReference Include="CSharpier.MsBuild" PrivateAssets="all" />
+    <PackageReference Include="PowerKit" />
+    <PackageReference Include="Gress" />
+    <PackageReference Include="JsonExtensions" />
+    <PackageReference Include="TagLibSharp" />
+    <PackageReference Include="YoutubeExplode" />
+    <PackageReference Include="YoutubeExplode.Converter" />
+  </ItemGroup>
+</Project>

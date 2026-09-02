@@ -1,0 +1,153 @@
+using System;
+using System.Collections.Generic;
+using System.Net;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using _855Media.Core.Audio;
+using _855Media.Core.Downloading;
+using _855Media.Framework;
+using _855Media.Localization;
+using Cogwheel;
+using CommunityToolkit.Mvvm.ComponentModel;
+using Container = YoutubeExplode.Videos.Streams.Container;
+
+namespace _855Media.Services;
+
+[ObservableObject]
+public partial class SettingsService()
+    : SettingsBase(StartOptions.Current.SettingsPath, SerializerContext.Default)
+{
+    [ObservableProperty]
+    public partial bool IsUkraineSupportMessageEnabled { get; set; } = true;
+
+    [ObservableProperty]
+    public partial ThemeVariant Theme { get; set; }
+
+    [ObservableProperty]
+    public partial Language Language { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsAutoUpdateEnabled { get; set; } = false;
+
+    [ObservableProperty]
+    public partial bool IsAuthPersisted { get; set; } = true;
+
+    [ObservableProperty]
+    public partial string? FFmpegFilePath { get; set; }
+
+    [ObservableProperty]
+    public partial bool ShouldInjectLanguageSpecificAudioStreams { get; set; } = true;
+
+    [ObservableProperty]
+    public partial bool ShouldInjectSubtitles { get; set; } = true;
+
+    [ObservableProperty]
+    public partial bool ShouldInjectTags { get; set; } = true;
+
+    [ObservableProperty]
+    public partial bool ShouldSaveTitleToTextFile { get; set; } = false;
+
+    [ObservableProperty]
+    public partial bool ShouldSkipExistingFiles { get; set; }
+
+    [ObservableProperty]
+    public partial string FileNameTemplate { get; set; } = "$title";
+
+    [ObservableProperty]
+    public partial int ParallelLimit { get; set; } = 2;
+
+    [ObservableProperty]
+    [JsonConverter(typeof(AuthCookiesEncryptionConverter))]
+    public partial IReadOnlyList<Cookie>? LastAuthCookies { get; set; }
+
+    [ObservableProperty]
+    [JsonConverter(typeof(ContainerJsonConverter))]
+    public partial Container LastContainer { get; set; } = Container.Mp4;
+
+    [ObservableProperty]
+    public partial VideoQualityPreference LastVideoQualityPreference { get; set; } =
+        VideoQualityPreference.Highest;
+
+    [ObservableProperty]
+    public partial bool AutoRetryFailedDownloads { get; set; } = true;
+
+    [ObservableProperty]
+    public partial int MaxRetryCount { get; set; } = 3;
+
+    [ObservableProperty]
+    public partial int RetryDelaySeconds { get; set; } = 5;
+
+    [ObservableProperty]
+    public partial bool IsolateSpeechAudio { get; set; } = false;
+
+    [ObservableProperty]
+    public partial AudioProcessingMode SelectedAudioProcessingMode { get; set; } =
+        AudioProcessingMode.None;
+
+    public override void Save()
+    {
+        // Clear the cookies if they are not supposed to be persisted
+        var lastAuthCookies = LastAuthCookies;
+        if (!IsAuthPersisted)
+            LastAuthCookies = null;
+
+        base.Save();
+
+        LastAuthCookies = lastAuthCookies;
+    }
+}
+
+public partial class SettingsService
+{
+    private class ContainerJsonConverter : JsonConverter<Container>
+    {
+        public override Container Read(
+            ref Utf8JsonReader reader,
+            Type typeToConvert,
+            JsonSerializerOptions options
+        )
+        {
+            Container? result = null;
+
+            if (reader.TokenType == JsonTokenType.StartObject)
+            {
+                while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
+                {
+                    if (
+                        reader.TokenType == JsonTokenType.PropertyName
+                        && reader.GetString() == "Name"
+                        && reader.Read()
+                        && reader.TokenType == JsonTokenType.String
+                    )
+                    {
+                        var name = reader.GetString();
+                        if (!string.IsNullOrWhiteSpace(name))
+                            result = new Container(name);
+                    }
+                }
+            }
+
+            return result
+                ?? throw new InvalidOperationException(
+                    $"Invalid JSON for type '{typeToConvert.FullName}'."
+                );
+        }
+
+        public override void Write(
+            Utf8JsonWriter writer,
+            Container value,
+            JsonSerializerOptions options
+        )
+        {
+            writer.WriteStartObject();
+            writer.WriteString("Name", value.Name);
+            writer.WriteEndObject();
+        }
+    }
+}
+
+public partial class SettingsService
+{
+    [JsonSerializable(typeof(SettingsService))]
+    private partial class SerializerContext : JsonSerializerContext;
+}

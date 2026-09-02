@@ -4,12 +4,12 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - prime
+      - master
     tags:
       - "*"
   pull_request:
     branches:
-      - prime
+      - master
 
 env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
@@ -80,12 +80,12 @@ jobs:
 
       - name: Publish app
         run: >
-          dotnet publish MediaTag
+          dotnet publish 855Media
           -p:Version=${{ github.ref_type == 'tag' && github.ref_name || format('999.9.9-ci-{0}', github.sha) }}
           -p:CSharpier_Bypass=true
           -p:EncryptionSalt=${{ secrets.ENCRYPTION_SALT || 'HimalayanPinkSalt' }}
           -p:PublishMacOSBundle=${{ startsWith(matrix.rid, 'osx-') }}
-          --output MediaTag/bin/publish
+          --output 855Media/bin/publish
           --configuration Release
           --runtime ${{ matrix.rid }}
           --self-contained
@@ -93,8 +93,8 @@ jobs:
       - name: Upload app binaries
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
-          name: MediaTag.${{ matrix.rid }}
-          path: MediaTag/bin/publish
+          name: 855Media.${{ matrix.rid }}
+          path: 855Media/bin/publish
           if-no-files-found: error
 
   release:
@@ -148,30 +148,30 @@ jobs:
       - name: Download app binaries
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: MediaTag.${{ matrix.rid }}
-          path: MediaTag/
+          name: 855Media.${{ matrix.rid }}
+          path: 855Media/
 
       - name: Set permissions
         if: ${{ !startsWith(matrix.rid, 'win-') }}
         run: |
-          [ -f MediaTag/MediaTag ] && chmod +x MediaTag/MediaTag || true
-          [ -f MediaTag/ffmpeg ] && chmod +x MediaTag/ffmpeg || true
+          [ -f 855Media/855Media ] && chmod +x 855Media/855Media || true
+          [ -f 855Media/ffmpeg ] && chmod +x 855Media/ffmpeg || true
 
           # macOS bundle
-          [ -f MediaTag/MediaTag.app/Contents/MacOS/MediaTag ] && chmod +x MediaTag/MediaTag.app/Contents/MacOS/MediaTag || true
-          [ -f MediaTag/MediaTag.app/Contents/MacOS/ffmpeg ] && chmod +x MediaTag/MediaTag.app/Contents/MacOS/ffmpeg || true
+          [ -f 855Media/855Media.app/Contents/MacOS/855Media ] && chmod +x 855Media/855Media.app/Contents/MacOS/855Media || true
+          [ -f 855Media/855Media.app/Contents/MacOS/ffmpeg ] && chmod +x 855Media/855Media.app/Contents/MacOS/ffmpeg || true
 
       - name: Create package
         # Change into the artifacts directory to avoid including the directory itself in the zip archive
-        working-directory: MediaTag/
-        run: zip -r ../MediaTag.${{ matrix.rid }}.zip .
+        working-directory: 855Media/
+        run: zip -r ../855Media.${{ matrix.rid }}.zip .
 
       - name: Upload release asset
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: >
           gh release upload ${{ github.ref_name }}
-          MediaTag.${{ matrix.rid }}.zip
+          855Media.${{ matrix.rid }}.zip
           --repo ${{ github.event.repository.full_name }}
 
   notify:

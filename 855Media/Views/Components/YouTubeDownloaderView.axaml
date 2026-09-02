@@ -1,0 +1,112 @@
+﻿<UserControl
+    x:Class="_855Media.Views.Components.YouTubeDownloaderView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:components="clr-namespace:_855Media.ViewModels.Components"
+    xmlns:converters="clr-namespace:_855Media.Converters"
+    xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+    x:DataType="components:YouTubeDownloaderViewModel">
+
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <StackPanel
+            MaxWidth="880"
+            Margin="48,44,48,24"
+            HorizontalAlignment="Center"
+            Spacing="24">
+
+            <!-- Title & Branding -->
+            <StackPanel HorizontalAlignment="Center" Spacing="12">
+                <Border
+                    Width="60"
+                    Height="60"
+                    HorizontalAlignment="Center"
+                    Background="#FF0000"
+                    CornerRadius="16">
+                    <materialIcons:MaterialIcon
+                        Width="36"
+                        Height="36"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Foreground="White"
+                        Kind="Youtube" />
+                </Border>
+
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    FontSize="28"
+                    FontWeight="Bold"
+                    Foreground="{DynamicResource AntigravityTextBrush}"
+                    Text="{Binding LocalizationManager.YouTubePromptTitle}" />
+            </StackPanel>
+
+            <!-- Search / Query Box -->
+            <StackPanel HorizontalAlignment="Center" Spacing="12">
+                <Border
+                    Width="680"
+                    Height="48"
+                    ClipToBounds="True"
+                    Background="{DynamicResource AntigravityPanelBrush}"
+                    BorderBrush="#FF0000"
+                    BorderThickness="1"
+                    BoxShadow="0 4 16 0 #1AFF0000"
+                    CornerRadius="24">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBox
+                            Grid.Column="0"
+                            Padding="20,0,12,0"
+                            VerticalContentAlignment="Center"
+                            AcceptsReturn="False"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            FontSize="15"
+                            Foreground="{DynamicResource AntigravityTextBrush}"
+                            Text="{Binding Query}"
+                            Theme="{DynamicResource SoloTextBox}"
+                            Watermark="{Binding LocalizationManager.YouTubeWatermark}" />
+
+                        <Button
+                            Grid.Column="1"
+                            Width="64"
+                            VerticalAlignment="Stretch"
+                            Background="#FF0000"
+                            Command="{Binding ProcessQueryCommand}"
+                            CornerRadius="0,24,24,0"
+                            Foreground="White"
+                            IsDefault="True"
+                            Theme="{DynamicResource MaterialFlatButton}">
+                            <materialIcons:MaterialIcon Width="22" Height="22" Kind="Magnify" />
+                        </Button>
+                    </Grid>
+                </Border>
+            </StackPanel>
+
+            <!-- YouTube Features Overview Cards -->
+            <UniformGrid Columns="3" Width="720" Margin="0,16,0,0">
+                <Border Margin="6" Padding="16" Background="{DynamicResource AntigravityPanelBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="12">
+                    <StackPanel Spacing="8">
+                        <materialIcons:MaterialIcon Kind="Movie" Width="24" Height="24" Foreground="#FF0000" />
+                        <TextBlock Text="4K / HD Video" FontWeight="Bold" FontSize="14" Foreground="{DynamicResource AntigravityTextBrush}" />
+                        <TextBlock Text="Download in full resolution up to 4K 60fps." FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+
+                <Border Margin="6" Padding="16" Background="{DynamicResource AntigravityPanelBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="12">
+                    <StackPanel Spacing="8">
+                        <materialIcons:MaterialIcon Kind="PlaylistPlus" Width="24" Height="24" Foreground="#FF0000" />
+                        <TextBlock Text="Playlists &amp; Channels" FontWeight="Bold" FontSize="14" Foreground="{DynamicResource AntigravityTextBrush}" />
+                        <TextBlock Text="Batch download full YouTube playlists easily." FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+
+                <Border Margin="6" Padding="16" Background="{DynamicResource AntigravityPanelBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="12">
+                    <StackPanel Spacing="8">
+                        <materialIcons:MaterialIcon Kind="Subtitles" Width="24" Height="24" Foreground="#FF0000" />
+                        <TextBlock Text="Subtitles &amp; Audio" FontWeight="Bold" FontSize="14" Foreground="{DynamicResource AntigravityTextBrush}" />
+                        <TextBlock Text="Embed multi-language subtitles and audio tracks." FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+            </UniformGrid>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
+

@@ -1,0 +1,27 @@
+﻿<Window
+    x:Class="_855Media.Views.MainView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:dialogHostAvalonia="clr-namespace:DialogHostAvalonia;assembly=DialogHost.Avalonia"
+    xmlns:materialStyles="clr-namespace:Material.Styles.Controls;assembly=Material.Styles"
+    xmlns:viewModels="clr-namespace:_855Media.ViewModels"
+    Title="{Binding Title}"
+    Width="1180"
+    Height="760"
+    MinWidth="1088"
+    MinHeight="560"
+    x:DataType="viewModels:MainViewModel"
+    Icon="/favicon.ico"
+    RenderOptions.BitmapInterpolationMode="HighQuality"
+    WindowStartupLocation="CenterScreen">
+    <!--  Hack: dialog host animations mess up webview positioning, so need to disable them  -->
+    <dialogHostAvalonia:DialogHost
+        x:Name="DialogHost"
+        CloseOnClickAway="False"
+        DisableOpeningAnimation="True">
+        <materialStyles:SnackbarHost HostName="Root" SnackbarMaxCounts="3">
+            <ContentControl Content="{Binding Dashboard}" />
+        </materialStyles:SnackbarHost>
+    </dialogHostAvalonia:DialogHost>
+</Window>
+

@@ -1,0 +1,68 @@
+﻿<UserControl
+    x:Class="_855Media.Views.Dialogs.BatchInputView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:dialogs="clr-namespace:_855Media.ViewModels.Dialogs"
+    xmlns:system="clr-namespace:System;assembly=System.Runtime"
+    Width="680"
+    Height="480"
+    x:DataType="dialogs:BatchInputViewModel">
+    <Grid RowDefinitions="Auto,*,Auto" Margin="16">
+        <!--  Title  -->
+        <TextBlock
+            Grid.Row="0"
+            Margin="0,0,0,16"
+            FontSize="20"
+            FontWeight="Bold"
+            Foreground="{DynamicResource AntigravityTextBrush}"
+            Text="Batch URL Import" />
+
+        <!--  TextBox Input  -->
+        <Border
+            Grid.Row="1"
+            BorderBrush="{DynamicResource AntigravityBorderBrush}"
+            BorderThickness="1"
+            CornerRadius="8"
+            Background="{DynamicResource AntigravityPanelBrush}">
+            <TextBox
+                x:Name="InputTextBox"
+                AcceptsReturn="True"
+                Background="Transparent"
+                BorderThickness="0"
+                FontSize="14"
+                Foreground="{DynamicResource AntigravityTextBrush}"
+                Padding="12"
+                Text="{Binding Input}"
+                Theme="{DynamicResource SoloTextBox}"
+                Watermark="Paste your URLs here (one URL per line). Example:&#x0a;https://www.youtube.com/watch?v=...&#x0a;https://www.facebook.com/... | Caption" />
+        </Border>
+
+        <!--  Buttons  -->
+        <StackPanel
+            Grid.Row="2"
+            Margin="0,16,0,0"
+            HorizontalAlignment="Right"
+            Orientation="Horizontal"
+            Spacing="12">
+            <!--  Cancel  -->
+            <Button
+                Command="{Binding CloseCommand}"
+                Theme="{DynamicResource MaterialOutlineButton}"
+                Content="{Binding LocalizationManager.CancelButton}" />
+
+            <!--  Import  -->
+            <Button
+                Command="{Binding CloseCommand}"
+                IsDefault="True"
+                Theme="{DynamicResource MaterialFlatButton}"
+                Background="{DynamicResource AntigravityAccentBrush}"
+                Foreground="{DynamicResource AntigravityAccentForegroundBrush}"
+                Content="IMPORT">
+                <Button.CommandParameter>
+                    <system:Boolean>True</system:Boolean>
+                </Button.CommandParameter>
+            </Button>
+        </StackPanel>
+    </Grid>
+</UserControl>
+

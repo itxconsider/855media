@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Background Gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1A1A24" />
+      <stop offset="100%" stop-color="#0F0F13" />
+    </linearGradient>
+
+    <!-- Glowing Accent Gradient -->
+    <linearGradient id="brandGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#25F4EE" />
+      <stop offset="50%" stop-color="#1877F2" />
+      <stop offset="100%" stop-color="#FF0000" />
+    </linearGradient>
+  </defs>
+
+  <!-- Glassmorphic Icon Badge -->
+  <rect x="32" y="32" width="448" height="448" rx="96" fill="url(#bgGrad)" stroke="#2E2E38" stroke-width="6"/>
+
+  <!-- Outer Soundwave Ring -->
+  <circle cx="256" cy="256" r="160" fill="none" stroke="url(#brandGrad)" stroke-width="12" stroke-dasharray="700" stroke-dashoffset="100" opacity="0.4"/>
+
+  <!-- Play Button / 855 Core Monogram -->
+  <path d="M 210 160 L 340 256 L 210 352 Z" fill="url(#brandGrad)"/>
+
+  <!-- Glowing Accent Dots -->
+  <circle cx="340" cy="256" r="16" fill="#25F4EE"/>
+</svg>
