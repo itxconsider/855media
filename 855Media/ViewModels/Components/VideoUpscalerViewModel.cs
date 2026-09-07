@@ -134,6 +134,12 @@ public partial class VideoUpscalerViewModel : ViewModelBase
     private bool _isFilmEmulationExpanded = true;
 
     [ObservableProperty]
+    private bool _enableSplitAndUpscale;
+
+    [ObservableProperty]
+    private bool _mergeAfterUpscale = true;
+
+    [ObservableProperty]
     private bool _isSavePresetPopupOpen;
 
     [ObservableProperty]
@@ -213,6 +219,21 @@ public partial class VideoUpscalerViewModel : ViewModelBase
         {
             OutputDirectory = AppContext.BaseDirectory;
         }
+
+        _ = InitializeQueueAsync();
+    }
+
+    private async Task InitializeQueueAsync()
+    {
+        await _queueManager.InitializeFromDiskAsync();
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            IsPaused = _queueManager.IsPaused;
+            if (Jobs.Count > 0 && SelectedJob == null)
+            {
+                SelectedJob = Jobs.FirstOrDefault();
+            }
+        });
     }
 
     private void OnBatchCompleted(object? sender, EventArgs e)
@@ -417,6 +438,22 @@ public partial class VideoUpscalerViewModel : ViewModelBase
         }
     }
 
+    partial void OnEnableSplitAndUpscaleChanged(bool value)
+    {
+        if (SelectedJob != null)
+        {
+            SelectedJob.EnableSplitAndUpscale = value;
+        }
+    }
+
+    partial void OnMergeAfterUpscaleChanged(bool value)
+    {
+        if (SelectedJob != null)
+        {
+            SelectedJob.MergeAfterUpscale = value;
+        }
+    }
+
     [RelayCommand]
     public void ZoomIn() => ZoomScale = Math.Min(4.0, Math.Round(ZoomScale + 0.5, 1));
 
@@ -476,6 +513,8 @@ public partial class VideoUpscalerViewModel : ViewModelBase
         {
             EnableDenoise = value.EnableDenoise;
             EnableDeinterlace = value.EnableDeinterlace;
+            EnableSplitAndUpscale = value.EnableSplitAndUpscale;
+            MergeAfterUpscale = value.MergeAfterUpscale;
             if (!string.IsNullOrWhiteSpace(value.ActivePresetName))
             {
                 _selectedPresetName = value.ActivePresetName;
@@ -593,6 +632,8 @@ public partial class VideoUpscalerViewModel : ViewModelBase
                 EnableDenoise = EnableDenoise,
                 EnableDeinterlace = EnableDeinterlace,
                 ActivePresetName = SelectedPresetName,
+                EnableSplitAndUpscale = EnableSplitAndUpscale,
+                MergeAfterUpscale = MergeAfterUpscale,
                 Status = UpscaleJobStatus.Queued,
             };
 

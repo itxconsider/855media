@@ -53,21 +53,64 @@ public class UpscaleJob : INotifyPropertyChanged
     private string? _detailedLog;
     private int _priority;
 
-    public Guid Id { get; } = Guid.NewGuid();
+    public Guid Id { get; set; } = Guid.NewGuid();
 
-    public required string FilePath { get; init; }
+    public string FilePath { get; set; } = string.Empty;
 
+    [System.Text.Json.Serialization.JsonIgnore]
     public string FileName => Path.GetFileName(FilePath);
 
-    public string OutputDirectory { get; init; } = string.Empty;
+    public string OutputDirectory { get; set; } = string.Empty;
 
+    private string? _customOutputFilePath;
+    public string? CustomOutputFilePath
+    {
+        get => _customOutputFilePath;
+        set => SetField(ref _customOutputFilePath, value);
+    }
+
+    [System.Text.Json.Serialization.JsonIgnore]
     public string OutputFilePath =>
-        Path.Combine(
-            string.IsNullOrWhiteSpace(OutputDirectory)
-                ? Path.GetDirectoryName(FilePath) ?? "."
-                : OutputDirectory,
-            $"{Path.GetFileNameWithoutExtension(FilePath)}_upscaled_{TargetResolution.ToString().ToLowerInvariant()}{Path.GetExtension(FilePath)}"
-        );
+        !string.IsNullOrWhiteSpace(_customOutputFilePath)
+            ? _customOutputFilePath
+            : Path.Combine(
+                string.IsNullOrWhiteSpace(OutputDirectory)
+                    ? Path.GetDirectoryName(FilePath) ?? "."
+                    : OutputDirectory,
+                $"{Path.GetFileNameWithoutExtension(FilePath)}_upscaled_{TargetResolution.ToString().ToLowerInvariant()}{Path.GetExtension(FilePath)}"
+            );
+
+    private bool _enableSplitAndUpscale;
+    public bool EnableSplitAndUpscale
+    {
+        get => _enableSplitAndUpscale;
+        set
+        {
+            if (SetField(ref _enableSplitAndUpscale, value))
+            {
+                OnPropertyChanged(nameof(SplitSummary));
+            }
+        }
+    }
+
+    private bool _mergeAfterUpscale = true;
+    public bool MergeAfterUpscale
+    {
+        get => _mergeAfterUpscale;
+        set
+        {
+            if (SetField(ref _mergeAfterUpscale, value))
+            {
+                OnPropertyChanged(nameof(SplitSummary));
+            }
+        }
+    }
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string SplitSummary =>
+        EnableSplitAndUpscale
+            ? (MergeAfterUpscale ? "Split & Merge" : "Split (2 parts)")
+            : "Direct";
 
     public string? InputResolution { get; set; } = "Probing...";
 
@@ -150,8 +193,10 @@ public class UpscaleJob : INotifyPropertyChanged
 
     public int RetryCount { get; set; }
 
+    [System.Text.Json.Serialization.JsonIgnore]
     public CancellationTokenSource? Cts { get; set; }
 
+    [System.Text.Json.Serialization.JsonIgnore]
     public System.Diagnostics.Process? ActiveProcess { get; set; }
 
     public event PropertyChangedEventHandler? PropertyChanged;

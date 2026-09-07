@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -156,6 +156,26 @@ public static class FFmpeg
                 );
 
             entry.ExtractToFile(outputFilePath, true);
+
+            // Also extract ffprobe if present in the archive
+            var probeCliName = OperatingSystem.IsWindows() ? "ffprobe.exe" : "ffprobe";
+            var probeEntry = zip.GetEntry(probeCliName);
+            if (probeEntry != null)
+            {
+                var dir = Path.GetDirectoryName(outputFilePath);
+                if (!string.IsNullOrWhiteSpace(dir))
+                {
+                    var probeOutPath = Path.Combine(dir, probeCliName);
+                    probeEntry.ExtractToFile(probeOutPath, true);
+                    if (!OperatingSystem.IsWindows())
+                    {
+                        File.SetUnixFileMode(
+                            probeOutPath,
+                            File.GetUnixFileMode(probeOutPath) | UnixFileMode.UserExecute
+                        );
+                    }
+                }
+            }
 
             // Make executable on Unix
             if (!OperatingSystem.IsWindows())

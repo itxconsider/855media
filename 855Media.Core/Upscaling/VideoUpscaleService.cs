@@ -144,6 +144,13 @@ public partial class VideoUpscaleService
 
     public async Task ProcessJobAsync(UpscaleJob job, CancellationToken cancellationToken = default)
     {
+        if (job.EnableSplitAndUpscale)
+        {
+            var pipeline = new SplitAndUpscalePipeline(this);
+            await pipeline.ExecuteAsync(job, cancellationToken);
+            return;
+        }
+
         var ffmpegPath = FFmpeg.TryGetCliFilePath();
         if (string.IsNullOrWhiteSpace(ffmpegPath))
             throw new FileNotFoundException("FFmpeg executable could not be found.");
@@ -247,17 +254,21 @@ public partial class VideoUpscaleService
         }
         finally
         {
-            // Immediate cleanup of temporary frames and audio files
-            try
+            // Cleanup temporary frames and working files only when job successfully finishes!
+            // When paused, canceled, or if the app was closed mid-upscale, keep cache for checkpoint resumption.
+            if (job.Status == UpscaleJobStatus.Complete)
             {
-                if (Directory.Exists(tempDir))
+                try
                 {
-                    Directory.Delete(tempDir, recursive: true);
+                    if (Directory.Exists(tempDir))
+                    {
+                        Directory.Delete(tempDir, recursive: true);
+                    }
                 }
-            }
-            catch
-            {
-                // Non-fatal cleanup warning
+                catch
+                {
+                    // Non-fatal cleanup warning
+                }
             }
         }
     }
@@ -393,120 +404,149 @@ public partial class VideoUpscaleService
         Directory.CreateDirectory(inFramesDir);
         Directory.CreateDirectory(outFramesDir);
 
-        // Stage 1: Extract Frames (with optional pre-AI clean-up filters: yadif deinterlacing, hqdn3d denoise)
-        log("Extracting frames for AI upscaling...");
-        var extractArgs = new List<string>
-        {
-            "-y",
-            "-hwaccel",
-            "auto",
-            "-threads",
-            "4",
-            "-i",
-            job.FilePath,
-        };
+        // Stage 1: Extract Frames (with checkpoint caching: skip if already extracted)
+        var totalFrames = Directory.Exists(inFramesDir)
+            ? Directory.EnumerateFiles(inFramesDir, "*.jpg").LongCount()
+            : 0;
 
-        var preFilters = new List<string>();
-        if (job.EnableDeinterlace)
-        {
-            preFilters.Add("yadif=mode=1");
-            log("[Pre-Processing] Enabled Deinterlacing (yadif=mode=1)");
-        }
-        if (job.EnableDenoise)
-        {
-            preFilters.Add("hqdn3d=4:3:6:4.5");
-            log("[Pre-Processing] Enabled Denoise / Deblock (hqdn3d=4:3:6:4.5)");
-        }
-
-        if (preFilters.Count > 0)
-        {
-            extractArgs.AddRange(["-vf", string.Join(",", preFilters)]);
-        }
-
-        extractArgs.AddRange(["-q:v", "1", Path.Combine(inFramesDir, "frame_%08d.jpg")]);
-
-        await ExecuteProcessAsync(ffmpegPath, extractArgs, job, log, cancellationToken);
-
-        var totalFrames = Directory.EnumerateFiles(inFramesDir, "*.jpg").LongCount();
         if (totalFrames > 0)
         {
+            log(
+                $"[Checkpoint] Found {totalFrames} previously extracted frames in cache. Skipping extraction."
+            );
             job.TotalFrames = totalFrames;
         }
-
-        // Stage 2: Run AI Inference Tool (RealESRGAN NCNN Vulkan)
-        log($"Executing AI inference engine ({Path.GetFileName(aiToolPath)})...");
-        int scale = job.TargetResolution switch
+        else
         {
-            UpscaleTargetResolution.Uhd4k => 4,
-            UpscaleTargetResolution.Scale4x => 4,
-            _ => 2,
-        };
+            log("Extracting frames for AI upscaling...");
+            var extractArgs = new List<string>
+            {
+                "-y",
+                "-hwaccel",
+                "auto",
+                "-threads",
+                "4",
+                "-i",
+                job.FilePath,
+            };
 
-        var modelsDir = Path.Combine(Path.GetDirectoryName(aiToolPath)!, "models");
-        var aiArgs = new List<string>
-        {
-            "-i",
-            inFramesDir,
-            "-o",
-            outFramesDir,
-            "-s",
-            scale.ToString(CultureInfo.InvariantCulture),
-            "-f",
-            "jpg",
-            "-g",
-            "0",
-            "-j",
-            "1:2:2",
-        };
+            var preFilters = new List<string>();
+            if (job.EnableDeinterlace)
+            {
+                preFilters.Add("yadif=mode=1");
+                log("[Pre-Processing] Enabled Deinterlacing (yadif=mode=1)");
+            }
+            if (job.EnableDenoise)
+            {
+                preFilters.Add("hqdn3d=4:3:6:4.5");
+                log("[Pre-Processing] Enabled Denoise / Deblock (hqdn3d=4:3:6:4.5)");
+            }
 
-        if (Directory.Exists(modelsDir))
-        {
-            aiArgs.AddRange(["-m", modelsDir]);
+            if (preFilters.Count > 0)
+            {
+                extractArgs.AddRange(["-vf", string.Join(",", preFilters)]);
+            }
+
+            extractArgs.AddRange(["-q:v", "1", Path.Combine(inFramesDir, "frame_%08d.jpg")]);
+
+            await ExecuteProcessAsync(ffmpegPath, extractArgs, job, log, cancellationToken);
+
+            totalFrames = Directory.EnumerateFiles(inFramesDir, "*.jpg").LongCount();
+            if (totalFrames > 0)
+            {
+                job.TotalFrames = totalFrames;
+            }
         }
 
-        // Safe Tile Size Estimation based on detected VRAM
-        var gpuInfo = HardwareDetector.GetGpuInfo(ffmpegPath);
-        int tileSize = gpuInfo.SafeTileSize;
-        if (tileSize > 0)
+        // Stage 2: Run AI Inference Tool (with checkpoint caching: skip if all frames rendered)
+        var completedOutFrames = Directory.Exists(outFramesDir)
+            ? Directory.EnumerateFiles(outFramesDir, "*.jpg").LongCount()
+            : 0;
+
+        if (totalFrames > 0 && completedOutFrames >= totalFrames)
         {
             log(
-                $"[VRAM Optimization] Detected {gpuInfo.DedicatedVramGb:F1} GB VRAM. Using safe tile size: -t {tileSize}"
+                $"[Checkpoint] Found all {completedOutFrames}/{totalFrames} upscaled frames already rendered on disk. Skipping AI inference."
             );
-            aiArgs.AddRange(["-t", tileSize.ToString(CultureInfo.InvariantCulture)]);
+            job.CurrentFrame = totalFrames;
+            job.Progress = 95.0;
         }
         else
         {
-            log(
-                $"[VRAM Optimization] Detected {gpuInfo.DedicatedVramGb:F1} GB VRAM. Processing un-tiled (-t 0)"
+            log($"Executing AI inference engine ({Path.GetFileName(aiToolPath)})...");
+            int scale = job.TargetResolution switch
+            {
+                UpscaleTargetResolution.Uhd4k => 4,
+                UpscaleTargetResolution.Scale4x => 4,
+                _ => 2,
+            };
+
+            var modelsDir = Path.Combine(Path.GetDirectoryName(aiToolPath)!, "models");
+            var aiArgs = new List<string>
+            {
+                "-i",
+                inFramesDir,
+                "-o",
+                outFramesDir,
+                "-s",
+                scale.ToString(CultureInfo.InvariantCulture),
+                "-f",
+                "jpg",
+                "-g",
+                "0",
+                "-j",
+                "1:2:2",
+            };
+
+            if (Directory.Exists(modelsDir))
+            {
+                aiArgs.AddRange(["-m", modelsDir]);
+            }
+
+            // Safe Tile Size Estimation based on detected VRAM
+            var gpuInfo = HardwareDetector.GetGpuInfo(ffmpegPath);
+            int tileSize = gpuInfo.SafeTileSize;
+            if (tileSize > 0)
+            {
+                log(
+                    $"[VRAM Optimization] Detected {gpuInfo.DedicatedVramGb:F1} GB VRAM. Using safe tile size: -t {tileSize}"
+                );
+                aiArgs.AddRange(["-t", tileSize.ToString(CultureInfo.InvariantCulture)]);
+            }
+            else
+            {
+                log(
+                    $"[VRAM Optimization] Detected {gpuInfo.DedicatedVramGb:F1} GB VRAM. Processing un-tiled (-t 0)"
+                );
+                aiArgs.AddRange(["-t", "0"]);
+            }
+
+            // Model selection (presets or resolution default)
+            string modelName;
+            var preset = !string.IsNullOrWhiteSpace(job.ActivePresetName)
+                ? PresetManager.GetPreset(job.ActivePresetName)
+                : null;
+
+            if (preset != null && !string.IsNullOrWhiteSpace(preset.RecommendedModel))
+            {
+                modelName = preset.RecommendedModel;
+                log($"[Preset] Applying '{preset.Name}' recommended model: {modelName}");
+            }
+            else
+            {
+                modelName = scale == 4 ? "realesrgan-x4plus" : "realesr-animevideov3";
+            }
+            aiArgs.AddRange(["-n", modelName]);
+
+            await ExecuteAiProcessWithProgressAsync(
+                aiToolPath,
+                aiArgs,
+                job,
+                totalFrames,
+                log,
+                cancellationToken
             );
-            aiArgs.AddRange(["-t", "0"]);
         }
-
-        // Model selection (presets or resolution default)
-        string modelName;
-        var preset = !string.IsNullOrWhiteSpace(job.ActivePresetName)
-            ? PresetManager.GetPreset(job.ActivePresetName)
-            : null;
-
-        if (preset != null && !string.IsNullOrWhiteSpace(preset.RecommendedModel))
-        {
-            modelName = preset.RecommendedModel;
-            log($"[Preset] Applying '{preset.Name}' recommended model: {modelName}");
-        }
-        else
-        {
-            modelName = scale == 4 ? "realesrgan-x4plus" : "realesr-animevideov3";
-        }
-        aiArgs.AddRange(["-n", modelName]);
-
-        await ExecuteAiProcessWithProgressAsync(
-            aiToolPath,
-            aiArgs,
-            job,
-            totalFrames,
-            log,
-            cancellationToken
-        );
 
         // Stage 3: Re-encode & Mux with Full Stream Preservation (All original audio tracks & subtitles)
         log("Muxing upscaled frames with full original audio & subtitle streams...");

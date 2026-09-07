@@ -116,6 +116,42 @@ public class VideoQueueManager : IDisposable
         AdjustWorkers();
     }
 
+    public async Task InitializeFromDiskAsync()
+    {
+        var savedJobs = await QueuePersistenceService.LoadQueueAsync();
+        if (savedJobs.Count == 0)
+            return;
+
+        lock (_syncLock)
+        {
+            foreach (var job in savedJobs)
+            {
+                if (!Jobs.Any(j => j.Id == job.Id))
+                {
+                    Jobs.Add(job);
+                }
+            }
+
+            if (Jobs.Any(j => j.Status == UpscaleJobStatus.Paused))
+            {
+                _isPaused = true;
+            }
+        }
+    }
+
+    public void ScheduleSaveQueue()
+    {
+        _ = Task.Run(async () =>
+        {
+            List<UpscaleJob> snapshot;
+            lock (_syncLock)
+            {
+                snapshot = [.. Jobs];
+            }
+            await QueuePersistenceService.SaveQueueAsync(snapshot);
+        });
+    }
+
     public async Task EnqueueJobAsync(UpscaleJob job, CancellationToken cancellationToken = default)
     {
         lock (_syncLock)
@@ -125,6 +161,8 @@ public class VideoQueueManager : IDisposable
             job.Cts = new CancellationTokenSource();
             Jobs.Add(job);
         }
+
+        ScheduleSaveQueue();
 
         // Asynchronously probe video metadata before execution
         _ = Task.Run(
@@ -179,6 +217,8 @@ public class VideoQueueManager : IDisposable
                 }
             }
         }
+
+        ScheduleSaveQueue();
     }
 
     public void Resume()
@@ -204,9 +244,12 @@ public class VideoQueueManager : IDisposable
                 else
                 {
                     job.Status = UpscaleJobStatus.Queued;
+                    _ = _jobChannel.Writer.WriteAsync(job);
                 }
             }
         }
+
+        ScheduleSaveQueue();
     }
 
     public void CancelJob(UpscaleJob job)
@@ -246,6 +289,8 @@ public class VideoQueueManager : IDisposable
                 job.Status = UpscaleJobStatus.Canceled;
             }
         }
+
+        ScheduleSaveQueue();
     }
 
     public void CancelAll()
@@ -257,6 +302,8 @@ public class VideoQueueManager : IDisposable
                 CancelJob(job);
             }
         }
+
+        ScheduleSaveQueue();
     }
 
     public async Task RetryJobAsync(UpscaleJob job)
@@ -270,6 +317,7 @@ public class VideoQueueManager : IDisposable
         job.ErrorMessage = null;
         job.Cts = new CancellationTokenSource();
 
+        ScheduleSaveQueue();
         await _jobChannel.Writer.WriteAsync(job);
     }
 
@@ -312,6 +360,8 @@ public class VideoQueueManager : IDisposable
                 Jobs.Remove(item);
             }
         }
+
+        ScheduleSaveQueue();
     }
 
     private void AdjustWorkers()
@@ -354,11 +404,13 @@ public class VideoQueueManager : IDisposable
                     await _upscaleService.ProcessJobAsync(job, linkedCts.Token);
                     JobCompleted?.Invoke(this, job);
                     CheckAndNotifyBatchCompletion();
+                    ScheduleSaveQueue();
                 }
                 catch (OperationCanceledException)
                 {
                     job.Status = UpscaleJobStatus.Canceled;
                     CheckAndNotifyBatchCompletion();
+                    ScheduleSaveQueue();
                 }
                 catch (Exception ex)
                 {
@@ -369,12 +421,14 @@ public class VideoQueueManager : IDisposable
                         job.Status = UpscaleJobStatus.Queued;
                         job.DetailedLog +=
                             $"{Environment.NewLine}[Warning] Soft error encountered. Scheduling retry {job.RetryCount}/2...";
+                        ScheduleSaveQueue();
                         await _jobChannel.Writer.WriteAsync(job, managerToken);
                     }
                     else
                     {
                         JobFailed?.Invoke(this, (job, ex));
                         CheckAndNotifyBatchCompletion();
+                        ScheduleSaveQueue();
                     }
                 }
             }

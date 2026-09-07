@@ -19,88 +19,110 @@
             BorderThickness="0,0,0,1">
             <Grid ColumnDefinitions="*,Auto">
                 <!-- Left: Pipeline Parameters -->
-                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
-                    <Button
-                        Command="{Binding AddFilesCommand}"
-                        Classes="accent"
-                        Theme="{DynamicResource MaterialOutlineButton}"
-                        ToolTip.Tip="Select individual video files">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <materialIcons:MaterialIcon Kind="FileVideoOutline" Width="18" Height="18" />
-                            <TextBlock Text="Add Videos" VerticalAlignment="Center" FontWeight="SemiBold" />
+                <ScrollViewer Grid.Column="0" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                    <StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
+                        <Button
+                            Command="{Binding AddFilesCommand}"
+                            Classes="accent"
+                            Theme="{DynamicResource MaterialOutlineButton}"
+                            ToolTip.Tip="Select individual video files">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <materialIcons:MaterialIcon Kind="FileVideoOutline" Width="18" Height="18" />
+                                <TextBlock Text="Add Videos" VerticalAlignment="Center" FontWeight="SemiBold" />
+                            </StackPanel>
+                        </Button>
+
+                        <Button
+                            Command="{Binding AddFolderCommand}"
+                            Theme="{DynamicResource MaterialOutlineButton}"
+                            ToolTip.Tip="Scan directory for videos">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <materialIcons:MaterialIcon Kind="FolderMultipleOutline" Width="18" Height="18" />
+                                <TextBlock Text="Add Folder" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+
+                        <Separator Width="1" Height="24" Background="{DynamicResource AntigravityBorderBrush}" />
+
+                        <!-- Target Resolution -->
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="Target:" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" FontSize="13" />
+                            <ComboBox
+                                ItemsSource="{Binding AvailableResolutions}"
+                                SelectedItem="{Binding SelectedTargetResolution}"
+                                Width="110" />
                         </StackPanel>
-                    </Button>
 
-                    <Button
-                        Command="{Binding AddFolderCommand}"
-                        Theme="{DynamicResource MaterialOutlineButton}"
-                        ToolTip.Tip="Scan directory for videos">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <materialIcons:MaterialIcon Kind="FolderMultipleOutline" Width="18" Height="18" />
-                            <TextBlock Text="Add Folder" VerticalAlignment="Center" />
+                        <!-- Codec -->
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="Codec:" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" FontSize="13" />
+                            <ComboBox
+                                ItemsSource="{Binding AvailableCodecs}"
+                                SelectedItem="{Binding SelectedCodec}"
+                                Width="95" />
                         </StackPanel>
-                    </Button>
 
-                    <Separator Width="1" Height="24" Background="{DynamicResource AntigravityBorderBrush}" />
-
-                    <!-- Target Resolution -->
-                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                        <TextBlock Text="Target:" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" FontSize="13" />
-                        <ComboBox
-                            ItemsSource="{Binding AvailableResolutions}"
-                            SelectedItem="{Binding SelectedTargetResolution}"
-                            Width="110" />
-                    </StackPanel>
-
-                    <!-- Codec -->
-                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                        <TextBlock Text="Codec:" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" FontSize="13" />
-                        <ComboBox
-                            ItemsSource="{Binding AvailableCodecs}"
-                            SelectedItem="{Binding SelectedCodec}"
-                            Width="95" />
-                    </StackPanel>
-
-                    <!-- Hardware Acceleration -->
-                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                        <TextBlock Text="Accel:" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" FontSize="13" />
-                        <ComboBox
-                            ItemsSource="{Binding AvailableHardwareAccelerations}"
-                            SelectedItem="{Binding SelectedHardwareAcceleration}"
-                            Width="125" />
-                    </StackPanel>
-
-                    <!-- Workers Concurrency -->
-                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                        <TextBlock Text="Workers:" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" FontSize="13" />
-                        <ComboBox
-                            ItemsSource="{Binding AvailableConcurrencies}"
-                            SelectedItem="{Binding MaxConcurrency}"
-                            Width="75" />
-                    </StackPanel>
-
-                    <!-- Output Folder -->
-                    <Button
-                        Command="{Binding SelectOutputDirectoryCommand}"
-                        Theme="{DynamicResource MaterialFlatButton}"
-                        ToolTip.Tip="{Binding OutputDirectory, StringFormat='Output Folder: {0}'}">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <materialIcons:MaterialIcon Kind="FolderOpenOutline" Width="18" Height="18" />
-                            <TextBlock Text="Output Dir" VerticalAlignment="Center" />
+                        <!-- Hardware Acceleration -->
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="Accel:" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" FontSize="13" />
+                            <ComboBox
+                                ItemsSource="{Binding AvailableHardwareAccelerations}"
+                                SelectedItem="{Binding SelectedHardwareAcceleration}"
+                                Width="125" />
                         </StackPanel>
-                    </Button>
 
-                    <!-- Color Grading Toggle Button -->
-                    <Button
-                        Command="{Binding ToggleColorGradingPanelCommand}"
-                        Theme="{DynamicResource MaterialOutlineButton}"
-                        ToolTip.Tip="Configure Brightness, Contrast, Saturation, Auto-Normalize &amp; 3D LUT">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <materialIcons:MaterialIcon Kind="TuneVariant" Width="18" Height="18" Foreground="{DynamicResource AntigravityAccentBrush}" />
-                            <TextBlock Text="Color Grading" VerticalAlignment="Center" />
+                        <!-- Workers Concurrency -->
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="Workers:" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" FontSize="13" />
+                            <ComboBox
+                                ItemsSource="{Binding AvailableConcurrencies}"
+                                SelectedItem="{Binding MaxConcurrency}"
+                                Width="75" />
                         </StackPanel>
-                    </Button>
-                </StackPanel>
+
+                        <!-- Split-in-Half Pipeline Toggle -->
+                        <Separator Width="1" Height="24" Background="{DynamicResource AntigravityBorderBrush}" />
+                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <CheckBox
+                                IsChecked="{Binding EnableSplitAndUpscale}"
+                                ToolTip.Tip="Split in Half Before Upscaling (Reduces Memory &amp; Enables Checkpointing)">
+                                <StackPanel Orientation="Horizontal" Spacing="5">
+                                    <materialIcons:MaterialIcon Kind="CallSplit" Width="16" Height="16" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                    <TextBlock Text="Split in Half" FontSize="12" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </CheckBox>
+
+                            <CheckBox
+                                IsVisible="{Binding EnableSplitAndUpscale}"
+                                IsChecked="{Binding MergeAfterUpscale}"
+                                ToolTip.Tip="Keep Split Files or Merge into Single Video. Checked: Merges both halves into master video without re-encoding. Unchecked: Saves both split parts independently.">
+                                <TextBlock Text="Auto-Merge" FontSize="11" Foreground="{DynamicResource AntigravityAccentBrush}" VerticalAlignment="Center" />
+                            </CheckBox>
+                        </StackPanel>
+
+                        <!-- Output Folder -->
+                        <Button
+                            Command="{Binding SelectOutputDirectoryCommand}"
+                            Theme="{DynamicResource MaterialFlatButton}"
+                            ToolTip.Tip="{Binding OutputDirectory, StringFormat='Output Folder: {0}'}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <materialIcons:MaterialIcon Kind="FolderOpenOutline" Width="18" Height="18" />
+                                <TextBlock Text="Output Dir" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+
+                        <!-- Color Grading Toggle Button -->
+                        <Button
+                            Command="{Binding ToggleColorGradingPanelCommand}"
+                            Theme="{DynamicResource MaterialOutlineButton}"
+                            ToolTip.Tip="Configure Brightness, Contrast, Saturation, Auto-Normalize &amp; 3D LUT">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <materialIcons:MaterialIcon Kind="TuneVariant" Width="18" Height="18" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                <TextBlock Text="Color Grading" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </ScrollViewer>
 
                 <!-- Right: Batch Controls -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
@@ -990,6 +1012,29 @@
                                         IsVisible="{Binding EnableDeinterlace}"
                                         ToolTip.Tip="Deinterlace (yadif) Active" />
                                 </StackPanel>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
+                    <!-- Split Pipeline -->
+                    <DataGridTemplateColumn Header="Split" Width="105">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate DataType="upscaling:UpscaleJob">
+                                <Border
+                                    IsVisible="{Binding EnableSplitAndUpscale}"
+                                    Padding="6,2"
+                                    CornerRadius="6"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center"
+                                    Background="#26CE93D8"
+                                    BorderBrush="#CE93D8"
+                                    BorderThickness="1"
+                                    ToolTip.Tip="Split-in-Half pipeline active for this job">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <materialIcons:MaterialIcon Kind="CallSplit" Width="12" Height="12" Foreground="#CE93D8" />
+                                        <TextBlock Text="{Binding SplitSummary}" FontSize="10" FontWeight="SemiBold" Foreground="#CE93D8" />
+                                    </StackPanel>
+                                </Border>
                             </DataTemplate>
                         </DataGridTemplateColumn.CellTemplate>
                     </DataGridTemplateColumn>
