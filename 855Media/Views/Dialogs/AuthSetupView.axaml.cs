@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -16,85 +16,23 @@ namespace _855Media.Views.Dialogs;
 public partial class AuthSetupView : UserControl<AuthSetupViewModel>
 {
     private const string YouTubeHomePageUrl = "https://www.youtube.com";
-    private const string FacebookHomePageUrl = "https://www.facebook.com";
     private static readonly string LoginPageUrl =
         $"https://accounts.google.com/ServiceLogin?continue={Uri.EscapeDataString(YouTubeHomePageUrl)}";
 
     private CoreWebView2? _coreWebView2;
-    private AuthProvider _authProvider = AuthProvider.YouTube;
 
     public AuthSetupView() => InitializeComponent();
 
     private void NavigateToLoginPage() => WebBrowser.Url = new Uri(LoginPageUrl);
 
-    private void NavigateToFacebook() => WebBrowser.Url = new Uri(FacebookHomePageUrl);
-
     private void LogOutButton_OnClick(object sender, RoutedEventArgs args)
     {
         DataContext.Cookies = null;
         DataContext.IsBrowserVisible = true;
-        NavigateToSelectedProvider();
+        NavigateToLoginPage();
     }
 
-    private void YouTubeButton_OnClick(object sender, RoutedEventArgs args)
-    {
-        _authProvider = AuthProvider.YouTube;
-        DataContext.IsBrowserVisible = true;
-        NavigateToSelectedProvider();
-    }
-
-    private void FacebookButton_OnClick(object sender, RoutedEventArgs args)
-    {
-        _authProvider = AuthProvider.Facebook;
-        DataContext.IsBrowserVisible = true;
-        NavigateToSelectedProvider();
-    }
-
-    private void ChromeButton_OnClick(object sender, RoutedEventArgs args)
-    {
-        try
-        {
-            if (TryGetChromeFilePath() is { } chromeFilePath)
-            {
-                var chromeAuthProfileRootPath = GetChromeAuthProfileRootPath();
-                Directory.CreateDirectory(chromeAuthProfileRootPath);
-
-                Process.Start(
-                    new ProcessStartInfo
-                    {
-                        FileName = chromeFilePath,
-                        ArgumentList =
-                        {
-                            $"--user-data-dir={chromeAuthProfileRootPath}",
-                            "--profile-directory=Default",
-                            FacebookHomePageUrl,
-                        },
-                        UseShellExecute = false,
-                    }
-                );
-                return;
-            }
-
-            Process.Start(
-                new ProcessStartInfo { FileName = FacebookHomePageUrl, UseShellExecute = true }
-            );
-        }
-        catch
-        {
-            // The user can still open Chrome manually and log in to Facebook.
-        }
-    }
-
-    private void NavigateToSelectedProvider()
-    {
-        if (_authProvider == AuthProvider.Facebook)
-            NavigateToFacebook();
-        else
-            NavigateToLoginPage();
-    }
-
-    private void WebBrowser_OnLoaded(object sender, RoutedEventArgs args) =>
-        NavigateToSelectedProvider();
+    private void WebBrowser_OnLoaded(object sender, RoutedEventArgs args) => NavigateToLoginPage();
 
     private void WebBrowser_OnWebViewCreated(object sender, WebViewCreatedEventArgs args)
     {
@@ -140,10 +78,7 @@ public partial class AuthSetupView : UserControl<AuthSetupViewModel>
         if (string.IsNullOrWhiteSpace(currentUrl))
             return;
 
-        if (
-            _authProvider == AuthProvider.YouTube
-            && currentUrl.StartsWith(YouTubeHomePageUrl, StringComparison.OrdinalIgnoreCase)
-        )
+        if (currentUrl.StartsWith(YouTubeHomePageUrl, StringComparison.OrdinalIgnoreCase))
         {
             var cookies = await _coreWebView2.CookieManager.GetCookiesAsync(currentUrl);
             DataContext.Cookies = MergeCookies(
@@ -152,33 +87,6 @@ public partial class AuthSetupView : UserControl<AuthSetupViewModel>
             );
 
             if (DataContext.IsAuthenticated)
-                DataContext.IsBrowserVisible = false;
-        }
-
-        if (
-            _authProvider == AuthProvider.Facebook
-            && Uri.TryCreate(currentUrl, UriKind.Absolute, out var uri)
-            && uri.Host.EndsWith("facebook.com", StringComparison.OrdinalIgnoreCase)
-        )
-        {
-            var allCookies = new List<Cookie>();
-            foreach (
-                var candidateUrl in new[]
-                {
-                    currentUrl,
-                    FacebookHomePageUrl,
-                    "https://m.facebook.com",
-                    "https://mbasic.facebook.com",
-                }
-            )
-            {
-                var cookies = await _coreWebView2.CookieManager.GetCookiesAsync(candidateUrl);
-                allCookies.AddRange(cookies.Select(c => c.ToSystemNetCookie()));
-            }
-
-            DataContext.Cookies = MergeCookies(DataContext.Cookies, allCookies);
-
-            if (DataContext.HasFacebookAuthCookies())
                 DataContext.IsBrowserVisible = false;
         }
     }
@@ -206,47 +114,4 @@ public partial class AuthSetupView : UserControl<AuthSetupViewModel>
 
         return cookies;
     }
-
-    private enum AuthProvider
-    {
-        YouTube,
-        Facebook,
-    }
-
-    private static string? TryGetChromeFilePath()
-    {
-        var candidates = new[]
-        {
-            Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
-                "Google",
-                "Chrome",
-                "Application",
-                "chrome.exe"
-            ),
-            Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
-                "Google",
-                "Chrome",
-                "Application",
-                "chrome.exe"
-            ),
-            Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "Google",
-                "Chrome",
-                "Application",
-                "chrome.exe"
-            ),
-        };
-
-        return candidates.FirstOrDefault(File.Exists);
-    }
-
-    private static string GetChromeAuthProfileRootPath() =>
-        Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "MediaTag",
-            "ChromeAuth"
-        );
 }

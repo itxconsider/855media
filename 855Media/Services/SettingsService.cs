@@ -84,6 +84,21 @@ public partial class SettingsService()
     public partial AudioProcessingMode SelectedAudioProcessingMode { get; set; } =
         AudioProcessingMode.None;
 
+    [ObservableProperty]
+    public partial string? LicenseToken { get; set; }
+
+    [ObservableProperty]
+    public partial DateTime? FirstRunDate { get; set; }
+
+    [ObservableProperty]
+    public partial DateTime? LastExecutionDate { get; set; }
+
+    [ObservableProperty]
+    public partial string? LicenseActivationApiUrl { get; set; }
+
+    [ObservableProperty]
+    public partial string PurchaseUrl { get; set; } = "https://855media.com/buy";
+
     public override void Save()
     {
         // Clear the cookies if they are not supposed to be persisted

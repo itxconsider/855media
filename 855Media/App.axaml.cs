@@ -1,4 +1,6 @@
 using System;
+using _855Media.Core.Licensing;
+using _855Media.Core.Upscaling;
 using _855Media.Framework;
 using _855Media.Localization;
 using _855Media.Services;
@@ -40,12 +42,15 @@ public class App : Application, IDisposable
         services.AddSingleton<LocalizationManager>();
 
         // Services
+        services.AddSingleton<ILicenseService, LicenseService>();
         services.AddSingleton<SettingsService>();
         services.AddSingleton<UpdateService>();
         services.AddSingleton<HistoryService>();
         services.AddSingleton<ExtensionInstallerService>();
         services.AddSingleton<LocalBridgeServer>();
         services.AddSingleton<FacebookBrowserLauncher>();
+        services.AddSingleton<VideoUpscaleService>();
+        services.AddSingleton<VideoQueueManager>();
 
         // View models
         services.AddTransient<MainViewModel>();
@@ -54,6 +59,7 @@ public class App : Application, IDisposable
         services.AddTransient<TikTokDownloaderViewModel>();
         services.AddTransient<FacebookDownloaderViewModel>();
         services.AddTransient<HistoryViewModel>();
+        services.AddTransient<VideoUpscalerViewModel>();
         services.AddTransient<DownloadViewModel>();
         services.AddTransient<AuthSetupViewModel>();
         services.AddTransient<DownloadMultipleSetupViewModel>();
@@ -61,6 +67,7 @@ public class App : Application, IDisposable
         services.AddTransient<MessageBoxViewModel>();
         services.AddTransient<SettingsViewModel>();
         services.AddTransient<BatchInputViewModel>();
+        services.AddTransient<LicenseActivationViewModel>();
 
         _services = services.BuildServiceProvider(true);
         _settingsService = _services.GetRequiredService<SettingsService>();
@@ -108,13 +115,24 @@ public class App : Application, IDisposable
     {
         base.RegisterServices();
 
-        AvaloniaWebViewBuilder.Initialize(config => config.IsInPrivateModeEnabled = true);
+        AvaloniaWebViewBuilder.Initialize(config => config.IsInPrivateModeEnabled = false);
     }
 
     public override void OnFrameworkInitializationCompleted()
     {
         // Load settings
         _settingsService.Load();
+
+        // Initialize licensing
+        _settingsService.FirstRunDate ??= DateTime.UtcNow;
+        var licenseService = _services.GetRequiredService<ILicenseService>();
+        licenseService.Initialize(
+            _settingsService.LicenseToken,
+            _settingsService.FirstRunDate,
+            _settingsService.LastExecutionDate
+        );
+        _settingsService.LastExecutionDate = DateTime.UtcNow;
+        _settingsService.Save();
 
         // Initialize and configure the main window
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)

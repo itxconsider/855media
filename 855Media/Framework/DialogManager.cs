@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -65,6 +65,24 @@ public class DialogManager : IDisposable
 
         var file = result.FirstOrDefault();
         return file?.TryGetLocalPath() ?? file?.Path.ToString();
+    }
+
+    public async Task<IReadOnlyList<string>> PromptOpenFilePathsAsync(
+        IReadOnlyList<FilePickerFileType>? fileTypes = null
+    )
+    {
+        var topLevel =
+            Application.Current?.ApplicationLifetime?.TryGetTopLevel()
+            ?? throw new ApplicationException("Could not find the top-level visual element.");
+
+        var result = await topLevel.StorageProvider.OpenFilePickerAsync(
+            new FilePickerOpenOptions { FileTypeFilter = fileTypes, AllowMultiple = true }
+        );
+
+        return result
+            .Select(f => f.TryGetLocalPath() ?? f.Path.ToString())
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .ToArray();
     }
 
     public async Task<string?> PromptSaveFilePathAsync(

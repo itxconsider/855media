@@ -14,7 +14,7 @@ using _855Media.Core.Downloading;
 
 namespace _855Media.Core.Resolving;
 
-public partial class FacebookQueryResolver(IReadOnlyList<Cookie>? initialCookies = null)
+public partial class FacebookQueryResolver()
 {
     private const bool EnableDebugDiagnostics = false;
 
@@ -83,11 +83,7 @@ public partial class FacebookQueryResolver(IReadOnlyList<Cookie>? initialCookies
 
         try
         {
-            var json = await ResolveJsonWithFallbackAsync(
-                normalizedQuery,
-                initialCookies,
-                cancellationToken
-            );
+            var json = await ResolveJsonWithFallbackAsync(normalizedQuery, cancellationToken);
 
             using var document = JsonDocument.Parse(json);
             var root = document.RootElement;
@@ -111,36 +107,20 @@ public partial class FacebookQueryResolver(IReadOnlyList<Cookie>? initialCookies
             // In that case, continue with the HTML fallback before failing.
             if (!videos.Any())
             {
-                videos = await ResolvePhotosFromHtmlAsync(
-                    normalizedQuery,
-                    initialCookies,
-                    cancellationToken
-                );
+                videos = await ResolvePhotosFromHtmlAsync(normalizedQuery, cancellationToken);
             }
         }
         catch (InvalidOperationException ex) when (IsUnsupportedUrlError(ex))
         {
-            videos = await ResolvePhotosFromHtmlAsync(
-                normalizedQuery,
-                initialCookies,
-                cancellationToken
-            );
+            videos = await ResolvePhotosFromHtmlAsync(normalizedQuery, cancellationToken);
         }
 
         if (!videos.Any())
         {
             var debugDetails = EnableDebugDiagnostics
-                ? await BuildDebugDiagnosticsAsync(
-                    normalizedQuery,
-                    initialCookies,
-                    cancellationToken
-                )
+                ? await BuildDebugDiagnosticsAsync(normalizedQuery, cancellationToken)
                 : null;
-            var requiresLogin = await IsLoginRequiredAsync(
-                normalizedQuery,
-                initialCookies,
-                cancellationToken
-            );
+            var requiresLogin = await IsLoginRequiredAsync(normalizedQuery, cancellationToken);
             throw new InvalidOperationException(
                 "Facebook restricts native scraping of profile photos. "
                     + "To bulk download photos from this profile, please load the 'facebook-photo-exporter' "
@@ -163,7 +143,6 @@ public partial class FacebookQueryResolver(IReadOnlyList<Cookie>? initialCookies
 
     private static async Task<string> ResolveJsonWithFallbackAsync(
         string normalizedQuery,
-        IReadOnlyList<Cookie>? cookies,
         CancellationToken cancellationToken
     )
     {
@@ -210,53 +189,25 @@ public partial class FacebookQueryResolver(IReadOnlyList<Cookie>? initialCookies
         }
 
         var errors = new string[0];
-        var cookieFilePath = await TryCreateCookieFileAsync(cookies, cancellationToken);
-        var cookieArgumentSets = BuildCookieArgumentSets(cookieFilePath);
-
-        try
+        foreach (var candidate in BuildCandidateUrls(normalizedQuery))
         {
-            foreach (var candidate in BuildCandidateUrls(normalizedQuery))
+            try
             {
-                foreach (var cookieArguments in cookieArgumentSets)
+                var arguments = new List<string>
                 {
-                    try
-                    {
-                        var arguments = new List<string>
-                        {
-                            "--dump-single-json",
-                            "--flat-playlist",
-                            "--ignore-errors",
-                            "--no-warnings",
-                            "--no-progress",
-                        };
+                    "--dump-single-json",
+                    "--flat-playlist",
+                    "--ignore-errors",
+                    "--no-warnings",
+                    "--no-progress",
+                    candidate,
+                };
 
-                        arguments.AddRange(cookieArguments);
-                        arguments.Add(candidate);
-
-                        return await YtDlp.RunAsync(
-                            arguments,
-                            cancellationToken: cancellationToken
-                        );
-                    }
-                    catch (InvalidOperationException ex)
-                    {
-                        errors = [.. errors, ex.Message];
-                    }
-                }
+                return await YtDlp.RunAsync(arguments, cancellationToken: cancellationToken);
             }
-        }
-        finally
-        {
-            if (!string.IsNullOrWhiteSpace(cookieFilePath))
+            catch (InvalidOperationException ex)
             {
-                try
-                {
-                    File.Delete(cookieFilePath);
-                }
-                catch
-                {
-                    // Ignore cleanup errors.
-                }
+                errors = [.. errors, ex.Message];
             }
         }
 
@@ -267,46 +218,12 @@ public partial class FacebookQueryResolver(IReadOnlyList<Cookie>? initialCookies
         );
     }
 
-    private static IReadOnlyList<IReadOnlyList<string>> BuildCookieArgumentSets(
-        string? cookieFilePath
-    )
-    {
-        var result = new List<IReadOnlyList<string>>();
-
-        if (!string.IsNullOrWhiteSpace(cookieFilePath))
-        {
-            result.Add(["--cookies", cookieFilePath]);
-            result.Add([]);
-            return result;
-        }
-
-        result.Add(["--cookies-from-browser", $"chrome:{GetChromeAuthProfilePath()}"]);
-        result.Add(["--cookies-from-browser", "chrome"]);
-        result.Add(["--cookies-from-browser", "edge"]);
-        result.Add(["--cookies-from-browser", "firefox"]);
-        result.Add([]);
-
-        return result;
-    }
-
-    private static string GetChromeAuthProfilePath() =>
-        Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "MediaTag",
-            "ChromeAuth",
-            "Default"
-        );
-
     private static async Task<VideoInfo[]> ResolvePhotosFromHtmlAsync(
         string normalizedQuery,
-        IReadOnlyList<Cookie>? cookies,
         CancellationToken cancellationToken
     )
     {
         using var handler = new HttpClientHandler { AllowAutoRedirect = true };
-        if (cookies?.Any() == true)
-            handler.CookieContainer = CreateCookieContainer(cookies);
-
         using var http = new HttpClient(handler);
         http.DefaultRequestHeaders.UserAgent.ParseAdd(
             "Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 "
@@ -350,7 +267,6 @@ public partial class FacebookQueryResolver(IReadOnlyList<Cookie>? initialCookies
 
     private static async Task<string> BuildDebugDiagnosticsAsync(
         string normalizedQuery,
-        IReadOnlyList<Cookie>? cookies,
         CancellationToken cancellationToken
     )
     {
@@ -371,9 +287,6 @@ public partial class FacebookQueryResolver(IReadOnlyList<Cookie>? initialCookies
             lines.Add($"  - {candidate}");
 
         using var handler = new HttpClientHandler { AllowAutoRedirect = true };
-        if (cookies?.Any() == true)
-            handler.CookieContainer = CreateCookieContainer(cookies);
-
         using var http = new HttpClient(handler);
         http.DefaultRequestHeaders.UserAgent.ParseAdd(
             "Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 "
@@ -442,44 +355,12 @@ public partial class FacebookQueryResolver(IReadOnlyList<Cookie>? initialCookies
         return matched.Length == 0 ? "none" : string.Join(", ", matched);
     }
 
-    private static string BuildAuthCookieSummary(IReadOnlyList<Cookie>? cookies)
-    {
-        if (cookies is null || cookies.Count == 0)
-            return "Auth cookie summary: no cookies available in current session.";
-
-        var facebookCookies = cookies
-            .Where(c =>
-                !string.IsNullOrWhiteSpace(c.Name)
-                && c.Domain.Contains("facebook.com", StringComparison.OrdinalIgnoreCase)
-            )
-            .ToArray();
-
-        var hasCUser = facebookCookies.Any(c =>
-            string.Equals(c.Name, "c_user", StringComparison.OrdinalIgnoreCase)
-        );
-        var hasXs = facebookCookies.Any(c =>
-            string.Equals(c.Name, "xs", StringComparison.OrdinalIgnoreCase)
-        );
-
-        var domainCount = facebookCookies
-            .Select(c => c.Domain)
-            .Where(d => !string.IsNullOrWhiteSpace(d))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Count();
-
-        return $"Auth cookie summary: total={cookies.Count}, facebook={facebookCookies.Length}, domains={domainCount}, has_c_user={hasCUser}, has_xs={hasXs}";
-    }
-
     private static async Task<bool> IsLoginRequiredAsync(
         string normalizedQuery,
-        IReadOnlyList<Cookie>? cookies,
         CancellationToken cancellationToken
     )
     {
         using var handler = new HttpClientHandler { AllowAutoRedirect = true };
-        if (cookies?.Any() == true)
-            handler.CookieContainer = CreateCookieContainer(cookies);
-
         using var http = new HttpClient(handler);
         http.DefaultRequestHeaders.UserAgent.ParseAdd(
             "Mozilla/5.0 (Linux; Android 12; Pixel 6) AppleWebKit/537.36 "
@@ -515,40 +396,6 @@ public partial class FacebookQueryResolver(IReadOnlyList<Cookie>? initialCookies
         }
 
         return checkedPages > 0 && loginHits >= Math.Max(2, checkedPages / 2);
-    }
-
-    private static CookieContainer CreateCookieContainer(IReadOnlyList<Cookie> cookies)
-    {
-        var container = new CookieContainer();
-
-        foreach (var cookie in cookies.Where(c => !string.IsNullOrWhiteSpace(c.Name)))
-        {
-            try
-            {
-                var domain = cookie.Domain.StartsWith("#HttpOnly_", StringComparison.Ordinal)
-                    ? cookie.Domain["#HttpOnly_".Length..]
-                    : cookie.Domain;
-
-                var copy = new Cookie(cookie.Name, cookie.Value, cookie.Path, domain)
-                {
-                    Secure = cookie.Secure,
-                    HttpOnly = cookie.HttpOnly,
-                    Expires = cookie.Expires,
-                };
-
-                var host = domain.TrimStart('.').Replace("#HttpOnly_", "");
-                if (!Uri.TryCreate($"https://{host}", UriKind.Absolute, out var cookieUri))
-                    cookieUri = new Uri("https://www.facebook.com");
-
-                container.Add(cookieUri, copy);
-            }
-            catch (CookieException)
-            {
-                // Ignore cookies rejected by CookieContainer.
-            }
-        }
-
-        return container;
     }
 
     private static IEnumerable<string> BuildHtmlCandidateUrls(string url)

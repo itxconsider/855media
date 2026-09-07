@@ -1,4 +1,4 @@
-﻿<UserControl
+<UserControl
     x:Class="_855Media.Views.Dialogs.AuthSetupView"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -7,7 +7,7 @@
     Height="450"
     MinWidth="450"
     x:DataType="dialogs:AuthSetupViewModel">
-    <Grid RowDefinitions="Auto,Auto,*,Auto">
+    <Grid RowDefinitions="Auto,*,Auto">
         <!--  Title  -->
         <TextBlock
             Grid.Row="0"
@@ -16,31 +16,9 @@
             FontWeight="Light"
             Text="{Binding LocalizationManager.AuthenticationTitle}" />
 
-        <!--  Provider selector  -->
-        <UniformGrid
-            Grid.Row="1"
-            Margin="8,0,8,8"
-            Columns="3">
-            <Button
-                Margin="8"
-                Click="YouTubeButton_OnClick"
-                Content="{Binding LocalizationManager.AuthYouTubeButton}"
-                Theme="{DynamicResource MaterialOutlineButton}" />
-            <Button
-                Margin="8"
-                Click="FacebookButton_OnClick"
-                Content="{Binding LocalizationManager.AuthFacebookButton}"
-                Theme="{DynamicResource MaterialOutlineButton}" />
-            <Button
-                Margin="8"
-                Click="ChromeButton_OnClick"
-                Content="{Binding LocalizationManager.AuthChromeButton}"
-                Theme="{DynamicResource MaterialOutlineButton}" />
-        </UniformGrid>
-
         <!--  Content  -->
         <Border
-            Grid.Row="2"
+            Grid.Row="1"
             BorderBrush="{DynamicResource MaterialDividerBrush}"
             BorderThickness="0,1">
             <Panel>
@@ -99,7 +77,7 @@
 
         <!--  Close button  -->
         <Button
-            Grid.Row="3"
+            Grid.Row="2"
             Margin="16"
             HorizontalAlignment="Stretch"
             Command="{Binding CloseCommand}"

@@ -6,150 +6,268 @@
     xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
     x:DataType="components:FacebookDownloaderViewModel">
 
-    <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-        <StackPanel
-            MaxWidth="880"
-            Margin="48,44,48,24"
-            HorizontalAlignment="Center"
-            Spacing="24">
+    <Grid RowDefinitions="Auto,Auto,*">
+        <!--  Browser Navigation & Extraction Toolbar  -->
+        <Border
+            Grid.Row="0"
+            Padding="12,8"
+            Background="{DynamicResource AntigravityPanelBrush}"
+            BorderBrush="{DynamicResource AntigravityBorderBrush}"
+            BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <!--  Navigation Buttons  -->
+                <StackPanel
+                    Grid.Column="0"
+                    Orientation="Horizontal"
+                    Spacing="4"
+                    VerticalAlignment="Center">
+                    <Button
+                        Width="34"
+                        Height="34"
+                        Padding="0"
+                        Command="{Binding GoBackCommand}"
+                        IsEnabled="{Binding CanGoBack}"
+                        Theme="{DynamicResource MaterialFlatButton}"
+                        ToolTip.Tip="Back">
+                        <materialIcons:MaterialIcon Width="20" Height="20" Kind="ArrowLeft" />
+                    </Button>
 
-            <!-- Title & Branding -->
-            <StackPanel HorizontalAlignment="Center" Spacing="12">
+                    <Button
+                        Width="34"
+                        Height="34"
+                        Padding="0"
+                        Command="{Binding GoForwardCommand}"
+                        IsEnabled="{Binding CanGoForward}"
+                        Theme="{DynamicResource MaterialFlatButton}"
+                        ToolTip.Tip="Forward">
+                        <materialIcons:MaterialIcon Width="20" Height="20" Kind="ArrowRight" />
+                    </Button>
+
+                    <Button
+                        Width="34"
+                        Height="34"
+                        Padding="0"
+                        Command="{Binding RefreshCommand}"
+                        Theme="{DynamicResource MaterialFlatButton}"
+                        ToolTip.Tip="Refresh">
+                        <materialIcons:MaterialIcon Width="18" Height="18" Kind="Refresh" />
+                    </Button>
+
+                    <Button
+                        Width="34"
+                        Height="34"
+                        Padding="0"
+                        Command="{Binding GoHomeCommand}"
+                        Theme="{DynamicResource MaterialFlatButton}"
+                        ToolTip.Tip="Facebook Home">
+                        <materialIcons:MaterialIcon Width="18" Height="18" Foreground="#1877F2" Kind="Facebook" />
+                    </Button>
+                </StackPanel>
+
+                <!--  URL Address Bar  -->
                 <Border
-                    Width="60"
-                    Height="60"
-                    HorizontalAlignment="Center"
-                    Background="#1877F2"
-                    CornerRadius="16">
-                    <materialIcons:MaterialIcon
-                        Width="36"
-                        Height="36"
-                        HorizontalAlignment="Center"
-                        VerticalAlignment="Center"
-                        Foreground="White"
-                        Kind="Facebook" />
-                </Border>
-
-                <TextBlock
-                    HorizontalAlignment="Center"
-                    FontSize="28"
-                    FontWeight="Bold"
-                    Foreground="{DynamicResource AntigravityTextBrush}"
-                    Text="{Binding LocalizationManager.FacebookPromptTitle}" />
-            </StackPanel>
-
-            <!-- Query Box -->
-            <StackPanel HorizontalAlignment="Center" Spacing="12">
-                <Border
-                    Width="680"
-                    Height="48"
-                    ClipToBounds="True"
-                    Background="{DynamicResource AntigravityPanelBrush}"
-                    BorderBrush="#1877F2"
+                    Grid.Column="1"
+                    Margin="12,0"
+                    Height="36"
+                    Background="{DynamicResource AntigravityBackgroundBrush}"
+                    BorderBrush="{DynamicResource AntigravityBorderBrush}"
                     BorderThickness="1"
-                    BoxShadow="0 4 16 0 #1A1877F2"
-                    CornerRadius="24">
-                    <Grid ColumnDefinitions="*,Auto">
-                        <TextBox
+                    CornerRadius="18">
+                    <Grid ColumnDefinitions="Auto,*,Auto">
+                        <materialIcons:MaterialIcon
                             Grid.Column="0"
-                            Padding="20,0,12,0"
+                            Margin="10,0,6,0"
+                            Width="16"
+                            Height="16"
+                            Foreground="{DynamicResource AntigravityMutedBrush}"
+                            Kind="LockOutline" />
+
+                        <TextBox
+                            x:Name="AddressTextBox"
+                            Grid.Column="1"
                             VerticalContentAlignment="Center"
-                            AcceptsReturn="False"
                             Background="Transparent"
                             BorderThickness="0"
-                            FontSize="15"
+                            FontSize="13"
                             Foreground="{DynamicResource AntigravityTextBrush}"
-                            Text="{Binding Query}"
+                            KeyDown="AddressTextBox_OnKeyDown"
+                            Text="{Binding AddressInput}"
                             Theme="{DynamicResource SoloTextBox}"
-                            Watermark="{Binding LocalizationManager.FacebookWatermark}" />
+                            Watermark="Enter Facebook URL or navigate..." />
 
                         <Button
-                            Grid.Column="1"
-                            Width="64"
-                            VerticalAlignment="Stretch"
-                            Background="#1877F2"
-                            Command="{Binding ProcessQueryCommand}"
-                            CornerRadius="0,24,24,0"
-                            Foreground="White"
-                            IsDefault="True"
-                            Theme="{DynamicResource MaterialFlatButton}">
-                            <materialIcons:MaterialIcon Width="22" Height="22" Kind="Download" />
+                            Grid.Column="2"
+                            Width="36"
+                            Height="34"
+                            Padding="0"
+                            Command="{Binding NavigateCommand}"
+                            Theme="{DynamicResource MaterialFlatButton}"
+                            ToolTip.Tip="Go">
+                            <materialIcons:MaterialIcon Width="18" Height="18" Kind="ArrowRightBold" />
                         </Button>
                     </Grid>
                 </Border>
-            </StackPanel>
 
-            <!-- Facebook Auth & Auto-Fetch Browser Buttons -->
-            <StackPanel HorizontalAlignment="Center" Orientation="Horizontal" Spacing="12">
+                <!--  Extraction Action Buttons  -->
+                <StackPanel
+                    Grid.Column="2"
+                    Orientation="Horizontal"
+                    Spacing="8"
+                    VerticalAlignment="Center">
+                    <!--  Auto-Scrape Button  -->
+                    <Button
+                        Command="{Binding ToggleScrapingCommand}"
+                        CornerRadius="16"
+                        Padding="12,6"
+                        Theme="{DynamicResource MaterialFlatButton}"
+                        ToolTip.Tip="Automatically scrolls the page and collects high-resolution album photos">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <materialIcons:MaterialIcon
+                                Width="16"
+                                Height="16"
+                                IsVisible="{Binding !IsScrapingActive}"
+                                Kind="PlayCircleOutline" />
+                            <materialIcons:MaterialIcon
+                                Width="16"
+                                Height="16"
+                                Foreground="#FF4B4B"
+                                IsVisible="{Binding IsScrapingActive}"
+                                Kind="StopCircleOutline" />
+                            <TextBlock
+                                Text="Auto-Scroll"
+                                VerticalAlignment="Center"
+                                FontSize="13"
+                                FontWeight="SemiBold" />
+                        </StackPanel>
+                    </Button>
+
+                    <!--  Import Photos Button  -->
+                    <Button
+                        Command="{Binding ImportPhotosCommand}"
+                        Background="#1877F2"
+                        Foreground="White"
+                        CornerRadius="16"
+                        Padding="14,6"
+                        Theme="{DynamicResource MaterialFlatButton}"
+                        ToolTip.Tip="Import all detected photos on this page into 855Media download queue">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <materialIcons:MaterialIcon Width="16" Height="16" Foreground="White" Kind="Download" />
+                            <TextBlock
+                                Text="{Binding DetectedPhotosCount, StringFormat='Import ({0})'}"
+                                VerticalAlignment="Center"
+                                FontSize="13"
+                                FontWeight="Bold" />
+                        </StackPanel>
+                    </Button>
+
+                    <!--  Clear Button  -->
+                    <Button
+                        Width="32"
+                        Height="32"
+                        Padding="0"
+                        Command="{Binding ClearDetectedCommand}"
+                        Theme="{DynamicResource MaterialFlatButton}"
+                        ToolTip.Tip="Clear detected media count">
+                        <materialIcons:MaterialIcon Width="16" Height="16" Foreground="{DynamicResource AntigravityMutedBrush}" Kind="TrashCanOutline" />
+                    </Button>
+
+                    <!--  Toggle Direct URL Drawer  -->
+                    <Button
+                        Width="32"
+                        Height="32"
+                        Padding="0"
+                        Command="{Binding ToggleDirectUrlModeCommand}"
+                        Theme="{DynamicResource MaterialFlatButton}"
+                        ToolTip.Tip="Toggle Direct URL Downloader Box">
+                        <materialIcons:MaterialIcon Width="18" Height="18" Kind="LinkVariant" />
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!--  Collapsible Direct URL Input Panel  -->
+        <Border
+            Grid.Row="1"
+            IsVisible="{Binding IsDirectUrlMode}"
+            Padding="16,10"
+            Background="{DynamicResource AntigravityPanelBrush}"
+            BorderBrush="{DynamicResource AntigravityBorderBrush}"
+            BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto" VerticalAlignment="Center">
+                <TextBlock
+                    Grid.Column="0"
+                    Margin="0,0,12,0"
+                    VerticalAlignment="Center"
+                    FontSize="13"
+                    FontWeight="SemiBold"
+                    Text="Direct Link:" />
+
+                <TextBox
+                    Grid.Column="1"
+                    Height="36"
+                    VerticalContentAlignment="Center"
+                    Background="{DynamicResource AntigravityBackgroundBrush}"
+                    BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="18"
+                    FontSize="13"
+                    Padding="14,0"
+                    Text="{Binding Query}"
+                    Watermark="Paste single Facebook video or photo link..." />
+
                 <Button
-                    Command="{Binding AutoFetchInBrowserCommand}"
+                    Grid.Column="2"
+                    Margin="8,0,0,0"
+                    Height="36"
+                    Padding="14,0"
                     Background="#1877F2"
+                    Command="{Binding ProcessQueryCommand}"
+                    CornerRadius="18"
                     Foreground="White"
-                    Theme="{DynamicResource MaterialFlatButton}"
-                    CornerRadius="16"
-                    Padding="20,10"
-                    ToolTip.Tip="Launch browser with extension auto-loaded to fetch album photos &amp; sync directly to 855Media">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <materialIcons:MaterialIcon Kind="OpenInApp" Width="20" Height="20" Foreground="White" />
-                        <TextBlock Text="Auto-Fetch in Browser &amp; Download" VerticalAlignment="Center" FontSize="14" FontWeight="Bold" />
+                    Theme="{DynamicResource MaterialFlatButton}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <materialIcons:MaterialIcon Width="16" Height="16" Foreground="White" Kind="Download" />
+                        <TextBlock Text="Download" VerticalAlignment="Center" FontSize="13" FontWeight="Bold" />
                     </StackPanel>
                 </Button>
 
                 <Button
-                    Command="{Binding ShowAuthSetupCommand}"
-                    Background="#14FFFFFF"
-                    Foreground="{DynamicResource AntigravityTextBrush}"
+                    Grid.Column="3"
+                    Margin="8,0,0,0"
+                    Height="36"
+                    Padding="12,0"
+                    Command="{Binding AutoFetchInBrowserCommand}"
+                    CornerRadius="18"
                     Theme="{DynamicResource MaterialFlatButton}"
-                    CornerRadius="16"
-                    Padding="16,8">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <materialIcons:MaterialIcon Kind="AccountKey" Width="18" Height="18" Foreground="#1877F2" />
-                        <TextBlock Text="Authentication" VerticalAlignment="Center" FontSize="13" />
+                    ToolTip.Tip="Launch external Chrome browser with extension helper">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <materialIcons:MaterialIcon Width="16" Height="16" Kind="OpenInApp" />
+                        <TextBlock Text="External Chrome" VerticalAlignment="Center" FontSize="13" />
                     </StackPanel>
                 </Button>
+            </Grid>
+        </Border>
 
-                <Button
-                    Command="{Binding InstallExtensionCommand}"
-                    Background="#14FFFFFF"
-                    Foreground="{DynamicResource AntigravityTextBrush}"
-                    Theme="{DynamicResource MaterialFlatButton}"
-                    CornerRadius="16"
-                    Padding="16,8"
-                    ToolTip.Tip="Install Chrome/Edge browser extension helper to AppData &amp; open load unpacked location">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <materialIcons:MaterialIcon Kind="Extension" Width="18" Height="18" Foreground="#1877F2" />
-                        <TextBlock Text="Extension Helper" VerticalAlignment="Center" FontSize="13" />
-                    </StackPanel>
-                </Button>
+        <!--  Embedded Chromium WebView2  -->
+        <Panel Grid.Row="2">
+            <!--  Loading Placeholder  -->
+            <StackPanel
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Spacing="12">
+                <ProgressBar IsIndeterminate="True" Width="180" Height="4" />
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    FontSize="14"
+                    Foreground="{DynamicResource AntigravityMutedBrush}"
+                    Text="Loading Facebook Chromium Browser..." />
             </StackPanel>
 
-            <!-- Facebook Features Overview Cards -->
-            <UniformGrid Columns="3" Width="720" Margin="0,16,0,0">
-                <Border Margin="6" Padding="16" Background="{DynamicResource AntigravityPanelBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="12">
-                    <StackPanel Spacing="8">
-                        <materialIcons:MaterialIcon Kind="ImageAlbum" Width="24" Height="24" Foreground="#1877F2" />
-                        <TextBlock Text="Photo Albums" FontWeight="Bold" FontSize="14" Foreground="{DynamicResource AntigravityTextBrush}" />
-                        <TextBlock Text="Download full Facebook photo albums in original resolution." FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" TextWrapping="Wrap" />
-                    </StackPanel>
-                </Border>
-
-                <Border Margin="6" Padding="16" Background="{DynamicResource AntigravityPanelBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="12">
-                    <StackPanel Spacing="8">
-                        <materialIcons:MaterialIcon Kind="Video" Width="24" Height="24" Foreground="#1877F2" />
-                        <TextBlock Text="HD Video Posts" FontWeight="Bold" FontSize="14" Foreground="{DynamicResource AntigravityTextBrush}" />
-                        <TextBlock Text="Extract HD video streams from Facebook watch &amp; post links." FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" TextWrapping="Wrap" />
-                    </StackPanel>
-                </Border>
-
-                <Border Margin="6" Padding="16" Background="{DynamicResource AntigravityPanelBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="12">
-                    <StackPanel Spacing="8">
-                        <materialIcons:MaterialIcon Kind="KeyChain" Width="24" Height="24" Foreground="#1877F2" />
-                        <TextBlock Text="Cookie Auth Integration" FontWeight="Bold" FontSize="14" Foreground="{DynamicResource AntigravityTextBrush}" />
-                        <TextBlock Text="Cookie import support for private photo albums &amp; posts." FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" TextWrapping="Wrap" />
-                    </StackPanel>
-                </Border>
-            </UniformGrid>
-        </StackPanel>
-    </ScrollViewer>
+            <WebView
+                x:Name="FacebookWebBrowser"
+                Loaded="FacebookWebBrowser_OnLoaded"
+                NavigationStarting="FacebookWebBrowser_OnNavigationStarting"
+                WebViewCreated="FacebookWebBrowser_OnWebViewCreated" />
+        </Panel>
+    </Grid>
 </UserControl>
-

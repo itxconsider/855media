@@ -34,6 +34,7 @@
             <Setter Property="CornerRadius" Value="20" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="FontSize" Value="14" />
+            <Setter Property="Focusable" Value="False" />
             <Style Selector="^:pointerover">
                 <Setter Property="Background" Value="#14FFFFFF" />
                 <Setter Property="Foreground" Value="{DynamicResource AntigravityTextBrush}" />
@@ -42,6 +43,10 @@
                 <Setter Property="Background" Value="{DynamicResource AntigravityAccentBrush}" />
                 <Setter Property="Foreground" Value="{DynamicResource AntigravityAccentForegroundBrush}" />
             </Style>
+        </Style>
+
+        <Style Selector="Border.nav-rail Button">
+            <Setter Property="Focusable" Value="False" />
         </Style>
 
         <Style Selector="Button.filter-chip">
@@ -64,7 +69,7 @@
 
     <Grid Background="{DynamicResource AntigravityCanvasBrush}" ColumnDefinitions="64,*">
         <!--  Rail  -->
-        <Border Grid.Column="0" Background="{DynamicResource AntigravityRailBrush}">
+        <Border Grid.Column="0" Classes="nav-rail" Background="{DynamicResource AntigravityRailBrush}">
             <Grid Margin="8" RowDefinitions="Auto,*,Auto">
                 <StackPanel Grid.Row="0" Spacing="8">
                     <!-- YouTube Tab Rail Button -->
@@ -120,6 +125,20 @@
                             Width="24"
                             Height="24"
                             Kind="PlaylistPlus" />
+                    </Button>
+
+                    <!-- AI Upscaler Tab Rail Button -->
+                    <Button
+                        Padding="8"
+                        Command="{Binding SelectUpscalerTabCommand}"
+                        Foreground="{DynamicResource AntigravityRailIconBrush}"
+                        Theme="{DynamicResource MaterialFlatButton}"
+                        ToolTip.Tip="{Binding LocalizationManager.UpscalerTabTitle}">
+                        <materialIcons:MaterialIcon
+                            Width="24"
+                            Height="24"
+                            Foreground="#00D2FF"
+                            Kind="VideoHighDefinition" />
                     </Button>
 
                     <!-- Downloads Manager Tab Rail Button -->
@@ -178,6 +197,20 @@
                             Width="24"
                             Height="24"
                             Kind="Settings" />
+                    </Button>
+
+                    <!-- License & Activation Button -->
+                    <Button
+                        Padding="8"
+                        Command="{Binding ShowLicenseActivationCommand}"
+                        Foreground="{DynamicResource AntigravityRailIconBrush}"
+                        Theme="{DynamicResource MaterialFlatButton}"
+                        ToolTip.Tip="License &amp; Activation">
+                        <materialIcons:MaterialIcon
+                            Width="24"
+                            Height="24"
+                            Foreground="#0091EA"
+                            Kind="KeyVariant" />
                     </Button>
                 </StackPanel>
 
@@ -266,6 +299,16 @@
                         </Button>
 
                         <Button
+                            Command="{Binding SelectUpscalerTabCommand}"
+                            Classes="tab-button"
+                            Classes.active="{Binding IsUpscalerTab}">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <materialIcons:MaterialIcon Kind="VideoHighDefinition" Width="18" Height="18" Foreground="#00D2FF" />
+                                <TextBlock Text="{Binding LocalizationManager.UpscalerTabTitle}" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+
+                        <Button
                             Command="{Binding SelectManagerTabCommand}"
                             Classes="tab-button"
                             Classes.active="{Binding IsManagerTab}">
@@ -321,6 +364,9 @@
 
                 <!--  HISTORY VIEW  -->
                 <ContentControl Content="{Binding History}" IsVisible="{Binding IsHistoryTab}" />
+
+                <!--  AI VIDEO UPSCALER VIEW  -->
+                <ContentControl Content="{Binding VideoUpscaler}" IsVisible="{Binding IsUpscalerTab}" />
 
                 <!--  BATCH DOWNLOAD TAB  -->
                 <ScrollViewer

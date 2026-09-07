@@ -86,9 +86,6 @@ public partial class LocalizationManager
         // Auth Setup
         [nameof(AuthenticationTitle)] = "ការផ្ទៀងផ្ទាត់",
         [nameof(AuthenticatedText)] = "អ្នកកំពុងបានផ្ទៀងផ្ទាត់",
-        [nameof(AuthYouTubeButton)] = "YouTube",
-        [nameof(AuthFacebookButton)] = "Facebook",
-        [nameof(AuthChromeButton)] = "បើក Facebook ក្នុង Chrome",
         [nameof(LogOutButton)] = "ចាកចេញ",
         [nameof(LoadingText)] = "កំពុងផ្ទុក...",
         // Download Single Setup

@@ -20,6 +20,37 @@ public partial class FacebookDownloaderViewModel : ViewModelBase
     private readonly SnackbarManager _snackbarManager;
     private DashboardViewModel? _dashboardViewModel;
 
+    public event Action<string>? NavigateRequested;
+    public event Action? GoBackRequested;
+    public event Action? GoForwardRequested;
+    public event Action? RefreshRequested;
+    public event Action<string>? SendScriptMessageRequested;
+
+    [ObservableProperty]
+    private string _currentUrl = "https://www.facebook.com";
+
+    [ObservableProperty]
+    private string _addressInput = "https://www.facebook.com";
+
+    [ObservableProperty]
+    private bool _canGoBack;
+
+    [ObservableProperty]
+    private bool _canGoForward;
+
+    [ObservableProperty]
+    private bool _isScrapingActive;
+
+    [ObservableProperty]
+    private int _detectedPhotosCount;
+
+    [ObservableProperty]
+    private bool _isDirectUrlMode;
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(ProcessQueryCommand))]
+    public partial string? Query { get; set; }
+
     public FacebookDownloaderViewModel(
         LocalizationManager localizationManager,
         ExtensionInstallerService extensionInstallerService,
@@ -45,9 +76,14 @@ public partial class FacebookDownloaderViewModel : ViewModelBase
 
     public LocalizationManager LocalizationManager { get; }
 
-    [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(ProcessQueryCommand))]
-    public partial string? Query { get; set; }
+    public event Action<bool>? ActiveTabChanged;
+
+    public bool IsActiveTab => _dashboardViewModel?.IsFacebookTab ?? false;
+
+    public void NotifyTabChanged()
+    {
+        ActiveTabChanged?.Invoke(IsActiveTab);
+    }
 
     public bool IsBusy => _dashboardViewModel?.IsBusy ?? false;
 
@@ -68,16 +104,110 @@ public partial class FacebookDownloaderViewModel : ViewModelBase
     }
 
     [RelayCommand]
+    private void Navigate()
+    {
+        var url = AddressInput?.Trim();
+        if (string.IsNullOrWhiteSpace(url))
+            return;
+
+        if (
+            !url.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+            && !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+        )
+        {
+            url = "https://" + url;
+        }
+
+        AddressInput = url;
+        NavigateRequested?.Invoke(url);
+    }
+
+    [RelayCommand]
+    private void GoBack() => GoBackRequested?.Invoke();
+
+    [RelayCommand]
+    private void GoForward() => GoForwardRequested?.Invoke();
+
+    [RelayCommand]
+    private void Refresh() => RefreshRequested?.Invoke();
+
+    [RelayCommand]
+    private void GoHome()
+    {
+        AddressInput = "https://www.facebook.com";
+        NavigateRequested?.Invoke("https://www.facebook.com");
+    }
+
+    [RelayCommand]
+    private async Task ToggleScraping()
+    {
+        if (_dashboardViewModel?.IsProActive == false)
+        {
+            _snackbarManager.Notify(
+                "Bulk album auto-scraping requires an active 855Media Pro license."
+            );
+            await _dashboardViewModel.ShowLicenseActivationCommand.ExecuteAsync(null);
+            return;
+        }
+
+        if (IsScrapingActive)
+        {
+            IsScrapingActive = false;
+            SendScriptMessageRequested?.Invoke("{\"action\":\"STOP_SCRAPING\"}");
+            _snackbarManager.Notify("Stopped auto-scrolling.");
+        }
+        else
+        {
+            IsScrapingActive = true;
+            SendScriptMessageRequested?.Invoke(
+                "{\"action\":\"START_SCRAPING\",\"maxItems\":500,\"delayMs\":1400}"
+            );
+            _snackbarManager.Notify("Auto-scrolling page & collecting album photos...");
+        }
+    }
+
+    [RelayCommand]
+    private async Task ImportPhotos()
+    {
+        if (_dashboardViewModel?.IsProActive == false)
+        {
+            _snackbarManager.Notify(
+                "Bulk photo importing requires an active 855Media Pro license."
+            );
+            await _dashboardViewModel.ShowLicenseActivationCommand.ExecuteAsync(null);
+            return;
+        }
+
+        SendScriptMessageRequested?.Invoke("{\"action\":\"GET_PAYLOAD\"}");
+    }
+
+    [RelayCommand]
+    private void ClearDetected()
+    {
+        DetectedPhotosCount = 0;
+        SendScriptMessageRequested?.Invoke("{\"action\":\"CLEAR\"}");
+        _snackbarManager.Notify("Cleared detected photo list.");
+    }
+
+    [RelayCommand]
+    private void ToggleDirectUrlMode()
+    {
+        IsDirectUrlMode = !IsDirectUrlMode;
+    }
+
+    [RelayCommand]
     private async Task AutoFetchInBrowserAsync()
     {
         _localBridgeServer.Start();
-        var targetUrl = !string.IsNullOrWhiteSpace(Query) ? Query : "https://www.facebook.com";
+        var targetUrl = !string.IsNullOrWhiteSpace(CurrentUrl)
+            ? CurrentUrl
+            : "https://www.facebook.com";
 
         bool launched = _facebookBrowserLauncher.LaunchBrowserWithExtension(targetUrl);
         if (launched)
         {
             _snackbarManager.Notify(
-                "Browser launched with extension! Log in & navigate to album. Media will sync automatically to 855Media."
+                "Browser launched with extension! Media will sync automatically to 855Media."
             );
         }
         else
@@ -87,16 +217,14 @@ public partial class FacebookDownloaderViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    private async Task ShowAuthSetupAsync()
-    {
-        if (_dashboardViewModel is not null)
-            await _dashboardViewModel.ShowAuthSetupCommand.ExecuteAsync(null);
-    }
-
-    [RelayCommand]
     private async Task InstallExtensionAsync()
     {
         await _extensionInstallerService.InstallExtensionsAsync();
+    }
+
+    public void ProcessReceivedPayload(MediaPayload payload)
+    {
+        OnMediaPayloadReceived(this, payload);
     }
 
     private async void OnMediaPayloadReceived(object? sender, MediaPayload payload)
@@ -140,13 +268,15 @@ public partial class FacebookDownloaderViewModel : ViewModelBase
             if (videos.Count == 0)
                 return;
 
-            var queryResult = new QueryResult(
-                QueryResultKind.Video,
-                string.IsNullOrWhiteSpace(payload.PageUrl) ? "Facebook Media" : payload.PageUrl,
-                videos
-            );
+            var albumTitle = !string.IsNullOrWhiteSpace(payload.PageUrl)
+                ? $"Facebook Album ({videos.Count} items)"
+                : $"Facebook Media ({videos.Count} items)";
 
-            _snackbarManager.Notify($"Received {videos.Count} items from browser extension!");
+            var queryResult = new QueryResult(QueryResultKind.Video, albumTitle, videos);
+
+            _snackbarManager.Notify(
+                $"Imported {videos.Count} items from Facebook into download queue!"
+            );
             await _dashboardViewModel.QueueFacebookPhotosAsync(queryResult);
             _dashboardViewModel.SelectedTab = DashboardTab.Manager;
         });

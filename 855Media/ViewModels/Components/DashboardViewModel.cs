@@ -7,6 +7,7 @@ using System.Text;
 using System.Threading.Tasks;
 using _855Media.Core.Audio;
 using _855Media.Core.Downloading;
+using _855Media.Core.Licensing;
 using _855Media.Core.Resolving;
 using _855Media.Core.Tagging;
 using _855Media.Framework;
@@ -38,6 +39,7 @@ public partial class DashboardViewModel : ViewModelBase
     private readonly AutoResetProgressMuxer _progressMuxer;
 
     private readonly HistoryService _historyService;
+    private readonly ILicenseService _licenseService;
 
     public DashboardViewModel(
         ViewModelManager viewModelManager,
@@ -45,7 +47,8 @@ public partial class DashboardViewModel : ViewModelBase
         DialogManager dialogManager,
         LocalizationManager localizationManager,
         SettingsService settingsService,
-        HistoryService historyService
+        HistoryService historyService,
+        ILicenseService licenseService
     )
     {
         _viewModelManager = viewModelManager;
@@ -55,6 +58,14 @@ public partial class DashboardViewModel : ViewModelBase
         LocalizationManager = localizationManager;
         _settingsService = settingsService;
         _historyService = historyService;
+        _licenseService = licenseService;
+
+        _licenseService.LicenseChanged += () =>
+        {
+            OnPropertyChanged(nameof(IsProActive));
+            OnPropertyChanged(nameof(IsTrialActive));
+            OnPropertyChanged(nameof(LicenseBadgeText));
+        };
 
         _progressMuxer = Progress.CreateMuxer().WithAutoReset();
 
@@ -62,6 +73,7 @@ public partial class DashboardViewModel : ViewModelBase
         TikTokDownloader = _viewModelManager.GetTikTokDownloaderViewModel(this);
         FacebookDownloader = _viewModelManager.GetFacebookDownloaderViewModel(this);
         History = _viewModelManager.GetHistoryViewModel(this);
+        VideoUpscaler = _viewModelManager.GetVideoUpscalerViewModel();
 
         _eventSubscription = Disposable.Merge(
             _settingsService.WatchProperty(
@@ -106,6 +118,7 @@ public partial class DashboardViewModel : ViewModelBase
     public TikTokDownloaderViewModel TikTokDownloader { get; }
     public FacebookDownloaderViewModel FacebookDownloader { get; }
     public HistoryViewModel History { get; }
+    public VideoUpscalerViewModel VideoUpscaler { get; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsProgressIndeterminate))]
@@ -113,6 +126,7 @@ public partial class DashboardViewModel : ViewModelBase
     [NotifyCanExecuteChangedFor(nameof(ProcessBatchQueryCommand))]
     [NotifyCanExecuteChangedFor(nameof(ShowAuthSetupCommand))]
     [NotifyCanExecuteChangedFor(nameof(ShowSettingsCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ShowLicenseActivationCommand))]
     [NotifyCanExecuteChangedFor(nameof(ShowBatchInputCommand))]
     public partial bool IsBusy { get; set; }
 
@@ -132,14 +146,21 @@ public partial class DashboardViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsTikTokTab))]
     [NotifyPropertyChangedFor(nameof(IsFacebookTab))]
     [NotifyPropertyChangedFor(nameof(IsBatchTab))]
+    [NotifyPropertyChangedFor(nameof(IsUpscalerTab))]
     [NotifyPropertyChangedFor(nameof(IsManagerTab))]
     [NotifyPropertyChangedFor(nameof(IsHistoryTab))]
     public partial DashboardTab SelectedTab { get; set; } = DashboardTab.YouTube;
+
+    partial void OnSelectedTabChanged(DashboardTab value)
+    {
+        FacebookDownloader?.NotifyTabChanged();
+    }
 
     public bool IsYouTubeTab => SelectedTab == DashboardTab.YouTube;
     public bool IsTikTokTab => SelectedTab == DashboardTab.TikTok;
     public bool IsFacebookTab => SelectedTab == DashboardTab.Facebook;
     public bool IsBatchTab => SelectedTab == DashboardTab.Batch;
+    public bool IsUpscalerTab => SelectedTab == DashboardTab.Upscaler;
     public bool IsManagerTab => SelectedTab == DashboardTab.Manager;
     public bool IsHistoryTab => SelectedTab == DashboardTab.History;
 
@@ -154,6 +175,9 @@ public partial class DashboardViewModel : ViewModelBase
 
     [RelayCommand]
     private void SelectBatchTab() => SelectedTab = DashboardTab.Batch;
+
+    [RelayCommand]
+    private void SelectUpscalerTab() => SelectedTab = DashboardTab.Upscaler;
 
     [RelayCommand]
     private void SelectManagerTab() => SelectedTab = DashboardTab.Manager;
@@ -307,17 +331,40 @@ public partial class DashboardViewModel : ViewModelBase
     private async Task ShowAuthSetupAsync() =>
         await _dialogManager.ShowDialogAsync(_viewModelManager.GetAuthSetupViewModel());
 
+    public bool IsProActive => _licenseService.IsProActive;
+    public bool IsTrialActive => _licenseService.IsTrialActive;
+    public string LicenseBadgeText =>
+        _licenseService.Status switch
+        {
+            LicenseStatus.Active => "PRO",
+            LicenseStatus.Trial => $"TRIAL ({_licenseService.TrialDaysRemaining}d)",
+            _ => "ACTIVATE",
+        };
+
     private bool CanShowSettings() => !IsBusy;
 
     [RelayCommand(CanExecute = nameof(CanShowSettings))]
     private async Task ShowSettingsAsync() =>
         await _dialogManager.ShowDialogAsync(_viewModelManager.GetSettingsViewModel());
 
+    private bool CanShowLicenseActivation() => !IsBusy;
+
+    [RelayCommand(CanExecute = nameof(CanShowLicenseActivation))]
+    private async Task ShowLicenseActivationAsync() =>
+        await _dialogManager.ShowDialogAsync(_viewModelManager.GetLicenseActivationViewModel());
+
     private bool CanShowBatchInput() => !IsBusy;
 
     [RelayCommand(CanExecute = nameof(CanShowBatchInput))]
     private async Task ShowBatchInputAsync()
     {
+        if (!_licenseService.IsProActive)
+        {
+            _snackbarManager.Notify("Batch URL downloading requires an 855Media Pro license.");
+            await _dialogManager.ShowDialogAsync(_viewModelManager.GetLicenseActivationViewModel());
+            return;
+        }
+
         var dialog = _viewModelManager.GetBatchInputViewModel();
         if (await _dialogManager.ShowDialogAsync(dialog) == true)
         {
@@ -393,9 +440,7 @@ public partial class DashboardViewModel : ViewModelBase
             }
             else if (download.Video?.Source == VideoSource.FacebookPhoto)
             {
-                await new FacebookPhotoDownloader(
-                    _settingsService.LastAuthCookies
-                ).DownloadPhotoAsync(
+                await new FacebookPhotoDownloader().DownloadPhotoAsync(
                     download.FilePath!,
                     download.Video,
                     download.Progress.Merge(progress),
@@ -668,6 +713,17 @@ public partial class DashboardViewModel : ViewModelBase
             // Multiple videos
             else if (queryResult.Videos.Count > 1)
             {
+                if (!_licenseService.IsProActive)
+                {
+                    _snackbarManager.Notify(
+                        "Bulk & playlist downloading requires an 855Media Pro license."
+                    );
+                    await _dialogManager.ShowDialogAsync(
+                        _viewModelManager.GetLicenseActivationViewModel()
+                    );
+                    return;
+                }
+
                 if (queryResult.Videos.All(v => v.Source == VideoSource.FacebookPhoto))
                 {
                     await QueueFacebookPhotosAsync(queryResult);
@@ -742,6 +798,13 @@ public partial class DashboardViewModel : ViewModelBase
 
     public async Task QueueFacebookPhotosAsync(QueryResult queryResult)
     {
+        if (!_licenseService.IsProActive)
+        {
+            _snackbarManager.Notify("Bulk photo downloading requires an 855Media Pro license.");
+            await _dialogManager.ShowDialogAsync(_viewModelManager.GetLicenseActivationViewModel());
+            return;
+        }
+
         var dirPath = await _dialogManager.PromptDirectoryPathAsync();
         if (string.IsNullOrWhiteSpace(dirPath))
             return;
@@ -871,6 +934,7 @@ public enum DashboardTab
     TikTok,
     Facebook,
     Batch,
+    Upscaler,
     Manager,
     History,
 }

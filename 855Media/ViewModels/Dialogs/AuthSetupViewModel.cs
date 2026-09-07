@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -61,19 +61,7 @@ public class AuthSetupViewModel : DialogViewModelBase
 
     public bool IsAuthStatusVisible => IsAuthenticated && !IsBrowserVisible;
 
-    public bool IsAuthenticated => HasYouTubeAuthCookies() || HasFacebookAuthCookies();
-
-    public bool HasFacebookAuthCookies()
-    {
-        var facebookCookies = Cookies
-            ?.Where(c => IsFacebookCookie(c) && !IsExpired(c))
-            .Select(c => c.Name)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-        return facebookCookies is not null
-            && facebookCookies.Contains("c_user")
-            && facebookCookies.Contains("xs");
-    }
+    public bool IsAuthenticated => HasYouTubeAuthCookies();
 
     private bool HasYouTubeAuthCookies() =>
         Cookies?.Any(c =>
@@ -88,9 +76,6 @@ public class AuthSetupViewModel : DialogViewModelBase
             cookie.Expires != DateTime.MinValue
             && cookie.Expires.ToUniversalTime() <= DateTime.UtcNow
         );
-
-    private static bool IsFacebookCookie(Cookie cookie) =>
-        cookie.Domain.Contains("facebook.com", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsGoogleOrYouTubeCookie(Cookie cookie) =>
         cookie.Domain.Contains("youtube.com", StringComparison.OrdinalIgnoreCase)

@@ -35,6 +35,7 @@ public partial class LocalizationManager
             [nameof(YouTubeTabTitle)] = "YouTube",
             [nameof(TikTokTabTitle)] = "TikTok",
             [nameof(FacebookTabTitle)] = "Facebook",
+            [nameof(UpscalerTabTitle)] = "AI Upscaler",
             [nameof(YouTubePromptTitle)] = "Download YouTube Videos & Playlists",
             [nameof(TikTokPromptTitle)] = "Download TikTok Videos & Slideshows",
             [nameof(FacebookPromptTitle)] = "Download Facebook Photos & Videos",
@@ -118,9 +119,6 @@ public partial class LocalizationManager
             // Auth Setup
             [nameof(AuthenticationTitle)] = "Authentication",
             [nameof(AuthenticatedText)] = "You are currently authenticated",
-            [nameof(AuthYouTubeButton)] = "YouTube",
-            [nameof(AuthFacebookButton)] = "Facebook",
-            [nameof(AuthChromeButton)] = "Open Facebook in Chrome",
             [nameof(LogOutButton)] = "Log out",
             [nameof(LoadingText)] = "Loading...",
             // Download Single Setup

@@ -28,6 +28,7 @@
 
   <ItemGroup>
     <AvaloniaResource Include="../favicon.ico" Link="favicon.ico" />
+    <EmbeddedResource Include="Resources/facebook-scraper-bridge.js" />
   </ItemGroup>
 
   <ItemGroup>
@@ -39,6 +40,11 @@
     <Content
       Include="../facebook-photo-exporter/**/*"
       Link="extensions/facebook-photo-exporter/%(RecursiveDir)%(Filename)%(Extension)"
+      CopyToOutputDirectory="PreserveNewest"
+    />
+    <Content
+      Include="../tools/realesrgan/**/*"
+      Link="tools/realesrgan/%(RecursiveDir)%(Filename)%(Extension)"
       CopyToOutputDirectory="PreserveNewest"
     />
   </ItemGroup>

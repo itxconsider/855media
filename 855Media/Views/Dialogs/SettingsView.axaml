@@ -22,6 +22,56 @@
             BorderThickness="0,1">
             <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
                 <StackPanel Orientation="Vertical">
+                    <!--  License & Subscription  -->
+                    <Border
+                        Margin="16,8"
+                        Padding="12"
+                        Background="{DynamicResource MaterialCardBackgroundBrush}"
+                        BorderBrush="{DynamicResource MaterialDividerBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8">
+                        <StackPanel Spacing="6">
+                            <DockPanel>
+                                <materialIcons:MaterialIcon
+                                    Width="18"
+                                    Height="18"
+                                    Margin="0,0,8,0"
+                                    Foreground="#0091EA"
+                                    Kind="KeyVariant" />
+                                <TextBlock
+                                    FontWeight="SemiBold"
+                                    Text="License &amp; Subscription"
+                                    VerticalAlignment="Center" />
+                                <Border
+                                    Margin="8,0,0,0"
+                                    Padding="6,2"
+                                    HorizontalAlignment="Left"
+                                    Background="#1877F2"
+                                    CornerRadius="10">
+                                    <TextBlock
+                                        FontSize="10"
+                                        FontWeight="Bold"
+                                        Foreground="White"
+                                        Text="{Binding LicenseStatusText}" />
+                                </Border>
+                            </DockPanel>
+                            <TextBlock
+                                FontSize="11"
+                                Opacity="0.75"
+                                Text="{Binding LicenseOwnerText}" />
+                            <Button
+                                Margin="0,4,0,0"
+                                HorizontalAlignment="Left"
+                                Command="{Binding OpenLicenseActivationCommand}"
+                                Theme="{DynamicResource MaterialOutlineButton}">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <materialIcons:MaterialIcon Width="14" Height="14" Kind="ShieldKeyOutline" />
+                                    <TextBlock Text="Manage License / Activate" />
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </Border>
+
                     <!--  Theme  -->
                     <DockPanel
                         Margin="16,8"

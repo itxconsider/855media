@@ -1,4 +1,4 @@
-﻿using _855Media.ViewModels;
+using _855Media.ViewModels;
 using _855Media.ViewModels.Components;
 using _855Media.ViewModels.Dialogs;
 using _855Media.Views;
@@ -25,6 +25,8 @@ public partial class ViewManager
             MessageBoxViewModel => new MessageBoxView(),
             SettingsViewModel => new SettingsView(),
             BatchInputViewModel => new BatchInputView(),
+            LicenseActivationViewModel => new LicenseActivationView(),
+            VideoUpscalerViewModel => new VideoUpscalerView(),
             _ => null,
         };
 

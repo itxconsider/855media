@@ -108,6 +108,7 @@ public partial class LocalizationManager
     public string YouTubeTabTitle => Get();
     public string TikTokTabTitle => Get();
     public string FacebookTabTitle => Get();
+    public string UpscalerTabTitle => Get();
     public string YouTubePromptTitle => Get();
     public string TikTokPromptTitle => Get();
     public string FacebookPromptTitle => Get();
@@ -173,9 +174,6 @@ public partial class LocalizationManager
 
     public string AuthenticationTitle => Get();
     public string AuthenticatedText => Get();
-    public string AuthYouTubeButton => Get();
-    public string AuthFacebookButton => Get();
-    public string AuthChromeButton => Get();
     public string LogOutButton => Get();
     public string LoadingText => Get();
 

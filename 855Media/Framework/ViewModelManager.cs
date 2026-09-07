@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using _855Media.Core.Downloading;
 using _855Media.Core.Resolving;
@@ -50,6 +50,9 @@ public class ViewModelManager(IServiceProvider services)
         viewModel.Initialize(dashboardViewModel);
         return viewModel;
     }
+
+    public VideoUpscalerViewModel GetVideoUpscalerViewModel() =>
+        services.GetRequiredService<VideoUpscalerViewModel>();
 
     public AuthSetupViewModel GetAuthSetupViewModel() =>
         services.GetRequiredService<AuthSetupViewModel>();
@@ -146,4 +149,7 @@ public class ViewModelManager(IServiceProvider services)
 
     public BatchInputViewModel GetBatchInputViewModel() =>
         services.GetRequiredService<BatchInputViewModel>();
+
+    public LicenseActivationViewModel GetLicenseActivationViewModel() =>
+        services.GetRequiredService<LicenseActivationViewModel>();
 }

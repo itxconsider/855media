@@ -17,7 +17,7 @@ public class QueryResolver(IReadOnlyList<Cookie>? initialCookies = null) : IDisp
 {
     private readonly YoutubeClient _youtube = new(Http.Client, initialCookies ?? []);
     private readonly TikTokQueryResolver _tikTok = new(initialCookies);
-    private readonly FacebookQueryResolver _facebook = new(initialCookies);
+    private readonly FacebookQueryResolver _facebook = new();
     private readonly bool _isAuthenticated = initialCookies?.Any() == true;
 
     private async Task<QueryResult?> TryResolvePlaylistAsync(

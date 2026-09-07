@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using _855Media.Core.Audio;
+using _855Media.Core.Licensing;
 using _855Media.Framework;
 using _855Media.Localization;
 using _855Media.Services;
@@ -15,20 +16,61 @@ public partial class SettingsViewModel : DialogViewModelBase
 {
     private readonly DialogManager _dialogManager;
     private readonly SettingsService _settingsService;
+    private readonly ILicenseService _licenseService;
+    private readonly ViewModelManager _viewModelManager;
 
     private readonly IDisposable _eventSubscription;
 
     public SettingsViewModel(
         DialogManager dialogManager,
         LocalizationManager localizationManager,
-        SettingsService settingsService
+        SettingsService settingsService,
+        ILicenseService licenseService,
+        ViewModelManager viewModelManager
     )
     {
         _dialogManager = dialogManager;
         LocalizationManager = localizationManager;
         _settingsService = settingsService;
+        _licenseService = licenseService;
+        _viewModelManager = viewModelManager;
+
+        _licenseService.LicenseChanged += () =>
+        {
+            OnPropertyChanged(nameof(LicenseStatusText));
+            OnPropertyChanged(nameof(LicenseOwnerText));
+            OnPropertyChanged(nameof(IsProActive));
+            OnPropertyChanged(nameof(IsTrialActive));
+        };
 
         _eventSubscription = _settingsService.WatchAllProperties(OnAllPropertiesChanged);
+    }
+
+    public string LicenseStatusText =>
+        _licenseService.Status switch
+        {
+            Core.Licensing.LicenseStatus.Active => "PRO ACTIVATED",
+            Core.Licensing.LicenseStatus.Trial =>
+                $"Free Trial ({_licenseService.TrialDaysRemaining} days remaining)",
+            Core.Licensing.LicenseStatus.Expired => "Trial Expired",
+            Core.Licensing.LicenseStatus.HardwareMismatch => "Device ID Mismatch",
+            _ => "Unlicensed",
+        };
+
+    public string LicenseOwnerText =>
+        _licenseService.CurrentLicense is { } lic
+            ? $"{lic.CustomerName} ({lic.CustomerEmail}) - {lic.Type}"
+            : (_licenseService.IsTrialActive ? "Evaluation License" : "No License");
+
+    public bool IsProActive => _licenseService.IsProActive;
+    public bool IsTrialActive => _licenseService.IsTrialActive;
+    public string MachineFingerprint => _licenseService.MachineFingerprint;
+
+    [RelayCommand]
+    private async Task OpenLicenseActivationAsync()
+    {
+        var dialog = _viewModelManager.GetLicenseActivationViewModel();
+        await _dialogManager.ShowDialogAsync(dialog);
     }
 
     public LocalizationManager LocalizationManager { get; }
