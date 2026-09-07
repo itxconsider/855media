@@ -39,8 +39,8 @@ public static class ChildProcessTracker
             {
                 BasicLimitInformation = new JOBOBJECT_BASIC_LIMIT_INFORMATION
                 {
-                    LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
-                }
+                    LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+                },
             };
 
             int length = Marshal.SizeOf<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>();
@@ -48,11 +48,14 @@ public static class ChildProcessTracker
             try
             {
                 Marshal.StructureToPtr(extendedInfo, extendedInfoPtr, false);
-                if (!SetInformationJobObject(
-                    _jobHandle,
-                    JobObjectInfoType.ExtendedLimitInformation,
-                    extendedInfoPtr,
-                    (uint)length))
+                if (
+                    !SetInformationJobObject(
+                        _jobHandle,
+                        JobObjectInfoType.ExtendedLimitInformation,
+                        extendedInfoPtr,
+                        (uint)length
+                    )
+                )
                 {
                     CloseHandle(_jobHandle);
                     _jobHandle = IntPtr.Zero;
@@ -154,7 +157,7 @@ public static class ChildProcessTracker
 
     private enum JobObjectInfoType
     {
-        ExtendedLimitInformation = 9
+        ExtendedLimitInformation = 9,
     }
 
     [StructLayout(LayoutKind.Sequential)]

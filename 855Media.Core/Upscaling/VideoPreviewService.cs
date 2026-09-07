@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using _855Media.Core.Utils;
 
 namespace _855Media.Core.Upscaling;
 
@@ -69,6 +70,7 @@ public class VideoPreviewService
         try
         {
             process.Start();
+            ChildProcessTracker.Track(process);
             process.BeginErrorReadLine();
             await process.WaitForExitAsync(cancellationToken);
         }
@@ -209,6 +211,7 @@ public class VideoPreviewService
         try
         {
             process.Start();
+            ChildProcessTracker.Track(process);
 
             // Concurrently drain stdout and stderr to prevent OS buffer deadlocks
             var stdoutTask = process.StandardOutput.BaseStream.CopyToAsync(

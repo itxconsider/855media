@@ -160,6 +160,7 @@ public static partial class YtDlp
             process.StartInfo.ArgumentList.Add("nightly");
 
             process.Start();
+            ChildProcessTracker.Track(process);
             await process.WaitForExitAsync(cancellationToken);
         }
         catch
@@ -225,6 +226,7 @@ public static partial class YtDlp
         try
         {
             process.Start();
+            ChildProcessTracker.Track(process);
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
 

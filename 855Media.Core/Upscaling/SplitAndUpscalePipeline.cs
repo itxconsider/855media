@@ -7,6 +7,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using _855Media.Core.Downloading;
+using _855Media.Core.Utils;
 
 namespace _855Media.Core.Upscaling;
 
@@ -399,6 +400,7 @@ public class SplitAndUpscalePipeline
         };
 
         process.Start();
+        ChildProcessTracker.Track(process);
         process.BeginErrorReadLine();
 
         try
@@ -466,6 +468,7 @@ public class SplitAndUpscalePipeline
         };
 
         process.Start();
+        ChildProcessTracker.Track(process);
         process.BeginErrorReadLine();
 
         try
@@ -524,6 +527,7 @@ public class SplitAndUpscalePipeline
                 process.StartInfo.RedirectStandardError = true;
 
                 process.Start();
+                ChildProcessTracker.Track(process);
                 var stdOutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
                 await process.WaitForExitAsync(cancellationToken);
                 var output = await stdOutTask;
@@ -577,6 +581,7 @@ public class SplitAndUpscalePipeline
         };
 
         process.Start();
+        ChildProcessTracker.Track(process);
         process.BeginErrorReadLine();
         await process.WaitForExitAsync(cancellationToken);
 

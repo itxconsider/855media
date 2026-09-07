@@ -8,6 +8,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using _855Media.Core.Utils;
 
 namespace _855Media.Core.Upscaling;
 
@@ -475,13 +476,31 @@ public class VideoQueueManager : IDisposable
         }
     }
 
+    public void StopAllJobs()
+    {
+        _managerCts.Cancel();
+        foreach (var job in Jobs)
+        {
+            try
+            {
+                job.Cts?.Cancel();
+                if (job.ActiveProcess is { HasExited: false } proc)
+                {
+                    proc.Kill(entireProcessTree: true);
+                }
+            }
+            catch { }
+        }
+        ChildProcessTracker.KillAll();
+    }
+
     public void Dispose()
     {
         if (_isDisposed)
             return;
         _isDisposed = true;
 
-        _managerCts.Cancel();
+        StopAllJobs();
         _jobChannel.Writer.TryComplete();
         _pauseGate.Dispose();
         _managerCts.Dispose();

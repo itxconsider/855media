@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using _855Media.Core.Utils;
 
 namespace _855Media.Core.Audio;
 
@@ -67,6 +68,7 @@ public static class AudioProcessor
             process.StartInfo.CreateNoWindow = true;
 
             process.Start();
+            ChildProcessTracker.Track(process);
             await process.WaitForExitAsync(cancellationToken);
 
             if (

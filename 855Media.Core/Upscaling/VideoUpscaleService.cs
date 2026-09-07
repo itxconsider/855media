@@ -10,6 +10,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using _855Media.Core.Downloading;
+using _855Media.Core.Utils;
 
 namespace _855Media.Core.Upscaling;
 
@@ -93,6 +94,7 @@ public partial class VideoUpscaleService
             };
 
             process.Start();
+            ChildProcessTracker.Track(process);
             process.BeginErrorReadLine();
             await process.WaitForExitAsync(cancellationToken);
 
@@ -687,6 +689,7 @@ public partial class VideoUpscaleService
             proc.StartInfo.UseShellExecute = false;
             proc.StartInfo.CreateNoWindow = true;
             proc.Start();
+            ChildProcessTracker.Track(proc);
             proc.WaitForExit(3000);
             _hasNvencSupport = proc.ExitCode == 0;
         }
@@ -1007,6 +1010,7 @@ public partial class VideoUpscaleService
         try
         {
             process.Start();
+            ChildProcessTracker.Track(process);
             job.ActiveProcess = process;
             process.BeginErrorReadLine();
             process.BeginOutputReadLine();
@@ -1097,6 +1101,7 @@ public partial class VideoUpscaleService
         try
         {
             process.Start();
+            ChildProcessTracker.Track(process);
             job.ActiveProcess = process;
             process.BeginErrorReadLine();
             process.BeginOutputReadLine();
@@ -1158,6 +1163,7 @@ public partial class VideoUpscaleService
         try
         {
             process.Start();
+            ChildProcessTracker.Track(process);
             if (job != null)
             {
                 job.ActiveProcess = process;

@@ -1,6 +1,7 @@
 using System;
 using _855Media.Core.Licensing;
 using _855Media.Core.Upscaling;
+using _855Media.Core.Utils;
 using _855Media.Framework;
 using _855Media.Localization;
 using _855Media.Services;
@@ -142,6 +143,20 @@ public class App : Application, IDisposable
 
             desktop.MainWindow = viewManager.TryBindWindow(viewModelManager.GetMainViewModel());
 
+            if (desktop.MainWindow is { } mainWindow)
+            {
+                mainWindow.Closing += (_, _) =>
+                {
+                    try
+                    {
+                        var queueManager = _services.GetService<VideoQueueManager>();
+                        queueManager?.StopAllJobs();
+                    }
+                    catch { }
+                    ChildProcessTracker.KillAll();
+                };
+            }
+
             // Although `App.Dispose()` is invoked from `Program.Main(...)`, on some platforms
             // it may be called too late in the shutdown lifecycle. Attach an exit
             // handler to ensure timely disposal as a safeguard.
@@ -165,6 +180,8 @@ public class App : Application, IDisposable
             return;
 
         _isDisposed = true;
+
+        ChildProcessTracker.KillAll();
 
         _eventSubscription.Dispose();
         _services.Dispose();

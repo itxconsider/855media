@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using _855Media.Core.Utils;
 
 namespace _855Media.Core.Upscaling;
 
@@ -145,6 +146,7 @@ public static class HardwareDetector
             proc.StartInfo.RedirectStandardError = true;
 
             proc.Start();
+            ChildProcessTracker.Track(proc);
             string output = proc.StandardOutput.ReadToEnd();
             proc.WaitForExit(3000);
 
@@ -179,6 +181,7 @@ public static class HardwareDetector
             proc.StartInfo.RedirectStandardOutput = true;
 
             proc.Start();
+            ChildProcessTracker.Track(proc);
             string line = proc.StandardOutput.ReadLine() ?? string.Empty;
             proc.WaitForExit(2000);
 
