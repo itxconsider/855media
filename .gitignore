@@ -4,13 +4,20 @@
 *.suo
 *.user
 
-# Build results
-bin/
-obj/
+# Build results & releases
+[Bb]in/
+[Oo]bj/
+[Dd]ist/
 dist/
+**/dist/
+*.zip
+*.rar
+*.7z
+*.tar.gz
 
 # Logs and scratch files
 run_output.txt
+*.log
 
 # Avalonia
 .avalonia-build-tasks/
