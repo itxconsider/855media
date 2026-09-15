@@ -244,6 +244,20 @@ public class UpscaleJob : INotifyPropertyChanged
 
     public double ActionCentroidY { get; set; } = 0.5;
 
+    private RenderSpeedMode _speedMode = RenderSpeedMode.Balanced;
+    public RenderSpeedMode SpeedMode
+    {
+        get => _speedMode;
+        set => SetField(ref _speedMode, value);
+    }
+
+    private double _playbackSpeed = 1.0;
+    public double PlaybackSpeed
+    {
+        get => _playbackSpeed;
+        set => SetField(ref _playbackSpeed, Math.Clamp(value, 0.25, 4.0));
+    }
+
     public string? ActivePresetName { get; set; }
 
     private UpscaleModelType _modelType = UpscaleModelType.RealWorld;

@@ -152,6 +152,18 @@ public partial class VideoUpscalerViewModel : ViewModelBase
     public SmartZoomMode[] AvailableZoomModes { get; } = Enum.GetValues<SmartZoomMode>();
 
     [ObservableProperty]
+    private RenderSpeedMode _selectedSpeedMode = RenderSpeedMode.Balanced;
+
+    public IReadOnlyList<RenderSpeedMode> AvailableSpeedModes { get; } =
+        Enum.GetValues<RenderSpeedMode>();
+
+    [ObservableProperty]
+    private double _selectedPlaybackSpeed = 1.0;
+
+    public static double[] AvailablePlaybackSpeeds { get; } =
+    [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+
+    [ObservableProperty]
     private UpscaleModelType _selectedModelType = UpscaleModelType.RealWorld;
 
     [ObservableProperty]
@@ -420,6 +432,11 @@ public partial class VideoUpscalerViewModel : ViewModelBase
             EnableMicroZoom = _settingsService.UpscalerEnableMicroZoom;
             MicroZoomPercent = _settingsService.UpscalerMicroZoomPercent;
             SelectedZoomMode = _settingsService.UpscalerZoomMode;
+            SelectedSpeedMode = _settingsService.UpscalerSpeedMode;
+            SelectedPlaybackSpeed =
+                _settingsService.UpscalerPlaybackSpeed > 0
+                    ? _settingsService.UpscalerPlaybackSpeed
+                    : 1.0;
 
             EnableSplitAndUpscale = _settingsService.UpscalerEnableSplitAndUpscale;
             MergeAfterUpscale = _settingsService.UpscalerMergeAfterUpscale;
@@ -900,6 +917,32 @@ public partial class VideoUpscalerViewModel : ViewModelBase
         RequestPreviewUpdate(150);
     }
 
+    partial void OnSelectedSpeedModeChanged(RenderSpeedMode value)
+    {
+        if (SelectedJob != null)
+        {
+            SelectedJob.SpeedMode = value;
+        }
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerSpeedMode = value;
+            ScheduleDebouncedSaveSettings();
+        }
+    }
+
+    partial void OnSelectedPlaybackSpeedChanged(double value)
+    {
+        if (SelectedJob != null)
+        {
+            SelectedJob.PlaybackSpeed = value;
+        }
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerPlaybackSpeed = value;
+            ScheduleDebouncedSaveSettings();
+        }
+    }
+
     partial void OnEnableSplitAndUpscaleChanged(bool value)
     {
         if (SelectedJob != null)
@@ -1160,6 +1203,8 @@ public partial class VideoUpscalerViewModel : ViewModelBase
             EnableMicroZoom = value.EnableMicroZoom;
             MicroZoomPercent = value.MicroZoomPercent;
             SelectedZoomMode = value.ZoomMode;
+            SelectedSpeedMode = value.SpeedMode;
+            SelectedPlaybackSpeed = value.PlaybackSpeed > 0 ? value.PlaybackSpeed : 1.0;
             EnableDenoise = value.EnableDenoise;
             EnableDeinterlace = value.EnableDeinterlace;
             EnableSplitAndUpscale = value.EnableSplitAndUpscale;
@@ -1294,6 +1339,8 @@ public partial class VideoUpscalerViewModel : ViewModelBase
             EnableMicroZoom = EnableMicroZoom,
             MicroZoomPercent = MicroZoomPercent,
             ZoomMode = SelectedZoomMode,
+            SpeedMode = SelectedSpeedMode,
+            PlaybackSpeed = SelectedPlaybackSpeed,
             ActivePresetName = SelectedPresetName,
             ModelType = SelectedModelType,
             EnableFacialClarity = EnableFacialClarity,

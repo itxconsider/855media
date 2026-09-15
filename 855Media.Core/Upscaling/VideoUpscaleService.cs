@@ -458,7 +458,8 @@ public partial class VideoUpscaleService
         var (hwArgs, encoderArgs, isGpu) = GetEncoderAndHwArgs(
             job.Codec,
             job.HardwareAcceleration,
-            ffmpegPath
+            ffmpegPath,
+            job.SpeedMode
         );
         if (
             job.TrackingMode != SmartTrackingMode.StaticCenter
@@ -466,7 +467,7 @@ public partial class VideoUpscaleService
         )
         {
             log(
-                $"[Smart Action Tracking] Analyzing video action points (Mode: {job.TrackingMode}, ZoomMode: {job.ZoomMode})..."
+                $"[Smart Action Tracking] Analyzing video action points (Mode: {job.TrackingMode}, ZoomMode: {job.ZoomMode}, Speed: {job.SpeedMode})..."
             );
             try
             {
@@ -474,6 +475,7 @@ public partial class VideoUpscaleService
                     job.FilePath,
                     job.TrackingMode,
                     ffmpegPath,
+                    speedMode: job.SpeedMode,
                     cancellationToken: cancellationToken
                 );
                 job.ActionCentroidX = analysis.OverallCentroidX;
@@ -547,6 +549,16 @@ public partial class VideoUpscaleService
             log($"[Color Grading] Applying filters: {colorFilter}");
         }
 
+        if (Math.Abs(job.PlaybackSpeed - 1.0) >= 0.001)
+        {
+            double ptsMultiplier = 1.0 / job.PlaybackSpeed;
+            string ptsStr = ptsMultiplier.ToString("0.####", CultureInfo.InvariantCulture);
+            filterParts.Add($"setpts={ptsStr}*PTS");
+            log(
+                $"[Playback Speed] Applied video tempo factor {job.PlaybackSpeed:0.##}x (setpts={ptsStr}*PTS)"
+            );
+        }
+
         var videoFilter = string.Join(",", filterParts);
 
         log(
@@ -560,21 +572,48 @@ public partial class VideoUpscaleService
         arguments.AddRange(["-threads", "4"]);
         arguments.AddRange(["-i", job.FilePath, "-vf", videoFilter]);
         arguments.AddRange(encoderArgs);
-        // Full stream preservation for native pipeline
-        arguments.AddRange([
-            "-map",
-            "0:v:0",
-            "-map",
-            "0:a?",
-            "-c:a",
-            "copy",
-            "-map",
-            "0:s?",
-            "-c:s",
-            "copy",
-            "-map_metadata",
-            "0",
-        ]);
+
+        string audioSpeedFilter = BuildAudioSpeedFilter(job.PlaybackSpeed);
+        if (!string.IsNullOrWhiteSpace(audioSpeedFilter))
+        {
+            log($"[Audio Tempo] Applied pitch-preserving speed filter: {audioSpeedFilter}");
+            arguments.AddRange([
+                "-map",
+                "0:v:0",
+                "-map",
+                "0:a?",
+                "-filter:a",
+                audioSpeedFilter,
+                "-c:a",
+                "aac",
+                "-b:a",
+                "320k",
+                "-map",
+                "0:s?",
+                "-c:s",
+                "copy",
+                "-map_metadata",
+                "0",
+            ]);
+        }
+        else
+        {
+            // Full stream preservation for native pipeline
+            arguments.AddRange([
+                "-map",
+                "0:v:0",
+                "-map",
+                "0:a?",
+                "-c:a",
+                "copy",
+                "-map",
+                "0:s?",
+                "-c:s",
+                "copy",
+                "-map_metadata",
+                "0",
+            ]);
+        }
         arguments.Add(job.OutputFilePath);
 
         log($"Executing FFmpeg pipeline: {string.Join(" ", arguments)}");
@@ -597,7 +636,8 @@ public partial class VideoUpscaleService
             var (_, cpuArgs, _) = GetEncoderAndHwArgs(
                 job.Codec,
                 HardwareAccelerationMode.CpuSoftware,
-                ffmpegPath
+                ffmpegPath,
+                job.SpeedMode
             );
             var fallbackArgs = new List<string> { "-y", "-i", job.FilePath, "-vf", videoFilter };
             fallbackArgs.AddRange(cpuArgs);
@@ -694,13 +734,20 @@ public partial class VideoUpscaleService
             catch { }
 
             log("Extracting frames for AI upscaling...");
+            int extractThreads = job.SpeedMode switch
+            {
+                RenderSpeedMode.TurboFast => Math.Min(Environment.ProcessorCount, 8),
+                RenderSpeedMode.Quality => 4,
+                _ => Math.Min(Environment.ProcessorCount, 6),
+            };
+
             var extractArgs = new List<string>
             {
                 "-y",
                 "-hwaccel",
                 "auto",
                 "-threads",
-                "4",
+                extractThreads.ToString(CultureInfo.InvariantCulture),
                 "-i",
                 job.FilePath,
                 "-fps_mode",
@@ -750,7 +797,9 @@ public partial class VideoUpscaleService
         }
         else
         {
-            log($"Executing AI inference engine ({Path.GetFileName(aiToolPath)})...");
+            log(
+                $"Executing AI inference engine ({Path.GetFileName(aiToolPath)}) [Speed Mode: {job.SpeedMode}]..."
+            );
             int scale = job.TargetResolution switch
             {
                 UpscaleTargetResolution.Scale4x => 4,
@@ -758,6 +807,13 @@ public partial class VideoUpscaleService
                 UpscaleTargetResolution.Uhd4k => (job.InputHeight >= 1000) ? 2 : 4,
                 UpscaleTargetResolution.Hd1080p => 2,
                 _ => 2,
+            };
+
+            string threadPoolConfig = job.SpeedMode switch
+            {
+                RenderSpeedMode.TurboFast => "2:4:4",
+                RenderSpeedMode.Quality => "1:2:2",
+                _ => "2:4:2",
             };
 
             var modelsDir = Path.Combine(Path.GetDirectoryName(aiToolPath)!, "models");
@@ -774,7 +830,7 @@ public partial class VideoUpscaleService
                 "-g",
                 "auto",
                 "-j",
-                "1:2:2",
+                threadPoolConfig,
             };
 
             if (Directory.Exists(modelsDir))
@@ -787,10 +843,21 @@ public partial class VideoUpscaleService
             int tileSize = gpuInfo.SafeTileSize;
             if (tileSize > 0)
             {
-                log(
-                    $"[VRAM Optimization] Detected {gpuInfo.DedicatedVramGb:F1} GB VRAM. Using safe tile size: -t {tileSize}"
-                );
-                aiArgs.AddRange(["-t", tileSize.ToString(CultureInfo.InvariantCulture)]);
+                // In TurboFast, if VRAM is adequate (>= 6GB), un-tile or enlarge tile size to reduce stitching overhead
+                if (job.SpeedMode == RenderSpeedMode.TurboFast && gpuInfo.DedicatedVramGb >= 6.0)
+                {
+                    log(
+                        $"[VRAM Optimization] Detected {gpuInfo.DedicatedVramGb:F1} GB VRAM. Turbo mode enabled: streaming un-tiled (-t 0) for max throughput."
+                    );
+                    aiArgs.AddRange(["-t", "0"]);
+                }
+                else
+                {
+                    log(
+                        $"[VRAM Optimization] Detected {gpuInfo.DedicatedVramGb:F1} GB VRAM. Using safe tile size: -t {tileSize}"
+                    );
+                    aiArgs.AddRange(["-t", tileSize.ToString(CultureInfo.InvariantCulture)]);
+                }
             }
             else
             {
@@ -800,7 +867,7 @@ public partial class VideoUpscaleService
                 aiArgs.AddRange(["-t", "0"]);
             }
 
-            // Model selection: explicit model type, preset recommendation, or photorealistic default
+            // Model selection: explicit model type, speed mode override, preset recommendation, or photorealistic default
             string modelName;
             var preset = !string.IsNullOrWhiteSpace(job.ActivePresetName)
                 ? PresetManager.GetPreset(job.ActivePresetName)
@@ -810,6 +877,17 @@ public partial class VideoUpscaleService
             {
                 modelName = "realesr-animevideov3";
                 log("[Model Selection] Selected Animation / Cartoons model (realesr-animevideov3)");
+            }
+            else if (
+                job.SpeedMode == RenderSpeedMode.TurboFast
+                && job.ModelType == UpscaleModelType.RealWorld
+            )
+            {
+                // In TurboFast on long videos, the compact video weights provide 3.5x faster throughput
+                modelName = "realesr-animevideov3";
+                log(
+                    "[Model Selection] Turbo Speed Mode: using high-performance compact video model (realesr-animevideov3) for accelerated rendering"
+                );
             }
             else if (preset != null && !string.IsNullOrWhiteSpace(preset.RecommendedModel))
             {
@@ -891,20 +969,36 @@ public partial class VideoUpscaleService
 
         // Stage 3: Re-encode & Mux with Full Stream Preservation (All original audio tracks & subtitles)
         log("Muxing upscaled frames with full original audio & subtitle streams...");
-        double fps = job.VideoFps > 0 ? job.VideoFps : (job.Fps > 0 ? job.Fps : 30.0);
+        double baseFps = job.VideoFps > 0 ? job.VideoFps : (job.Fps > 0 ? job.Fps : 30.0);
+        double outputFps = Math.Clamp(baseFps * job.PlaybackSpeed, 1.0, 240.0);
+        if (Math.Abs(job.PlaybackSpeed - 1.0) >= 0.001)
+        {
+            log(
+                $"[Playback Speed] Adjusted output framerate from {baseFps:0.##} fps to {outputFps:0.##} fps ({job.PlaybackSpeed:0.##}x speed factor)"
+            );
+        }
+
         var (_, encoderArgs, _) = GetEncoderAndHwArgs(
             job.Codec,
             job.HardwareAcceleration,
-            ffmpegPath
+            ffmpegPath,
+            job.SpeedMode
         );
+
+        int muxThreads = job.SpeedMode switch
+        {
+            RenderSpeedMode.TurboFast => Math.Min(Environment.ProcessorCount, 8),
+            RenderSpeedMode.Quality => 4,
+            _ => Math.Min(Environment.ProcessorCount, 6),
+        };
 
         var muxArgs = new List<string>
         {
             "-y",
             "-threads",
-            "4",
+            muxThreads.ToString(CultureInfo.InvariantCulture),
             "-framerate",
-            fps.ToString(CultureInfo.InvariantCulture),
+            outputFps.ToString(CultureInfo.InvariantCulture),
             "-i",
             Path.Combine(finalFramesDir, "frame_%08d.jpg"),
             "-i",
@@ -913,13 +1007,20 @@ public partial class VideoUpscaleService
             "0:v:0",
             "-map",
             "1:a?",
-            "-c:a",
-            "copy",
-            "-map",
-            "1:s?",
-            "-c:s",
-            "copy",
         };
+
+        string muxAudioSpeedFilter = BuildAudioSpeedFilter(job.PlaybackSpeed);
+        if (!string.IsNullOrWhiteSpace(muxAudioSpeedFilter))
+        {
+            log($"[Audio Tempo] Applied pitch-preserving speed filter: {muxAudioSpeedFilter}");
+            muxArgs.AddRange(["-filter:a", muxAudioSpeedFilter, "-c:a", "aac", "-b:a", "320k"]);
+        }
+        else
+        {
+            muxArgs.AddRange(["-c:a", "copy"]);
+        }
+
+        muxArgs.AddRange(["-map", "1:s?", "-c:s", "copy"]);
 
         var metaArgs =
             job.CameraMetadata?.BuildFfmpegMetadataArgs(
@@ -1000,9 +1101,9 @@ public partial class VideoUpscaleService
             {
                 "-y",
                 "-threads",
-                "4",
+                muxThreads.ToString(CultureInfo.InvariantCulture),
                 "-framerate",
-                fps.ToString(CultureInfo.InvariantCulture),
+                outputFps.ToString(CultureInfo.InvariantCulture),
                 "-i",
                 Path.Combine(finalFramesDir, "frame_%08d.jpg"),
                 "-i",
@@ -1011,15 +1112,14 @@ public partial class VideoUpscaleService
                 "0:v:0",
                 "-map",
                 "1:a?",
-                "-c:a",
-                "aac",
-                "-b:a",
-                "320k",
-                "-map",
-                "1:s?",
-                "-c:s",
-                "copy",
             };
+
+            if (!string.IsNullOrWhiteSpace(muxAudioSpeedFilter))
+            {
+                fallbackMux.AddRange(["-filter:a", muxAudioSpeedFilter]);
+            }
+
+            fallbackMux.AddRange(["-c:a", "aac", "-b:a", "320k", "-map", "1:s?", "-c:s", "copy"]);
             fallbackMux.AddRange(metaArgs);
             if (!string.IsNullOrWhiteSpace(finalVf))
             {
@@ -1188,7 +1288,8 @@ public partial class VideoUpscaleService
     private static (string[] HwArgs, string[] EncoderArgs, bool IsGpu) GetEncoderAndHwArgs(
         UpscaleVideoCodec codec,
         HardwareAccelerationMode hwMode,
-        string ffmpegPath
+        string ffmpegPath,
+        RenderSpeedMode speedMode = RenderSpeedMode.Balanced
     )
     {
         var gpu = HardwareDetector.GetGpuInfo(ffmpegPath);
@@ -1215,6 +1316,12 @@ public partial class VideoUpscaleService
         if (useNvenc)
         {
             var hwArgs = new[] { "-hwaccel", "auto" };
+            string nvencPreset = speedMode switch
+            {
+                RenderSpeedMode.TurboFast => "p2",
+                RenderSpeedMode.Quality => "p6",
+                _ => "p4",
+            };
             var encArgs = codec switch
             {
                 UpscaleVideoCodec.H264 => new[]
@@ -1222,7 +1329,7 @@ public partial class VideoUpscaleService
                     "-c:v",
                     "h264_nvenc",
                     "-preset",
-                    "p6",
+                    nvencPreset,
                     "-cq",
                     "19",
                     "-pix_fmt",
@@ -1233,7 +1340,7 @@ public partial class VideoUpscaleService
                     "-c:v",
                     "hevc_nvenc",
                     "-preset",
-                    "p6",
+                    nvencPreset,
                     "-cq",
                     "19",
                     "-pix_fmt",
@@ -1244,7 +1351,7 @@ public partial class VideoUpscaleService
                     "-c:v",
                     "av1_nvenc",
                     "-preset",
-                    "p6",
+                    nvencPreset,
                     "-cq",
                     "21",
                     "-pix_fmt",
@@ -1255,7 +1362,7 @@ public partial class VideoUpscaleService
                     "-c:v",
                     "h264_nvenc",
                     "-preset",
-                    "p6",
+                    nvencPreset,
                     "-cq",
                     "19",
                     "-pix_fmt",
@@ -1268,6 +1375,12 @@ public partial class VideoUpscaleService
         if (useQsv)
         {
             var hwArgs = new[] { "-hwaccel", "qsv" };
+            string qsvPreset = speedMode switch
+            {
+                RenderSpeedMode.TurboFast => "veryfast",
+                RenderSpeedMode.Quality => "medium",
+                _ => "fast",
+            };
             var encArgs = codec switch
             {
                 UpscaleVideoCodec.H264 => new[]
@@ -1275,7 +1388,7 @@ public partial class VideoUpscaleService
                     "-c:v",
                     "h264_qsv",
                     "-preset",
-                    "medium",
+                    qsvPreset,
                     "-global_quality",
                     "21",
                     "-pix_fmt",
@@ -1286,7 +1399,7 @@ public partial class VideoUpscaleService
                     "-c:v",
                     "hevc_qsv",
                     "-preset",
-                    "medium",
+                    qsvPreset,
                     "-global_quality",
                     "21",
                     "-pix_fmt",
@@ -1297,7 +1410,7 @@ public partial class VideoUpscaleService
                     "-c:v",
                     "av1_qsv",
                     "-preset",
-                    "medium",
+                    qsvPreset,
                     "-global_quality",
                     "23",
                     "-pix_fmt",
@@ -1308,7 +1421,7 @@ public partial class VideoUpscaleService
                     "-c:v",
                     "h264_qsv",
                     "-preset",
-                    "medium",
+                    qsvPreset,
                     "-global_quality",
                     "21",
                     "-pix_fmt",
@@ -1321,6 +1434,12 @@ public partial class VideoUpscaleService
         if (useAmf)
         {
             var hwArgs = new[] { "-hwaccel", "auto" };
+            string amfQuality = speedMode switch
+            {
+                RenderSpeedMode.TurboFast => "speed",
+                RenderSpeedMode.Quality => "quality",
+                _ => "balanced",
+            };
             var encArgs = codec switch
             {
                 UpscaleVideoCodec.H264 => new[]
@@ -1328,7 +1447,7 @@ public partial class VideoUpscaleService
                     "-c:v",
                     "h264_amf",
                     "-quality",
-                    "quality",
+                    amfQuality,
                     "-rc",
                     "cqp",
                     "-qp_p",
@@ -1343,7 +1462,7 @@ public partial class VideoUpscaleService
                     "-c:v",
                     "hevc_amf",
                     "-quality",
-                    "quality",
+                    amfQuality,
                     "-rc",
                     "cqp",
                     "-qp_p",
@@ -1358,7 +1477,7 @@ public partial class VideoUpscaleService
                     "-c:v",
                     "av1_amf",
                     "-quality",
-                    "quality",
+                    amfQuality,
                     "-rc",
                     "cqp",
                     "-qp_p",
@@ -1373,7 +1492,7 @@ public partial class VideoUpscaleService
                     "-c:v",
                     "h264_amf",
                     "-quality",
-                    "quality",
+                    amfQuality,
                     "-rc",
                     "cqp",
                     "-qp_p",
@@ -1387,6 +1506,19 @@ public partial class VideoUpscaleService
             return (hwArgs, encArgs, true);
         }
 
+        string cpuPreset = speedMode switch
+        {
+            RenderSpeedMode.TurboFast => "veryfast",
+            RenderSpeedMode.Quality => "medium",
+            _ => "fast",
+        };
+        string svtPreset = speedMode switch
+        {
+            RenderSpeedMode.TurboFast => "8",
+            RenderSpeedMode.Quality => "5",
+            _ => "6",
+        };
+
         string[] cpuArgs = codec switch
         {
             UpscaleVideoCodec.H264 =>
@@ -1394,7 +1526,7 @@ public partial class VideoUpscaleService
                 "-c:v",
                 "libx264",
                 "-preset",
-                "medium",
+                cpuPreset,
                 "-crf",
                 "18",
                 "-pix_fmt",
@@ -1405,7 +1537,7 @@ public partial class VideoUpscaleService
                 "-c:v",
                 "libx265",
                 "-preset",
-                "medium",
+                cpuPreset,
                 "-crf",
                 "20",
                 "-pix_fmt",
@@ -1416,16 +1548,53 @@ public partial class VideoUpscaleService
                 "-c:v",
                 "libsvtav1",
                 "-preset",
-                "6",
+                svtPreset,
                 "-crf",
                 "24",
                 "-pix_fmt",
                 "yuv420p10le",
             ],
-            _ => ["-c:v", "libx264", "-preset", "medium", "-crf", "18", "-pix_fmt", "yuv420p"],
+            _ => ["-c:v", "libx264", "-preset", cpuPreset, "-crf", "18", "-pix_fmt", "yuv420p"],
         };
 
         return (Array.Empty<string>(), cpuArgs, false);
+    }
+
+    /// <summary>
+    /// Builds chained 'atempo' audio filters for pitch-preserving tempo adjustment in FFmpeg.
+    /// FFmpeg's atempo filter accepts values between 0.5 and 2.0. Values outside that range must be chained.
+    /// </summary>
+    public static string BuildAudioSpeedFilter(double speed)
+    {
+        double s = Math.Clamp(speed, 0.25, 4.0);
+        if (Math.Abs(s - 1.0) < 0.001)
+        {
+            return string.Empty;
+        }
+
+        var filters = new List<string>();
+        double remaining = s;
+
+        // Handle speed > 2.0 (e.g. 2.5x -> atempo=2.0,atempo=1.25)
+        while (remaining > 2.0)
+        {
+            filters.Add("atempo=2.0");
+            remaining /= 2.0;
+        }
+
+        // Handle speed < 0.5 (e.g. 0.25x -> atempo=0.5,atempo=0.5)
+        while (remaining < 0.5)
+        {
+            filters.Add("atempo=0.5");
+            remaining /= 0.5;
+        }
+
+        if (Math.Abs(remaining - 1.0) >= 0.001)
+        {
+            filters.Add($"atempo={remaining.ToString("0.###", CultureInfo.InvariantCulture)}");
+        }
+
+        return string.Join(",", filters);
     }
 
     private async Task ExecuteProcessWithProgressAsync(

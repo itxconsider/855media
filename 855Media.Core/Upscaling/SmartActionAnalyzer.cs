@@ -55,13 +55,14 @@ public static class SmartActionAnalyzer
     public const int FrameByteSize = SampleWidth * SampleHeight * 3; // BGR24
 
     /// <summary>
-    /// Analyzes a video using FFmpeg at 2 fps to extract motion or face centroids across timeline.
+    /// Analyzes a video using FFmpeg to extract motion or face centroids across timeline.
     /// </summary>
     public static async Task<ActionAnalysisResult> AnalyzeVideoAsync(
         string videoPath,
         SmartTrackingMode mode,
         string? customFfmpegPath = null,
         int maxSampleSeconds = 120,
+        RenderSpeedMode speedMode = RenderSpeedMode.Balanced,
         CancellationToken cancellationToken = default
     )
     {
@@ -84,15 +85,31 @@ public static class SmartActionAnalyzer
         process.StartInfo.RedirectStandardOutput = true;
         process.StartInfo.RedirectStandardError = true;
 
-        // Sample video at 2 fps, scaled down to 320x180 raw BGR24 frames
+        // Adaptive sampling rate and max sample horizon based on speed mode
+        int sampleFps = speedMode switch
+        {
+            RenderSpeedMode.TurboFast => 1,
+            RenderSpeedMode.Quality => 3,
+            _ => 2,
+        };
+        int effectiveMaxSeconds = speedMode switch
+        {
+            RenderSpeedMode.TurboFast => Math.Min(maxSampleSeconds, 45),
+            RenderSpeedMode.Quality => maxSampleSeconds,
+            _ => Math.Min(maxSampleSeconds, 90),
+        };
+
+        // Sample video, scaled down to 320x180 raw BGR24 frames
         process.StartInfo.ArgumentList.Add("-ss");
         process.StartInfo.ArgumentList.Add("0");
         process.StartInfo.ArgumentList.Add("-i");
         process.StartInfo.ArgumentList.Add(videoPath);
         process.StartInfo.ArgumentList.Add("-t");
-        process.StartInfo.ArgumentList.Add(maxSampleSeconds.ToString(CultureInfo.InvariantCulture));
+        process.StartInfo.ArgumentList.Add(
+            effectiveMaxSeconds.ToString(CultureInfo.InvariantCulture)
+        );
         process.StartInfo.ArgumentList.Add("-vf");
-        process.StartInfo.ArgumentList.Add($"fps=2,scale={SampleWidth}:{SampleHeight}");
+        process.StartInfo.ArgumentList.Add($"fps={sampleFps},scale={SampleWidth}:{SampleHeight}");
         process.StartInfo.ArgumentList.Add("-f");
         process.StartInfo.ArgumentList.Add("rawvideo");
         process.StartInfo.ArgumentList.Add("-pix_fmt");

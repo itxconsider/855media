@@ -165,6 +165,12 @@ public partial class SettingsService()
     [ObservableProperty]
     public partial SmartZoomMode UpscalerZoomMode { get; set; } = SmartZoomMode.ActionAnchored;
 
+    [ObservableProperty]
+    public partial RenderSpeedMode UpscalerSpeedMode { get; set; } = RenderSpeedMode.Balanced;
+
+    [ObservableProperty]
+    public partial double UpscalerPlaybackSpeed { get; set; } = 1.0;
+
     // Split Settings
     [ObservableProperty]
     public partial bool UpscalerEnableSplitAndUpscale { get; set; } = false;

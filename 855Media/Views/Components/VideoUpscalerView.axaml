@@ -211,6 +211,40 @@
                             </ComboBox>
                         </StackPanel>
 
+                        <!-- Render Speed Mode -->
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,2,16,2">
+                            <materialIcons:MaterialIcon Kind="Speedometer" Width="16" Height="16" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                            <TextBlock Text="Speed:" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                            <ComboBox
+                                ItemsSource="{Binding AvailableSpeedModes}"
+                                SelectedItem="{Binding SelectedSpeedMode}"
+                                Width="170"
+                                ToolTip.Tip="Render Speed Profile: Quality (Pristine), Balanced (Standard), or Turbo (Fastest throughput for long videos).">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Converter={x:Static converters:EnumDisplayNameConverter.Instance}}" FontSize="12" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </StackPanel>
+
+                        <!-- Playback Tempo / Output Speed -->
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,2,16,2">
+                            <materialIcons:MaterialIcon Kind="FastForward" Width="16" Height="16" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                            <TextBlock Text="Tempo:" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                            <ComboBox
+                                ItemsSource="{Binding AvailablePlaybackSpeeds}"
+                                SelectedItem="{Binding SelectedPlaybackSpeed}"
+                                Width="95"
+                                ToolTip.Tip="Playback Speed Multiplier (0.5x to 2.0x). Automatically applies pitch-preserving audio tempo and video PTS timing.">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding StringFormat='{}{0:0.##}x'}" FontSize="12" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </StackPanel>
+
                         <!-- Enhancements & Performance Flyout -->
                         <Button
                             Theme="{DynamicResource MaterialOutlineButton}"
@@ -396,6 +430,37 @@
                                                                     HorizontalAlignment="Stretch" />
                                                             </StackPanel>
                                                         </Grid>
+
+                                                        <StackPanel Spacing="4">
+                                                            <TextBlock Text="Render Speed Profile:" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                                            <ComboBox
+                                                                ItemsSource="{Binding AvailableSpeedModes}"
+                                                                SelectedItem="{Binding SelectedSpeedMode}"
+                                                                HorizontalAlignment="Stretch">
+                                                                <ComboBox.ItemTemplate>
+                                                                    <DataTemplate>
+                                                                        <TextBlock Text="{Binding Converter={x:Static converters:EnumDisplayNameConverter.Instance}}" FontSize="12" />
+                                                                    </DataTemplate>
+                                                                </ComboBox.ItemTemplate>
+                                                            </ComboBox>
+                                                        </StackPanel>
+
+                                                        <StackPanel Spacing="4">
+                                                            <Grid ColumnDefinitions="*,Auto">
+                                                                <TextBlock Grid.Column="0" Text="Playback Output Tempo:" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                                                <TextBlock Grid.Column="1" Text="{Binding SelectedPlaybackSpeed, StringFormat='{}{0:0.##}x'}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                                            </Grid>
+                                                            <ComboBox
+                                                                ItemsSource="{Binding AvailablePlaybackSpeeds}"
+                                                                SelectedItem="{Binding SelectedPlaybackSpeed}"
+                                                                HorizontalAlignment="Stretch">
+                                                                <ComboBox.ItemTemplate>
+                                                                    <DataTemplate>
+                                                                        <TextBlock Text="{Binding StringFormat='{}{0:0.##}x Normal'}" FontSize="12" />
+                                                                    </DataTemplate>
+                                                                </ComboBox.ItemTemplate>
+                                                            </ComboBox>
+                                                        </StackPanel>
 
                                                         <StackPanel Spacing="4">
                                                             <TextBlock Text="Scratch / Temp Directory:" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
