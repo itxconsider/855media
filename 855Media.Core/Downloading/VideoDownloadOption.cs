@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using PowerKit.Extensions;
@@ -30,7 +30,11 @@ public partial record VideoDownloadOption
         {
             var videoStreamInfos = manifest
                 .GetVideoStreams()
-                .OrderByDescending(v => v.VideoQuality);
+                .OrderByDescending(v => v.VideoQuality)
+                .ThenByDescending(v =>
+                    v.Container == Container.Mp4
+                    && v.VideoCodec.StartsWith("avc", StringComparison.OrdinalIgnoreCase)
+                );
 
             foreach (var videoStreamInfo in videoStreamInfos)
             {

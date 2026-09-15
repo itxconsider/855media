@@ -1,4 +1,4 @@
-﻿using _855Media.ViewModels.Components;
+using _855Media.ViewModels.Components;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;

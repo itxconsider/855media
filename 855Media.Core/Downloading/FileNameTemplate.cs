@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using _855Media.Core.Resolving;
 using PowerKit.Extensions;

@@ -1,4 +1,4 @@
-﻿namespace _855Media.ViewModels.Components;
+namespace _855Media.ViewModels.Components;
 
 public enum DownloadStatus
 {

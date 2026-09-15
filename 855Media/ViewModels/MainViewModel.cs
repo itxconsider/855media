@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.Threading.Tasks;
 using _855Media.Framework;
@@ -23,26 +23,6 @@ public partial class MainViewModel(
     public string Title { get; } = $"{Program.Name} v{Program.VersionString}";
 
     public DashboardViewModel Dashboard { get; } = viewModelManager.GetDashboardViewModel();
-
-    private async Task ShowUkraineSupportMessageAsync()
-    {
-        if (!settingsService.IsUkraineSupportMessageEnabled)
-            return;
-
-        var dialog = viewModelManager.GetMessageBoxViewModel(
-            localizationManager.UkraineSupportTitle,
-            localizationManager.UkraineSupportMessage,
-            localizationManager.LearnMoreButton,
-            localizationManager.CloseButton
-        );
-
-        // Disable this message in the future
-        settingsService.IsUkraineSupportMessageEnabled = false;
-        settingsService.Save();
-
-        if (await dialogManager.ShowDialogAsync(dialog) == true)
-            Process.StartShellExecute("");
-    }
 
     private async Task ShowDevelopmentBuildMessageAsync()
     {
@@ -102,7 +82,6 @@ public partial class MainViewModel(
 
     public override async Task InitializeAsync()
     {
-        await ShowUkraineSupportMessageAsync();
         await ShowDevelopmentBuildMessageAsync();
         await CheckForUpdatesAsync();
     }

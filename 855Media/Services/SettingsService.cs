@@ -5,8 +5,10 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using _855Media.Core.Audio;
 using _855Media.Core.Downloading;
+using _855Media.Core.Upscaling;
 using _855Media.Framework;
 using _855Media.Localization;
+using _855Media.ViewModels.Components;
 using Cogwheel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Container = YoutubeExplode.Videos.Streams.Container;
@@ -18,10 +20,10 @@ public partial class SettingsService()
     : SettingsBase(StartOptions.Current.SettingsPath, SerializerContext.Default)
 {
     [ObservableProperty]
-    public partial bool IsUkraineSupportMessageEnabled { get; set; } = true;
+    public partial bool IsUkraineSupportMessageEnabled { get; set; } = false;
 
     [ObservableProperty]
-    public partial ThemeVariant Theme { get; set; }
+    public partial ThemeVariant Theme { get; set; } = ThemeVariant.Dark;
 
     [ObservableProperty]
     public partial Language Language { get; set; }
@@ -99,6 +101,202 @@ public partial class SettingsService()
     [ObservableProperty]
     public partial string PurchaseUrl { get; set; } = "https://855media.com/buy";
 
+    // Work / Upscaler State Persistence
+    [ObservableProperty]
+    public partial string? UpscalerOutputDirectory { get; set; }
+
+    [ObservableProperty]
+    public partial string? UpscalerScratchDirectory { get; set; }
+
+    [ObservableProperty]
+    public partial UpscaleTargetResolution UpscalerTargetResolution { get; set; } =
+        UpscaleTargetResolution.Hd1080p;
+
+    [ObservableProperty]
+    public partial AspectRatioMode UpscalerTargetAspectRatio { get; set; } =
+        AspectRatioMode.Original;
+
+    [ObservableProperty]
+    public partial SmartTrackingMode UpscalerTrackingMode { get; set; } =
+        SmartTrackingMode.StaticCenter;
+
+    [ObservableProperty]
+    public partial UpscaleVideoCodec UpscalerCodec { get; set; } = UpscaleVideoCodec.H264;
+
+    [ObservableProperty]
+    public partial HardwareAccelerationMode UpscalerHardwareAcceleration { get; set; } =
+        HardwareAccelerationMode.Auto;
+
+    [ObservableProperty]
+    public partial int UpscalerMaxConcurrency { get; set; } = 2;
+
+    [ObservableProperty]
+    public partial UpscaleModelType UpscalerModelType { get; set; } = UpscaleModelType.RealWorld;
+
+    [ObservableProperty]
+    public partial string UpscalerPresetName { get; set; } = "Default / Neutral";
+
+    [ObservableProperty]
+    public partial PostBatchAction UpscalerPostBatchAction { get; set; } =
+        PostBatchAction.DoNothing;
+
+    // Enhance Settings
+    [ObservableProperty]
+    public partial bool UpscalerEnableFacialClarity { get; set; } = true;
+
+    [ObservableProperty]
+    public partial bool UpscalerEnableFaceRestoration { get; set; } = false;
+
+    [ObservableProperty]
+    public partial double UpscalerFaceRestorationFidelity { get; set; } = 0.7;
+
+    [ObservableProperty]
+    public partial bool UpscalerEnableDenoise { get; set; } = false;
+
+    [ObservableProperty]
+    public partial bool UpscalerEnableDeinterlace { get; set; } = false;
+
+    [ObservableProperty]
+    public partial bool UpscalerEnableMicroZoom { get; set; } = false;
+
+    [ObservableProperty]
+    public partial double UpscalerMicroZoomPercent { get; set; } = 3.0;
+
+    [ObservableProperty]
+    public partial SmartZoomMode UpscalerZoomMode { get; set; } = SmartZoomMode.ActionAnchored;
+
+    // Split Settings
+    [ObservableProperty]
+    public partial bool UpscalerEnableSplitAndUpscale { get; set; } = false;
+
+    [ObservableProperty]
+    public partial bool UpscalerMergeAfterUpscale { get; set; } = true;
+
+    [ObservableProperty]
+    public partial SplitMode UpscalerSplitMode { get; set; } = SplitMode.InHalf;
+
+    [ObservableProperty]
+    public partial int UpscalerCustomSplitPartCount { get; set; } = 2;
+
+    [ObservableProperty]
+    public partial double UpscalerCustomSplitSegmentDurationSeconds { get; set; } = 60.0;
+
+    // Camera & Metadata Normalization Settings
+    [ObservableProperty]
+    public partial CameraProfileType UpscalerCameraProfileType { get; set; } =
+        CameraProfileType.CleanNormalized;
+
+    [ObservableProperty]
+    public partial string? UpscalerCameraMake { get; set; }
+
+    [ObservableProperty]
+    public partial string? UpscalerCameraModel { get; set; }
+
+    [ObservableProperty]
+    public partial string? UpscalerCameraSoftware { get; set; }
+
+    [ObservableProperty]
+    public partial string? UpscalerCameraArtist { get; set; }
+
+    [ObservableProperty]
+    public partial string? UpscalerCameraCopyright { get; set; }
+
+    [ObservableProperty]
+    public partial bool UpscalerCameraInjectTimestamp { get; set; } = true;
+
+    // Color Grading & Preview Settings
+    [ObservableProperty]
+    public partial string UpscalerColorPresetName { get; set; } = "Neutral / Custom";
+
+    [ObservableProperty]
+    public partial bool UpscalerIsColorGradingPanelOpen { get; set; } = false;
+
+    [ObservableProperty]
+    public partial double UpscalerSplitDividerRatio { get; set; } = 0.50;
+
+    [ObservableProperty]
+    public partial double UpscalerZoomScale { get; set; } = 1.0;
+
+    [ObservableProperty]
+    public partial bool UpscalerIsBasicExposureExpanded { get; set; } = true;
+
+    [ObservableProperty]
+    public partial bool UpscalerIsColorWheelsExpanded { get; set; } = true;
+
+    [ObservableProperty]
+    public partial bool UpscalerIsFilmEmulationExpanded { get; set; } = true;
+
+    // Persisted Baseline Color Grading Values
+    [ObservableProperty]
+    public partial double UpscalerColorBrightness { get; set; } = 0.0;
+
+    [ObservableProperty]
+    public partial double UpscalerColorContrast { get; set; } = 1.0;
+
+    [ObservableProperty]
+    public partial double UpscalerColorSaturation { get; set; } = 1.0;
+
+    [ObservableProperty]
+    public partial double UpscalerColorGamma { get; set; } = 1.0;
+
+    [ObservableProperty]
+    public partial double UpscalerColorVibrance { get; set; } = 0.0;
+
+    [ObservableProperty]
+    public partial bool UpscalerShowHistogram { get; set; } = true;
+
+    [ObservableProperty]
+    public partial bool UpscalerColorAutoNormalize { get; set; } = false;
+
+    [ObservableProperty]
+    public partial int UpscalerColorTemperature { get; set; } = 6500;
+
+    [ObservableProperty]
+    public partial double UpscalerColorShadowRed { get; set; } = 0.0;
+
+    [ObservableProperty]
+    public partial double UpscalerColorShadowGreen { get; set; } = 0.0;
+
+    [ObservableProperty]
+    public partial double UpscalerColorShadowBlue { get; set; } = 0.0;
+
+    [ObservableProperty]
+    public partial double UpscalerColorMidtoneRed { get; set; } = 0.0;
+
+    [ObservableProperty]
+    public partial double UpscalerColorMidtoneGreen { get; set; } = 0.0;
+
+    [ObservableProperty]
+    public partial double UpscalerColorMidtoneBlue { get; set; } = 0.0;
+
+    [ObservableProperty]
+    public partial double UpscalerColorHighlightRed { get; set; } = 0.0;
+
+    [ObservableProperty]
+    public partial double UpscalerColorHighlightGreen { get; set; } = 0.0;
+
+    [ObservableProperty]
+    public partial double UpscalerColorHighlightBlue { get; set; } = 0.0;
+
+    [ObservableProperty]
+    public partial string UpscalerColorToneCurve { get; set; } = "None";
+
+    [ObservableProperty]
+    public partial int UpscalerColorFilmGrain { get; set; } = 0;
+
+    [ObservableProperty]
+    public partial double UpscalerColorVignette { get; set; } = 0.0;
+
+    [ObservableProperty]
+    public partial string? UpscalerColorLutPath { get; set; }
+
+    [ObservableProperty]
+    public partial double UpscalerColorLutOpacity { get; set; } = 1.0;
+
+    // Selected Dashboard Tab
+    [ObservableProperty]
+    public partial DashboardTab LastSelectedDashboardTab { get; set; } = DashboardTab.Upscaler;
+
     public override void Save()
     {
         // Clear the cookies if they are not supposed to be persisted
@@ -164,5 +362,14 @@ public partial class SettingsService
 public partial class SettingsService
 {
     [JsonSerializable(typeof(SettingsService))]
+    [JsonSerializable(typeof(UpscaleTargetResolution))]
+    [JsonSerializable(typeof(UpscaleVideoCodec))]
+    [JsonSerializable(typeof(HardwareAccelerationMode))]
+    [JsonSerializable(typeof(UpscaleModelType))]
+    [JsonSerializable(typeof(PostBatchAction))]
+    [JsonSerializable(typeof(SplitMode))]
+    [JsonSerializable(typeof(CameraProfileType))]
+    [JsonSerializable(typeof(AspectRatioMode))]
+    [JsonSerializable(typeof(DashboardTab))]
     private partial class SerializerContext : JsonSerializerContext;
 }

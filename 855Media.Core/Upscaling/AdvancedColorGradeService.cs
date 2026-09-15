@@ -14,6 +14,11 @@ public static class AdvancedColorGradeService
         "Faded Black",
         "Cross Process",
         "Vintage",
+        "Kodak Portra 400",
+        "Fuji Velvia",
+        "Bleach Bypass",
+        "Cyberpunk / Neon",
+        "Golden Hour Warmth",
     ];
 
     /// <summary>
@@ -48,64 +53,81 @@ public static class AdvancedColorGradeService
             );
         }
 
-        // 3. Shadow & Highlight Color Wheels / Split-Toning (colorbalance)
+        // 3. 3-Way Color Wheels: Shadow, Midtone & Highlight Split-Toning (colorbalance)
         bool hasShadowTint =
             Math.Abs(settings.ShadowRed) > 0.001
             || Math.Abs(settings.ShadowGreen) > 0.001
             || Math.Abs(settings.ShadowBlue) > 0.001;
+
+        bool hasMidtoneTint =
+            Math.Abs(settings.MidtoneRed) > 0.001
+            || Math.Abs(settings.MidtoneGreen) > 0.001
+            || Math.Abs(settings.MidtoneBlue) > 0.001;
 
         bool hasHighlightTint =
             Math.Abs(settings.HighlightRed) > 0.001
             || Math.Abs(settings.HighlightGreen) > 0.001
             || Math.Abs(settings.HighlightBlue) > 0.001;
 
-        if (hasShadowTint || hasHighlightTint)
+        if (hasShadowTint || hasMidtoneTint || hasHighlightTint)
         {
             filters.Add(
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    $"colorbalance=rs={settings.ShadowRed:F2}:gs={settings.ShadowGreen:F2}:bs={settings.ShadowBlue:F2}:rh={settings.HighlightRed:F2}:gh={settings.HighlightGreen:F2}:bh={settings.HighlightBlue:F2}"
+                    $"colorbalance=rs={settings.ShadowRed:F2}:gs={settings.ShadowGreen:F2}:bs={settings.ShadowBlue:F2}:rm={settings.MidtoneRed:F2}:gm={settings.MidtoneGreen:F2}:bm={settings.MidtoneBlue:F2}:rh={settings.HighlightRed:F2}:gh={settings.HighlightGreen:F2}:bh={settings.HighlightBlue:F2}"
                 )
             );
         }
 
-        // 4. Basic Exposure Adjustments (brightness, contrast, saturation)
+        // 4. Basic Exposure Adjustments (brightness, contrast, saturation, gamma)
         if (
             Math.Abs(settings.Brightness) > 0.001
             || Math.Abs(settings.Contrast - 1.0) > 0.001
             || Math.Abs(settings.Saturation - 1.0) > 0.001
+            || Math.Abs(settings.Gamma - 1.0) > 0.001
         )
         {
             filters.Add(
                 string.Create(
                     CultureInfo.InvariantCulture,
-                    $"eq=brightness={settings.Brightness:F2}:contrast={settings.Contrast:F2}:saturation={settings.Saturation:F2}"
+                    $"eq=brightness={settings.Brightness:F2}:contrast={settings.Contrast:F2}:saturation={settings.Saturation:F2}:gamma={settings.Gamma:F2}"
                 )
             );
         }
 
-        // 5. Matte Tone Curves
+        // 5. Smart Vibrance (selective saturation with skin protection)
+        if (Math.Abs(settings.Vibrance) > 0.01)
+        {
+            filters.Add(
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"vibrance=intensity={settings.Vibrance:F2}"
+                )
+            );
+        }
+
+        // 6. Matte Tone Curves
         var curveFilter = GetToneCurveFilter(settings.ToneCurve);
         if (!string.IsNullOrWhiteSpace(curveFilter))
         {
             filters.Add(curveFilter);
         }
 
-        // 6. Organic 35mm Film Grain (0 to 20 intensity)
+        // 7. Organic 35mm Film Grain (0 to 20 intensity)
         if (settings.FilmGrain > 0)
         {
             int grainIntensity = Math.Clamp(settings.FilmGrain, 1, 20);
             filters.Add($"noise=alls={grainIntensity}:allf=t+u");
         }
 
-        // 7. Vignette (0.0 to 1.0)
+        // 8. Vignette (0.0 to 1.0)
         if (settings.Vignette > 0.01)
         {
             double angle = Math.Clamp(settings.Vignette * 0.45, 0.05, 0.45);
             filters.Add(string.Create(CultureInfo.InvariantCulture, $"vignette=PI*{angle:F3}"));
         }
 
-        // 8. Custom 3D LUT (.cube file) with Opacity Blending
+        // 9. Custom 3D LUT (.cube file) with Opacity Blending
         if (!string.IsNullOrWhiteSpace(settings.LutPath) && File.Exists(settings.LutPath))
         {
             var escapedPath = settings.LutPath.Replace("\\", "/").Replace(":", "\\:");
@@ -143,6 +165,14 @@ public static class AdvancedColorGradeService
             "Faded Black" => "curves=m='0/0.06 0.25/0.28 0.75/0.75 1/0.96'",
             "Cross Process" => "curves=r='0/0 0.25/0.15 0.75/0.85 1/1':b='0/0.08 0.5/0.45 1/0.92'",
             "Vintage" => "curves=preset=vintage",
+            "Kodak Portra 400" =>
+                "curves=r='0/0 0.2/0.23 0.7/0.74 1/0.98':g='0/0 0.25/0.24 0.75/0.73 1/0.97':b='0/0.02 0.3/0.26 0.7/0.67 1/0.93'",
+            "Fuji Velvia" =>
+                "curves=r='0/0 0.25/0.18 0.75/0.82 1/1':g='0/0 0.25/0.2 0.75/0.84 1/1':b='0/0 0.25/0.22 0.75/0.8 1/1'",
+            "Bleach Bypass" => "curves=m='0/0 0.2/0.1 0.5/0.52 0.8/0.9 1/1'",
+            "Cyberpunk / Neon" =>
+                "curves=r='0/0 0.3/0.18 0.7/0.82 1/1':b='0/0.06 0.3/0.4 0.7/0.85 1/1':g='0/0 0.5/0.42 1/0.95'",
+            "Golden Hour Warmth" => "curves=r='0/0.02 0.5/0.58 1/1':b='0/0 0.5/0.4 1/0.92'",
             _ => null,
         };
     }

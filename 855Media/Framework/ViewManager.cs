@@ -27,6 +27,7 @@ public partial class ViewManager
             BatchInputViewModel => new BatchInputView(),
             LicenseActivationViewModel => new LicenseActivationView(),
             VideoUpscalerViewModel => new VideoUpscalerView(),
+            DubbingViewModel => new DubbingView(),
             _ => null,
         };
 

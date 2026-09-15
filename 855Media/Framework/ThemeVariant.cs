@@ -1,4 +1,4 @@
-﻿namespace _855Media.Framework;
+namespace _855Media.Framework;
 
 public enum ThemeVariant
 {

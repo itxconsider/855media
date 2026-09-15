@@ -1,4 +1,4 @@
-﻿namespace _855Media.Core.Tagging;
+namespace _855Media.Core.Tagging;
 
 internal record MusicBrainzRecording(
     string Artist,

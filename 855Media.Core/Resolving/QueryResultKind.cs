@@ -1,4 +1,4 @@
-﻿namespace _855Media.Core.Resolving;
+namespace _855Media.Core.Resolving;
 
 public enum QueryResultKind
 {

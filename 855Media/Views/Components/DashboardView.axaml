@@ -45,10 +45,6 @@
             </Style>
         </Style>
 
-        <Style Selector="Border.nav-rail Button">
-            <Setter Property="Focusable" Value="False" />
-        </Style>
-
         <Style Selector="Button.filter-chip">
             <Setter Property="Background" Value="#0FFFFFFF" />
             <Setter Property="Foreground" Value="{DynamicResource AntigravityMutedBrush}" />
@@ -67,188 +63,7 @@
         </Style>
     </UserControl.Styles>
 
-    <Grid Background="{DynamicResource AntigravityCanvasBrush}" ColumnDefinitions="64,*">
-        <!--  Rail  -->
-        <Border Grid.Column="0" Classes="nav-rail" Background="{DynamicResource AntigravityRailBrush}">
-            <Grid Margin="8" RowDefinitions="Auto,*,Auto">
-                <StackPanel Grid.Row="0" Spacing="8">
-                    <!-- YouTube Tab Rail Button -->
-                    <Button
-                        Padding="8"
-                        Command="{Binding SelectYouTubeTabCommand}"
-                        Foreground="{DynamicResource AntigravityRailIconBrush}"
-                        Theme="{DynamicResource MaterialFlatButton}"
-                        ToolTip.Tip="{Binding LocalizationManager.YouTubeTabTitle}">
-                        <materialIcons:MaterialIcon
-                            Width="24"
-                            Height="24"
-                            Foreground="#FF0000"
-                            Kind="Youtube" />
-                    </Button>
-
-                    <!-- TikTok Tab Rail Button -->
-                    <Button
-                        Padding="8"
-                        Command="{Binding SelectTikTokTabCommand}"
-                        Foreground="{DynamicResource AntigravityRailIconBrush}"
-                        Theme="{DynamicResource MaterialFlatButton}"
-                        ToolTip.Tip="{Binding LocalizationManager.TikTokTabTitle}">
-                        <materialIcons:MaterialIcon
-                            Width="24"
-                            Height="24"
-                            Foreground="#00F2FE"
-                            Kind="Music" />
-                    </Button>
-
-                    <!-- Facebook Tab Rail Button -->
-                    <Button
-                        Padding="8"
-                        Command="{Binding SelectFacebookTabCommand}"
-                        Foreground="{DynamicResource AntigravityRailIconBrush}"
-                        Theme="{DynamicResource MaterialFlatButton}"
-                        ToolTip.Tip="{Binding LocalizationManager.FacebookTabTitle}">
-                        <materialIcons:MaterialIcon
-                            Width="24"
-                            Height="24"
-                            Foreground="#1877F2"
-                            Kind="Facebook" />
-                    </Button>
-
-                    <!-- Batch Download Tab Rail Button -->
-                    <Button
-                        Padding="8"
-                        Command="{Binding SelectBatchTabCommand}"
-                        Foreground="{DynamicResource AntigravityRailIconBrush}"
-                        Theme="{DynamicResource MaterialFlatButton}"
-                        ToolTip.Tip="{Binding LocalizationManager.BatchDownloadTabTitle}">
-                        <materialIcons:MaterialIcon
-                            Width="24"
-                            Height="24"
-                            Kind="PlaylistPlus" />
-                    </Button>
-
-                    <!-- AI Upscaler Tab Rail Button -->
-                    <Button
-                        Padding="8"
-                        Command="{Binding SelectUpscalerTabCommand}"
-                        Foreground="{DynamicResource AntigravityRailIconBrush}"
-                        Theme="{DynamicResource MaterialFlatButton}"
-                        ToolTip.Tip="{Binding LocalizationManager.UpscalerTabTitle}">
-                        <materialIcons:MaterialIcon
-                            Width="24"
-                            Height="24"
-                            Foreground="#00D2FF"
-                            Kind="VideoHighDefinition" />
-                    </Button>
-
-                    <!-- Downloads Manager Tab Rail Button -->
-                    <Button
-                        Padding="8"
-                        Command="{Binding SelectManagerTabCommand}"
-                        Foreground="{DynamicResource AntigravityRailIconBrush}"
-                        Theme="{DynamicResource MaterialFlatButton}"
-                        ToolTip.Tip="{Binding LocalizationManager.DownloadsManagerTabTitle}">
-                        <Grid>
-                            <materialIcons:MaterialIcon
-                                Width="24"
-                                Height="24"
-                                Kind="FormatListBulleted" />
-                        </Grid>
-                    </Button>
-
-                    <!-- History Tab Rail Button -->
-                    <Button
-                        Padding="8"
-                        Command="{Binding SelectHistoryTabCommand}"
-                        Foreground="{DynamicResource AntigravityRailIconBrush}"
-                        Theme="{DynamicResource MaterialFlatButton}"
-                        ToolTip.Tip="{Binding LocalizationManager.HistoryTabTitle}">
-                        <materialIcons:MaterialIcon
-                            Width="24"
-                            Height="24"
-                            Kind="History" />
-                    </Button>
-
-                    <Separator Height="1" Margin="4,4" Background="{DynamicResource AntigravityBorderBrush}" />
-
-                    <!-- Auth Setup Button -->
-                    <Button
-                        Padding="8"
-                        Command="{Binding ShowAuthSetupCommand}"
-                        Foreground="{DynamicResource AntigravityRailIconBrush}"
-                        IsVisible="{OnPlatform False,
-                                               Windows=True}"
-                        Theme="{DynamicResource MaterialFlatButton}"
-                        ToolTip.Tip="{Binding LocalizationManager.AuthTooltip}">
-                        <materialIcons:MaterialIcon
-                            Width="24"
-                            Height="24"
-                            Kind="AccountKey" />
-                    </Button>
-
-                    <!-- Settings Button -->
-                    <Button
-                        Padding="8"
-                        Command="{Binding ShowSettingsCommand}"
-                        Foreground="{DynamicResource AntigravityRailIconBrush}"
-                        Theme="{DynamicResource MaterialFlatButton}"
-                        ToolTip.Tip="{Binding LocalizationManager.SettingsTooltip}">
-                        <materialIcons:MaterialIcon
-                            Width="24"
-                            Height="24"
-                            Kind="Settings" />
-                    </Button>
-
-                    <!-- License & Activation Button -->
-                    <Button
-                        Padding="8"
-                        Command="{Binding ShowLicenseActivationCommand}"
-                        Foreground="{DynamicResource AntigravityRailIconBrush}"
-                        Theme="{DynamicResource MaterialFlatButton}"
-                        ToolTip.Tip="License &amp; Activation">
-                        <materialIcons:MaterialIcon
-                            Width="24"
-                            Height="24"
-                            Foreground="#0091EA"
-                            Kind="KeyVariant" />
-                    </Button>
-                </StackPanel>
-
-                <StackPanel
-                    Grid.Row="2"
-                    IsVisible="{Binding !!Downloads.Count}"
-                    Spacing="8">
-                    <Button
-                        Padding="8"
-                        Command="{Binding ShowDownloadsListViewCommand}"
-                        Foreground="{DynamicResource AntigravityRailIconBrush}"
-                        IsEnabled="{Binding !IsDownloadsListView}"
-                        Theme="{DynamicResource MaterialFlatButton}"
-                        ToolTip.Tip="{Binding LocalizationManager.ListViewTooltip}">
-                        <materialIcons:MaterialIcon
-                            Width="24"
-                            Height="24"
-                            Kind="ViewList" />
-                    </Button>
-
-                    <Button
-                        Padding="8"
-                        Command="{Binding ShowDownloadsGridViewCommand}"
-                        Foreground="{DynamicResource AntigravityRailIconBrush}"
-                        IsEnabled="{Binding !IsDownloadsGridView}"
-                        Theme="{DynamicResource MaterialFlatButton}"
-                        ToolTip.Tip="{Binding LocalizationManager.GridViewTooltip}">
-                        <materialIcons:MaterialIcon
-                            Width="24"
-                            Height="24"
-                            Kind="ViewGrid" />
-                    </Button>
-                </StackPanel>
-            </Grid>
-        </Border>
-
-        <!--  Main Area  -->
-        <Grid Grid.Column="1" RowDefinitions="Auto,*">
+    <Grid Background="{DynamicResource AntigravityCanvasBrush}" RowDefinitions="Auto,*">
             <!--  Top Navigation Header Tabs  -->
             <Border
                 Grid.Row="0"
@@ -257,96 +72,142 @@
                 Padding="20,10"
                 Background="{DynamicResource AntigravityRailBrush}">
                 <Grid ColumnDefinitions="*,Auto">
-                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
-                        <Button
-                            Command="{Binding SelectYouTubeTabCommand}"
-                            Classes="tab-button"
-                            Classes.active="{Binding IsYouTubeTab}">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <materialIcons:MaterialIcon Kind="Youtube" Width="18" Height="18" Foreground="#FF0000" />
-                                <TextBlock Text="{Binding LocalizationManager.YouTubeTabTitle}" VerticalAlignment="Center" />
-                            </StackPanel>
-                        </Button>
+                    <ScrollViewer Grid.Column="0" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,16,0">
+                            <Button
+                                Command="{Binding SelectYouTubeTabCommand}"
+                                Classes="tab-button"
+                                Classes.active="{Binding IsYouTubeTab}">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <materialIcons:MaterialIcon Kind="Youtube" Width="18" Height="18" />
+                                    <TextBlock Text="{Binding LocalizationManager.YouTubeTabTitle}" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
 
-                        <Button
-                            Command="{Binding SelectTikTokTabCommand}"
-                            Classes="tab-button"
-                            Classes.active="{Binding IsTikTokTab}">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <materialIcons:MaterialIcon Kind="Music" Width="18" Height="18" Foreground="#00F2FE" />
-                                <TextBlock Text="{Binding LocalizationManager.TikTokTabTitle}" VerticalAlignment="Center" />
-                            </StackPanel>
-                        </Button>
+                            <Button
+                                Command="{Binding SelectTikTokTabCommand}"
+                                Classes="tab-button"
+                                Classes.active="{Binding IsTikTokTab}">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <materialIcons:MaterialIcon Kind="Music" Width="18" Height="18" />
+                                    <TextBlock Text="{Binding LocalizationManager.TikTokTabTitle}" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
 
-                        <Button
-                            Command="{Binding SelectFacebookTabCommand}"
-                            Classes="tab-button"
-                            Classes.active="{Binding IsFacebookTab}">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <materialIcons:MaterialIcon Kind="Facebook" Width="18" Height="18" Foreground="#1877F2" />
-                                <TextBlock Text="{Binding LocalizationManager.FacebookTabTitle}" VerticalAlignment="Center" />
-                            </StackPanel>
-                        </Button>
+                            <Button
+                                Command="{Binding SelectFacebookTabCommand}"
+                                Classes="tab-button"
+                                Classes.active="{Binding IsFacebookTab}">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <materialIcons:MaterialIcon Kind="Facebook" Width="18" Height="18" />
+                                    <TextBlock Text="{Binding LocalizationManager.FacebookTabTitle}" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
 
-                        <Button
-                            Command="{Binding SelectBatchTabCommand}"
-                            Classes="tab-button"
-                            Classes.active="{Binding IsBatchTab}">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <materialIcons:MaterialIcon Kind="PlaylistPlus" Width="18" Height="18" />
+                            <Button
+                                Command="{Binding SelectBatchTabCommand}"
+                                Classes="tab-button"
+                                Classes.active="{Binding IsBatchTab}">
                                 <TextBlock Text="{Binding LocalizationManager.BatchDownloadTabTitle}" VerticalAlignment="Center" />
-                            </StackPanel>
-                        </Button>
+                            </Button>
 
-                        <Button
-                            Command="{Binding SelectUpscalerTabCommand}"
-                            Classes="tab-button"
-                            Classes.active="{Binding IsUpscalerTab}">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <materialIcons:MaterialIcon Kind="VideoHighDefinition" Width="18" Height="18" Foreground="#00D2FF" />
+                            <Button
+                                Command="{Binding SelectUpscalerTabCommand}"
+                                Classes="tab-button"
+                                Classes.active="{Binding IsUpscalerTab}">
                                 <TextBlock Text="{Binding LocalizationManager.UpscalerTabTitle}" VerticalAlignment="Center" />
-                            </StackPanel>
-                        </Button>
+                            </Button>
 
-                        <Button
-                            Command="{Binding SelectManagerTabCommand}"
-                            Classes="tab-button"
-                            Classes.active="{Binding IsManagerTab}">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <materialIcons:MaterialIcon Kind="FormatListBulleted" Width="18" Height="18" />
-                                <TextBlock Text="{Binding LocalizationManager.DownloadsManagerTabTitle}" VerticalAlignment="Center" />
-                                <Border
-                                    IsVisible="{Binding !!ActiveDownloadsCount}"
-                                    Background="{DynamicResource AntigravityAccentBrush}"
-                                    CornerRadius="10"
-                                    Margin="4,0,0,0"
-                                    Padding="6,2">
-                                    <TextBlock
-                                        Text="{Binding ActiveDownloadsCount}"
-                                        FontSize="11"
-                                        FontWeight="Bold"
-                                        Foreground="{DynamicResource AntigravityAccentForegroundBrush}" />
-                                </Border>
-                            </StackPanel>
-                        </Button>
+                            <Button
+                                Command="{Binding SelectDubbingTabCommand}"
+                                Classes="tab-button"
+                                Classes.active="{Binding IsDubbingTab}">
+                                <TextBlock Text="Khmer Dubbing &amp; Voice" VerticalAlignment="Center" />
+                            </Button>
 
-                        <Button
-                            Command="{Binding SelectHistoryTabCommand}"
-                            Classes="tab-button"
-                            Classes.active="{Binding IsHistoryTab}">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <materialIcons:MaterialIcon Kind="History" Width="18" Height="18" />
-                                <TextBlock Text="{Binding LocalizationManager.HistoryTabTitle}" VerticalAlignment="Center" />
-                            </StackPanel>
-                        </Button>
-                    </StackPanel>
+                            <Button
+                                Command="{Binding SelectManagerTabCommand}"
+                                Classes="tab-button"
+                                Classes.active="{Binding IsManagerTab}">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock Text="{Binding LocalizationManager.DownloadsManagerTabTitle}" VerticalAlignment="Center" />
+                                    <Border
+                                        IsVisible="{Binding !!ActiveDownloadsCount}"
+                                        Background="{DynamicResource AntigravityAccentBrush}"
+                                        CornerRadius="10"
+                                        Margin="4,0,0,0"
+                                        Padding="6,2">
+                                        <TextBlock
+                                            Text="{Binding ActiveDownloadsCount}"
+                                            FontSize="11"
+                                            FontWeight="Bold"
+                                            Foreground="{DynamicResource AntigravityAccentForegroundBrush}" />
+                                    </Border>
+                                </StackPanel>
+                            </Button>
 
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Spacing="16">
+                            <Button
+                                Command="{Binding SelectHistoryTabCommand}"
+                                Classes="tab-button"
+                                Classes.active="{Binding IsHistoryTab}">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <materialIcons:MaterialIcon Kind="History" Width="18" Height="18" />
+                                    <TextBlock Text="{Binding LocalizationManager.HistoryTabTitle}" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
                         <TextBlock
                             Text="{Binding TotalDownloadsCount, StringFormat='Total: {0}'}"
                             Foreground="{DynamicResource AntigravityMutedBrush}"
                             FontSize="13"
-                            VerticalAlignment="Center" />
+                            VerticalAlignment="Center"
+                            Margin="0,0,6,0" />
+
+                        <Separator Width="1" Height="22" Margin="2,0" Background="{DynamicResource AntigravityBorderBrush}" />
+
+                        <!-- Auth Setup Button -->
+                        <Button
+                            Padding="8"
+                            Command="{Binding ShowAuthSetupCommand}"
+                            Foreground="{DynamicResource AntigravityRailIconBrush}"
+                            IsVisible="{OnPlatform False,
+                                                   Windows=True}"
+                            Theme="{DynamicResource MaterialFlatButton}"
+                            ToolTip.Tip="{Binding LocalizationManager.AuthTooltip}">
+                            <materialIcons:MaterialIcon
+                                Width="20"
+                                Height="20"
+                                Kind="AccountKey" />
+                        </Button>
+
+                        <!-- License & Activation Button -->
+                        <Button
+                            Padding="8"
+                            Command="{Binding ShowLicenseActivationCommand}"
+                            Foreground="{DynamicResource AntigravityRailIconBrush}"
+                            Theme="{DynamicResource MaterialFlatButton}"
+                            ToolTip.Tip="License &amp; Activation">
+                            <materialIcons:MaterialIcon
+                                Width="20"
+                                Height="20"
+                                Kind="KeyVariant" />
+                        </Button>
+
+                        <!-- Settings Button -->
+                        <Button
+                            Padding="8"
+                            Command="{Binding ShowSettingsCommand}"
+                            Foreground="{DynamicResource AntigravityRailIconBrush}"
+                            Theme="{DynamicResource MaterialFlatButton}"
+                            ToolTip.Tip="{Binding LocalizationManager.SettingsTooltip}">
+                            <materialIcons:MaterialIcon
+                                Width="20"
+                                Height="20"
+                                Kind="Settings" />
+                        </Button>
                     </StackPanel>
                 </Grid>
             </Border>
@@ -367,6 +228,9 @@
 
                 <!--  AI VIDEO UPSCALER VIEW  -->
                 <ContentControl Content="{Binding VideoUpscaler}" IsVisible="{Binding IsUpscalerTab}" />
+
+                <!--  KHMER DUBBING & VOICE CLONING VIEW  -->
+                <ContentControl Content="{Binding Dubbing}" IsVisible="{Binding IsDubbingTab}" />
 
                 <!--  BATCH DOWNLOAD TAB  -->
                 <ScrollViewer
@@ -875,6 +739,5 @@
                 </Grid>
             </Grid>
         </Grid>
-    </Grid>
 </UserControl>
 

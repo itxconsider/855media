@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -127,7 +127,23 @@ public class MediaTagInjector
 
         InjectMiscMetadata(mediaFile, video);
         await InjectMusicMetadataAsync(mediaFile, video, cancellationToken);
-        await InjectThumbnailAsync(mediaFile, video, cancellationToken);
+
+        // Only inject embedded thumbnail pictures for audio files (.mp3, .m4a, .flac, etc.).
+        // In video files (e.g. .mp4), TagLibSharp injects the thumbnail as an attached MJPEG
+        // secondary video stream, which corrupts MP4 playback in Windows Media Player (error 0xC00D36C4).
+        var ext = System.IO.Path.GetExtension(filePath);
+        var isAudioOnly =
+            ext.Equals(".mp3", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".m4a", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".flac", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".ogg", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".opus", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".wav", StringComparison.OrdinalIgnoreCase);
+
+        if (isAudioOnly)
+        {
+            await InjectThumbnailAsync(mediaFile, video, cancellationToken);
+        }
 
         mediaFile.Save();
     }

@@ -1,4 +1,4 @@
-﻿<Application
+<Application
     x:Class="_855Media.App"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -17,7 +17,7 @@
     <Application.Styles>
         <!--  This theme is used as a stub to pre-load default resources, the actual colors are set through code  -->
         <materialStyles:MaterialTheme
-            BaseTheme="Light"
+            BaseTheme="Dark"
             PrimaryColor="Grey"
             SecondaryColor="DeepOrange" />
         <materialIcons:MaterialIconStyles />
@@ -174,30 +174,30 @@
         <ResourceDictionary>
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Default">
-                    <SolidColorBrush x:Key="ToggleBackgroundBrush" Color="#FFFFFF" />
-                    <SolidColorBrush x:Key="AntigravityCanvasBrush" Color="#F0F4F8" />
-                    <SolidColorBrush x:Key="AntigravityPanelBrush" Color="#FFFFFF" />
-                    <SolidColorBrush x:Key="AntigravityRailBrush" Color="#0F172A" />
-                    <SolidColorBrush x:Key="AntigravityTextBrush" Color="#0F172A" />
-                    <SolidColorBrush x:Key="AntigravityMutedBrush" Color="#64748B" />
-                    <SolidColorBrush x:Key="AntigravityBorderBrush" Color="#E2E8F0" />
-                    <SolidColorBrush x:Key="AntigravityAccentBrush" Color="#0091EA" />
-                    <SolidColorBrush x:Key="AntigravityAccentForegroundBrush" Color="#FFFFFF" />
-                    <SolidColorBrush x:Key="AntigravityRailIconBrush" Color="#E2E8F0" />
-                    <SolidColorBrush x:Key="YouTubeSearchButtonBackgroundBrush" Color="#F1F5F9" />
+                    <SolidColorBrush x:Key="ToggleBackgroundBrush" Color="#8E8E8E" />
+                    <SolidColorBrush x:Key="AntigravityCanvasBrush" Color="#0D0D0D" />
+                    <SolidColorBrush x:Key="AntigravityPanelBrush" Color="#161616" />
+                    <SolidColorBrush x:Key="AntigravityRailBrush" Color="#0D0D0D" />
+                    <SolidColorBrush x:Key="AntigravityTextBrush" Color="#EDEDED" />
+                    <SolidColorBrush x:Key="AntigravityMutedBrush" Color="#888888" />
+                    <SolidColorBrush x:Key="AntigravityBorderBrush" Color="#262626" />
+                    <SolidColorBrush x:Key="AntigravityAccentBrush" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="AntigravityAccentForegroundBrush" Color="#000000" />
+                    <SolidColorBrush x:Key="AntigravityRailIconBrush" Color="#999999" />
+                    <SolidColorBrush x:Key="YouTubeSearchButtonBackgroundBrush" Color="#222222" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
                     <SolidColorBrush x:Key="ToggleBackgroundBrush" Color="#8E8E8E" />
-                    <SolidColorBrush x:Key="AntigravityCanvasBrush" Color="#0A0E17" />
-                    <SolidColorBrush x:Key="AntigravityPanelBrush" Color="#121826" />
-                    <SolidColorBrush x:Key="AntigravityRailBrush" Color="#06080E" />
-                    <SolidColorBrush x:Key="AntigravityTextBrush" Color="#F0F4F8" />
-                    <SolidColorBrush x:Key="AntigravityMutedBrush" Color="#7D8C9F" />
-                    <SolidColorBrush x:Key="AntigravityBorderBrush" Color="#1E293B" />
-                    <SolidColorBrush x:Key="AntigravityAccentBrush" Color="#00D2FF" />
+                    <SolidColorBrush x:Key="AntigravityCanvasBrush" Color="#0D0D0D" />
+                    <SolidColorBrush x:Key="AntigravityPanelBrush" Color="#161616" />
+                    <SolidColorBrush x:Key="AntigravityRailBrush" Color="#0D0D0D" />
+                    <SolidColorBrush x:Key="AntigravityTextBrush" Color="#EDEDED" />
+                    <SolidColorBrush x:Key="AntigravityMutedBrush" Color="#888888" />
+                    <SolidColorBrush x:Key="AntigravityBorderBrush" Color="#262626" />
+                    <SolidColorBrush x:Key="AntigravityAccentBrush" Color="#FFFFFF" />
                     <SolidColorBrush x:Key="AntigravityAccentForegroundBrush" Color="#000000" />
-                    <SolidColorBrush x:Key="AntigravityRailIconBrush" Color="#E2E8F0" />
-                    <SolidColorBrush x:Key="YouTubeSearchButtonBackgroundBrush" Color="#1E293B" />
+                    <SolidColorBrush x:Key="AntigravityRailIconBrush" Color="#999999" />
+                    <SolidColorBrush x:Key="YouTubeSearchButtonBackgroundBrush" Color="#222222" />
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
 

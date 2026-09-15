@@ -1,4 +1,4 @@
-﻿using _855Media.Framework;
+using _855Media.Framework;
 using _855Media.Localization;
 using CommunityToolkit.Mvvm.ComponentModel;
 

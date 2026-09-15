@@ -54,6 +54,9 @@ public class ViewModelManager(IServiceProvider services)
     public VideoUpscalerViewModel GetVideoUpscalerViewModel() =>
         services.GetRequiredService<VideoUpscalerViewModel>();
 
+    public DubbingViewModel GetDubbingViewModel() =>
+        services.GetRequiredService<DubbingViewModel>();
+
     public AuthSetupViewModel GetAuthSetupViewModel() =>
         services.GetRequiredService<AuthSetupViewModel>();
 

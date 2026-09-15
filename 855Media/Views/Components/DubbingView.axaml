@@ -1,0 +1,2127 @@
+<UserControl
+    x:Class="_855Media.Views.Components.DubbingView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:components="clr-namespace:_855Media.ViewModels.Components"
+    xmlns:dubbing="clr-namespace:_855Media.Core.Dubbing;assembly=855Media.Core"
+    xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+    xmlns:asyncImageLoader="clr-namespace:AsyncImageLoader;assembly=AsyncImageLoader.Avalonia"
+    x:DataType="components:DubbingViewModel">
+
+    <Grid RowDefinitions="Auto,Auto,*,Auto">
+        <!--  Row 0: Top Project & Session Management Bar (DaVinci / Premiere Pro Style)  -->
+        <Border
+            Grid.Row="0"
+            Padding="20,8"
+            Background="#0B0F19"
+            BorderBrush="{DynamicResource AntigravityBorderBrush}"
+            BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+                <!-- Left: Project Identity & Status -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                    <materialIcons:MaterialIcon Kind="FilmstripBoxMultiple" Width="20" Height="20" Foreground="{DynamicResource AntigravityAccentBrush}" VerticalAlignment="Center" />
+
+                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <TextBlock Text="PROJECT:" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" LetterSpacing="0.5" />
+                        <TextBox
+                            Text="{Binding ProjectName}"
+                            FontSize="12"
+                            FontWeight="SemiBold"
+                            MinWidth="140"
+                            MaxWidth="260"
+                            Padding="8,3"
+                            Background="#161F30"
+                            BorderBrush="#2A3850"
+                            CornerRadius="6"
+                            VerticalAlignment="Center"
+                            ToolTip.Tip="Click to rename project" />
+                    </StackPanel>
+
+                    <!-- Status Badge -->
+                    <Border
+                        CornerRadius="6"
+                        Background="#1E293B"
+                        BorderBrush="#334155"
+                        BorderThickness="1"
+                        Padding="8,3"
+                        VerticalAlignment="Center"
+                        ToolTip.Tip="{Binding CurrentProjectPath, TargetNullValue='Project has not been saved to disk yet'}">
+                        <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                            <materialIcons:MaterialIcon Kind="FolderCheckOutline" Width="13" Height="13" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                            <TextBlock Text="{Binding ProjectStatusBadge}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- Right: Quick Project Action Buttons (New, Open, Save, Save As) -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Button
+                        Command="{Binding NewProjectCommand}"
+                        Classes="flat"
+                        CornerRadius="6"
+                        Padding="10,5"
+                        FontSize="11"
+                        ToolTip.Tip="Start a new empty project">
+                        <StackPanel Orientation="Horizontal" Spacing="5">
+                            <materialIcons:MaterialIcon Kind="FilePlusOutline" Width="15" Height="15" />
+                            <TextBlock Text="New" VerticalAlignment="Center" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button
+                        Command="{Binding OpenProjectCommand}"
+                        Classes="flat"
+                        CornerRadius="6"
+                        Padding="10,5"
+                        FontSize="11"
+                        ToolTip.Tip="Open existing .855dub or .json project file">
+                        <StackPanel Orientation="Horizontal" Spacing="5">
+                            <materialIcons:MaterialIcon Kind="FolderOpenOutline" Width="15" Height="15" Foreground="#38BDF8" />
+                            <TextBlock Text="Open..." VerticalAlignment="Center" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button
+                        Command="{Binding SaveProjectCommand}"
+                        Classes="accent"
+                        CornerRadius="6"
+                        Padding="12,5"
+                        FontSize="11"
+                        ToolTip.Tip="Save current project changes (Ctrl+S)">
+                        <StackPanel Orientation="Horizontal" Spacing="5">
+                            <materialIcons:MaterialIcon Kind="ContentSaveOutline" Width="15" Height="15" />
+                            <TextBlock Text="Save" VerticalAlignment="Center" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button
+                        Command="{Binding SaveProjectAsCommand}"
+                        Classes="flat"
+                        CornerRadius="6"
+                        Padding="10,5"
+                        FontSize="11"
+                        ToolTip.Tip="Save project with a new name or location">
+                        <StackPanel Orientation="Horizontal" Spacing="5">
+                            <materialIcons:MaterialIcon Kind="ContentSaveEditOutline" Width="15" Height="15" />
+                            <TextBlock Text="Save As..." VerticalAlignment="Center" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!--  Row 1: Top Studio Master Toolbar  -->
+        <Border
+            Grid.Row="1"
+            Padding="20,12"
+            Background="{DynamicResource AntigravityPanelBrush}"
+            BorderBrush="{DynamicResource AntigravityBorderBrush}"
+            BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+                <!-- Left: Studio Branding & Video Source -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
+                    <!-- Studio Pro Badge -->
+                    <Border
+                        CornerRadius="8"
+                        Background="#1E293B"
+                        BorderBrush="{DynamicResource AntigravityAccentBrush}"
+                        BorderThickness="1"
+                        Padding="10,6">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <materialIcons:MaterialIcon Kind="MovieEditOutline" Width="20" Height="20" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                            <StackPanel Spacing="0">
+                                <TextBlock Text="DUB STUDIO PRO" FontWeight="Bold" FontSize="13" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                <TextBlock Text="AI STEMS • RVC v3 • WHISPER" FontSize="8" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityAccentBrush}" LetterSpacing="1" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <Button
+                        Command="{Binding BrowseVideoFileCommand}"
+                        Classes="accent"
+                        Theme="{DynamicResource MaterialOutlineButton}"
+                        CornerRadius="8"
+                        Padding="12,8"
+                        ToolTip.Tip="Select movie or video file to dub into Khmer">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <materialIcons:MaterialIcon Kind="VideoPlusOutline" Width="18" Height="18" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                            <TextBlock Text="Open Video" VerticalAlignment="Center" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </Button>
+
+                    <StackPanel VerticalAlignment="Center" Spacing="2">
+                        <TextBlock
+                            Text="{Binding VideoFilePath, TargetNullValue='No video loaded'}"
+                            Foreground="{DynamicResource AntigravityTextBrush}"
+                            FontWeight="SemiBold"
+                            FontSize="13"
+                            MaxWidth="280"
+                            TextTrimming="CharacterEllipsis" />
+                        <TextBlock
+                            Text="{Binding OutputFilePath, TargetNullValue='Export will be saved next to video'}"
+                            Foreground="{DynamicResource AntigravityMutedBrush}"
+                            FontSize="11"
+                            MaxWidth="280"
+                            TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Center: Language, Voice & Studio Tab Switcher -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <!-- Source Language -->
+                    <StackPanel Spacing="3">
+                        <TextBlock Text="Source Language" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                        <ComboBox
+                            ItemsSource="{Binding AvailableSourceLanguages}"
+                            SelectedItem="{Binding SourceLanguage}"
+                            Width="110"
+                            CornerRadius="6" />
+                    </StackPanel>
+
+                    <!-- Khmer Voice -->
+                    <StackPanel Spacing="3">
+                        <TextBlock Text="Default Khmer Voice" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                        <ComboBox
+                            ItemsSource="{Binding AvailableVoices}"
+                            SelectedItem="{Binding SelectedVoice}"
+                            Width="180"
+                            CornerRadius="6">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding DisplayName}" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                    </StackPanel>
+
+                    <!-- Hardware / Engine Telemetry Chip -->
+                    <Border
+                        CornerRadius="6"
+                        Background="#0A0F1D"
+                        BorderBrush="#1E293B"
+                        BorderThickness="1"
+                        Padding="8,5"
+                        VerticalAlignment="Bottom">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Border Width="6" Height="6" CornerRadius="3" Background="#10B981" VerticalAlignment="Center" />
+                            <TextBlock Text="CUDA RTX Active" FontSize="10" FontWeight="SemiBold" Foreground="#10B981" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- Right: Master Dubbing Actions -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <!-- Batch Synthesize Dubbing Audio Button -->
+                    <Button
+                        Command="{Binding SynthesizeAllLinesCommand}"
+                        IsEnabled="{Binding !IsPreSynthesizing}"
+                        Theme="{DynamicResource MaterialOutlineButton}"
+                        CornerRadius="8"
+                        Padding="12,8"
+                        ToolTip.Tip="Pre-generate Khmer voice &amp; RVC cloning for all scenes to audition before exporting">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <materialIcons:MaterialIcon Kind="LightningBolt" Width="16" Height="16" Foreground="#F59E0B" />
+                            <TextBlock Text="Batch Pre-Dub" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button
+                        Command="{Binding StartDubbingCommand}"
+                        IsVisible="{Binding !IsProcessing}"
+                        Theme="{DynamicResource MaterialSolidButton}"
+                        Background="{DynamicResource AntigravityAccentBrush}"
+                        Foreground="{DynamicResource AntigravityAccentForegroundBrush}"
+                        CornerRadius="8"
+                        Padding="16,8">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <materialIcons:MaterialIcon Kind="MoviePlay" Width="16" Height="16" Foreground="{DynamicResource AntigravityAccentForegroundBrush}" />
+                            <TextBlock Text="Master Export" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityAccentForegroundBrush}" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button
+                        Command="{Binding CancelDubbingCommand}"
+                        IsVisible="{Binding IsProcessing}"
+                        Theme="{DynamicResource MaterialFlatButton}"
+                        Foreground="#FF5252"
+                        CornerRadius="8"
+                        Padding="12,8">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <materialIcons:MaterialIcon Kind="CloseCircleOutline" Width="16" Height="16" />
+                            <TextBlock Text="Cancel" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button
+                        Command="{Binding OpenOutputFolderCommand}"
+                        Theme="{DynamicResource MaterialOutlineButton}"
+                        CornerRadius="8"
+                        Padding="8,8"
+                        ToolTip.Tip="Open output folder in File Explorer">
+                        <materialIcons:MaterialIcon Kind="FolderOpenOutline" Width="16" Height="16" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!--  Main Studio Workspace  -->
+        <Grid Grid.Row="2" ColumnDefinitions="360,*" Margin="20,16">
+            <!-- Left Side: Studio Monitor & Audio Controls -->
+            <Grid Grid.Column="0" RowDefinitions="Auto,*" Margin="0,0,16,0">
+                <!-- Studio Program Monitor (Embedded Media Player) -->
+                <Border
+                    Grid.Row="0"
+                    Background="{DynamicResource AntigravityPanelBrush}"
+                    BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="10"
+                    Padding="12"
+                    Margin="0,0,0,14">
+                    <Grid RowDefinitions="Auto,Auto,Auto">
+                        <!-- Monitor Header -->
+                        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <materialIcons:MaterialIcon Kind="PlayCircle" Width="16" Height="16" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                <TextBlock Text="STUDIO MONITOR" FontWeight="Bold" FontSize="12" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
+                                <Border CornerRadius="3" Background="#10B981" Padding="5,1" Margin="4,0,0,0" IsVisible="{Binding IsMonitorPlaying}">
+                                    <TextBlock Text="PLAYING" FontSize="9" FontWeight="Bold" Foreground="White" />
+                                </Border>
+                            </StackPanel>
+
+                            <!-- Monitor Action Buttons -->
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
+                                <Button
+                                    Command="{Binding PlayFullMovieCommand}"
+                                    Theme="{DynamicResource MaterialFlatButton}"
+                                    Padding="4"
+                                    ToolTip.Tip="Play full source movie in monitor">
+                                    <materialIcons:MaterialIcon Kind="MoviePlayOutline" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                </Button>
+                                <Button
+                                    Command="{Binding StopMonitorCommand}"
+                                    IsEnabled="{Binding HasActiveMedia}"
+                                    Theme="{DynamicResource MaterialFlatButton}"
+                                    Padding="4"
+                                    ToolTip.Tip="Stop playback">
+                                    <materialIcons:MaterialIcon Kind="Stop" Width="15" Height="15" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                </Button>
+                                <Button
+                                    Command="{Binding OpenInExternalPlayerCommand}"
+                                    IsEnabled="{Binding HasActiveMedia}"
+                                    Theme="{DynamicResource MaterialFlatButton}"
+                                    Padding="4"
+                                    ToolTip.Tip="Open current media in external player">
+                                    <materialIcons:MaterialIcon Kind="OpenInNew" Width="14" Height="14" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- Embedded Player Surface (16:9 Aspect Ratio) -->
+                        <Border
+                            Grid.Row="1"
+                            Height="185"
+                            Background="#000000"
+                            CornerRadius="6"
+                            ClipToBounds="True"
+                            BorderBrush="#1E293B"
+                            BorderThickness="1">
+                            <Panel>
+                                <!-- Standby Poster (shown when idle) -->
+                                <Grid IsVisible="{Binding !HasActiveMedia}">
+                                    <Image
+                                        asyncImageLoader:ImageLoader.Source="{Binding SelectedSegment.ThumbnailPath}"
+                                        Stretch="UniformToFill"
+                                        Opacity="0.4"
+                                        IsVisible="{Binding SelectedSegment.ThumbnailPath, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+                                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="6">
+                                        <materialIcons:MaterialIcon Kind="MoviePlayOutline" Width="36" Height="36" Foreground="{DynamicResource AntigravityMutedBrush}" HorizontalAlignment="Center" />
+                                        <TextBlock Text="Studio Monitor Standby" FontWeight="SemiBold" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" HorizontalAlignment="Center" />
+                                        <TextBlock Text="Click any scene cut or Khmer voice to play" FontSize="10" Foreground="#64748B" HorizontalAlignment="Center" />
+                                    </StackPanel>
+                                </Grid>
+
+                                <!-- Embedded Chromium Video/Audio Player -->
+                                <WebView
+                                    x:Name="StudioMediaPlayer"
+                                    IsVisible="{Binding HasActiveMedia}"
+                                    WebViewCreated="StudioMediaPlayer_OnWebViewCreated" />
+                            </Panel>
+                        </Border>
+
+                        <!-- Monitor Media Info & Quick Controls -->
+                        <Grid Grid.Row="2" Margin="0,8,0,0" ColumnDefinitions="*,Auto">
+                            <TextBlock
+                                Grid.Column="0"
+                                Text="{Binding ActiveMediaTitle}"
+                                FontSize="11"
+                                FontWeight="Medium"
+                                Foreground="{DynamicResource AntigravityMutedBrush}"
+                                TextTrimming="CharacterEllipsis"
+                                VerticalAlignment="Center" />
+
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
+                                <Button
+                                    Command="{Binding PlaySceneCommand}"
+                                    CommandParameter="{Binding SelectedSegment}"
+                                    Theme="{DynamicResource MaterialOutlineButton}"
+                                    Padding="6,2"
+                                    CornerRadius="4"
+                                    ToolTip.Tip="Replay selected scene video in monitor">
+                                    <StackPanel Orientation="Horizontal" Spacing="3">
+                                        <materialIcons:MaterialIcon Kind="MovieOutline" Width="12" Height="12" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                        <TextBlock Text="Scene" FontSize="10" FontWeight="SemiBold" />
+                                    </StackPanel>
+                                </Button>
+
+                                <Button
+                                    Command="{Binding PlayDubbedClipCommand}"
+                                    CommandParameter="{Binding SelectedSegment}"
+                                    Theme="{DynamicResource MaterialOutlineButton}"
+                                    Padding="6,2"
+                                    CornerRadius="4"
+                                    ToolTip.Tip="Play synthesized Khmer voice in monitor">
+                                    <StackPanel Orientation="Horizontal" Spacing="3">
+                                        <materialIcons:MaterialIcon Kind="VolumeHigh" Width="12" Height="12" Foreground="#10B981" />
+                                        <TextBlock Text="Voice" FontSize="10" FontWeight="SemiBold" />
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+                    </Grid>
+                </Border>
+
+                <!-- Scrollable Settings Cards -->
+                <ScrollViewer Grid.Row="1">
+                    <StackPanel Spacing="16">
+                    <!-- RVC Voice Cloning Card -->
+                    <Border
+                        Background="{DynamicResource AntigravityPanelBrush}"
+                        BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="10"
+                        Padding="16">
+                        <StackPanel Spacing="12">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <StackPanel Grid.Column="0" Spacing="2">
+                                    <TextBlock Text="AI Voice Cloning (RVC)" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                    <TextBlock Text="Transform Khmer speech into a cloned voice" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                </StackPanel>
+                                <ToggleSwitch Grid.Column="1" IsChecked="{Binding EnableVoiceCloning}" />
+                            </Grid>
+
+                            <StackPanel Spacing="8" IsVisible="{Binding EnableVoiceCloning}">
+                                <Grid ColumnDefinitions="*,Auto,Auto">
+                                    <TextBlock Text="Target Voice Model (.pth)" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                                    <Button
+                                        Grid.Column="1"
+                                        Command="{Binding RefreshRvcModelsCommand}"
+                                        Theme="{DynamicResource MaterialFlatButton}"
+                                        Padding="4"
+                                        Margin="0,0,4,0"
+                                        ToolTip.Tip="Refresh voice models">
+                                        <materialIcons:MaterialIcon Kind="Refresh" Width="16" Height="16" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                    </Button>
+                                    <Button
+                                        Grid.Column="2"
+                                        Command="{Binding OpenRvcModelsFolderCommand}"
+                                        Theme="{DynamicResource MaterialFlatButton}"
+                                        Padding="4"
+                                        ToolTip.Tip="Open models/voices directory">
+                                        <materialIcons:MaterialIcon Kind="FolderOpen" Width="16" Height="16" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                    </Button>
+                                </Grid>
+
+                                <ComboBox
+                                    ItemsSource="{Binding AvailableRvcModels}"
+                                    SelectedItem="{Binding SelectedRvcModel}"
+                                    HorizontalAlignment="Stretch"
+                                    PlaceholderText="Select or drop .pth voice model">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding Name}" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+
+                                <TextBlock Text="Pitch Shift (Semitones)" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" Margin="0,6,0,0" />
+                                <Grid ColumnDefinitions="*,40">
+                                    <Slider
+                                        Grid.Column="0"
+                                        Minimum="-12"
+                                        Maximum="12"
+                                        Value="{Binding PitchShift}"
+                                        TickFrequency="1"
+                                        IsSnapToTickEnabled="True" />
+                                    <TextBlock Grid.Column="1" Text="{Binding PitchShift}" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                </Grid>
+
+                                <Grid ColumnDefinitions="*,Auto" Margin="0,8,0,0">
+                                    <StackPanel Grid.Column="0" Spacing="2">
+                                        <TextBlock Text="GPU Concurrency (Parallel Workers)" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                                        <TextBlock Text="~1.5GB VRAM per worker. 4 workers recommended for 16GB VRAM." FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" Opacity="0.75" />
+                                    </StackPanel>
+                                    <ComboBox
+                                        Grid.Column="1"
+                                        ItemsSource="{Binding AvailableRvcConcurrencies}"
+                                        SelectedItem="{Binding RvcConcurrency}"
+                                        Width="80"
+                                        HorizontalContentAlignment="Center" />
+                                </Grid>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Speech Recognition / Whisper AI Card -->
+                    <Border
+                        Background="{DynamicResource AntigravityPanelBrush}"
+                        BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="10"
+                        Padding="16">
+                        <StackPanel Spacing="10">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <StackPanel Grid.Column="0" Spacing="2">
+                                    <TextBlock Text="Speech-to-Text (STT)" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                    <TextBlock Text="Automatic speech &amp; words scanner" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                </StackPanel>
+                                <materialIcons:MaterialIcon Grid.Column="1" Kind="Microphone" Width="18" Height="18" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                            </Grid>
+
+                            <!-- Status indicator -->
+                            <Border
+                                Background="{DynamicResource AntigravityCanvasBrush}"
+                                CornerRadius="6"
+                                Padding="10,8">
+                                <StackPanel Spacing="4">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Text="Scanner Engine" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        <TextBlock
+                                            Grid.Column="1"
+                                            Text="{Binding IsWhisperAvailable, Converter={x:Static ObjectConverters.IsNotNull}, StringFormat='Whisper AI'}"
+                                            FontSize="11"
+                                            FontWeight="SemiBold"
+                                            Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                    </Grid>
+                                    <TextBlock
+                                        Text="Scans spoken dialogue and audio intervals from video into editable text."
+                                        FontSize="11"
+                                        TextWrapping="Wrap"
+                                        Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Whisper Download Button if not yet installed -->
+                            <StackPanel Spacing="6" IsVisible="{Binding !IsWhisperAvailable}">
+                                <Button
+                                    Command="{Binding DownloadWhisperAiCommand}"
+                                    IsEnabled="{Binding !IsDownloadingWhisper}"
+                                    Theme="{DynamicResource MaterialOutlineButton}"
+                                    CornerRadius="6"
+                                    Padding="10,6"
+                                    HorizontalAlignment="Stretch"
+                                    ToolTip.Tip="Download offline Whisper AI neural model (~75MB)">
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="6">
+                                        <materialIcons:MaterialIcon Kind="DownloadOutline" Width="16" Height="16" />
+                                        <TextBlock Text="Download Whisper AI" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
+                                <ProgressBar
+                                    IsVisible="{Binding IsDownloadingWhisper}"
+                                    Value="{Binding WhisperDownloadProgress}"
+                                    Maximum="1.0"
+                                    Height="4" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Movie Characters Roster & Voice Studio Card -->
+                    <Border
+                        Background="{DynamicResource AntigravityPanelBrush}"
+                        BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="10"
+                        Padding="16">
+                        <StackPanel Spacing="12">
+                            <!-- Header -->
+                            <Grid ColumnDefinitions="*,Auto">
+                                <StackPanel Grid.Column="0" Spacing="2">
+                                    <TextBlock Text="Movie Characters &amp; Voice Cast" FontWeight="SemiBold" FontSize="14" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                    <TextBlock Text="Assign distinct voices, pitch, &amp; RVC models per actor" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                </StackPanel>
+                                <Button
+                                    Grid.Column="1"
+                                    Command="{Binding AddCharacterCommand}"
+                                    Theme="{DynamicResource MaterialOutlineButton}"
+                                    Padding="10,4"
+                                    CornerRadius="6">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <materialIcons:MaterialIcon Kind="AccountPlus" Width="14" Height="14" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                        <TextBlock Text="Add Actor" FontSize="11" FontWeight="SemiBold" />
+                                    </StackPanel>
+                                </Button>
+                            </Grid>
+
+                            <!-- Character Selection Pills / Roster List -->
+                            <ItemsControl ItemsSource="{Binding Characters}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="dubbing:MovieCharacter">
+                                        <Button
+                                            Command="{Binding $parent[UserControl].((components:DubbingViewModel)DataContext).SelectCharacterCommand}"
+                                            CommandParameter="{Binding}"
+                                            Background="Transparent"
+                                            BorderThickness="0"
+                                            Padding="0"
+                                            Margin="0,0,0,6"
+                                            HorizontalAlignment="Stretch">
+                                            <Border
+                                                Background="{DynamicResource AntigravityCanvasBrush}"
+                                                BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                                                BorderThickness="1"
+                                                CornerRadius="8"
+                                                Padding="10,8">
+                                                <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                                                    <!-- Color Indicator Dot -->
+                                                    <Border
+                                                        Grid.Column="0"
+                                                        Width="12"
+                                                        Height="12"
+                                                        CornerRadius="6"
+                                                        Background="{Binding ColorTag}"
+                                                        Margin="0,0,10,0"
+                                                        VerticalAlignment="Center" />
+
+                                                    <!-- Name & Base Voice -->
+                                                    <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="12" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                                            <TextBlock Text="{Binding BaseVoice}" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                                            <TextBlock Text="•" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                                            <TextBlock Text="{Binding SpeechRate}" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                                        </StackPanel>
+                                                    </StackPanel>
+
+                                                    <!-- RVC Clone Badge if enabled -->
+                                                    <Border
+                                                        Grid.Column="2"
+                                                        IsVisible="{Binding EnableRvc}"
+                                                        Background="#1E1B4B"
+                                                        BorderBrush="#6366F1"
+                                                        BorderThickness="1"
+                                                        CornerRadius="10"
+                                                        Padding="6,2"
+                                                        Margin="0,0,8,0"
+                                                        VerticalAlignment="Center">
+                                                        <StackPanel Orientation="Horizontal" Spacing="4">
+                                                            <materialIcons:MaterialIcon Kind="MicrophoneVariant" Width="10" Height="10" Foreground="#818CF8" />
+                                                            <TextBlock Text="RVC" FontSize="10" FontWeight="Bold" Foreground="#A5B4FC" />
+                                                        </StackPanel>
+                                                    </Border>
+
+                                                    <!-- Delete button -->
+                                                    <Button
+                                                        Grid.Column="3"
+                                                        Command="{Binding $parent[UserControl].((components:DubbingViewModel)DataContext).RemoveCharacterCommand}"
+                                                        CommandParameter="{Binding}"
+                                                        Theme="{DynamicResource MaterialFlatButton}"
+                                                        Padding="4"
+                                                        Foreground="#FF5252"
+                                                        ToolTip.Tip="Remove character">
+                                                        <materialIcons:MaterialIcon Kind="Close" Width="14" Height="14" />
+                                                    </Button>
+                                                </Grid>
+                                            </Border>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <!-- Character Studio / Voice Cloning Editor for Selected Character -->
+                            <Border
+                                IsVisible="{Binding SelectedCharacter, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                Background="{DynamicResource AntigravityCanvasBrush}"
+                                BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Padding="12">
+                                <StackPanel Spacing="10">
+                                    <!-- Selected character title banner -->
+                                    <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                                        <materialIcons:MaterialIcon Grid.Column="0" Kind="AccountEdit" Width="16" Height="16" Foreground="{DynamicResource AntigravityAccentBrush}" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" Text="Character Voice &amp; Clone Studio" FontWeight="SemiBold" FontSize="12" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
+                                        <Button
+                                            Grid.Column="2"
+                                            Command="{Binding ApplyCharacterToAllCommand}"
+                                            CommandParameter="{Binding SelectedCharacter}"
+                                            Theme="{DynamicResource MaterialOutlineButton}"
+                                            Padding="6,3"
+                                            Margin="0,0,8,0"
+                                            CornerRadius="4"
+                                            ToolTip.Tip="Sync this character and its cloned voice to all scenes across the entire movie">
+                                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                                <materialIcons:MaterialIcon Kind="Sync" Width="12" Height="12" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                                <TextBlock Text="Apply to All Scenes" FontSize="10" FontWeight="SemiBold" />
+                                            </StackPanel>
+                                        </Button>
+                                        <Border Grid.Column="3" Width="14" Height="14" CornerRadius="7" Background="{Binding SelectedCharacter.ColorTag}" ToolTip.Tip="Character color tag" VerticalAlignment="Center" />
+                                    </Grid>
+
+                                    <!-- Actor / Character Name -->
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="Character Name" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        <TextBox Text="{Binding SelectedCharacter.Name, Mode=TwoWay}" Watermark="e.g. Hero, Villain, Narrator" Height="32" FontSize="12" />
+                                    </StackPanel>
+
+                                    <!-- Base Khmer Voice -->
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="Base Khmer TTS Voice" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        <ComboBox
+                                            ItemsSource="{Binding AvailableVoices}"
+                                            SelectedItem="{Binding SelectedCharacterBaseVoice}"
+                                            HorizontalAlignment="Stretch">
+                                            <ComboBox.ItemTemplate>
+                                                <DataTemplate DataType="dubbing:KhmerTtsVoice">
+                                                    <TextBlock Text="{Binding DisplayName}" FontSize="12" />
+                                                </DataTemplate>
+                                            </ComboBox.ItemTemplate>
+                                        </ComboBox>
+                                    </StackPanel>
+
+                                    <!-- Speech Pace / Speed Rate -->
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="Dialogue Speaking Pace" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        <ComboBox
+                                            ItemsSource="{Binding AvailablePacingOptions}"
+                                            SelectedItem="{Binding SelectedCharacter.SpeechRate, Mode=TwoWay}"
+                                            HorizontalAlignment="Stretch" />
+                                    </StackPanel>
+
+                                    <!-- AI Voice Cloning (RVC) Studio Section -->
+                                    <Border
+                                        Background="{DynamicResource AntigravityPanelBrush}"
+                                        BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="8"
+                                        Padding="10">
+                                        <StackPanel Spacing="8">
+                                            <Grid ColumnDefinitions="*,Auto">
+                                                <StackPanel Grid.Column="0" Spacing="2">
+                                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                                        <materialIcons:MaterialIcon Kind="MicrophoneVariant" Width="14" Height="14" Foreground="{DynamicResource AntigravityAccentBrush}" VerticalAlignment="Center" />
+                                                        <TextBlock Text="AI Voice Clone (RVC)" FontWeight="SemiBold" FontSize="12" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                                    </StackPanel>
+                                                    <TextBlock Text="Convert base speech to custom actor's voice" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                                </StackPanel>
+                                                <ToggleSwitch Grid.Column="1" IsChecked="{Binding SelectedCharacter.EnableRvc, Mode=TwoWay}" />
+                                            </Grid>
+
+                                            <!-- RVC Options when Enabled -->
+                                            <StackPanel Spacing="8" IsVisible="{Binding SelectedCharacter.EnableRvc}">
+                                                <!-- RVC Model Dropdown -->
+                                                <StackPanel Spacing="4">
+                                                    <Grid ColumnDefinitions="*,Auto">
+                                                        <TextBlock Text="Voice Model (.pth)" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                                        <Button
+                                                            Grid.Column="1"
+                                                            Command="{Binding RefreshRvcModelsCommand}"
+                                                            Theme="{DynamicResource MaterialFlatButton}"
+                                                            Padding="2"
+                                                            ToolTip.Tip="Refresh installed voice models">
+                                                            <materialIcons:MaterialIcon Kind="Refresh" Width="12" Height="12" />
+                                                        </Button>
+                                                    </Grid>
+                                                    <ComboBox
+                                                        ItemsSource="{Binding AvailableRvcModels}"
+                                                        SelectedItem="{Binding SelectedCharacterRvcModel}"
+                                                        HorizontalAlignment="Stretch" />
+                                                </StackPanel>
+
+                                                <!-- Pitch Shift Slider -->
+                                                <StackPanel Spacing="2">
+                                                    <Grid ColumnDefinitions="*,Auto">
+                                                        <TextBlock Text="Voice Pitch Shift" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                                        <TextBlock
+                                                            Grid.Column="1"
+                                                            Text="{Binding SelectedCharacter.PitchShift, StringFormat='{}{0:+0;-0;0} semitones'}"
+                                                            FontSize="11"
+                                                            FontWeight="SemiBold"
+                                                            Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                                    </Grid>
+                                                    <Slider
+                                                        Minimum="-12"
+                                                        Maximum="12"
+                                                        Value="{Binding SelectedCharacter.PitchShift, Mode=TwoWay}" />
+                                                </StackPanel>
+
+                                                <!-- Feature Index Indicator -->
+                                                <Border
+                                                    Background="{DynamicResource AntigravityCanvasBrush}"
+                                                    CornerRadius="4"
+                                                    Padding="8,4">
+                                                    <Grid ColumnDefinitions="Auto,*">
+                                                        <materialIcons:MaterialIcon Grid.Column="0" Kind="CheckCircleOutline" Width="12" Height="12" Foreground="#10B981" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                                        <TextBlock
+                                                            Grid.Column="1"
+                                                            Text="Accent &amp; Timbre Index active"
+                                                            FontSize="10"
+                                                            Foreground="{DynamicResource AntigravityMutedBrush}"
+                                                            VerticalAlignment="Center" />
+                                                    </Grid>
+                                                </Border>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Action Sound & Ducking Card -->
+                    <Border
+                        Background="{DynamicResource AntigravityPanelBrush}"
+                        BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="10"
+                        Padding="16">
+                        <StackPanel Spacing="12">
+                            <TextBlock Text="Action Sound &amp; Audio Ducking" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" />
+
+                            <!-- AI Demucs Stem Separation -->
+                            <Grid ColumnDefinitions="*,Auto">
+                                <StackPanel Grid.Column="0" Spacing="2">
+                                    <TextBlock Text="AI Stem Separation (GPU Demucs)" FontSize="12" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                    <TextBlock Text="Keeps 100% of explosions, punches, gunshots &amp; music" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ToggleSwitch Grid.Column="1" IsChecked="{Binding EnableAiStemSeparation}" />
+                            </Grid>
+
+                            <!-- Dynamic Sidechain Ducking -->
+                            <Grid ColumnDefinitions="*,Auto">
+                                <StackPanel Grid.Column="0" Spacing="2">
+                                    <TextBlock Text="Dynamic Sidechain Ducking" FontSize="12" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                    <TextBlock Text="Auto-lowers BGM/SFX only while characters speak" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ToggleSwitch Grid.Column="1" IsChecked="{Binding EnableDynamicDucking}" />
+                            </Grid>
+
+                            <!-- Background Music / Action Volume -->
+                            <StackPanel Spacing="4">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Text="Action Sounds / BGM Volume" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding BgmVolume, StringFormat='{}{0:P0}'}" FontSize="12" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                </Grid>
+                                <Slider Minimum="0.0" Maximum="1.0" Value="{Binding BgmVolume}" />
+                            </StackPanel>
+
+                            <!-- Dubbed Speech Volume -->
+                            <StackPanel Spacing="4">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Text="Dubbed Khmer Vocals Volume" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding VoiceVolume, StringFormat='{}{0:P0}'}" FontSize="12" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                </Grid>
+                                <Slider Minimum="0.0" Maximum="2.0" Value="{Binding VoiceVolume}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+
+        <!-- Right Side: Dub Studio Pro Workspace -->
+            <Border
+                Grid.Column="1"
+                Background="{DynamicResource AntigravityPanelBrush}"
+                BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                BorderThickness="1"
+                CornerRadius="10"
+                Padding="14">
+                <Grid RowDefinitions="Auto,*,Auto,Auto">
+                    <!-- Top Project Management Bar (Like Premiere Pro / DaVinci Resolve) -->
+                    <Border
+                        Grid.Row="0"
+                        Background="#0F172A"
+                        BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="12,6"
+                        Margin="0,0,0,10">
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                            <!-- Project Title & Badge -->
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <materialIcons:MaterialIcon Kind="Filmstrip" Width="18" Height="18" Foreground="{DynamicResource AntigravityAccentBrush}" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding ProjectName}" FontWeight="Bold" FontSize="13" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
+                                <Border
+                                    Background="#1E293B"
+                                    CornerRadius="4"
+                                    Padding="6,2"
+                                    VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding ProjectStatusBadge}" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                </Border>
+                            </StackPanel>
+
+                            <!-- Project Save / Open Actions -->
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
+                                <Button
+                                    Command="{Binding NewProjectCommand}"
+                                    Theme="{DynamicResource MaterialOutlineButton}"
+                                    Padding="8,4"
+                                    CornerRadius="6"
+                                    ToolTip.Tip="Start a new dubbing project">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <materialIcons:MaterialIcon Kind="FilePlusOutline" Width="14" Height="14" />
+                                        <TextBlock Text="New" FontSize="11" FontWeight="SemiBold" />
+                                    </StackPanel>
+                                </Button>
+
+                                <Button
+                                    Command="{Binding OpenProjectCommand}"
+                                    Theme="{DynamicResource MaterialOutlineButton}"
+                                    Padding="8,4"
+                                    CornerRadius="6"
+                                    ToolTip.Tip="Open existing project (.855dub, .json)">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <materialIcons:MaterialIcon Kind="FolderOpenOutline" Width="14" Height="14" />
+                                        <TextBlock Text="Open" FontSize="11" FontWeight="SemiBold" />
+                                    </StackPanel>
+                                </Button>
+
+                                <Button
+                                    Command="{Binding SaveProjectCommand}"
+                                    Classes="accent"
+                                    Theme="{DynamicResource MaterialOutlineButton}"
+                                    Padding="10,4"
+                                    CornerRadius="6"
+                                    ToolTip.Tip="Save current project (.855dub)">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <materialIcons:MaterialIcon Kind="ContentSaveOutline" Width="14" Height="14" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                        <TextBlock Text="Save" FontSize="11" FontWeight="SemiBold" />
+                                    </StackPanel>
+                                </Button>
+
+                                <Button
+                                    Command="{Binding SaveProjectAsCommand}"
+                                    Theme="{DynamicResource MaterialOutlineButton}"
+                                    Padding="8,4"
+                                    CornerRadius="6"
+                                    ToolTip.Tip="Save project with a new name or location">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <materialIcons:MaterialIcon Kind="ContentSaveEditOutline" Width="14" Height="14" />
+                                        <TextBlock Text="Save As" FontSize="11" FontWeight="SemiBold" />
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- Studio Pro Workspace Tabs -->
+                    <TabControl Grid.Row="1" SelectedIndex="{Binding SelectedStudioTab}">
+                        <TabControl.Styles>
+                            <Style Selector="TabItem">
+                                <Setter Property="FontSize" Value="13" />
+                                <Setter Property="FontWeight" Value="SemiBold" />
+                                <Setter Property="Padding" Value="14,8" />
+                            </Style>
+                        </TabControl.Styles>
+
+                        <!-- TAB 1: Script & Translation Table -->
+                        <TabItem>
+                            <TabItem.Header>
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <materialIcons:MaterialIcon Kind="ScriptTextOutline" Width="16" Height="16" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                    <TextBlock Text="Dialogue &amp; Script" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </TabItem.Header>
+
+                            <Grid RowDefinitions="Auto,*" Margin="0,8,0,0">
+                                <!-- Dialogue Header & Action Toolbar -->
+                                <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
+                                    <StackPanel Grid.Column="0" Spacing="2">
+                                        <TextBlock Text="Dialogue &amp; Khmer Translation Script" FontWeight="SemiBold" FontSize="14" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                        <TextBlock Text="Edit timing, speaker assignments, and Khmer translated dialogue" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                                        <Button
+                                            Command="{Binding ScanAudioToTextCommand}"
+                                            IsEnabled="{Binding !IsScanningAudio}"
+                                            Classes="accent"
+                                            Theme="{DynamicResource MaterialOutlineButton}"
+                                            CornerRadius="6"
+                                            Padding="9,5"
+                                            ToolTip.Tip="Scan audio speech with Whisper &amp; AI Demucs stem isolation">
+                                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                                <materialIcons:MaterialIcon Kind="Microphone" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                                <TextBlock Text="Scan Audio" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+
+                                        <Button
+                                            Command="{Binding ExtractSceneThumbnailsCommand}"
+                                            IsEnabled="{Binding !IsExtractingScenes}"
+                                            Theme="{DynamicResource MaterialOutlineButton}"
+                                            CornerRadius="6"
+                                            Padding="9,5"
+                                            ToolTip.Tip="Extract video scene frame snapshots for each dialogue line">
+                                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                                <materialIcons:MaterialIcon Kind="ImageMultipleOutline" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                                <TextBlock Text="Extract Scenes" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+
+                                        <Button
+                                            Command="{Binding AutoTranslateAllCommand}"
+                                            IsEnabled="{Binding !IsTranslating}"
+                                            Theme="{DynamicResource MaterialOutlineButton}"
+                                            CornerRadius="6"
+                                            Padding="9,5"
+                                            ToolTip.Tip="Translate all dialogue lines into Khmer (ភាសាខ្មែរ)">
+                                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                                <materialIcons:MaterialIcon Kind="Translate" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                                <TextBlock Text="Auto Translate" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+
+                                        <Button
+                                            Command="{Binding AutoDetectSpeakersCommand}"
+                                            Theme="{DynamicResource MaterialOutlineButton}"
+                                            CornerRadius="6"
+                                            Padding="9,5"
+                                            ToolTip.Tip="Auto-detect speaker names or assign cast">
+                                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                                <materialIcons:MaterialIcon Kind="AccountSearchOutline" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                                <TextBlock Text="Auto-Assign" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+
+                                        <Button
+                                            Command="{Binding AutoDetectEmotionsCommand}"
+                                            Theme="{DynamicResource MaterialOutlineButton}"
+                                            CornerRadius="6"
+                                            Padding="9,5"
+                                            ToolTip.Tip="Automatically detect crying, laughing, anger, whisper, and emotion cues from dialogue">
+                                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                                <materialIcons:MaterialIcon Kind="EmoticonExcitedOutline" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                                <TextBlock Text="Auto Tone" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+
+                                        <Button
+                                            Command="{Binding AutoDetectGenderCommand}"
+                                            Theme="{DynamicResource MaterialOutlineButton}"
+                                            CornerRadius="6"
+                                            Padding="9,5"
+                                            ToolTip.Tip="Auto-detect male/female voice from audio pitch (F0) &amp; dialogue cues and assign characters">
+                                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                                <materialIcons:MaterialIcon Kind="GenderMaleFemale" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                                <TextBlock Text="Auto Male/Female" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+
+                                        <Button
+                                            Command="{Binding AlternateSpeakersCommand}"
+                                            Theme="{DynamicResource MaterialOutlineButton}"
+                                            CornerRadius="6"
+                                            Padding="9,5"
+                                            ToolTip.Tip="Alternate dialogue turns between Actor A &amp; Actor B">
+                                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                                <materialIcons:MaterialIcon Kind="SwapHorizontal" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                                <TextBlock Text="Alternate A/B" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+
+                                        <Button
+                                            Command="{Binding LoadExampleDialogueCommand}"
+                                            Theme="{DynamicResource MaterialOutlineButton}"
+                                            CornerRadius="6"
+                                            Padding="9,5"
+                                            ToolTip.Tip="Load verified dual-character movie dialogue">
+                                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                                <materialIcons:MaterialIcon Kind="LightbulbOutline" Width="15" Height="15" />
+                                                <TextBlock Text="Load Example" FontSize="12" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+
+                                        <Button
+                                            Command="{Binding ImportSubtitlesCommand}"
+                                            Theme="{DynamicResource MaterialOutlineButton}"
+                                            CornerRadius="6"
+                                            Padding="9,5"
+                                            ToolTip.Tip="Import .srt or .vtt subtitle file">
+                                            <materialIcons:MaterialIcon Kind="FileDocumentOutline" Width="15" Height="15" />
+                                        </Button>
+
+                                        <Button
+                                            Command="{Binding MergeSentencesCommand}"
+                                            Theme="{DynamicResource MaterialOutlineButton}"
+                                            CornerRadius="6"
+                                            Padding="9,5"
+                                            ToolTip.Tip="Merge broken sentence fragments into full complete sentences">
+                                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                                <materialIcons:MaterialIcon Kind="CallMerge" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                                <TextBlock Text="Merge Sentences" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+
+                                        <Button
+                                            Command="{Binding AddSegmentCommand}"
+                                            Theme="{DynamicResource MaterialOutlineButton}"
+                                            CornerRadius="6"
+                                            Padding="9,5">
+                                            <materialIcons:MaterialIcon Kind="Plus" Width="15" Height="15" />
+                                        </Button>
+
+                                        <Button
+                                            Command="{Binding RemoveSegmentCommand}"
+                                            Theme="{DynamicResource MaterialFlatButton}"
+                                            CornerRadius="6"
+                                            Padding="9,5"
+                                            Foreground="#FF5252">
+                                            <materialIcons:MaterialIcon Kind="DeleteOutline" Width="15" Height="15" />
+                                        </Button>
+                                    </StackPanel>
+                                </Grid>
+
+                                <!-- DataGrid / Segments List -->
+                                <DataGrid
+                                    Grid.Row="1"
+                                    ItemsSource="{Binding Segments}"
+                                    SelectedItem="{Binding SelectedSegment}"
+                                    AutoGenerateColumns="False"
+                                    CanUserResizeColumns="True"
+                                    GridLinesVisibility="Horizontal"
+                                    BorderThickness="1"
+                                    BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                                    CornerRadius="8"
+                                    VerticalScrollBarVisibility="Visible"
+                                    HorizontalScrollBarVisibility="Auto">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="#" Binding="{Binding Index}" Width="36" IsReadOnly="True" />
+                                        
+                                        <!-- Video Scene Snapshot Column -->
+                                        <DataGridTemplateColumn Header="Scene" Width="100">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate DataType="dubbing:SubtitleSegment">
+                                                    <Button
+                                                        Command="{Binding $parent[UserControl].((components:DubbingViewModel)DataContext).PlaySceneCommand}"
+                                                        CommandParameter="{Binding}"
+                                                        Background="Transparent"
+                                                        BorderThickness="0"
+                                                        Padding="0"
+                                                        Cursor="Hand"
+                                                        ToolTip.Tip="Click to preview &amp; play this scene clip">
+                                                        <Border
+                                                            Width="84"
+                                                            Height="48"
+                                                            CornerRadius="6"
+                                                            ClipToBounds="True"
+                                                            Background="#0F172A"
+                                                            BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                                                            BorderThickness="1"
+                                                            Margin="3,2"
+                                                            HorizontalAlignment="Center"
+                                                            VerticalAlignment="Center">
+                                                            <Grid>
+                                                                <materialIcons:MaterialIcon
+                                                                    Kind="MovieOutline"
+                                                                    Width="18"
+                                                                    Height="18"
+                                                                    Foreground="{DynamicResource AntigravityMutedBrush}"
+                                                                    HorizontalAlignment="Center"
+                                                                    VerticalAlignment="Center"
+                                                                    IsVisible="{Binding ThumbnailPath, Converter={x:Static StringConverters.IsNullOrEmpty}}" />
+
+                                                                <Image
+                                                                    asyncImageLoader:ImageLoader.Source="{Binding ThumbnailPath}"
+                                                                    Stretch="UniformToFill"
+                                                                    IsVisible="{Binding ThumbnailPath, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+                                                                <Border
+                                                                    Width="20"
+                                                                    Height="20"
+                                                                    CornerRadius="10"
+                                                                    Background="#80000000"
+                                                                    HorizontalAlignment="Center"
+                                                                    VerticalAlignment="Center">
+                                                                    <materialIcons:MaterialIcon
+                                                                        Kind="Play"
+                                                                        Width="11"
+                                                                        Height="11"
+                                                                        Foreground="White"
+                                                                        HorizontalAlignment="Center"
+                                                                        VerticalAlignment="Center" />
+                                                                </Border>
+
+                                                                <Border
+                                                                    Background="#B3000000"
+                                                                    CornerRadius="3"
+                                                                    Padding="3,1"
+                                                                    Margin="2"
+                                                                    HorizontalAlignment="Right"
+                                                                    VerticalAlignment="Bottom">
+                                                                    <TextBlock
+                                                                        Text="{Binding StartTime, StringFormat='{}{0:mm\\:ss}'}"
+                                                                        FontSize="8.5"
+                                                                        FontWeight="Bold"
+                                                                        Foreground="White" />
+                                                                </Border>
+                                                            </Grid>
+                                                        </Border>
+                                                    </Button>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+
+                                        <DataGridTextColumn Header="Start" Binding="{Binding StartTime, StringFormat='{}{0:mm\\:ss\\.ff}'}" Width="70" IsReadOnly="True" />
+                                        <DataGridTextColumn Header="End" Binding="{Binding EndTime, StringFormat='{}{0:mm\\:ss\\.ff}'}" Width="70" IsReadOnly="True" />
+                                        
+                                        <!-- Character / Speaker Tag Column -->
+                                        <DataGridTemplateColumn Header="Speaker / Voice" Width="140">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate DataType="dubbing:SubtitleSegment">
+                                                    <Button
+                                                        Command="{Binding $parent[UserControl].((components:DubbingViewModel)DataContext).CycleNextCharacterCommand}"
+                                                        CommandParameter="{Binding}"
+                                                        Background="Transparent"
+                                                        BorderThickness="0"
+                                                        Padding="3,2"
+                                                        HorizontalAlignment="Stretch"
+                                                        ToolTip.Tip="Click to cycle next character for this line">
+                                                        <Border
+                                                            CornerRadius="12"
+                                                            Padding="7,2"
+                                                            Background="{Binding SpeakerColor}"
+                                                            Opacity="0.9">
+                                                            <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center">
+                                                                <materialIcons:MaterialIcon Kind="Account" Width="12" Height="12" Foreground="White" />
+                                                                <TextBlock
+                                                                    Text="{Binding SpeakerName}"
+                                                                    FontSize="10.5"
+                                                                    FontWeight="SemiBold"
+                                                                    Foreground="White"
+                                                                    TextTrimming="CharacterEllipsis"
+                                                                    VerticalAlignment="Center" />
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </Button>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+
+                                        <!-- Acting Emotion / Tone Column -->
+                                        <DataGridTemplateColumn Header="Acting Tone" Width="125">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate DataType="dubbing:SubtitleSegment">
+                                                    <Button
+                                                        Command="{Binding $parent[UserControl].((components:DubbingViewModel)DataContext).CycleSegmentEmotionCommand}"
+                                                        CommandParameter="{Binding}"
+                                                        Background="Transparent"
+                                                        BorderThickness="0"
+                                                        Padding="2,2"
+                                                        HorizontalAlignment="Stretch"
+                                                        ToolTip.Tip="Click to cycle actor emotion (Normal, Crying, Laughing, Sad, Happy, Angry, Whisper, Fear)">
+                                                        <Border
+                                                            CornerRadius="12"
+                                                            Padding="7,2"
+                                                            Background="{Binding EmotionColor}"
+                                                            Opacity="0.95">
+                                                            <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center">
+                                                                <materialIcons:MaterialIcon Kind="{Binding EmotionIcon}" Width="13" Height="13" Foreground="White" />
+                                                                <TextBlock
+                                                                    Text="{Binding EmotionDisplayName}"
+                                                                    FontSize="10.5"
+                                                                    FontWeight="SemiBold"
+                                                                    Foreground="White"
+                                                                    TextTrimming="CharacterEllipsis"
+                                                                    VerticalAlignment="Center" />
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </Button>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+
+                                        <!-- Audio Sync Status Column -->
+                                        <DataGridTemplateColumn Header="Audio Sync" Width="95">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate DataType="dubbing:SubtitleSegment">
+                                                    <Border
+                                                        CornerRadius="4"
+                                                        Padding="5,2"
+                                                        Margin="4,0"
+                                                        HorizontalAlignment="Center"
+                                                        VerticalAlignment="Center"
+                                                        Background="{Binding SyncStatusColor}"
+                                                        Opacity="0.9">
+                                                        <TextBlock
+                                                            Text="{Binding SyncStatus}"
+                                                            FontSize="9.5"
+                                                            FontWeight="SemiBold"
+                                                            Foreground="White" />
+                                                    </Border>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+
+                                        <DataGridTemplateColumn Header="Original Dialogue" Width="2*">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate DataType="dubbing:SubtitleSegment">
+                                                    <TextBox
+                                                        Text="{Binding OriginalText, Mode=TwoWay}"
+                                                        TextWrapping="Wrap"
+                                                        ToolTip.Tip="{Binding OriginalText}"
+                                                        BorderThickness="0"
+                                                        Background="Transparent"
+                                                        VerticalAlignment="Center"
+                                                        Padding="6,4" />
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+
+                                        <DataGridTemplateColumn Header="Khmer Translation (ភាសាខ្មែរ)" Width="3*">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate DataType="dubbing:SubtitleSegment">
+                                                    <TextBox
+                                                        Text="{Binding KhmerText, Mode=TwoWay}"
+                                                        TextWrapping="Wrap"
+                                                        ToolTip.Tip="{Binding KhmerText}"
+                                                        BorderThickness="0"
+                                                        Background="Transparent"
+                                                        Foreground="{DynamicResource AntigravityTextBrush}"
+                                                        VerticalAlignment="Center"
+                                                        Padding="6,4" />
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </Grid>
+                        </TabItem>
+
+                        <!-- TAB 2: Multi-Track Visual Timeline -->
+                        <TabItem>
+                            <TabItem.Header>
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <materialIcons:MaterialIcon Kind="TimelineClockOutline" Width="16" Height="16" Foreground="#F59E0B" />
+                                    <TextBlock Text="Multi-Track Timeline" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </TabItem.Header>
+
+                            <Grid RowDefinitions="Auto,*" Margin="0,8,0,0">
+                                <!-- Timeline Controls Header -->
+                                <Border
+                                    Grid.Row="0"
+                                    Background="#0F172A"
+                                    BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="8"
+                                    Padding="12,8"
+                                    Margin="0,0,0,10">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+                                        <!-- Left: Track Badges -->
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                            <TextBlock Text="TRACKS:" FontWeight="Bold" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                                            <Border CornerRadius="4" Background="#1E293B" Padding="6,2">
+                                                <TextBlock Text="🎬 Scene Cuts" FontSize="10" Foreground="#38BDF8" FontWeight="SemiBold" />
+                                            </Border>
+                                            <Border CornerRadius="4" Background="#1E293B" Padding="6,2">
+                                                <TextBlock Text="💬 Dialogue" FontSize="10" Foreground="#A78BFA" FontWeight="SemiBold" />
+                                            </Border>
+                                            <Border CornerRadius="4" Background="#1E293B" Padding="6,2">
+                                                <TextBlock Text="🎙️ Dubbed Voice" FontSize="10" Foreground="#34D399" FontWeight="SemiBold" />
+                                            </Border>
+                                            <Border CornerRadius="4" Background="#1E293B" Padding="6,2">
+                                                <TextBlock Text="🎵 BGM Ducking" FontSize="10" Foreground="#F472B6" FontWeight="SemiBold" />
+                                            </Border>
+                                        </StackPanel>
+
+                                        <!-- Center: Selected Scene Timecode Indicator -->
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <materialIcons:MaterialIcon Kind="ClockOutline" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                            <TextBlock
+                                                Text="{Binding SelectedSegment.StartTime, StringFormat='Scene: {0:mm\\:ss\\.ff}'}"
+                                                FontWeight="Bold"
+                                                FontSize="12"
+                                                Foreground="{DynamicResource AntigravityTextBrush}" />
+                                            <TextBlock Text="➔" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                            <TextBlock
+                                                Text="{Binding SelectedSegment.EndTime, StringFormat='{}{0:mm\\:ss\\.ff}'}"
+                                                FontWeight="Bold"
+                                                FontSize="12"
+                                                Foreground="{DynamicResource AntigravityTextBrush}" />
+                                        </StackPanel>
+
+                                        <!-- Right: Zoom Controls -->
+                                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                            <TextBlock Text="Zoom:" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                                            <Button
+                                                Command="{Binding ZoomOutTimelineCommand}"
+                                                Theme="{DynamicResource MaterialOutlineButton}"
+                                                Padding="6,3"
+                                                CornerRadius="4">
+                                                <materialIcons:MaterialIcon Kind="MagnifyMinusOutline" Width="14" Height="14" />
+                                            </Button>
+                                            <TextBlock
+                                                Text="{Binding TimelineZoom, StringFormat='{}{0:P0}'}"
+                                                FontSize="11"
+                                                FontWeight="SemiBold"
+                                                VerticalAlignment="Center"
+                                                Width="40"
+                                                TextAlignment="Center" />
+                                            <Button
+                                                Command="{Binding ZoomInTimelineCommand}"
+                                                Theme="{DynamicResource MaterialOutlineButton}"
+                                                Padding="6,3"
+                                                CornerRadius="4">
+                                                <materialIcons:MaterialIcon Kind="MagnifyPlusOutline" Width="14" Height="14" />
+                                            </Button>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+
+                                <!-- Multi-Track Visual Timeline Scroll Area -->
+                                <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+                                    <Border
+                                        Background="#0A0F1D"
+                                        BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="8"
+                                        Padding="14">
+                                        <StackPanel Spacing="12">
+                                            <!-- Track 1: Scene Snapshots -->
+                                            <Border Background="#111827" CornerRadius="6" Padding="8,6">
+                                                <StackPanel Spacing="4">
+                                                    <TextBlock Text="🎬 SCENE CUTS &amp; VIDEO FRAMES" FontSize="9.5" FontWeight="Bold" Foreground="#38BDF8" LetterSpacing="0.5" />
+                                                    <ItemsControl ItemsSource="{Binding Segments}">
+                                                        <ItemsControl.ItemsPanel>
+                                                            <ItemsPanelTemplate>
+                                                                <StackPanel Orientation="Horizontal" Spacing="6" />
+                                                            </ItemsPanelTemplate>
+                                                        </ItemsControl.ItemsPanel>
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate DataType="dubbing:SubtitleSegment">
+                                                                <Button
+                                                                    Command="{Binding $parent[UserControl].((components:DubbingViewModel)DataContext).PlaySceneCommand}"
+                                                                    CommandParameter="{Binding}"
+                                                                    Background="Transparent"
+                                                                    BorderThickness="0"
+                                                                    Padding="0"
+                                                                    Cursor="Hand">
+                                                                    <Border
+                                                                        Width="80"
+                                                                        Height="46"
+                                                                        CornerRadius="5"
+                                                                        ClipToBounds="True"
+                                                                        Background="#000000"
+                                                                        BorderBrush="{Binding SpeakerColor}"
+                                                                        BorderThickness="1.5">
+                                                                        <Grid>
+                                                                            <Image asyncImageLoader:ImageLoader.Source="{Binding ThumbnailPath}" Stretch="UniformToFill" />
+                                                                            <Border
+                                                                                Background="#CC000000"
+                                                                                CornerRadius="3"
+                                                                                Padding="3,1"
+                                                                                Margin="2"
+                                                                                HorizontalAlignment="Left"
+                                                                                VerticalAlignment="Bottom">
+                                                                                <TextBlock Text="{Binding StartTime, StringFormat='{}{0:mm\\:ss}'}" FontSize="8" FontWeight="Bold" Foreground="White" />
+                                                                            </Border>
+                                                                        </Grid>
+                                                                    </Border>
+                                                                </Button>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                </StackPanel>
+                                            </Border>
+
+                                            <!-- Track 2: Dialogue Segments -->
+                                            <Border Background="#111827" CornerRadius="6" Padding="8,6">
+                                                <StackPanel Spacing="4">
+                                                    <TextBlock Text="💬 DIALOGUE LINES &amp; TIMING WINDOWS" FontSize="9.5" FontWeight="Bold" Foreground="#A78BFA" LetterSpacing="0.5" />
+                                                    <ItemsControl ItemsSource="{Binding Segments}">
+                                                        <ItemsControl.ItemsPanel>
+                                                            <ItemsPanelTemplate>
+                                                                <StackPanel Orientation="Horizontal" Spacing="6" />
+                                                            </ItemsPanelTemplate>
+                                                        </ItemsControl.ItemsPanel>
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate DataType="dubbing:SubtitleSegment">
+                                                                <Border
+                                                                    Width="140"
+                                                                    Height="42"
+                                                                    CornerRadius="5"
+                                                                    Background="{Binding SpeakerColor}"
+                                                                    Opacity="0.9"
+                                                                    Padding="6,4">
+                                                                    <Grid RowDefinitions="Auto,*">
+                                                                        <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+                                                                            <TextBlock Text="{Binding SpeakerName}" FontSize="9.5" FontWeight="Bold" Foreground="White" TextTrimming="CharacterEllipsis" />
+                                                                            <TextBlock Grid.Column="1" Text="{Binding DurationSeconds, StringFormat='{}{0:F1}s'}" FontSize="8.5" Foreground="White" Opacity="0.8" />
+                                                                        </Grid>
+                                                                        <TextBlock Grid.Row="1" Text="{Binding OriginalText}" FontSize="9" Foreground="White" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                                                    </Grid>
+                                                                </Border>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                </StackPanel>
+                                            </Border>
+
+                                            <!-- Track 3: Dubbed Speech -->
+                                            <Border Background="#111827" CornerRadius="6" Padding="8,6">
+                                                <StackPanel Spacing="4">
+                                                    <TextBlock Text="🎙️ DUBBED KHMER SPEECH &amp; RVC CLONE" FontSize="9.5" FontWeight="Bold" Foreground="#34D399" LetterSpacing="0.5" />
+                                                    <ItemsControl ItemsSource="{Binding Segments}">
+                                                        <ItemsControl.ItemsPanel>
+                                                            <ItemsPanelTemplate>
+                                                                <StackPanel Orientation="Horizontal" Spacing="6" />
+                                                            </ItemsPanelTemplate>
+                                                        </ItemsControl.ItemsPanel>
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate DataType="dubbing:SubtitleSegment">
+                                                                <Button
+                                                                    Command="{Binding $parent[UserControl].((components:DubbingViewModel)DataContext).PlayDubbedClipCommand}"
+                                                                    CommandParameter="{Binding}"
+                                                                    Background="Transparent"
+                                                                    BorderThickness="0"
+                                                                    Padding="0"
+                                                                    Cursor="Hand">
+                                                                    <Border
+                                                                        Width="140"
+                                                                        Height="38"
+                                                                        CornerRadius="5"
+                                                                        Background="#1E293B"
+                                                                        BorderBrush="{Binding SyncStatusColor}"
+                                                                        BorderThickness="1.5"
+                                                                        Padding="6,4">
+                                                                        <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+                                                                            <materialIcons:MaterialIcon Kind="VolumeHigh" Width="14" Height="14" Foreground="{Binding SyncStatusColor}" Margin="0,0,4,0" />
+                                                                            <TextBlock Grid.Column="1" Text="{Binding KhmerText}" FontSize="9.5" Foreground="{DynamicResource AntigravityTextBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                                                            <Border Grid.Column="2" Background="{Binding SyncStatusColor}" CornerRadius="3" Padding="3,1">
+                                                                                <TextBlock Text="{Binding SyncStatus}" FontSize="7.5" FontWeight="Bold" Foreground="White" />
+                                                                            </Border>
+                                                                        </Grid>
+                                                                    </Border>
+                                                                </Button>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                </StackPanel>
+                                            </Border>
+
+                                            <!-- Track 4: Dynamic BGM Ducking Curve Visualization -->
+                                            <Border Background="#111827" CornerRadius="6" Padding="8,6">
+                                                <StackPanel Spacing="4">
+                                                    <TextBlock Text="🎵 BGM &amp; ACTION AUDIO (DYNAMIC DUCKING PROFILE)" FontSize="9.5" FontWeight="Bold" Foreground="#F472B6" LetterSpacing="0.5" />
+                                                    <Border Height="26" CornerRadius="4" Background="#1E1B4B" BorderBrush="#4338CA" BorderThickness="1" Padding="4">
+                                                        <Grid ColumnDefinitions="*,Auto,*,Auto,*,Auto,*">
+                                                            <Border Grid.Column="0" Background="#6366F1" Height="18" CornerRadius="2" Opacity="0.8" ToolTip.Tip="Full Action Audio" />
+                                                            <Border Grid.Column="1" Width="80" Background="#EC4899" Height="8" CornerRadius="2" Opacity="0.9" ToolTip.Tip="BGM Ducked -25% during dialogue" />
+                                                            <Border Grid.Column="2" Background="#6366F1" Height="18" CornerRadius="2" Opacity="0.8" />
+                                                            <Border Grid.Column="3" Width="90" Background="#EC4899" Height="8" CornerRadius="2" Opacity="0.9" ToolTip.Tip="BGM Ducked -25% during dialogue" />
+                                                            <Border Grid.Column="4" Background="#6366F1" Height="18" CornerRadius="2" Opacity="0.8" />
+                                                            <Border Grid.Column="5" Width="70" Background="#EC4899" Height="8" CornerRadius="2" Opacity="0.9" ToolTip.Tip="BGM Ducked -25% during dialogue" />
+                                                            <Border Grid.Column="6" Background="#6366F1" Height="18" CornerRadius="2" Opacity="0.8" />
+                                                        </Grid>
+                                                    </Border>
+                                                </StackPanel>
+                                            </Border>
+                                        </StackPanel>
+                                    </Border>
+                                </ScrollViewer>
+                            </Grid>
+                        </TabItem>
+
+                        <!-- TAB 3: Voice Cast Director -->
+                        <TabItem>
+                            <TabItem.Header>
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <materialIcons:MaterialIcon Kind="AccountMultipleOutline" Width="16" Height="16" Foreground="#EC4899" />
+                                    <TextBlock Text="Voice Cast Director" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </TabItem.Header>
+
+                            <Grid RowDefinitions="Auto,*" Margin="0,8,0,0">
+                                <!-- Cast Toolbar -->
+                                <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
+                                    <StackPanel Grid.Column="0" Spacing="2">
+                                        <TextBlock Text="Character Voice Casting &amp; Emotion Directing" FontWeight="SemiBold" FontSize="14" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                        <TextBlock Text="Assign distinct Khmer neural voices, RVC clone models, and emotional tones to each movie character" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                        <Button
+                                            Command="{Binding AlternateSpeakersCommand}"
+                                            Theme="{DynamicResource MaterialOutlineButton}"
+                                            CornerRadius="6"
+                                            Padding="10,6"
+                                            ToolTip.Tip="Alternate dialogue turns between Actor A &amp; Actor B">
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <materialIcons:MaterialIcon Kind="SwapHorizontal" Width="16" Height="16" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                                <TextBlock Text="Alternate A/B" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+
+                                        <Button
+                                            Command="{Binding AutoDetectSpeakersCommand}"
+                                            Theme="{DynamicResource MaterialOutlineButton}"
+                                            CornerRadius="6"
+                                            Padding="10,6"
+                                            ToolTip.Tip="Scan dialogue lines for speaker prefixes">
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <materialIcons:MaterialIcon Kind="AccountSearchOutline" Width="16" Height="16" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                                <TextBlock Text="Auto-Assign Cast" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
+                                </Grid>
+
+                                <!-- Character Profiles Cards -->
+                                <ScrollViewer Grid.Row="1">
+                                    <ItemsControl ItemsSource="{Binding Characters}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <WrapPanel Orientation="Horizontal" />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate DataType="dubbing:MovieCharacter">
+                                                <Border
+                                                    Width="340"
+                                                    Background="#0F172A"
+                                                    BorderBrush="{Binding ColorTag}"
+                                                    BorderThickness="1.5"
+                                                    CornerRadius="10"
+                                                    Padding="14"
+                                                    Margin="0,0,14,14">
+                                                    <StackPanel Spacing="10">
+                                                        <!-- Card Header: Avatar & Name -->
+                                                        <Grid ColumnDefinitions="Auto,*,Auto">
+                                                            <Border Width="32" Height="32" CornerRadius="16" Background="{Binding ColorTag}" Margin="0,0,8,0">
+                                                                <materialIcons:MaterialIcon Kind="Account" Width="18" Height="18" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                            </Border>
+                                                            <TextBox Grid.Column="1" Text="{Binding Name, Mode=TwoWay}" FontWeight="Bold" FontSize="13" VerticalAlignment="Center" />
+                                                            <Button
+                                                                Grid.Column="2"
+                                                                Command="{Binding $parent[UserControl].((components:DubbingViewModel)DataContext).TestCharacterVoiceCommand}"
+                                                                CommandParameter="{Binding}"
+                                                                Classes="accent"
+                                                                Theme="{DynamicResource MaterialOutlineButton}"
+                                                                CornerRadius="6"
+                                                                Padding="8,4"
+                                                                ToolTip.Tip="Audition this character's voice in Khmer">
+                                                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                                                    <materialIcons:MaterialIcon Kind="VolumeHigh" Width="14" Height="14" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                                                    <TextBlock Text="Audition" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                                                </StackPanel>
+                                                            </Button>
+                                                        </Grid>
+
+                                                        <!-- Actor Gender (Male / Female) -->
+                                                        <Grid ColumnDefinitions="*,Auto">
+                                                            <TextBlock Text="Actor Gender" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                                                            <ComboBox
+                                                                Grid.Column="1"
+                                                                ItemsSource="{Binding $parent[UserControl].((components:DubbingViewModel)DataContext).AvailableGenders}"
+                                                                SelectedItem="{Binding Gender, Mode=TwoWay}"
+                                                                Width="100"
+                                                                HorizontalContentAlignment="Center"
+                                                                CornerRadius="6" />
+                                                        </Grid>
+
+                                                        <!-- Base Khmer Neural Voice -->
+                                                        <StackPanel Spacing="3">
+                                                            <TextBlock Text="Base Voice" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                                            <ComboBox
+                                                                ItemsSource="{Binding $parent[UserControl].((components:DubbingViewModel)DataContext).AvailableVoices}"
+                                                                SelectedItem="{Binding BaseVoice}"
+                                                                HorizontalAlignment="Stretch"
+                                                                CornerRadius="6">
+                                                                <ComboBox.ItemTemplate>
+                                                                    <DataTemplate>
+                                                                        <TextBlock Text="{Binding DisplayName}" />
+                                                                    </DataTemplate>
+                                                                </ComboBox.ItemTemplate>
+                                                            </ComboBox>
+                                                        </StackPanel>
+
+                                                        <!-- AI Voice Cloning RVC -->
+                                                        <Grid ColumnDefinitions="*,Auto">
+                                                            <TextBlock Text="Enable Voice Cloning (RVC)" FontSize="11" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
+                                                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding EnableRvc, Mode=TwoWay}" />
+                                                        </Grid>
+
+                                                        <!-- Emotion / Tone Preset -->
+                                                        <StackPanel Spacing="3">
+                                                            <TextBlock Text="Emotion &amp; Acting Tone" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                                            <ComboBox
+                                                                ItemsSource="{Binding $parent[UserControl].((components:DubbingViewModel)DataContext).AvailableEmotionPresets}"
+                                                                SelectedItem="{Binding EmotionPreset, Mode=TwoWay}"
+                                                                HorizontalAlignment="Stretch"
+                                                                CornerRadius="6" />
+                                                        </StackPanel>
+
+                                                        <!-- Pitch Shift Slider -->
+                                                        <StackPanel Spacing="2">
+                                                            <Grid ColumnDefinitions="*,Auto">
+                                                                <TextBlock Text="Pitch Shift" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                                                <TextBlock Grid.Column="1" Text="{Binding PitchShift, StringFormat='{}{0:+0;-0;0} semitones'}" FontSize="11" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                                            </Grid>
+                                                            <Slider Minimum="-12" Maximum="12" Value="{Binding PitchShift, Mode=TwoWay}" />
+                                                        </StackPanel>
+
+                                                        <!-- Speech Rate -->
+                                                        <Grid ColumnDefinitions="*,Auto">
+                                                            <TextBlock Text="Speech Pacing Rate" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                                                            <ComboBox
+                                                                Grid.Column="1"
+                                                                ItemsSource="{Binding $parent[UserControl].((components:DubbingViewModel)DataContext).AvailablePacingOptions}"
+                                                                SelectedItem="{Binding SpeechRate, Mode=TwoWay}"
+                                                                Width="90"
+                                                                CornerRadius="6" />
+                                                        </Grid>
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                            </Grid>
+                        </TabItem>
+
+                        <!-- TAB 4: Batch Dubbing Queue -->
+                        <TabItem>
+                            <TabItem.Header>
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <materialIcons:MaterialIcon Kind="TrayFull" Width="16" Height="16" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                    <TextBlock Text="Batch Dubbing Queue" VerticalAlignment="Center" />
+                                    <Border
+                                        IsVisible="{Binding !!BatchQueue.Count}"
+                                        Background="{DynamicResource AntigravityAccentBrush}"
+                                        CornerRadius="10"
+                                        Padding="6,1"
+                                        Margin="2,0,0,0">
+                                        <TextBlock Text="{Binding BatchQueue.Count}" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentForegroundBrush}" />
+                                    </Border>
+                                </StackPanel>
+                            </TabItem.Header>
+
+                            <Grid RowDefinitions="Auto,*" Margin="0,8,0,0">
+                                <!-- Top Batch Actions Bar -->
+                                <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,12">
+                                    <StackPanel Grid.Column="0" Spacing="2">
+                                        <TextBlock Text="Multi-Video Batch Dubbing Queue" FontWeight="SemiBold" FontSize="14" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                        <TextBlock Text="Dub multiple video files simultaneously with parallel execution" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                    </StackPanel>
+
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                        <!-- Max Concurrency -->
+                                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,0,6,0">
+                                            <TextBlock Text="Parallel Videos:" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                                            <ComboBox
+                                                ItemsSource="{Binding AvailableBatchConcurrencies}"
+                                                SelectedItem="{Binding BatchMaxConcurrency, Mode=TwoWay}"
+                                                Width="60"
+                                                CornerRadius="6" />
+                                        </StackPanel>
+
+                                        <!-- Add Videos Button -->
+                                        <Button
+                                            Command="{Binding AddVideosToBatchCommand}"
+                                            Classes="accent"
+                                            Theme="{DynamicResource MaterialOutlineButton}"
+                                            CornerRadius="6"
+                                            Padding="10,6"
+                                            ToolTip.Tip="Add one or more video files to the batch queue">
+                                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                                <materialIcons:MaterialIcon Kind="VideoPlusOutline" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                                <TextBlock Text="Add Videos" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+
+                                        <!-- Start Batch Button -->
+                                        <Button
+                                            Command="{Binding StartBatchDubbingCommand}"
+                                            IsVisible="{Binding !IsBatchProcessing}"
+                                            Classes="accent"
+                                            Theme="{DynamicResource MaterialOutlineButton}"
+                                            CornerRadius="6"
+                                            Padding="10,6"
+                                            ToolTip.Tip="Start processing all queued videos">
+                                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                                <materialIcons:MaterialIcon Kind="Play" Width="15" Height="15" Foreground="#10B981" />
+                                                <TextBlock Text="Start Batch" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+
+                                        <!-- Stop Batch Button -->
+                                        <Button
+                                            Command="{Binding CancelBatchDubbingCommand}"
+                                            IsVisible="{Binding IsBatchProcessing}"
+                                            Theme="{DynamicResource MaterialFlatButton}"
+                                            Foreground="#EF4444"
+                                            CornerRadius="6"
+                                            Padding="10,6"
+                                            ToolTip.Tip="Cancel active batch dubbing">
+                                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                                <materialIcons:MaterialIcon Kind="Stop" Width="15" Height="15" Foreground="#EF4444" />
+                                                <TextBlock Text="Stop Batch" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+
+                                        <!-- Clear Completed -->
+                                        <Button
+                                            Command="{Binding ClearCompletedBatchCommand}"
+                                            Theme="{DynamicResource MaterialFlatButton}"
+                                            CornerRadius="6"
+                                            Padding="8,6"
+                                            ToolTip.Tip="Clear finished jobs from queue">
+                                            <materialIcons:MaterialIcon Kind="CheckAll" Width="15" Height="15" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        </Button>
+                                    </StackPanel>
+                                </Grid>
+
+                                <!-- Batch Queue Table -->
+                                <DataGrid
+                                    Grid.Row="1"
+                                    ItemsSource="{Binding BatchQueue}"
+                                    SelectedItem="{Binding SelectedBatchJob}"
+                                    AutoGenerateColumns="False"
+                                    CanUserResizeColumns="True"
+                                    GridLinesVisibility="Horizontal"
+                                    BorderThickness="1"
+                                    BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                                    CornerRadius="8"
+                                    VerticalScrollBarVisibility="Visible"
+                                    HorizontalScrollBarVisibility="Auto">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Video File" Binding="{Binding FileName}" Width="2*" IsReadOnly="True" />
+                                        
+                                        <DataGridTemplateColumn Header="Stem Separation" Width="120">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate DataType="dubbing:DubbingJob">
+                                                    <CheckBox IsChecked="{Binding EnableAiStemSeparation, Mode=TwoWay}" HorizontalAlignment="Center" Content="Demucs" FontSize="11" />
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+
+                                        <DataGridTemplateColumn Header="Status" Width="150">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate DataType="dubbing:DubbingJob">
+                                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="6,0">
+                                                        <Border Width="8" Height="8" CornerRadius="4" Background="{Binding StatusColor}" VerticalAlignment="Center" />
+                                                        <TextBlock Text="{Binding Status}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+
+                                        <DataGridTemplateColumn Header="Progress" Width="2*">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate DataType="dubbing:DubbingJob">
+                                                    <Grid ColumnDefinitions="*,Auto" Margin="6,0" VerticalAlignment="Center">
+                                                        <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
+                                                            <ProgressBar Value="{Binding Progress}" Maximum="100" Height="5" CornerRadius="2" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                                            <TextBlock Text="{Binding StatusMessage}" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" TextTrimming="CharacterEllipsis" />
+                                                        </StackPanel>
+                                                        <TextBlock Grid.Column="1" Text="{Binding Progress, StringFormat='{}{0:0}%'}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityAccentBrush}" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+
+                                        <DataGridTemplateColumn Header="Actions" Width="140">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate DataType="dubbing:DubbingJob">
+                                                    <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center">
+                                                        <Button
+                                                            Command="{Binding $parent[UserControl].((components:DubbingViewModel)DataContext).LoadBatchJobToStudioCommand}"
+                                                            CommandParameter="{Binding}"
+                                                            Theme="{DynamicResource MaterialFlatButton}"
+                                                            Padding="4"
+                                                            ToolTip.Tip="Load into Studio Editor to inspect dialogue">
+                                                            <materialIcons:MaterialIcon Kind="OpenInApp" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                                        </Button>
+                                                        <Button
+                                                            Command="{Binding $parent[UserControl].((components:DubbingViewModel)DataContext).OpenBatchJobFolderCommand}"
+                                                            CommandParameter="{Binding}"
+                                                            Theme="{DynamicResource MaterialFlatButton}"
+                                                            Padding="4"
+                                                            ToolTip.Tip="Open output folder">
+                                                            <materialIcons:MaterialIcon Kind="FolderOpenOutline" Width="15" Height="15" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                                        </Button>
+                                                        <Button
+                                                            Command="{Binding $parent[UserControl].((components:DubbingViewModel)DataContext).RemoveFromBatchCommand}"
+                                                            CommandParameter="{Binding}"
+                                                            Theme="{DynamicResource MaterialFlatButton}"
+                                                            Padding="4"
+                                                            Foreground="#EF4444"
+                                                            ToolTip.Tip="Remove from queue">
+                                                            <materialIcons:MaterialIcon Kind="DeleteOutline" Width="15" Height="15" />
+                                                        </Button>
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </Grid>
+                        </TabItem>
+                    </TabControl>
+
+                    <!-- Quick Line Editor Bar for Selected Row (With Timing Nudge & Sync Meter) -->
+                    <Border
+                        Grid.Row="2"
+                        IsVisible="{Binding SelectedSegment, Converter={x:Static ObjectConverters.IsNotNull}}"
+                        Background="{DynamicResource AntigravityCanvasBrush}"
+                        BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="14,10"
+                        Margin="0,8,0,0">
+                        <Grid ColumnDefinitions="Auto,*" Margin="0">
+                            <!-- Large Scene Snapshot Preview & Play Controls -->
+                            <StackPanel Grid.Column="0" Spacing="6" Margin="0,0,14,0" VerticalAlignment="Center">
+                                <Button
+                                    Command="{Binding PlaySceneCommand}"
+                                    CommandParameter="{Binding SelectedSegment}"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    Padding="0"
+                                    Cursor="Hand"
+                                    ToolTip.Tip="Click to play this scene video clip">
+                                    <Border
+                                        Width="140"
+                                        Height="82"
+                                        CornerRadius="6"
+                                        ClipToBounds="True"
+                                        Background="#0F172A"
+                                        BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                                        BorderThickness="1">
+                                        <Grid>
+                                            <materialIcons:MaterialIcon
+                                                Kind="MoviePlayOutline"
+                                                Width="28"
+                                                Height="28"
+                                                Foreground="{DynamicResource AntigravityMutedBrush}"
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center"
+                                                IsVisible="{Binding SelectedSegment.ThumbnailPath, Converter={x:Static StringConverters.IsNullOrEmpty}}" />
+                                            <Image
+                                                asyncImageLoader:ImageLoader.Source="{Binding SelectedSegment.ThumbnailPath}"
+                                                Stretch="UniformToFill"
+                                                IsVisible="{Binding SelectedSegment.ThumbnailPath, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                            <Border
+                                                Width="32"
+                                                Height="32"
+                                                CornerRadius="16"
+                                                Background="#99000000"
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center">
+                                                <materialIcons:MaterialIcon
+                                                    Kind="Play"
+                                                    Width="18"
+                                                    Height="18"
+                                                    Foreground="White"
+                                                    HorizontalAlignment="Center"
+                                                    VerticalAlignment="Center" />
+                                            </Border>
+                                            <Border
+                                                Background="#B3000000"
+                                                CornerRadius="3"
+                                                Padding="4,2"
+                                                Margin="4"
+                                                HorizontalAlignment="Right"
+                                                VerticalAlignment="Bottom">
+                                                <TextBlock
+                                                    Text="{Binding SelectedSegment.StartTime, StringFormat='{}{0:mm\\:ss\\.f}'}"
+                                                    FontSize="10"
+                                                    FontWeight="Bold"
+                                                    Foreground="White" />
+                                            </Border>
+                                        </Grid>
+                                    </Border>
+                                </Button>
+
+                                <!-- Scene Play & Khmer Speech Action Buttons -->
+                                <Grid ColumnDefinitions="*,*" ColumnSpacing="6">
+                                    <Button
+                                        Grid.Column="0"
+                                        Command="{Binding PlaySceneCommand}"
+                                        CommandParameter="{Binding SelectedSegment}"
+                                        Theme="{DynamicResource MaterialOutlineButton}"
+                                        Padding="6,3"
+                                        CornerRadius="4"
+                                        ToolTip.Tip="Play original video segment in media player">
+                                        <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center">
+                                            <materialIcons:MaterialIcon Kind="PlayCircleOutline" Width="13" Height="13" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                            <TextBlock Text="Play Scene" FontSize="10" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </Button>
+
+                                    <Button
+                                        Grid.Column="1"
+                                        Command="{Binding PlayDubbedClipCommand}"
+                                        CommandParameter="{Binding SelectedSegment}"
+                                        Theme="{DynamicResource MaterialOutlineButton}"
+                                        Padding="6,3"
+                                        CornerRadius="4"
+                                        ToolTip.Tip="Play synthesized Khmer dubbed speech">
+                                        <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center">
+                                            <materialIcons:MaterialIcon Kind="VolumeHigh" Width="13" Height="13" Foreground="#10B981" />
+                                            <TextBlock Text="Khmer Voice" FontSize="10" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </Button>
+                                </Grid>
+                            </StackPanel>
+
+                            <!-- Character assignment, Timing Nudges & TextBoxes -->
+                            <Grid Grid.Column="1" RowDefinitions="Auto,Auto,Auto">
+                                <!-- Top Row: Character Selector & Timing Nudge Buttons -->
+                                <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,6">
+                                    <!-- Assign Character Chips -->
+                                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                        <TextBlock Text="Cast:" FontWeight="SemiBold" VerticalAlignment="Center" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        <ItemsControl ItemsSource="{Binding Characters}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <StackPanel Orientation="Horizontal" Spacing="5" />
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate DataType="dubbing:MovieCharacter">
+                                                    <Button
+                                                        Command="{Binding $parent[UserControl].((components:DubbingViewModel)DataContext).AssignCharacterToSelectedCommand}"
+                                                        CommandParameter="{Binding}"
+                                                        Background="{Binding ColorTag}"
+                                                        BorderThickness="0"
+                                                        CornerRadius="10"
+                                                        Padding="7,2"
+                                                        ToolTip.Tip="{Binding Name}">
+                                                        <TextBlock Text="{Binding Name}" FontSize="10" FontWeight="Medium" Foreground="White" />
+                                                    </Button>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+
+                                    <!-- Timing Fine-Tune Nudge Controls -->
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                        <TextBlock Text="Nudge Start:" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                                        <Button Command="{Binding NudgeStartTimeCommand}" CommandParameter="-0.1" Theme="{DynamicResource MaterialOutlineButton}" Padding="4,1" CornerRadius="3">
+                                            <TextBlock Text="-0.1s" FontSize="9.5" />
+                                        </Button>
+                                        <Button Command="{Binding NudgeStartTimeCommand}" CommandParameter="0.1" Theme="{DynamicResource MaterialOutlineButton}" Padding="4,1" CornerRadius="3">
+                                            <TextBlock Text="+0.1s" FontSize="9.5" />
+                                        </Button>
+                                        <TextBlock Text="End:" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" Margin="6,0,0,0" />
+                                        <Button Command="{Binding NudgeEndTimeCommand}" CommandParameter="-0.1" Theme="{DynamicResource MaterialOutlineButton}" Padding="4,1" CornerRadius="3">
+                                            <TextBlock Text="-0.1s" FontSize="9.5" />
+                                        </Button>
+                                        <Button Command="{Binding NudgeEndTimeCommand}" CommandParameter="0.1" Theme="{DynamicResource MaterialOutlineButton}" Padding="4,1" CornerRadius="3">
+                                            <TextBlock Text="+0.1s" FontSize="9.5" />
+                                        </Button>
+                                    </StackPanel>
+                                </Grid>
+
+                                <!-- Middle Row: Edit TextBoxes -->
+                                <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto,*,Auto" VerticalAlignment="Center">
+                                    <TextBlock Grid.Column="0" Text="Line:" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                    <TextBox Grid.Column="1" Text="{Binding SelectedSegment.OriginalText, Mode=TwoWay}" TextWrapping="Wrap" MaxHeight="60" Watermark="Original text" Margin="0,0,8,0" />
+                                    <Button
+                                        Grid.Column="2"
+                                        Command="{Binding TranslateSelectedLineCommand}"
+                                        Theme="{DynamicResource MaterialFlatButton}"
+                                        Padding="4,3"
+                                        Margin="0,0,8,0"
+                                        ToolTip.Tip="Translate this line into Khmer">
+                                        <materialIcons:MaterialIcon Kind="Translate" Width="14" Height="14" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                    </Button>
+                                    <TextBox Grid.Column="3" Text="{Binding SelectedSegment.KhmerText, Mode=TwoWay}" TextWrapping="Wrap" MaxHeight="60" Watermark="Khmer translation (ភាសាខ្មែរ)" />
+                                    <Button
+                                        Grid.Column="4"
+                                        Command="{Binding MergeWithNextSegmentCommand}"
+                                        Theme="{DynamicResource MaterialFlatButton}"
+                                        Padding="4,3"
+                                        Margin="6,0,0,0"
+                                        ToolTip.Tip="Merge with next line into a single complete sentence">
+                                        <materialIcons:MaterialIcon Kind="ArrowCollapseDown" Width="14" Height="14" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                    </Button>
+                                </Grid>
+
+                                <!-- Bottom Row: Audio Sync Status Pill -->
+                                <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8" Margin="0,6,0,0">
+                                    <TextBlock Text="Audio Sync Status:" FontSize="10.5" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                                    <Border
+                                        CornerRadius="4"
+                                        Background="{Binding SelectedSegment.SyncStatusColor}"
+                                        Padding="6,2">
+                                        <TextBlock
+                                            Text="{Binding SelectedSegment.SyncStatus}"
+                                            FontSize="10"
+                                            FontWeight="Bold"
+                                            Foreground="White" />
+                                    </Border>
+                                    <TextBlock
+                                        Text="{Binding SelectedSegment.DurationSeconds, StringFormat='Scene Window: {0:F1}s'}"
+                                        FontSize="10"
+                                        Foreground="{DynamicResource AntigravityMutedBrush}"
+                                        VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Grid>
+                        </Grid>
+                    </Border>
+
+                    <!-- Detailed Process Log Summary -->
+                    <Expander
+                        Grid.Row="3"
+                        Header="Process Log"
+                        Margin="0,8,0,0"
+                        IsExpanded="False">
+                        <TextBox
+                            Text="{Binding DetailedLog}"
+                            IsReadOnly="True"
+                            Height="100"
+                            TextWrapping="Wrap"
+                            FontFamily="Consolas, monospace"
+                            FontSize="11" />
+                    </Expander>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!--  Bottom Progress Status Bar  -->
+        <Border
+            Grid.Row="3"
+            Padding="20,10"
+            Background="{DynamicResource AntigravityPanelBrush}"
+            BorderBrush="{DynamicResource AntigravityBorderBrush}"
+            BorderThickness="0,1,0,0">
+            <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+                <StackPanel Grid.Column="0" Spacing="4" VerticalAlignment="Center">
+                    <TextBlock
+                        Text="{Binding StatusMessage}"
+                        Foreground="{DynamicResource AntigravityTextBrush}"
+                        FontSize="13"
+                        FontWeight="Medium" />
+                    <ProgressBar
+                        Value="{Binding Progress}"
+                        Maximum="100"
+                        Height="6"
+                        CornerRadius="3"
+                        Foreground="{DynamicResource AntigravityAccentBrush}"
+                        IsIndeterminate="{Binding IsProcessing, Converter={x:Static ObjectConverters.IsNull}}" />
+                </StackPanel>
+
+                <TextBlock
+                    Grid.Column="1"
+                    Text="{Binding Progress, StringFormat='{}{0:0}%'}"
+                    FontWeight="SemiBold"
+                    FontSize="14"
+                    Margin="16,0,0,0"
+                    VerticalAlignment="Center"
+                    Foreground="{DynamicResource AntigravityAccentBrush}" />
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

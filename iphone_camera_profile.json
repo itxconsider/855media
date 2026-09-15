@@ -1,0 +1,92 @@
+{
+  "preset_metadata": {
+    "name": "Apple iPhone Pro Camera Master Profile",
+    "version": "1.0",
+    "target_devices": [
+      "iPhone 14 Pro / Pro Max",
+      "iPhone 15 Pro / Pro Max",
+      "iPhone 16 Pro / Pro Max"
+    ],
+    "author": "855Media",
+    "category": "Mobile Cinema & Photography Capture"
+  },
+  "photo_capture_settings": {
+    "format": "Apple ProRAW",
+    "resolution_megapixels": 48,
+    "color_space": "Display P3",
+    "bit_depth": 12,
+    "photographic_style": {
+      "active_style": "Standard",
+      "available_styles": [
+        {
+          "name": "Standard",
+          "tone": 0,
+          "warmth": 0,
+          "description": "True-to-life balanced computational photography"
+        },
+        {
+          "name": "Rich Contrast",
+          "tone": -50,
+          "warmth": 0,
+          "description": "Darker shadows and rich midtones"
+        },
+        {
+          "name": "Vibrant",
+          "tone": 15,
+          "warmth": 0,
+          "description": "Brilliant and vivid colors"
+        },
+        {
+          "name": "Warm",
+          "tone": 0,
+          "warmth": 35,
+          "description": "Golden summer undertones"
+        },
+        {
+          "name": "Cool",
+          "tone": 0,
+          "warmth": -35,
+          "description": "Crisp blue undertones"
+        }
+      ]
+    },
+    "lens_configuration": {
+      "ultra_wide": { "focal_length_equiv_mm": 13, "aperture": "f/2.2", "sensor_size": "1/2.55\"" },
+      "main_wide": { "focal_length_equiv_mm": 24, "aperture": "f/1.78", "sensor_size": "1/1.28\"" },
+      "telephoto_2x": { "focal_length_equiv_mm": 48, "aperture": "f/1.78", "crop_mode": "Quad-Bayer sensor crop" },
+      "telephoto_5x": { "focal_length_equiv_mm": 120, "aperture": "f/2.8", "sensor_size": "1/3.06\"" }
+    },
+    "computational_features": {
+      "smart_hdr": "Smart HDR 5",
+      "deep_fusion": true,
+      "photonic_engine": true,
+      "night_mode": "Auto",
+      "macro_control": "Auto"
+    }
+  },
+  "video_capture_settings": {
+    "resolution": "3840x2160 (4K UHD)",
+    "frame_rates": [24, 30, 60],
+    "codec": "Apple ProRes 422 HQ / HEVC (H.265)",
+    "color_profile": "Apple Log (ProRes Log)",
+    "transfer_characteristics": "ITU-R BT.2020 / Display P3",
+    "bitrate_mbps": {
+      "hevc_4k60": 55,
+      "prores_4k24": 440,
+      "prores_4k30": 550,
+      "prores_4k60": 1100
+    },
+    "shutter_rule": "180 degree shutter angle (1/48s at 24fps, 1/120s at 60fps)",
+    "cinematic_mode": {
+      "enabled": true,
+      "simulated_aperture": "f/2.8",
+      "subject_tracking_af": true
+    },
+    "audio": {
+      "channels": "Stereo / Spatial Audio",
+      "sample_rate_hz": 48000,
+      "codec": "AAC-LC 256kbps / Uncompressed 24-bit LPCM",
+      "wind_noise_reduction": true
+    }
+  }
+}

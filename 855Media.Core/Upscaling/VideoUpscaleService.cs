@@ -59,13 +59,57 @@ public partial class VideoUpscaleService
                 "realesrgan-ncnn-vulkan.exe"
             ),
             Path.Combine(Directory.GetCurrentDirectory(), "realesrgan-ncnn-vulkan.exe"),
-            @"D:\repos\855Media\tools\realesrgan\realesrgan-ncnn-vulkan.exe",
         };
 
         return probePaths.FirstOrDefault(File.Exists);
     }
 
     public string? AiEngineExecutablePath { get; set; }
+    public string? ScratchDirectory { get; set; }
+
+    public static bool IsFaceRestorationAvailable =>
+        !string.IsNullOrWhiteSpace(TryGetFaceRestorationExecutablePath());
+
+    public static string? TryGetFaceRestorationExecutablePath()
+    {
+        var probePaths = new[]
+        {
+            Path.Combine(
+                AppContext.BaseDirectory,
+                "tools",
+                "codeformer",
+                "codeformer-ncnn-vulkan.exe"
+            ),
+            Path.Combine(AppContext.BaseDirectory, "tools", "gfpgan", "gfpgan-ncnn-vulkan.exe"),
+            Path.Combine(AppContext.BaseDirectory, "codeformer-ncnn-vulkan.exe"),
+            Path.Combine(AppContext.BaseDirectory, "gfpgan-ncnn-vulkan.exe"),
+            Path.Combine(
+                Directory.GetCurrentDirectory(),
+                "tools",
+                "codeformer",
+                "codeformer-ncnn-vulkan.exe"
+            ),
+            Path.Combine(
+                Directory.GetCurrentDirectory(),
+                "tools",
+                "gfpgan",
+                "gfpgan-ncnn-vulkan.exe"
+            ),
+            Path.Combine(Directory.GetCurrentDirectory(), "codeformer-ncnn-vulkan.exe"),
+            Path.Combine(Directory.GetCurrentDirectory(), "gfpgan-ncnn-vulkan.exe"),
+            Path.Combine(
+                AppContext.BaseDirectory,
+                "tools",
+                "realesrgan",
+                "codeformer-ncnn-vulkan.exe"
+            ),
+            Path.Combine(AppContext.BaseDirectory, "tools", "realesrgan", "gfpgan-ncnn-vulkan.exe"),
+        };
+
+        return probePaths.FirstOrDefault(File.Exists);
+    }
+
+    public string? FaceRestorationExecutablePath { get; set; }
 
     public async Task ProbeVideoAsync(UpscaleJob job, CancellationToken cancellationToken = default)
     {
@@ -104,8 +148,14 @@ public partial class VideoUpscaleService
             var resMatch = FfmpegResolutionRegex.Match(output);
             if (resMatch.Success)
             {
-                job.InputResolution =
-                    $"{resMatch.Groups["width"].Value}x{resMatch.Groups["height"].Value}";
+                var widthStr = resMatch.Groups["width"].Value;
+                var heightStr = resMatch.Groups["height"].Value;
+                job.InputResolution = $"{widthStr}x{heightStr}";
+                if (int.TryParse(widthStr, out var w) && int.TryParse(heightStr, out var h))
+                {
+                    job.InputWidth = w;
+                    job.InputHeight = h;
+                }
             }
 
             // Extract FPS and Duration to compute TotalFrames
@@ -123,6 +173,8 @@ public partial class VideoUpscaleService
             {
                 fps = parsedFps;
             }
+
+            job.VideoFps = fps;
 
             var durationMatch = FfmpegDurationRegex.Match(output);
             if (
@@ -160,7 +212,13 @@ public partial class VideoUpscaleService
         if (!File.Exists(job.FilePath))
             throw new FileNotFoundException($"Input video file does not exist: {job.FilePath}");
 
-        var tempDir = Path.Combine(Path.GetTempPath(), "855Media_Upscale", job.Id.ToString("N"));
+        var scratchBase = !string.IsNullOrWhiteSpace(job.ScratchDirectory)
+            ? job.ScratchDirectory
+            : (
+                !string.IsNullOrWhiteSpace(ScratchDirectory) ? ScratchDirectory : Path.GetTempPath()
+            );
+
+        var tempDir = Path.Combine(scratchBase, "855Media_Upscale", job.Id.ToString("N"));
         Directory.CreateDirectory(tempDir);
 
         job.StartTime = DateTimeOffset.Now;
@@ -196,7 +254,23 @@ public partial class VideoUpscaleService
                     ? AiEngineExecutablePath
                     : TryGetAiEngineExecutablePath();
 
-            if (!string.IsNullOrWhiteSpace(aiEnginePath) && File.Exists(aiEnginePath))
+            if (
+                job.ModelType == UpscaleModelType.FastNative
+                || job.TargetResolution == UpscaleTargetResolution.Original1x
+            )
+            {
+                Log(
+                    "[Pipeline] Fast Native Pipeline selected. Bypassing AI frame extraction for direct GPU filtering & re-framing."
+                );
+                await RunNativeScalerPipelineAsync(
+                    job,
+                    ffmpegPath,
+                    tempDir,
+                    Log,
+                    cancellationToken
+                );
+            }
+            else if (!string.IsNullOrWhiteSpace(aiEnginePath) && File.Exists(aiEnginePath))
             {
                 await RunAiFramePipelineAsync(
                     job,
@@ -223,6 +297,104 @@ public partial class VideoUpscaleService
             job.Status = UpscaleJobStatus.Complete;
             job.ElapsedTime = DateTimeOffset.Now - (job.StartTime ?? DateTimeOffset.Now);
             Log($"Upscale successfully finished. Output: {job.OutputFilePath}");
+
+            // Automatically save caption text file alongside the upscaled output if available
+            try
+            {
+                var captionToSave = job.Caption;
+                if (string.IsNullOrWhiteSpace(captionToSave))
+                {
+                    var sourceTxt = Path.ChangeExtension(job.FilePath, ".txt");
+                    if (File.Exists(sourceTxt))
+                    {
+                        captionToSave = await File.ReadAllTextAsync(
+                            sourceTxt,
+                            Encoding.UTF8,
+                            cancellationToken
+                        );
+                    }
+                }
+
+                if (!string.IsNullOrWhiteSpace(captionToSave))
+                {
+                    captionToSave = captionToSave.Trim();
+                    if (job.PartNumber.HasValue)
+                    {
+                        var prefix = $"Part {job.PartNumber.Value} -";
+                        if (!captionToSave.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                        {
+                            captionToSave = $"{prefix} {captionToSave}";
+                        }
+                    }
+                }
+
+                if (
+                    !string.IsNullOrWhiteSpace(captionToSave)
+                    && !string.IsNullOrWhiteSpace(job.OutputFilePath)
+                )
+                {
+                    var outTxtPath = Path.ChangeExtension(job.OutputFilePath, ".txt");
+                    await File.WriteAllTextAsync(
+                        outTxtPath,
+                        captionToSave.Trim(),
+                        new UTF8Encoding(false),
+                        cancellationToken
+                    );
+                    Log($"Caption saved to: {outTxtPath}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"Notice: Could not write caption text file: {ex.Message}");
+            }
+
+            // Clean up split part original video and intermediate caption after upscale process completes
+            if (job.DeleteSourceAfterUpscale || job.PartNumber.HasValue)
+            {
+                try
+                {
+                    if (
+                        File.Exists(job.OutputFilePath)
+                        && new FileInfo(job.OutputFilePath).Length > 0
+                    )
+                    {
+                        var fullSourceVideo = Path.GetFullPath(job.FilePath);
+                        var fullOutputVideo = Path.GetFullPath(job.OutputFilePath);
+
+                        if (
+                            File.Exists(fullSourceVideo)
+                            && !string.Equals(
+                                fullSourceVideo,
+                                fullOutputVideo,
+                                StringComparison.OrdinalIgnoreCase
+                            )
+                        )
+                        {
+                            File.Delete(fullSourceVideo);
+                            Log($"Deleted split part video original: {job.FilePath}");
+                        }
+
+                        var sourceTxt = Path.ChangeExtension(fullSourceVideo, ".txt");
+                        var outTxtPath = Path.ChangeExtension(fullOutputVideo, ".txt");
+                        if (
+                            File.Exists(sourceTxt)
+                            && !string.Equals(
+                                sourceTxt,
+                                outTxtPath,
+                                StringComparison.OrdinalIgnoreCase
+                            )
+                        )
+                        {
+                            File.Delete(sourceTxt);
+                            Log($"Deleted split part caption file: {sourceTxt}");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log($"Warning: Could not delete split part original file: {ex.Message}");
+                }
+            }
         }
         catch (OperationCanceledException)
         {
@@ -288,7 +460,42 @@ public partial class VideoUpscaleService
             job.HardwareAcceleration,
             ffmpegPath
         );
-        var scaleFilter = GetScaleFilter(job.TargetResolution, isGpu);
+        if (
+            job.TrackingMode != SmartTrackingMode.StaticCenter
+            || (job.EnableMicroZoom && job.ZoomMode != SmartZoomMode.CenterCrop)
+        )
+        {
+            log(
+                $"[Smart Action Tracking] Analyzing video action points (Mode: {job.TrackingMode}, ZoomMode: {job.ZoomMode})..."
+            );
+            try
+            {
+                var analysis = await SmartActionAnalyzer.AnalyzeVideoAsync(
+                    job.FilePath,
+                    job.TrackingMode,
+                    ffmpegPath,
+                    cancellationToken: cancellationToken
+                );
+                job.ActionCentroidX = analysis.OverallCentroidX;
+                job.ActionCentroidY = analysis.OverallCentroidY;
+                log(
+                    $"[Smart Action Tracking] Detected action centroid: X={job.ActionCentroidX:0.00}, Y={job.ActionCentroidY:0.00} (Scene cuts: {analysis.DetectedSceneCuts})"
+                );
+            }
+            catch (Exception ex)
+            {
+                log($"[Smart Action Tracking] Warning: Action analysis fallback: {ex.Message}");
+            }
+        }
+
+        var arFilter = AspectRatioFilterBuilder.BuildFilter(
+            job.TargetAspectRatio,
+            job.TargetResolution,
+            job.TrackingMode,
+            job.ActionCentroidX,
+            job.ActionCentroidY
+        );
+        var scaleFilter = arFilter ?? GetScaleFilter(job.TargetResolution, isGpu);
         var colorFilter = job.ColorGrading?.BuildFilterString();
 
         var filterParts = new List<string>();
@@ -302,7 +509,38 @@ public partial class VideoUpscaleService
             filterParts.Add("hqdn3d=4:3:6:4.5");
             log("[Pre-Processing] Enabled Denoise / Deblock (hqdn3d=4:3:6:4.5)");
         }
-        filterParts.Add(scaleFilter);
+        if (job.EnableMicroZoom && job.MicroZoomPercent > 0)
+        {
+            var zoomFilter = AspectRatioFilterBuilder.BuildMicroZoomFilter(
+                job.MicroZoomPercent,
+                job.ZoomMode,
+                job.ActionCentroidX,
+                job.ActionCentroidY
+            );
+            if (!string.IsNullOrWhiteSpace(zoomFilter))
+            {
+                filterParts.Add(zoomFilter);
+                log(
+                    $"[Micro-Zoom] Applied {job.MicroZoomPercent:0.#}% micro-zoom ({job.ZoomMode}): {zoomFilter}"
+                );
+            }
+        }
+        if (!string.IsNullOrWhiteSpace(scaleFilter))
+        {
+            filterParts.Add(scaleFilter);
+        }
+        if (arFilter != null)
+        {
+            log($"[Aspect Ratio Re-Framing] Applied mode {job.TargetAspectRatio}: {arFilter}");
+        }
+        if (job.EnableFacialClarity)
+        {
+            filterParts.Add("unsharp=lx=5:ly=5:la=0.75:cx=3:cy=3:ca=0.3");
+            filterParts.Add("noise=c1s=5:c0f=u");
+            log(
+                "[Face Enhancement] Applied Facial Clarity & Edge Restoration (unsharp=lx=5:ly=5:la=0.75:cx=3:cy=3:ca=0.3,noise=c1s=5:c0f=u)"
+            );
+        }
         if (!string.IsNullOrWhiteSpace(colorFilter))
         {
             filterParts.Add(colorFilter);
@@ -420,6 +658,41 @@ public partial class VideoUpscaleService
         }
         else
         {
+            // Pre-flight check: ensure sufficient free disk space on temporary drive
+            try
+            {
+                var tempDrive = new DriveInfo(
+                    Path.GetPathRoot(Path.GetFullPath(tempDir)) ?? "C:\\"
+                );
+                if (tempDrive.IsReady)
+                {
+                    long minRequiredBytes = 2L * 1024 * 1024 * 1024; // 2 GB minimum baseline
+                    if (job.TotalFrames > 0)
+                    {
+                        minRequiredBytes = Math.Max(minRequiredBytes, job.TotalFrames * 1500000L);
+                    }
+                    if (tempDrive.AvailableFreeSpace < minRequiredBytes)
+                    {
+                        var freeGb = tempDrive.AvailableFreeSpace / (1024.0 * 1024.0 * 1024.0);
+                        var reqGb = minRequiredBytes / (1024.0 * 1024.0 * 1024.0);
+                        log(
+                            $"[Storage Warning] Low free disk space on drive {tempDrive.Name}: {freeGb:F1} GB free, estimated required: {reqGb:F1} GB."
+                        );
+                        if (tempDrive.AvailableFreeSpace < 1024L * 1024 * 1024)
+                        {
+                            throw new InvalidOperationException(
+                                $"Critically low disk space on drive {tempDrive.Name} ({freeGb:F2} GB available). Please free up disk space or set a custom Scratch Directory on another drive in Settings."
+                            );
+                        }
+                    }
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                throw;
+            }
+            catch { }
+
             log("Extracting frames for AI upscaling...");
             var extractArgs = new List<string>
             {
@@ -430,6 +703,8 @@ public partial class VideoUpscaleService
                 "4",
                 "-i",
                 job.FilePath,
+                "-fps_mode",
+                "passthrough",
             };
 
             var preFilters = new List<string>();
@@ -478,8 +753,10 @@ public partial class VideoUpscaleService
             log($"Executing AI inference engine ({Path.GetFileName(aiToolPath)})...");
             int scale = job.TargetResolution switch
             {
-                UpscaleTargetResolution.Uhd4k => 4,
                 UpscaleTargetResolution.Scale4x => 4,
+                UpscaleTargetResolution.Scale2x => 2,
+                UpscaleTargetResolution.Uhd4k => (job.InputHeight >= 1000) ? 2 : 4,
+                UpscaleTargetResolution.Hd1080p => 2,
                 _ => 2,
             };
 
@@ -495,7 +772,7 @@ public partial class VideoUpscaleService
                 "-f",
                 "jpg",
                 "-g",
-                "0",
+                "auto",
                 "-j",
                 "1:2:2",
             };
@@ -523,20 +800,29 @@ public partial class VideoUpscaleService
                 aiArgs.AddRange(["-t", "0"]);
             }
 
-            // Model selection (presets or resolution default)
+            // Model selection: explicit model type, preset recommendation, or photorealistic default
             string modelName;
             var preset = !string.IsNullOrWhiteSpace(job.ActivePresetName)
                 ? PresetManager.GetPreset(job.ActivePresetName)
                 : null;
 
-            if (preset != null && !string.IsNullOrWhiteSpace(preset.RecommendedModel))
+            if (job.ModelType == UpscaleModelType.Animation)
+            {
+                modelName = "realesr-animevideov3";
+                log("[Model Selection] Selected Animation / Cartoons model (realesr-animevideov3)");
+            }
+            else if (preset != null && !string.IsNullOrWhiteSpace(preset.RecommendedModel))
             {
                 modelName = preset.RecommendedModel;
                 log($"[Preset] Applying '{preset.Name}' recommended model: {modelName}");
             }
             else
             {
-                modelName = scale == 4 ? "realesrgan-x4plus" : "realesr-animevideov3";
+                // General photorealistic weights for people and live-action footage
+                modelName = "realesrgan-x4plus";
+                log(
+                    "[Model Selection] Selected Real-World / People photorealistic model (realesrgan-x4plus)"
+                );
             }
             aiArgs.AddRange(["-n", modelName]);
 
@@ -550,9 +836,62 @@ public partial class VideoUpscaleService
             );
         }
 
+        // Stage 2.5: Optional Face Restoration Pass (CodeFormer / GFPGAN Sidecar Module)
+        var finalFramesDir = outFramesDir;
+        if (job.EnableFaceRestoration)
+        {
+            var faceEnginePath =
+                !string.IsNullOrWhiteSpace(FaceRestorationExecutablePath)
+                && File.Exists(FaceRestorationExecutablePath)
+                    ? FaceRestorationExecutablePath
+                    : TryGetFaceRestorationExecutablePath();
+
+            if (!string.IsNullOrWhiteSpace(faceEnginePath) && File.Exists(faceEnginePath))
+            {
+                var faceFramesDir = Path.Combine(tempDir, "face_frames");
+                Directory.CreateDirectory(faceFramesDir);
+
+                var completedFaceFrames = Directory.Exists(faceFramesDir)
+                    ? Directory.EnumerateFiles(faceFramesDir, "*.jpg").LongCount()
+                    : 0;
+
+                if (totalFrames > 0 && completedFaceFrames >= totalFrames)
+                {
+                    log(
+                        $"[Checkpoint] Found all {completedFaceFrames}/{totalFrames} face-restored frames already rendered on disk. Skipping neural face pass."
+                    );
+                    finalFramesDir = faceFramesDir;
+                }
+                else
+                {
+                    log(
+                        $"[Face Restoration] Executing neural face restoration ({Path.GetFileName(faceEnginePath)}) with fidelity weight -w {job.FaceRestorationFidelity.ToString("0.##", CultureInfo.InvariantCulture)}..."
+                    );
+
+                    await RunFaceRestorationProcessAsync(
+                        faceEnginePath,
+                        outFramesDir,
+                        faceFramesDir,
+                        job,
+                        totalFrames,
+                        log,
+                        cancellationToken
+                    );
+                    finalFramesDir = faceFramesDir;
+                    log("[Face Restoration] Neural face restoration pass completed successfully.");
+                }
+            }
+            else
+            {
+                log(
+                    "[Face Restoration] CodeFormer/GFPGAN sidecar binary not detected in tools directory; skipping neural face pass and applying high-frequency post-processing filters."
+                );
+            }
+        }
+
         // Stage 3: Re-encode & Mux with Full Stream Preservation (All original audio tracks & subtitles)
         log("Muxing upscaled frames with full original audio & subtitle streams...");
-        double fps = job.Fps > 0 ? job.Fps : 30.0;
+        double fps = job.VideoFps > 0 ? job.VideoFps : (job.Fps > 0 ? job.Fps : 30.0);
         var (_, encoderArgs, _) = GetEncoderAndHwArgs(
             job.Codec,
             job.HardwareAcceleration,
@@ -567,7 +906,7 @@ public partial class VideoUpscaleService
             "-framerate",
             fps.ToString(CultureInfo.InvariantCulture),
             "-i",
-            Path.Combine(outFramesDir, "frame_%08d.jpg"),
+            Path.Combine(finalFramesDir, "frame_%08d.jpg"),
             "-i",
             job.FilePath,
             "-map",
@@ -580,18 +919,72 @@ public partial class VideoUpscaleService
             "1:s?",
             "-c:s",
             "copy",
-            "-map_metadata",
-            "1",
         };
 
-        var colorFilter = job.ColorGrading?.BuildFilterString();
-        if (!string.IsNullOrWhiteSpace(colorFilter))
+        var metaArgs =
+            job.CameraMetadata?.BuildFfmpegMetadataArgs(
+                Path.GetFileNameWithoutExtension(job.FilePath)
+            )
+            ?? ["-map_metadata", "-1"];
+        muxArgs.AddRange(metaArgs);
+        log(
+            $"[Metadata Normalization] Applied profile: {job.CameraMetadata?.ProfileType.ToString() ?? "CleanNormalized"}"
+        );
+
+        // Resolution & Aspect Ratio clamping to prevent exceeding user target resolution or hardware encoder limits
+        var arFilterMux = AspectRatioFilterBuilder.BuildFilter(
+            job.TargetAspectRatio,
+            job.TargetResolution,
+            job.TrackingMode,
+            job.ActionCentroidX,
+            job.ActionCentroidY
+        );
+        string? targetScaleFilter =
+            arFilterMux
+            ?? (
+                job.TargetResolution switch
+                {
+                    UpscaleTargetResolution.Hd1080p => "scale=-2:1080:flags=lanczos",
+                    UpscaleTargetResolution.Uhd4k => "scale=-2:2160:flags=lanczos",
+                    _ => null,
+                }
+            );
+
+        var postFilterParts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(targetScaleFilter))
         {
-            log($"[Color Grading] Applying filters: {colorFilter}");
-            muxArgs.AddRange(["-vf", colorFilter]);
+            postFilterParts.Add(targetScaleFilter);
+            if (arFilterMux != null)
+            {
+                log(
+                    $"[Aspect Ratio Re-Framing] Applied mode {job.TargetAspectRatio}: {arFilterMux}"
+                );
+            }
+            else
+            {
+                log(
+                    $"[Resolution Normalization] Clamping output frame to target: {targetScaleFilter}"
+                );
+            }
+        }
+
+        var postFilters = BuildPostFilters(job, log);
+        if (!string.IsNullOrWhiteSpace(postFilters))
+        {
+            postFilterParts.Add(postFilters);
+        }
+
+        string? finalVf = postFilterParts.Count > 0 ? string.Join(",", postFilterParts) : null;
+        if (!string.IsNullOrWhiteSpace(finalVf))
+        {
+            muxArgs.AddRange(["-vf", finalVf]);
         }
 
         muxArgs.AddRange(encoderArgs);
+        if (job.OutputFilePath.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase))
+        {
+            muxArgs.AddRange(["-movflags", "+faststart"]);
+        }
         muxArgs.Add(job.OutputFilePath);
 
         try
@@ -611,7 +1004,7 @@ public partial class VideoUpscaleService
                 "-framerate",
                 fps.ToString(CultureInfo.InvariantCulture),
                 "-i",
-                Path.Combine(outFramesDir, "frame_%08d.jpg"),
+                Path.Combine(finalFramesDir, "frame_%08d.jpg"),
                 "-i",
                 job.FilePath,
                 "-map",
@@ -626,21 +1019,112 @@ public partial class VideoUpscaleService
                 "1:s?",
                 "-c:s",
                 "copy",
-                "-map_metadata",
-                "1",
             };
-            if (!string.IsNullOrWhiteSpace(colorFilter))
+            fallbackMux.AddRange(metaArgs);
+            if (!string.IsNullOrWhiteSpace(finalVf))
             {
-                fallbackMux.AddRange(["-vf", colorFilter]);
+                fallbackMux.AddRange(["-vf", finalVf]);
             }
             fallbackMux.AddRange(encoderArgs);
+            if (job.OutputFilePath.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase))
+            {
+                fallbackMux.AddRange(["-movflags", "+faststart"]);
+            }
             fallbackMux.Add(job.OutputFilePath);
             await ExecuteProcessAsync(ffmpegPath, fallbackMux, job, log, cancellationToken);
         }
     }
 
-    private static string GetScaleFilter(UpscaleTargetResolution target, bool isGpu)
+    private static string? BuildPostFilters(UpscaleJob job, Action<string>? log)
     {
+        var filterParts = new List<string>();
+
+        if (job.EnableMicroZoom && job.MicroZoomPercent > 0)
+        {
+            double factor = Math.Clamp(1.0 - (job.MicroZoomPercent / 100.0), 0.90, 0.99);
+            string factorStr = factor.ToString("0.##", CultureInfo.InvariantCulture);
+            string zoomFilter = $"crop=w='iw*{factorStr}':h='ih*{factorStr}'";
+            filterParts.Add(zoomFilter);
+            log?.Invoke(
+                $"[Micro-Zoom] Applied {job.MicroZoomPercent:0.#}% micro-zoom crop filter: {zoomFilter}"
+            );
+        }
+
+        if (job.EnableFacialClarity)
+        {
+            // Adaptive unsharp mask for high-frequency edge & facial feature sharpening
+            filterParts.Add("unsharp=lx=5:ly=5:la=0.75:cx=3:cy=3:ca=0.3");
+            // Micro-dither grain to eliminate waxy skin and restore natural organic texture
+            filterParts.Add("noise=c1s=5:c0f=u");
+            log?.Invoke(
+                "[Face Enhancement] Applied Facial Clarity & Edge Restoration (unsharp=lx=5:ly=5:la=0.75:cx=3:cy=3:ca=0.3,noise=c1s=5:c0f=u)"
+            );
+        }
+
+        var colorFilter = job.ColorGrading?.BuildFilterString();
+        if (!string.IsNullOrWhiteSpace(colorFilter))
+        {
+            filterParts.Add(colorFilter);
+            log?.Invoke($"[Color Grading] Applying filters: {colorFilter}");
+        }
+
+        return filterParts.Count > 0 ? string.Join(",", filterParts) : null;
+    }
+
+    private async Task RunFaceRestorationProcessAsync(
+        string faceToolPath,
+        string inFramesDir,
+        string outFramesDir,
+        UpscaleJob job,
+        long totalFrames,
+        Action<string> log,
+        CancellationToken cancellationToken
+    )
+    {
+        var isCodeFormer = Path.GetFileNameWithoutExtension(faceToolPath)
+            .Contains("codeformer", StringComparison.OrdinalIgnoreCase);
+
+        var args = new List<string>
+        {
+            "-i",
+            inFramesDir,
+            "-o",
+            outFramesDir,
+            "-s",
+            "1",
+            "-f",
+            "jpg",
+            "-g",
+            "auto",
+        };
+
+        if (isCodeFormer)
+        {
+            var fidelity = Math.Clamp(job.FaceRestorationFidelity, 0.0, 1.0);
+            args.AddRange(["-w", fidelity.ToString("0.##", CultureInfo.InvariantCulture)]);
+        }
+
+        var modelsDir = Path.Combine(Path.GetDirectoryName(faceToolPath)!, "models");
+        if (Directory.Exists(modelsDir))
+        {
+            args.AddRange(["-m", modelsDir]);
+        }
+
+        await ExecuteAiProcessWithProgressAsync(
+            faceToolPath,
+            args,
+            job,
+            totalFrames,
+            log,
+            cancellationToken
+        );
+    }
+
+    private static string? GetScaleFilter(UpscaleTargetResolution target, bool isGpu)
+    {
+        if (target == UpscaleTargetResolution.Original1x)
+            return null;
+
         if (isGpu)
         {
             return target switch

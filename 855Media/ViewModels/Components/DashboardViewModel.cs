@@ -74,6 +74,7 @@ public partial class DashboardViewModel : ViewModelBase
         FacebookDownloader = _viewModelManager.GetFacebookDownloaderViewModel(this);
         History = _viewModelManager.GetHistoryViewModel(this);
         VideoUpscaler = _viewModelManager.GetVideoUpscalerViewModel();
+        Dubbing = _viewModelManager.GetDubbingViewModel();
 
         _eventSubscription = Disposable.Merge(
             _settingsService.WatchProperty(
@@ -101,6 +102,8 @@ public partial class DashboardViewModel : ViewModelBase
             }
             NotifyDownloadsChanged();
         };
+
+        SelectedTab = _settingsService.LastSelectedDashboardTab;
     }
 
     private void OnDownloadItemPropertyChanged(
@@ -119,6 +122,7 @@ public partial class DashboardViewModel : ViewModelBase
     public FacebookDownloaderViewModel FacebookDownloader { get; }
     public HistoryViewModel History { get; }
     public VideoUpscalerViewModel VideoUpscaler { get; }
+    public DubbingViewModel Dubbing { get; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsProgressIndeterminate))]
@@ -147,6 +151,7 @@ public partial class DashboardViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsFacebookTab))]
     [NotifyPropertyChangedFor(nameof(IsBatchTab))]
     [NotifyPropertyChangedFor(nameof(IsUpscalerTab))]
+    [NotifyPropertyChangedFor(nameof(IsDubbingTab))]
     [NotifyPropertyChangedFor(nameof(IsManagerTab))]
     [NotifyPropertyChangedFor(nameof(IsHistoryTab))]
     public partial DashboardTab SelectedTab { get; set; } = DashboardTab.YouTube;
@@ -154,6 +159,8 @@ public partial class DashboardViewModel : ViewModelBase
     partial void OnSelectedTabChanged(DashboardTab value)
     {
         FacebookDownloader?.NotifyTabChanged();
+        _settingsService.LastSelectedDashboardTab = value;
+        _settingsService.Save();
     }
 
     public bool IsYouTubeTab => SelectedTab == DashboardTab.YouTube;
@@ -161,6 +168,7 @@ public partial class DashboardViewModel : ViewModelBase
     public bool IsFacebookTab => SelectedTab == DashboardTab.Facebook;
     public bool IsBatchTab => SelectedTab == DashboardTab.Batch;
     public bool IsUpscalerTab => SelectedTab == DashboardTab.Upscaler;
+    public bool IsDubbingTab => SelectedTab == DashboardTab.Dubbing;
     public bool IsManagerTab => SelectedTab == DashboardTab.Manager;
     public bool IsHistoryTab => SelectedTab == DashboardTab.History;
 
@@ -178,6 +186,9 @@ public partial class DashboardViewModel : ViewModelBase
 
     [RelayCommand]
     private void SelectUpscalerTab() => SelectedTab = DashboardTab.Upscaler;
+
+    [RelayCommand]
+    private void SelectDubbingTab() => SelectedTab = DashboardTab.Dubbing;
 
     [RelayCommand]
     private void SelectManagerTab() => SelectedTab = DashboardTab.Manager;
@@ -667,7 +678,6 @@ public partial class DashboardViewModel : ViewModelBase
                 }
                 // If it's not the only query in the list, don't interrupt the process
                 // and report the error via an async notification instead of a sync dialog.
-                // https://github.com/Tyrrrz/MediaTag/issues/563
                 catch (YoutubeExplodeException ex)
                     when (ex is VideoUnavailableException or PlaylistUnavailableException
                         && queries.Length > 1
@@ -934,9 +944,10 @@ public enum DashboardTab
     TikTok,
     Facebook,
     Batch,
-    Upscaler,
     Manager,
     History,
+    Upscaler,
+    Dubbing,
 }
 
 public enum DownloadStatusFilter

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Globalization;
 using _855Media.Core.Downloading;
 using Avalonia.Data.Converters;

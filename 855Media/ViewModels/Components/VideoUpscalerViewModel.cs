@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using _855Media.Core.Upscaling;
 using _855Media.Framework;
 using _855Media.Localization;
+using _855Media.Services;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -46,14 +47,29 @@ public partial class VideoUpscalerViewModel : ViewModelBase
     };
 
     private readonly VideoQueueManager _queueManager;
+    private readonly VideoUpscaleService _upscaleService;
     private readonly DialogManager _dialogManager;
     private readonly SnackbarManager _snackbarManager;
+    private readonly SettingsService _settingsService;
     private readonly VideoPreviewService _previewService = new();
     private CancellationTokenSource? _previewCts;
+    private CancellationTokenSource? _debouncedSaveCts;
     private string? _lastProbedVideoPath;
+    private bool _isRestoringSettings;
 
     [ObservableProperty]
     private UpscaleTargetResolution _selectedTargetResolution = UpscaleTargetResolution.Hd1080p;
+
+    [ObservableProperty]
+    private AspectRatioMode _selectedTargetAspectRatio = AspectRatioMode.Original;
+
+    public AspectRatioMode[] AvailableAspectRatios { get; } = Enum.GetValues<AspectRatioMode>();
+
+    [ObservableProperty]
+    private SmartTrackingMode _selectedTrackingMode = SmartTrackingMode.StaticCenter;
+
+    public SmartTrackingMode[] AvailableTrackingModes { get; } =
+        Enum.GetValues<SmartTrackingMode>();
 
     [ObservableProperty]
     private UpscaleVideoCodec _selectedCodec = UpscaleVideoCodec.H264;
@@ -63,6 +79,12 @@ public partial class VideoUpscalerViewModel : ViewModelBase
 
     [ObservableProperty]
     private string _outputDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyVideos);
+
+    [ObservableProperty]
+    private string? _scratchDirectory;
+
+    [ObservableProperty]
+    private bool _isFaceRestorationAvailable = VideoUpscaleService.IsFaceRestorationAvailable;
 
     [ObservableProperty]
     private int _maxConcurrency = 2;
@@ -119,6 +141,32 @@ public partial class VideoUpscalerViewModel : ViewModelBase
     private bool _enableDeinterlace;
 
     [ObservableProperty]
+    private bool _enableMicroZoom;
+
+    [ObservableProperty]
+    private double _microZoomPercent = 3.0;
+
+    [ObservableProperty]
+    private SmartZoomMode _selectedZoomMode = SmartZoomMode.ActionAnchored;
+
+    public SmartZoomMode[] AvailableZoomModes { get; } = Enum.GetValues<SmartZoomMode>();
+
+    [ObservableProperty]
+    private UpscaleModelType _selectedModelType = UpscaleModelType.RealWorld;
+
+    [ObservableProperty]
+    private bool _enableFacialClarity = true;
+
+    [ObservableProperty]
+    private bool _enableFaceRestoration;
+
+    [ObservableProperty]
+    private double _faceRestorationFidelity = 0.7;
+
+    public IReadOnlyList<UpscaleModelType> AvailableModelTypes { get; } =
+        Enum.GetValues<UpscaleModelType>();
+
+    [ObservableProperty]
     private PostBatchAction _selectedPostBatchAction = PostBatchAction.DoNothing;
 
     [ObservableProperty]
@@ -134,10 +182,93 @@ public partial class VideoUpscalerViewModel : ViewModelBase
     private bool _isFilmEmulationExpanded = true;
 
     [ObservableProperty]
+    private bool _showHistogram = true;
+
+    [ObservableProperty]
+    private string _redHistogramPath = string.Empty;
+
+    [ObservableProperty]
+    private string _greenHistogramPath = string.Empty;
+
+    [ObservableProperty]
+    private string _blueHistogramPath = string.Empty;
+
+    [ObservableProperty]
+    private string _lumaHistogramPath = string.Empty;
+
+    [ObservableProperty]
+    private bool _hasHistogramData;
+
+    [ObservableProperty]
     private bool _enableSplitAndUpscale;
 
     [ObservableProperty]
     private bool _mergeAfterUpscale = true;
+
+    [ObservableProperty]
+    private SplitMode _selectedSplitMode = SplitMode.InHalf;
+
+    [ObservableProperty]
+    private int _customSplitPartCount = 2;
+
+    [ObservableProperty]
+    private double _customSplitSegmentDurationSeconds = 60.0;
+
+    [ObservableProperty]
+    private bool _isCustomSplitFlyoutOpen;
+
+    public IReadOnlyList<SplitMode> AvailableSplitModes { get; } = Enum.GetValues<SplitMode>();
+
+    public CustomSplitOptions GetCurrentSplitOptions() =>
+        new()
+        {
+            Mode = SelectedSplitMode,
+            PartCount = CustomSplitPartCount,
+            SegmentDurationSeconds = CustomSplitSegmentDurationSeconds,
+        };
+
+    // Camera & Metadata Normalization Settings
+    [ObservableProperty]
+    private CameraProfileType _selectedCameraProfileType = CameraProfileType.CleanNormalized;
+
+    [ObservableProperty]
+    private string? _cameraMake;
+
+    [ObservableProperty]
+    private string? _cameraModel;
+
+    [ObservableProperty]
+    private string? _cameraSoftware;
+
+    [ObservableProperty]
+    private string? _cameraArtist;
+
+    [ObservableProperty]
+    private string? _cameraCopyright;
+
+    [ObservableProperty]
+    private bool _cameraInjectTimestamp = true;
+
+    public IReadOnlyList<CameraProfileType> AvailableCameraProfileTypes { get; } =
+        Enum.GetValues<CameraProfileType>();
+
+    public CameraMetadataSettings GetCurrentCameraMetadataSettings() =>
+        new()
+        {
+            ProfileType = SelectedCameraProfileType,
+            Make = CameraMake,
+            Model = CameraModel,
+            Software = CameraSoftware,
+            Artist = CameraArtist,
+            Copyright = CameraCopyright,
+            InjectCurrentTimestamp = CameraInjectTimestamp,
+        };
+
+    [RelayCommand]
+    public void ToggleCustomSplitFlyout()
+    {
+        IsCustomSplitFlyoutOpen = !IsCustomSplitFlyoutOpen;
+    }
 
     [ObservableProperty]
     private bool _isSavePresetPopupOpen;
@@ -202,25 +333,148 @@ public partial class VideoUpscalerViewModel : ViewModelBase
         VideoQueueManager queueManager,
         DialogManager dialogManager,
         SnackbarManager snackbarManager,
-        LocalizationManager localizationManager
+        LocalizationManager localizationManager,
+        SettingsService settingsService,
+        VideoUpscaleService? upscaleService = null
     )
     {
         _queueManager = queueManager;
+        _upscaleService = upscaleService ?? queueManager.UpscaleService;
         _dialogManager = dialogManager;
         _snackbarManager = snackbarManager;
         LocalizationManager = localizationManager;
+        _settingsService = settingsService;
         _activeColorGrading = GlobalColorGrading;
         GlobalColorGrading.PropertyChanged += OnColorGradingSettingsChanged;
         _queueManager.BatchCompleted += OnBatchCompleted;
 
         RefreshColorPresetsList();
-
-        if (string.IsNullOrWhiteSpace(OutputDirectory) || !Directory.Exists(OutputDirectory))
-        {
-            OutputDirectory = AppContext.BaseDirectory;
-        }
+        RestoreSettingsFromService();
 
         _ = InitializeQueueAsync();
+    }
+
+    private void ScheduleDebouncedSaveSettings()
+    {
+        if (_isRestoringSettings)
+            return;
+
+        _debouncedSaveCts?.Cancel();
+        _debouncedSaveCts?.Dispose();
+        var cts = new CancellationTokenSource();
+        _debouncedSaveCts = cts;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(400, cts.Token);
+                if (!cts.Token.IsCancellationRequested)
+                {
+                    _settingsService.Save();
+                }
+            }
+            catch (OperationCanceledException) { }
+            catch { }
+        });
+    }
+
+    private void RestoreSettingsFromService()
+    {
+        _isRestoringSettings = true;
+        try
+        {
+            if (
+                !string.IsNullOrWhiteSpace(_settingsService.UpscalerOutputDirectory)
+                && Directory.Exists(_settingsService.UpscalerOutputDirectory)
+            )
+            {
+                OutputDirectory = _settingsService.UpscalerOutputDirectory;
+            }
+            else
+            {
+                var defaultVideos = Environment.GetFolderPath(Environment.SpecialFolder.MyVideos);
+                OutputDirectory = Directory.Exists(defaultVideos)
+                    ? defaultVideos
+                    : AppContext.BaseDirectory;
+            }
+
+            SelectedTargetResolution = _settingsService.UpscalerTargetResolution;
+            SelectedTargetAspectRatio = _settingsService.UpscalerTargetAspectRatio;
+            SelectedTrackingMode = _settingsService.UpscalerTrackingMode;
+            SelectedCodec = _settingsService.UpscalerCodec;
+            SelectedHardwareAcceleration = _settingsService.UpscalerHardwareAcceleration;
+            MaxConcurrency = Math.Clamp(_settingsService.UpscalerMaxConcurrency, 1, 4);
+            _queueManager.MaxConcurrency = MaxConcurrency;
+            ScratchDirectory = _settingsService.UpscalerScratchDirectory;
+            _upscaleService.ScratchDirectory = ScratchDirectory;
+            SelectedModelType = _settingsService.UpscalerModelType;
+            SelectedPresetName = _settingsService.UpscalerPresetName;
+            SelectedPostBatchAction = _settingsService.UpscalerPostBatchAction;
+
+            EnableFacialClarity = _settingsService.UpscalerEnableFacialClarity;
+            EnableFaceRestoration = _settingsService.UpscalerEnableFaceRestoration;
+            FaceRestorationFidelity = _settingsService.UpscalerFaceRestorationFidelity;
+            EnableDenoise = _settingsService.UpscalerEnableDenoise;
+            EnableDeinterlace = _settingsService.UpscalerEnableDeinterlace;
+            EnableMicroZoom = _settingsService.UpscalerEnableMicroZoom;
+            MicroZoomPercent = _settingsService.UpscalerMicroZoomPercent;
+            SelectedZoomMode = _settingsService.UpscalerZoomMode;
+
+            EnableSplitAndUpscale = _settingsService.UpscalerEnableSplitAndUpscale;
+            MergeAfterUpscale = _settingsService.UpscalerMergeAfterUpscale;
+            SelectedSplitMode = _settingsService.UpscalerSplitMode;
+            CustomSplitPartCount = _settingsService.UpscalerCustomSplitPartCount;
+            CustomSplitSegmentDurationSeconds =
+                _settingsService.UpscalerCustomSplitSegmentDurationSeconds;
+
+            SelectedCameraProfileType = _settingsService.UpscalerCameraProfileType;
+            CameraMake = _settingsService.UpscalerCameraMake;
+            CameraModel = _settingsService.UpscalerCameraModel;
+            CameraSoftware = _settingsService.UpscalerCameraSoftware;
+            CameraArtist = _settingsService.UpscalerCameraArtist;
+            CameraCopyright = _settingsService.UpscalerCameraCopyright;
+            CameraInjectTimestamp = _settingsService.UpscalerCameraInjectTimestamp;
+
+            IsColorGradingPanelOpen = _settingsService.UpscalerIsColorGradingPanelOpen;
+            SplitDividerRatio = _settingsService.UpscalerSplitDividerRatio;
+            ZoomScale = _settingsService.UpscalerZoomScale;
+            IsBasicExposureExpanded = _settingsService.UpscalerIsBasicExposureExpanded;
+            IsColorWheelsExpanded = _settingsService.UpscalerIsColorWheelsExpanded;
+            IsFilmEmulationExpanded = _settingsService.UpscalerIsFilmEmulationExpanded;
+            ShowHistogram = _settingsService.UpscalerShowHistogram;
+
+            GlobalColorGrading.Brightness = _settingsService.UpscalerColorBrightness;
+            GlobalColorGrading.Contrast = _settingsService.UpscalerColorContrast;
+            GlobalColorGrading.Saturation = _settingsService.UpscalerColorSaturation;
+            GlobalColorGrading.Gamma = _settingsService.UpscalerColorGamma;
+            GlobalColorGrading.Vibrance = _settingsService.UpscalerColorVibrance;
+            GlobalColorGrading.AutoNormalize = _settingsService.UpscalerColorAutoNormalize;
+            GlobalColorGrading.ColorTemperature = _settingsService.UpscalerColorTemperature;
+            GlobalColorGrading.ShadowRed = _settingsService.UpscalerColorShadowRed;
+            GlobalColorGrading.ShadowGreen = _settingsService.UpscalerColorShadowGreen;
+            GlobalColorGrading.ShadowBlue = _settingsService.UpscalerColorShadowBlue;
+            GlobalColorGrading.MidtoneRed = _settingsService.UpscalerColorMidtoneRed;
+            GlobalColorGrading.MidtoneGreen = _settingsService.UpscalerColorMidtoneGreen;
+            GlobalColorGrading.MidtoneBlue = _settingsService.UpscalerColorMidtoneBlue;
+            GlobalColorGrading.HighlightRed = _settingsService.UpscalerColorHighlightRed;
+            GlobalColorGrading.HighlightGreen = _settingsService.UpscalerColorHighlightGreen;
+            GlobalColorGrading.HighlightBlue = _settingsService.UpscalerColorHighlightBlue;
+            GlobalColorGrading.ToneCurve = _settingsService.UpscalerColorToneCurve;
+            GlobalColorGrading.FilmGrain = _settingsService.UpscalerColorFilmGrain;
+            GlobalColorGrading.Vignette = _settingsService.UpscalerColorVignette;
+            GlobalColorGrading.LutPath = _settingsService.UpscalerColorLutPath;
+            GlobalColorGrading.LutOpacity = _settingsService.UpscalerColorLutOpacity;
+
+            if (!string.IsNullOrWhiteSpace(_settingsService.UpscalerColorPresetName))
+            {
+                SelectedColorPresetName = _settingsService.UpscalerColorPresetName;
+            }
+        }
+        finally
+        {
+            _isRestoringSettings = false;
+        }
     }
 
     private async Task InitializeQueueAsync()
@@ -299,13 +553,24 @@ public partial class VideoUpscalerViewModel : ViewModelBase
 
     partial void OnSplitDividerRatioChanged(double value)
     {
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerSplitDividerRatio = value;
+            ScheduleDebouncedSaveSettings();
+        }
         RequestPreviewUpdate(150);
     }
 
     partial void OnSelectedColorPresetNameChanged(string value)
     {
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerColorPresetName = value;
+            ScheduleDebouncedSaveSettings();
+        }
+
         var preset = ColorPresetManager.GetPreset(value);
-        if (preset != null)
+        if (preset != null && !_isRestoringSettings)
         {
             ActiveColorGrading.ApplyPreset(preset);
             _snackbarManager.Notify($"Applied preset: {preset.Name}");
@@ -400,10 +665,155 @@ public partial class VideoUpscalerViewModel : ViewModelBase
     [RelayCommand]
     public void ToggleFilmEmulation() => IsFilmEmulationExpanded = !IsFilmEmulationExpanded;
 
+    [RelayCommand]
+    public void ToggleHistogram() => ShowHistogram = !ShowHistogram;
+
+    partial void OnOutputDirectoryChanged(string value)
+    {
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerOutputDirectory = value;
+            ScheduleDebouncedSaveSettings();
+        }
+    }
+
+    partial void OnSelectedTargetResolutionChanged(UpscaleTargetResolution value)
+    {
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerTargetResolution = value;
+            ScheduleDebouncedSaveSettings();
+        }
+    }
+
+    partial void OnSelectedTargetAspectRatioChanged(AspectRatioMode value)
+    {
+        if (SelectedJob != null)
+        {
+            SelectedJob.TargetAspectRatio = value;
+        }
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerTargetAspectRatio = value;
+            ScheduleDebouncedSaveSettings();
+        }
+        RequestPreviewUpdate(150);
+    }
+
+    partial void OnSelectedTrackingModeChanged(SmartTrackingMode value)
+    {
+        if (SelectedJob != null)
+        {
+            SelectedJob.TrackingMode = value;
+        }
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerTrackingMode = value;
+            ScheduleDebouncedSaveSettings();
+        }
+        RequestPreviewUpdate(150);
+    }
+
+    partial void OnSelectedCodecChanged(UpscaleVideoCodec value)
+    {
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerCodec = value;
+            ScheduleDebouncedSaveSettings();
+        }
+    }
+
+    partial void OnSelectedHardwareAccelerationChanged(HardwareAccelerationMode value)
+    {
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerHardwareAcceleration = value;
+            ScheduleDebouncedSaveSettings();
+        }
+    }
+
+    partial void OnSelectedPostBatchActionChanged(PostBatchAction value)
+    {
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerPostBatchAction = value;
+            ScheduleDebouncedSaveSettings();
+        }
+    }
+
+    partial void OnSelectedSplitModeChanged(SplitMode value)
+    {
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerSplitMode = value;
+            ScheduleDebouncedSaveSettings();
+        }
+    }
+
+    partial void OnCustomSplitPartCountChanged(int value)
+    {
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerCustomSplitPartCount = value;
+            ScheduleDebouncedSaveSettings();
+        }
+    }
+
+    partial void OnCustomSplitSegmentDurationSecondsChanged(double value)
+    {
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerCustomSplitSegmentDurationSeconds = value;
+            ScheduleDebouncedSaveSettings();
+        }
+    }
+
+    partial void OnIsBasicExposureExpandedChanged(bool value)
+    {
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerIsBasicExposureExpanded = value;
+            ScheduleDebouncedSaveSettings();
+        }
+    }
+
+    partial void OnIsColorWheelsExpandedChanged(bool value)
+    {
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerIsColorWheelsExpanded = value;
+            ScheduleDebouncedSaveSettings();
+        }
+    }
+
+    partial void OnIsFilmEmulationExpandedChanged(bool value)
+    {
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerIsFilmEmulationExpanded = value;
+            ScheduleDebouncedSaveSettings();
+        }
+    }
+
+    partial void OnShowHistogramChanged(bool value)
+    {
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerShowHistogram = value;
+            ScheduleDebouncedSaveSettings();
+        }
+    }
+
     partial void OnSelectedPresetNameChanged(string value)
     {
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerPresetName = value;
+            ScheduleDebouncedSaveSettings();
+        }
+
         var preset = PresetManager.GetPreset(value);
-        if (preset != null)
+        if (preset != null && !_isRestoringSettings)
         {
             EnableDenoise = preset.EnableDenoise;
             EnableDeinterlace = preset.EnableDeinterlace;
@@ -428,6 +838,11 @@ public partial class VideoUpscalerViewModel : ViewModelBase
         {
             SelectedJob.EnableDenoise = value;
         }
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerEnableDenoise = value;
+            ScheduleDebouncedSaveSettings();
+        }
     }
 
     partial void OnEnableDeinterlaceChanged(bool value)
@@ -436,6 +851,53 @@ public partial class VideoUpscalerViewModel : ViewModelBase
         {
             SelectedJob.EnableDeinterlace = value;
         }
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerEnableDeinterlace = value;
+            ScheduleDebouncedSaveSettings();
+        }
+    }
+
+    partial void OnEnableMicroZoomChanged(bool value)
+    {
+        if (SelectedJob != null)
+        {
+            SelectedJob.EnableMicroZoom = value;
+        }
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerEnableMicroZoom = value;
+            ScheduleDebouncedSaveSettings();
+        }
+        RequestPreviewUpdate(100);
+    }
+
+    partial void OnMicroZoomPercentChanged(double value)
+    {
+        if (SelectedJob != null)
+        {
+            SelectedJob.MicroZoomPercent = value;
+        }
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerMicroZoomPercent = value;
+            ScheduleDebouncedSaveSettings();
+        }
+        RequestPreviewUpdate(150);
+    }
+
+    partial void OnSelectedZoomModeChanged(SmartZoomMode value)
+    {
+        if (SelectedJob != null)
+        {
+            SelectedJob.ZoomMode = value;
+        }
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerZoomMode = value;
+            ScheduleDebouncedSaveSettings();
+        }
+        RequestPreviewUpdate(150);
     }
 
     partial void OnEnableSplitAndUpscaleChanged(bool value)
@@ -444,6 +906,11 @@ public partial class VideoUpscalerViewModel : ViewModelBase
         {
             SelectedJob.EnableSplitAndUpscale = value;
         }
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerEnableSplitAndUpscale = value;
+            ScheduleDebouncedSaveSettings();
+        }
     }
 
     partial void OnMergeAfterUpscaleChanged(bool value)
@@ -451,6 +918,143 @@ public partial class VideoUpscalerViewModel : ViewModelBase
         if (SelectedJob != null)
         {
             SelectedJob.MergeAfterUpscale = value;
+        }
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerMergeAfterUpscale = value;
+            ScheduleDebouncedSaveSettings();
+        }
+    }
+
+    partial void OnSelectedModelTypeChanged(UpscaleModelType value)
+    {
+        if (SelectedJob != null)
+        {
+            SelectedJob.ModelType = value;
+        }
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerModelType = value;
+            ScheduleDebouncedSaveSettings();
+        }
+    }
+
+    partial void OnEnableFacialClarityChanged(bool value)
+    {
+        if (SelectedJob != null)
+        {
+            SelectedJob.EnableFacialClarity = value;
+        }
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerEnableFacialClarity = value;
+            ScheduleDebouncedSaveSettings();
+        }
+        RequestPreviewUpdate(100);
+    }
+
+    partial void OnScratchDirectoryChanged(string? value)
+    {
+        _upscaleService.ScratchDirectory = value;
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerScratchDirectory = value;
+            ScheduleDebouncedSaveSettings();
+        }
+    }
+
+    partial void OnEnableFaceRestorationChanged(bool value)
+    {
+        if (SelectedJob != null)
+        {
+            SelectedJob.EnableFaceRestoration = value;
+        }
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerEnableFaceRestoration = value;
+            ScheduleDebouncedSaveSettings();
+            if (value && !IsFaceRestorationAvailable)
+            {
+                _snackbarManager.Notify(
+                    "CodeFormer / GFPGAN binary not detected in tools directory. Facial clarity filter will be applied as fallback."
+                );
+            }
+        }
+    }
+
+    partial void OnSelectedCameraProfileTypeChanged(CameraProfileType value)
+    {
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerCameraProfileType = value;
+            ScheduleDebouncedSaveSettings();
+        }
+    }
+
+    partial void OnCameraMakeChanged(string? value)
+    {
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerCameraMake = value;
+            ScheduleDebouncedSaveSettings();
+        }
+    }
+
+    partial void OnCameraModelChanged(string? value)
+    {
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerCameraModel = value;
+            ScheduleDebouncedSaveSettings();
+        }
+    }
+
+    partial void OnCameraSoftwareChanged(string? value)
+    {
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerCameraSoftware = value;
+            ScheduleDebouncedSaveSettings();
+        }
+    }
+
+    partial void OnCameraArtistChanged(string? value)
+    {
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerCameraArtist = value;
+            ScheduleDebouncedSaveSettings();
+        }
+    }
+
+    partial void OnCameraCopyrightChanged(string? value)
+    {
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerCameraCopyright = value;
+            ScheduleDebouncedSaveSettings();
+        }
+    }
+
+    partial void OnCameraInjectTimestampChanged(bool value)
+    {
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerCameraInjectTimestamp = value;
+            ScheduleDebouncedSaveSettings();
+        }
+    }
+
+    partial void OnFaceRestorationFidelityChanged(double value)
+    {
+        if (SelectedJob != null)
+        {
+            SelectedJob.FaceRestorationFidelity = value;
+        }
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerFaceRestorationFidelity = value;
+            ScheduleDebouncedSaveSettings();
         }
     }
 
@@ -466,8 +1070,22 @@ public partial class VideoUpscalerViewModel : ViewModelBase
     [RelayCommand]
     public void SetZoom(double scale) => ZoomScale = Math.Clamp(scale, 1.0, 4.0);
 
+    partial void OnZoomScaleChanged(double value)
+    {
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerZoomScale = value;
+            ScheduleDebouncedSaveSettings();
+        }
+    }
+
     partial void OnIsColorGradingPanelOpenChanged(bool value)
     {
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerIsColorGradingPanelOpen = value;
+            ScheduleDebouncedSaveSettings();
+        }
         if (value)
         {
             RequestPreviewUpdate(0);
@@ -492,6 +1110,32 @@ public partial class VideoUpscalerViewModel : ViewModelBase
 
     private void OnColorGradingSettingsChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (ActiveColorGrading == GlobalColorGrading && !_isRestoringSettings)
+        {
+            _settingsService.UpscalerColorBrightness = GlobalColorGrading.Brightness;
+            _settingsService.UpscalerColorContrast = GlobalColorGrading.Contrast;
+            _settingsService.UpscalerColorSaturation = GlobalColorGrading.Saturation;
+            _settingsService.UpscalerColorGamma = GlobalColorGrading.Gamma;
+            _settingsService.UpscalerColorVibrance = GlobalColorGrading.Vibrance;
+            _settingsService.UpscalerColorAutoNormalize = GlobalColorGrading.AutoNormalize;
+            _settingsService.UpscalerColorTemperature = GlobalColorGrading.ColorTemperature;
+            _settingsService.UpscalerColorShadowRed = GlobalColorGrading.ShadowRed;
+            _settingsService.UpscalerColorShadowGreen = GlobalColorGrading.ShadowGreen;
+            _settingsService.UpscalerColorShadowBlue = GlobalColorGrading.ShadowBlue;
+            _settingsService.UpscalerColorMidtoneRed = GlobalColorGrading.MidtoneRed;
+            _settingsService.UpscalerColorMidtoneGreen = GlobalColorGrading.MidtoneGreen;
+            _settingsService.UpscalerColorMidtoneBlue = GlobalColorGrading.MidtoneBlue;
+            _settingsService.UpscalerColorHighlightRed = GlobalColorGrading.HighlightRed;
+            _settingsService.UpscalerColorHighlightGreen = GlobalColorGrading.HighlightGreen;
+            _settingsService.UpscalerColorHighlightBlue = GlobalColorGrading.HighlightBlue;
+            _settingsService.UpscalerColorToneCurve = GlobalColorGrading.ToneCurve;
+            _settingsService.UpscalerColorFilmGrain = GlobalColorGrading.FilmGrain;
+            _settingsService.UpscalerColorVignette = GlobalColorGrading.Vignette;
+            _settingsService.UpscalerColorLutPath = GlobalColorGrading.LutPath;
+            _settingsService.UpscalerColorLutOpacity = GlobalColorGrading.LutOpacity;
+            ScheduleDebouncedSaveSettings();
+        }
+
         RequestPreviewUpdate(250);
     }
 
@@ -511,10 +1155,19 @@ public partial class VideoUpscalerViewModel : ViewModelBase
         ActiveColorGrading = value?.ColorGrading ?? GlobalColorGrading;
         if (value != null)
         {
+            SelectedTargetAspectRatio = value.TargetAspectRatio;
+            SelectedTrackingMode = value.TrackingMode;
+            EnableMicroZoom = value.EnableMicroZoom;
+            MicroZoomPercent = value.MicroZoomPercent;
+            SelectedZoomMode = value.ZoomMode;
             EnableDenoise = value.EnableDenoise;
             EnableDeinterlace = value.EnableDeinterlace;
             EnableSplitAndUpscale = value.EnableSplitAndUpscale;
             MergeAfterUpscale = value.MergeAfterUpscale;
+            SelectedModelType = value.ModelType;
+            EnableFacialClarity = value.EnableFacialClarity;
+            EnableFaceRestoration = value.EnableFaceRestoration;
+            FaceRestorationFidelity = value.FaceRestorationFidelity;
             if (!string.IsNullOrWhiteSpace(value.ActivePresetName))
             {
                 _selectedPresetName = value.ActivePresetName;
@@ -529,7 +1182,12 @@ public partial class VideoUpscalerViewModel : ViewModelBase
     partial void OnMaxConcurrencyChanged(int value)
     {
         _queueManager.MaxConcurrency = value;
-        _snackbarManager.Notify($"Concurrency set to {value} parallel worker(s).");
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerMaxConcurrency = value;
+            ScheduleDebouncedSaveSettings();
+            _snackbarManager.Notify($"Concurrency set to {value} parallel worker(s).");
+        }
     }
 
     [RelayCommand]
@@ -613,37 +1271,157 @@ public partial class VideoUpscalerViewModel : ViewModelBase
         }
     }
 
+    private UpscaleJob CreateJobFromSettings(
+        string path,
+        string? caption = null,
+        bool enableSplit = false
+    )
+    {
+        return new UpscaleJob
+        {
+            FilePath = path,
+            OutputDirectory = OutputDirectory,
+            ScratchDirectory = ScratchDirectory,
+            TargetResolution = SelectedTargetResolution,
+            TargetAspectRatio = SelectedTargetAspectRatio,
+            TrackingMode = SelectedTrackingMode,
+            Codec = SelectedCodec,
+            HardwareAcceleration = SelectedHardwareAcceleration,
+            ColorGrading = GlobalColorGrading.Clone(),
+            CameraMetadata = GetCurrentCameraMetadataSettings(),
+            EnableDenoise = EnableDenoise,
+            EnableDeinterlace = EnableDeinterlace,
+            EnableMicroZoom = EnableMicroZoom,
+            MicroZoomPercent = MicroZoomPercent,
+            ZoomMode = SelectedZoomMode,
+            ActivePresetName = SelectedPresetName,
+            ModelType = SelectedModelType,
+            EnableFacialClarity = EnableFacialClarity,
+            EnableFaceRestoration = EnableFaceRestoration,
+            FaceRestorationFidelity = FaceRestorationFidelity,
+            EnableSplitAndUpscale = enableSplit,
+            MergeAfterUpscale = MergeAfterUpscale,
+            SplitOptions = GetCurrentSplitOptions(),
+            Caption = caption,
+            Status = UpscaleJobStatus.Queued,
+        };
+    }
+
     private async Task IngestFilePathsAsync(IEnumerable<string> filePaths)
     {
         int count = 0;
+
         foreach (var path in filePaths)
         {
             if (Jobs.Any(j => string.Equals(j.FilePath, path, StringComparison.OrdinalIgnoreCase)))
                 continue;
 
-            var job = new UpscaleJob
+            // Detect existing caption text file alongside the input video
+            string? baseCaption = null;
+            var txtPath = Path.ChangeExtension(path, ".txt");
+            if (File.Exists(txtPath))
             {
-                FilePath = path,
-                OutputDirectory = OutputDirectory,
-                TargetResolution = SelectedTargetResolution,
-                Codec = SelectedCodec,
-                HardwareAcceleration = SelectedHardwareAcceleration,
-                ColorGrading = GlobalColorGrading.Clone(),
-                EnableDenoise = EnableDenoise,
-                EnableDeinterlace = EnableDeinterlace,
-                ActivePresetName = SelectedPresetName,
-                EnableSplitAndUpscale = EnableSplitAndUpscale,
-                MergeAfterUpscale = MergeAfterUpscale,
-                Status = UpscaleJobStatus.Queued,
-            };
+                try
+                {
+                    baseCaption = (await File.ReadAllTextAsync(txtPath)).Trim();
+                }
+                catch { }
+            }
+            if (string.IsNullOrWhiteSpace(baseCaption))
+            {
+                baseCaption = Path.GetFileNameWithoutExtension(path);
+            }
 
+            var job = CreateJobFromSettings(path, baseCaption, enableSplit: EnableSplitAndUpscale);
             await _queueManager.EnqueueJobAsync(job);
             count++;
         }
 
         if (count > 0)
         {
-            _snackbarManager.Notify($"Added {count} video(s) to the upscale queue.");
+            _snackbarManager.Notify($"Added {count} video job(s) to the upscale queue.");
+        }
+    }
+
+    [RelayCommand]
+    public async Task SplitQueuedJobAsync(UpscaleJob? job)
+    {
+        if (job is null || job.Status != UpscaleJobStatus.Queued)
+        {
+            _snackbarManager.Notify("Only queued jobs can be split into parts.");
+            return;
+        }
+
+        try
+        {
+            var splitOutputDir =
+                !string.IsNullOrWhiteSpace(job.OutputDirectory)
+                && Directory.Exists(job.OutputDirectory)
+                    ? job.OutputDirectory
+                    : (
+                        !string.IsNullOrWhiteSpace(OutputDirectory)
+                        && Directory.Exists(OutputDirectory)
+                            ? OutputDirectory
+                            : AppContext.BaseDirectory
+                    );
+
+            var splitOptions = GetCurrentSplitOptions();
+            _snackbarManager.Notify($"Slicing '{job.FileName}' into parts...");
+            var splitResult = await SplitAndUpscalePipeline.SplitVideoCustomAsync(
+                job.FilePath,
+                splitOutputDir,
+                splitOptions,
+                null,
+                CancellationToken.None
+            );
+
+            // Remove original job from queue
+            _queueManager.CancelJob(job);
+            Jobs.Remove(job);
+
+            foreach (var part in splitResult.Parts)
+            {
+                var partJob = new UpscaleJob
+                {
+                    FilePath = part.VideoPath,
+                    OutputDirectory = job.OutputDirectory,
+                    ScratchDirectory = job.ScratchDirectory ?? ScratchDirectory,
+                    TargetResolution = job.TargetResolution,
+                    TargetAspectRatio = job.TargetAspectRatio,
+                    TrackingMode = job.TrackingMode,
+                    Codec = job.Codec,
+                    HardwareAcceleration = job.HardwareAcceleration,
+                    ColorGrading = job.ColorGrading.Clone(),
+                    CameraMetadata = job.CameraMetadata.Clone(),
+                    EnableDenoise = job.EnableDenoise,
+                    EnableDeinterlace = job.EnableDeinterlace,
+                    EnableMicroZoom = job.EnableMicroZoom,
+                    MicroZoomPercent = job.MicroZoomPercent,
+                    ZoomMode = job.ZoomMode,
+                    ActivePresetName = job.ActivePresetName,
+                    ModelType = job.ModelType,
+                    EnableFacialClarity = job.EnableFacialClarity,
+                    EnableFaceRestoration = job.EnableFaceRestoration,
+                    FaceRestorationFidelity = job.FaceRestorationFidelity,
+                    EnableSplitAndUpscale = false,
+                    MergeAfterUpscale = false,
+                    PartNumber = part.PartNumber,
+                    OriginalBaseName = Path.GetFileNameWithoutExtension(job.FilePath),
+                    Caption = part.Caption,
+                    DeleteSourceAfterUpscale = true,
+                    Status = UpscaleJobStatus.Queued,
+                };
+
+                await _queueManager.EnqueueJobAsync(partJob);
+            }
+
+            _snackbarManager.Notify(
+                $"Separated '{job.FileName}' into {splitResult.Parts.Count} parts (original moved to 'original/' folder)."
+            );
+        }
+        catch (Exception ex)
+        {
+            _snackbarManager.Notify($"Failed to split video: {ex.Message}");
         }
     }
 
@@ -656,6 +1434,29 @@ public partial class VideoUpscalerViewModel : ViewModelBase
             OutputDirectory = dir;
             _snackbarManager.Notify($"Output folder updated to: {dir}");
         }
+    }
+
+    [RelayCommand]
+    public async Task SelectScratchDirectoryAsync()
+    {
+        var currentDir =
+            !string.IsNullOrWhiteSpace(ScratchDirectory) && Directory.Exists(ScratchDirectory)
+                ? ScratchDirectory
+                : Path.GetTempPath();
+
+        var dir = await _dialogManager.PromptDirectoryPathAsync(currentDir);
+        if (!string.IsNullOrWhiteSpace(dir) && Directory.Exists(dir))
+        {
+            ScratchDirectory = dir;
+            _snackbarManager.Notify($"Scratch / working directory updated to: {dir}");
+        }
+    }
+
+    [RelayCommand]
+    public void ResetScratchDirectory()
+    {
+        ScratchDirectory = null;
+        _snackbarManager.Notify("Scratch directory reset to default system temp folder.");
     }
 
     [RelayCommand]
@@ -878,7 +1679,32 @@ public partial class VideoUpscalerViewModel : ViewModelBase
                 }
             }
 
-            var filterChain = ActiveColorGrading.BuildFilterString();
+            var previewFilterParts = new List<string>();
+            if (EnableMicroZoom && MicroZoomPercent > 0)
+            {
+                var zoomFilter = AspectRatioFilterBuilder.BuildMicroZoomFilter(
+                    MicroZoomPercent,
+                    SelectedZoomMode,
+                    SelectedJob?.ActionCentroidX ?? 0.5,
+                    SelectedJob?.ActionCentroidY ?? 0.5
+                );
+                if (!string.IsNullOrWhiteSpace(zoomFilter))
+                {
+                    previewFilterParts.Add(zoomFilter);
+                }
+            }
+            if (EnableFacialClarity)
+            {
+                previewFilterParts.Add("unsharp=lx=5:ly=5:la=0.75:cx=3:cy=3:ca=0.3");
+                previewFilterParts.Add("noise=c1s=5:c0f=u");
+            }
+            var colorFilter = ActiveColorGrading.BuildFilterString();
+            if (!string.IsNullOrWhiteSpace(colorFilter))
+            {
+                previewFilterParts.Add(colorFilter);
+            }
+            var filterChain =
+                previewFilterParts.Count > 0 ? string.Join(",", previewFilterParts) : null;
             var timestamp = TimeSpan.FromSeconds(Math.Max(0.0, PreviewTimestampSeconds));
 
             var bytes = await _previewService.GenerateSplitScreenPreviewAsync(
@@ -899,10 +1725,21 @@ public partial class VideoUpscalerViewModel : ViewModelBase
                 var bitmap = new Bitmap(ms);
                 PreviewImage = bitmap;
                 PreviewError = null;
+
+                var hist = HistogramCalculator.CalculateFromBmp(
+                    bytes,
+                    splitRatio: SplitDividerRatio
+                );
+                RedHistogramPath = hist.RedPath;
+                GreenHistogramPath = hist.GreenPath;
+                BlueHistogramPath = hist.BluePath;
+                LumaHistogramPath = hist.LumaPath;
+                HasHistogramData = hist.HasData;
             }
             else
             {
                 PreviewError = "Unable to render preview frame at this timestamp.";
+                HasHistogramData = false;
             }
         }
         catch (OperationCanceledException)
@@ -920,5 +1757,19 @@ public partial class VideoUpscalerViewModel : ViewModelBase
                 IsPreviewLoading = false;
             }
         }
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _debouncedSaveCts?.Cancel();
+            _debouncedSaveCts?.Dispose();
+            _previewCts?.Cancel();
+            _previewCts?.Dispose();
+            _settingsService.Save();
+        }
+
+        base.Dispose(disposing);
     }
 }

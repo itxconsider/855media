@@ -18,10 +18,20 @@ public enum UpscaleJobStatus
 
 public enum UpscaleTargetResolution
 {
+    [System.ComponentModel.DataAnnotations.Display(Name = "1080p (Full HD)")]
     Hd1080p,
+
+    [System.ComponentModel.DataAnnotations.Display(Name = "4K (UHD)")]
     Uhd4k,
+
+    [System.ComponentModel.DataAnnotations.Display(Name = "Scale 2x")]
     Scale2x,
+
+    [System.ComponentModel.DataAnnotations.Display(Name = "Scale 4x")]
     Scale4x,
+
+    [System.ComponentModel.DataAnnotations.Display(Name = "Original 1x (Fast Re-Frame & Filter)")]
+    Original1x,
 }
 
 public enum UpscaleVideoCodec
@@ -38,6 +48,24 @@ public enum HardwareAccelerationMode
     IntelQsv,
     AmdAmf,
     CpuSoftware,
+}
+
+public enum UpscaleModelType
+{
+    [System.ComponentModel.DataAnnotations.Display(
+        Name = "Real-World / People (RealESRGAN_x4plus)"
+    )]
+    RealWorld,
+
+    [System.ComponentModel.DataAnnotations.Display(
+        Name = "Animation / Cartoons (realesr-animevideov3)"
+    )]
+    Animation,
+
+    [System.ComponentModel.DataAnnotations.Display(
+        Name = "Fast Native / Pass-Through (No AI - GPU Filters & Re-Frame)"
+    )]
+    FastNative,
 }
 
 public class UpscaleJob : INotifyPropertyChanged
@@ -62,6 +90,8 @@ public class UpscaleJob : INotifyPropertyChanged
 
     public string OutputDirectory { get; set; } = string.Empty;
 
+    public string? ScratchDirectory { get; set; }
+
     private string? _customOutputFilePath;
     public string? CustomOutputFilePath
     {
@@ -77,8 +107,27 @@ public class UpscaleJob : INotifyPropertyChanged
                 string.IsNullOrWhiteSpace(OutputDirectory)
                     ? Path.GetDirectoryName(FilePath) ?? "."
                     : OutputDirectory,
-                $"{Path.GetFileNameWithoutExtension(FilePath)}_upscaled_{TargetResolution.ToString().ToLowerInvariant()}{Path.GetExtension(FilePath)}"
+                $"{Path.GetFileNameWithoutExtension(FilePath)}_{TargetResolution.ToString().ToLowerInvariant()}{DetermineSafeOutputExtension(FilePath, Codec)}"
             );
+
+    public static string DetermineSafeOutputExtension(string inputPath, UpscaleVideoCodec codec)
+    {
+        var inputExt = Path.GetExtension(inputPath).ToLowerInvariant();
+        // Incompatible or legacy containers that cannot mux modern H264/H265/AV1 streams or causes ffmpeg failures
+        if (inputExt is ".flv" or ".avi" or ".wmv" or ".webm" or ".vob" or ".ts" or ".3gp")
+        {
+            return ".mp4";
+        }
+
+        if (string.IsNullOrWhiteSpace(inputExt))
+        {
+            return ".mp4";
+        }
+
+        return inputExt;
+    }
+
+    public CustomSplitOptions? SplitOptions { get; set; }
 
     private bool _enableSplitAndUpscale;
     public bool EnableSplitAndUpscale
@@ -106,15 +155,71 @@ public class UpscaleJob : INotifyPropertyChanged
         }
     }
 
+    private string? _caption;
+    public string? Caption
+    {
+        get => _caption;
+        set => SetField(ref _caption, value);
+    }
+
+    private int? _partNumber;
+    public int? PartNumber
+    {
+        get => _partNumber;
+        set
+        {
+            if (SetField(ref _partNumber, value))
+            {
+                OnPropertyChanged(nameof(SplitSummary));
+                OnPropertyChanged(nameof(PartBadge));
+                OnPropertyChanged(nameof(HasPartBadge));
+            }
+        }
+    }
+
+    public string? OriginalBaseName { get; set; }
+
+    public bool DeleteSourceAfterUpscale { get; set; }
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool IsSplitPart => PartNumber.HasValue;
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string PartBadge => PartNumber.HasValue ? $"Part {PartNumber.Value}" : string.Empty;
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public bool HasPartBadge => PartNumber.HasValue;
+
     [System.Text.Json.Serialization.JsonIgnore]
     public string SplitSummary =>
-        EnableSplitAndUpscale
-            ? (MergeAfterUpscale ? "Split & Merge" : "Split (2 parts)")
-            : "Direct";
+        PartNumber.HasValue
+            ? $"Part {PartNumber.Value}"
+            : (
+                EnableSplitAndUpscale
+                    ? (
+                        MergeAfterUpscale
+                            ? "Split & Merge"
+                            : (
+                                SplitOptions != null && SplitOptions.Mode == SplitMode.ByPartCount
+                                    ? $"Split ({SplitOptions.PartCount} parts)"
+                                    : (
+                                        SplitOptions != null
+                                        && SplitOptions.Mode == SplitMode.ByDuration
+                                            ? $"Split ({SplitOptions.SegmentDurationSeconds:0}s)"
+                                            : "Split (2 parts)"
+                                    )
+                            )
+                    )
+                    : "Direct"
+            );
 
     public string? InputResolution { get; set; } = "Probing...";
 
     public UpscaleTargetResolution TargetResolution { get; set; } = UpscaleTargetResolution.Hd1080p;
+
+    public AspectRatioMode TargetAspectRatio { get; set; } = AspectRatioMode.Original;
+
+    public SmartTrackingMode TrackingMode { get; set; } = SmartTrackingMode.StaticCenter;
 
     public UpscaleVideoCodec Codec { get; set; } = UpscaleVideoCodec.H264;
 
@@ -123,11 +228,51 @@ public class UpscaleJob : INotifyPropertyChanged
 
     public ColorGradingSettings ColorGrading { get; set; } = new();
 
+    public CameraMetadataSettings CameraMetadata { get; set; } = new();
+
     public bool EnableDenoise { get; set; }
 
     public bool EnableDeinterlace { get; set; }
 
+    public bool EnableMicroZoom { get; set; }
+
+    public double MicroZoomPercent { get; set; } = 3.0;
+
+    public SmartZoomMode ZoomMode { get; set; } = SmartZoomMode.ActionAnchored;
+
+    public double ActionCentroidX { get; set; } = 0.5;
+
+    public double ActionCentroidY { get; set; } = 0.5;
+
     public string? ActivePresetName { get; set; }
+
+    private UpscaleModelType _modelType = UpscaleModelType.RealWorld;
+    public UpscaleModelType ModelType
+    {
+        get => _modelType;
+        set => SetField(ref _modelType, value);
+    }
+
+    private bool _enableFacialClarity = true;
+    public bool EnableFacialClarity
+    {
+        get => _enableFacialClarity;
+        set => SetField(ref _enableFacialClarity, value);
+    }
+
+    private bool _enableFaceRestoration;
+    public bool EnableFaceRestoration
+    {
+        get => _enableFaceRestoration;
+        set => SetField(ref _enableFaceRestoration, value);
+    }
+
+    private double _faceRestorationFidelity = 0.7;
+    public double FaceRestorationFidelity
+    {
+        get => _faceRestorationFidelity;
+        set => SetField(ref _faceRestorationFidelity, value);
+    }
 
     public UpscaleJobStatus Status
     {
@@ -151,6 +296,16 @@ public class UpscaleJob : INotifyPropertyChanged
     {
         get => _totalFrames;
         set => SetField(ref _totalFrames, value);
+    }
+
+    public int InputWidth { get; set; }
+    public int InputHeight { get; set; }
+
+    private double _videoFps = 30.0;
+    public double VideoFps
+    {
+        get => _videoFps;
+        set => SetField(ref _videoFps, value);
     }
 
     public double Fps

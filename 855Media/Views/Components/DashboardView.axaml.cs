@@ -1,4 +1,4 @@
-﻿using _855Media.Framework;
+using _855Media.Framework;
 using _855Media.ViewModels.Components;
 using Avalonia;
 using Avalonia.Controls;

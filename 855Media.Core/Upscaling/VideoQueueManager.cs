@@ -55,7 +55,9 @@ public class VideoQueueManager : IDisposable
     }
 
     private readonly VideoUpscaleService _upscaleService;
-    private readonly Channel<UpscaleJob> _jobChannel;
+    public VideoUpscaleService UpscaleService => _upscaleService;
+    private readonly Channel<bool> _signalChannel;
+    private readonly HashSet<Guid> _activeJobIds = [];
     private readonly List<Task> _workerTasks = [];
     private readonly CancellationTokenSource _managerCts = new();
     private readonly SemaphoreSlim _pauseGate = new(1, 1);
@@ -104,17 +106,19 @@ public class VideoQueueManager : IDisposable
         _upscaleService = upscaleService;
         _maxConcurrency = Math.Clamp(initialConcurrency, 1, 4);
 
-        // Bounded channel to enforce smooth flow control
-        var channelOptions = new BoundedChannelOptions(100)
+        var channelOptions = new UnboundedChannelOptions
         {
-            FullMode = BoundedChannelFullMode.Wait,
             SingleReader = false,
             SingleWriter = false,
         };
-
-        _jobChannel = Channel.CreateBounded<UpscaleJob>(channelOptions);
+        _signalChannel = Channel.CreateUnbounded<bool>(channelOptions);
 
         AdjustWorkers();
+    }
+
+    private void SignalWork()
+    {
+        _signalChannel.Writer.TryWrite(true);
     }
 
     public async Task InitializeFromDiskAsync()
@@ -123,6 +127,7 @@ public class VideoQueueManager : IDisposable
         if (savedJobs.Count == 0)
             return;
 
+        bool hasQueued = false;
         lock (_syncLock)
         {
             foreach (var job in savedJobs)
@@ -133,10 +138,21 @@ public class VideoQueueManager : IDisposable
                 }
             }
 
+            RecalculatePriorities();
+
             if (Jobs.Any(j => j.Status == UpscaleJobStatus.Paused))
             {
                 _isPaused = true;
             }
+            else if (Jobs.Any(j => j.Status == UpscaleJobStatus.Queued))
+            {
+                hasQueued = true;
+            }
+        }
+
+        if (hasQueued && !_isPaused)
+        {
+            SignalWork();
         }
     }
 
@@ -161,6 +177,7 @@ public class VideoQueueManager : IDisposable
             job.Status = UpscaleJobStatus.Queued;
             job.Cts = new CancellationTokenSource();
             Jobs.Add(job);
+            RecalculatePriorities();
         }
 
         ScheduleSaveQueue();
@@ -177,11 +194,15 @@ public class VideoQueueManager : IDisposable
                 {
                     // Non-fatal probe failure
                 }
+                finally
+                {
+                    SignalWork();
+                }
             },
             cancellationToken
         );
 
-        await _jobChannel.Writer.WriteAsync(job, cancellationToken);
+        SignalWork();
     }
 
     public async Task EnqueueBatchAsync(
@@ -245,18 +266,20 @@ public class VideoQueueManager : IDisposable
                 else
                 {
                     job.Status = UpscaleJobStatus.Queued;
-                    _ = _jobChannel.Writer.WriteAsync(job);
                 }
             }
         }
 
         ScheduleSaveQueue();
+        SignalWork();
     }
 
     public void CancelJob(UpscaleJob job)
     {
         lock (_syncLock)
         {
+            _activeJobIds.Remove(job.Id);
+
             if (
                 job.Status
                 is UpscaleJobStatus.Processing
@@ -292,6 +315,7 @@ public class VideoQueueManager : IDisposable
         }
 
         ScheduleSaveQueue();
+        SignalWork();
     }
 
     public void CancelAll()
@@ -312,14 +336,19 @@ public class VideoQueueManager : IDisposable
         if (job.Status is not (UpscaleJobStatus.Failed or UpscaleJobStatus.Canceled))
             return;
 
-        job.Status = UpscaleJobStatus.Queued;
-        job.Progress = 0;
-        job.CurrentFrame = 0;
-        job.ErrorMessage = null;
-        job.Cts = new CancellationTokenSource();
+        lock (_syncLock)
+        {
+            _activeJobIds.Remove(job.Id);
+            job.Status = UpscaleJobStatus.Queued;
+            job.Progress = 0;
+            job.CurrentFrame = 0;
+            job.ErrorMessage = null;
+            job.Cts = new CancellationTokenSource();
+            RecalculatePriorities();
+        }
 
         ScheduleSaveQueue();
-        await _jobChannel.Writer.WriteAsync(job);
+        SignalWork();
     }
 
     public void MoveUp(UpscaleJob job)
@@ -330,9 +359,10 @@ public class VideoQueueManager : IDisposable
             if (index > 0)
             {
                 Jobs.Move(index, index - 1);
-                job.Priority++;
+                RecalculatePriorities();
             }
         }
+        SignalWork();
     }
 
     public void MoveDown(UpscaleJob job)
@@ -343,8 +373,18 @@ public class VideoQueueManager : IDisposable
             if (index >= 0 && index < Jobs.Count - 1)
             {
                 Jobs.Move(index, index + 1);
-                job.Priority--;
+                RecalculatePriorities();
             }
+        }
+        SignalWork();
+    }
+
+    private void RecalculatePriorities()
+    {
+        int count = Jobs.Count;
+        for (int i = 0; i < count; i++)
+        {
+            Jobs[i].Priority = count - i;
         }
     }
 
@@ -358,8 +398,10 @@ public class VideoQueueManager : IDisposable
                 .ToList();
             foreach (var item in completed)
             {
+                _activeJobIds.Remove(item.Id);
                 Jobs.Remove(item);
             }
+            RecalculatePriorities();
         }
 
         ScheduleSaveQueue();
@@ -369,28 +411,60 @@ public class VideoQueueManager : IDisposable
     {
         lock (_syncLock)
         {
+            _workerTasks.RemoveAll(t => t.IsCompleted);
             while (_workerTasks.Count < _maxConcurrency)
             {
                 var workerId = _workerTasks.Count + 1;
                 _workerTasks.Add(Task.Run(() => WorkerLoopAsync(workerId, _managerCts.Token)));
             }
         }
+        SignalWork();
     }
 
     private async Task WorkerLoopAsync(int workerId, CancellationToken managerToken)
     {
         while (!managerToken.IsCancellationRequested)
         {
+            if (workerId > _maxConcurrency)
+            {
+                // Worker gracefully exits when concurrency limit is lowered
+                break;
+            }
+
             try
             {
                 // Wait if paused
                 await _pauseGate.WaitAsync(managerToken);
                 _pauseGate.Release();
 
-                var job = await _jobChannel.Reader.ReadAsync(managerToken);
+                // Await next work signal
+                await _signalChannel.Reader.ReadAsync(managerToken);
 
-                // Skip cancelled or paused jobs
-                if (job.Status is UpscaleJobStatus.Canceled or UpscaleJobStatus.Complete)
+                if (workerId > _maxConcurrency)
+                {
+                    break;
+                }
+
+                UpscaleJob? job = null;
+                lock (_syncLock)
+                {
+                    if (!_isPaused)
+                    {
+                        job = Jobs.Where(j =>
+                                j.Status == UpscaleJobStatus.Queued && !_activeJobIds.Contains(j.Id)
+                            )
+                            .OrderByDescending(j => j.Priority)
+                            .FirstOrDefault();
+
+                        if (job != null)
+                        {
+                            _activeJobIds.Add(job.Id);
+                            job.Status = UpscaleJobStatus.Processing;
+                        }
+                    }
+                }
+
+                if (job == null)
                     continue;
 
                 using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
@@ -423,13 +497,26 @@ public class VideoQueueManager : IDisposable
                         job.DetailedLog +=
                             $"{Environment.NewLine}[Warning] Soft error encountered. Scheduling retry {job.RetryCount}/2...";
                         ScheduleSaveQueue();
-                        await _jobChannel.Writer.WriteAsync(job, managerToken);
+                        SignalWork();
                     }
                     else
                     {
                         JobFailed?.Invoke(this, (job, ex));
                         CheckAndNotifyBatchCompletion();
                         ScheduleSaveQueue();
+                    }
+                }
+                finally
+                {
+                    lock (_syncLock)
+                    {
+                        _activeJobIds.Remove(job.Id);
+                    }
+
+                    // If more queued jobs remain, pulse work signal
+                    if (Jobs.Any(j => j.Status == UpscaleJobStatus.Queued))
+                    {
+                        SignalWork();
                     }
                 }
             }
@@ -439,7 +526,6 @@ public class VideoQueueManager : IDisposable
             }
             catch
             {
-                // Continue worker loop
                 await Task.Delay(500, managerToken);
             }
         }
@@ -501,7 +587,7 @@ public class VideoQueueManager : IDisposable
         _isDisposed = true;
 
         StopAllJobs();
-        _jobChannel.Writer.TryComplete();
+        _signalChannel.Writer.TryComplete();
         _pauseGate.Dispose();
         _managerCts.Dispose();
     }

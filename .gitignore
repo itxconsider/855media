@@ -24,3 +24,22 @@ run_output.txt
 
 # Test results
 TestResults/
+
+# Downloads & local datasets
+downloads/
+**/downloads/
+*.wav
+*.mp3
+*.mp4
+
+# AI Model weights & checkpoints
+models/
+**/models/
+*.bin
+*.pth
+*.index
+*.onnx
+*.safetensors
+
+# Tools binary models
+tools/whisper/

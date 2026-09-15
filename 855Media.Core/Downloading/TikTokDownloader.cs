@@ -78,6 +78,23 @@ public class TikTokDownloader(IReadOnlyList<Cookie>? initialCookies = null)
         {
             await YtDlp.RunAsync(arguments, progress, cancellationToken);
         }
+        catch (Exception ex)
+            when (!string.IsNullOrWhiteSpace(cookieFilePath)
+                && (
+                    ex.Message.Contains("cookie", StringComparison.OrdinalIgnoreCase)
+                    || ex.Message.Contains("Netscape", StringComparison.OrdinalIgnoreCase)
+                )
+            )
+        {
+            var fallbackArguments = new List<string>(arguments);
+            var cookieIdx = fallbackArguments.IndexOf("--cookies");
+            if (cookieIdx >= 0)
+            {
+                fallbackArguments.RemoveAt(cookieIdx + 1);
+                fallbackArguments.RemoveAt(cookieIdx);
+            }
+            await YtDlp.RunAsync(fallbackArguments, progress, cancellationToken);
+        }
         finally
         {
             if (isTemp && !string.IsNullOrWhiteSpace(cookieFilePath))
@@ -93,87 +110,13 @@ public class TikTokDownloader(IReadOnlyList<Cookie>? initialCookies = null)
             }
         }
 
-        // Guarantee H.264 / AAC conversion using FFmpeg if available so Windows Media Player can play it without paid HEVC extensions
-        if (
-            !container.IsAudioOnly
-            && !string.IsNullOrWhiteSpace(actualFFmpegPath)
-            && File.Exists(filePath)
-        )
+        if (!container.IsAudioOnly)
         {
-            var tempOutput = filePath + ".transcoded.mp4";
-            try
-            {
-                // Try Stream Copy (instant 0% CPU) first, then GPU encoders (nvenc, qsv, amf, mf), fallback to ultrafast libx264
-                var encodersToTry = new[]
-                {
-                    "copy",
-                    "h264_nvenc",
-                    "h264_qsv",
-                    "h264_amf",
-                    "h264_mf",
-                    "libx264",
-                };
-
-                foreach (var encoder in encodersToTry)
-                {
-                    if (File.Exists(tempOutput))
-                    {
-                        try
-                        {
-                            File.Delete(tempOutput);
-                        }
-                        catch { }
-                    }
-
-                    using var process = new System.Diagnostics.Process();
-                    process.StartInfo.FileName = actualFFmpegPath;
-                    process.StartInfo.ArgumentList.Add("-y");
-                    process.StartInfo.ArgumentList.Add("-i");
-                    process.StartInfo.ArgumentList.Add(filePath);
-                    process.StartInfo.ArgumentList.Add("-c:v");
-                    process.StartInfo.ArgumentList.Add(encoder);
-                    if (encoder == "libx264")
-                    {
-                        process.StartInfo.ArgumentList.Add("-preset");
-                        process.StartInfo.ArgumentList.Add("ultrafast");
-                    }
-                    process.StartInfo.ArgumentList.Add("-c:a");
-                    process.StartInfo.ArgumentList.Add("aac");
-                    process.StartInfo.ArgumentList.Add("-pix_fmt");
-                    process.StartInfo.ArgumentList.Add("yuv420p");
-                    process.StartInfo.ArgumentList.Add(tempOutput);
-                    process.StartInfo.UseShellExecute = false;
-                    process.StartInfo.CreateNoWindow = true;
-
-                    process.Start();
-                    await process.WaitForExitAsync(cancellationToken);
-
-                    if (
-                        process.ExitCode == 0
-                        && File.Exists(tempOutput)
-                        && new FileInfo(tempOutput).Length > 0
-                    )
-                    {
-                        File.Delete(filePath);
-                        File.Move(tempOutput, filePath);
-                        break;
-                    }
-                }
-            }
-            catch
-            {
-                if (File.Exists(tempOutput))
-                {
-                    try
-                    {
-                        File.Delete(tempOutput);
-                    }
-                    catch
-                    {
-                        // Ignore cleanup error
-                    }
-                }
-            }
+            await MediaCompatibility.EnsureWindowsCompatibleAsync(
+                filePath,
+                actualFFmpegPath,
+                cancellationToken
+            );
         }
     }
 

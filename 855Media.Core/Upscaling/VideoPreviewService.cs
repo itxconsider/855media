@@ -27,15 +27,7 @@ public class VideoPreviewService
         if (!string.IsNullOrWhiteSpace(_customFfmpegPath) && File.Exists(_customFfmpegPath))
             return _customFfmpegPath;
 
-        var localFfmpeg = Path.Combine(AppContext.BaseDirectory, "ffmpeg.exe");
-        if (File.Exists(localFfmpeg))
-            return localFfmpeg;
-
-        var toolsFfmpeg = Path.Combine(AppContext.BaseDirectory, "tools", "ffmpeg", "ffmpeg.exe");
-        if (File.Exists(toolsFfmpeg))
-            return toolsFfmpeg;
-
-        return "ffmpeg";
+        return _855Media.Core.Downloading.FFmpeg.TryGetCliFilePath() ?? "ffmpeg";
     }
 
     /// <summary>

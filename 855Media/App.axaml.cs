@@ -61,6 +61,7 @@ public class App : Application, IDisposable
         services.AddTransient<FacebookDownloaderViewModel>();
         services.AddTransient<HistoryViewModel>();
         services.AddTransient<VideoUpscalerViewModel>();
+        services.AddTransient<DubbingViewModel>();
         services.AddTransient<DownloadViewModel>();
         services.AddTransient<AuthSetupViewModel>();
         services.AddTransient<DownloadMultipleSetupViewModel>();
@@ -101,8 +102,8 @@ public class App : Application, IDisposable
 
         this.LocateMaterialTheme<MaterialThemeBase>().CurrentTheme =
             actualTheme == PlatformThemeVariant.Light
-                ? Theme.Create(Theme.Light, Color.Parse("#343838"), Color.Parse("#0091EA"))
-                : Theme.Create(Theme.Dark, Color.Parse("#E8E8E8"), Color.Parse("#00D2FF"));
+                ? Theme.Create(Theme.Light, Color.Parse("#1A1A1A"), Color.Parse("#000000"))
+                : Theme.Create(Theme.Dark, Color.Parse("#E0E0E0"), Color.Parse("#FFFFFF"));
     }
 
     public override void Initialize()
@@ -149,6 +150,12 @@ public class App : Application, IDisposable
                 {
                     try
                     {
+                        _settingsService.Save();
+                    }
+                    catch { }
+
+                    try
+                    {
                         var queueManager = _services.GetService<VideoQueueManager>();
                         queueManager?.StopAllJobs();
                     }
@@ -157,10 +164,6 @@ public class App : Application, IDisposable
                 };
             }
 
-            // Although `App.Dispose()` is invoked from `Program.Main(...)`, on some platforms
-            // it may be called too late in the shutdown lifecycle. Attach an exit
-            // handler to ensure timely disposal as a safeguard.
-            // https://github.com/Tyrrrz/MediaTag/issues/795
             desktop.Exit += (_, _) => Dispose();
         }
 

@@ -1,4 +1,4 @@
-﻿namespace _855Media.ViewModels.Dialogs;
+namespace _855Media.ViewModels.Dialogs;
 
 public enum DownloadMultipleVideosViewMode
 {

@@ -12,11 +12,16 @@ public class ColorGradingSettings : INotifyPropertyChanged
     private double _brightness;
     private double _contrast = 1.0;
     private double _saturation = 1.0;
+    private double _gamma = 1.0;
+    private double _vibrance;
     private bool _autoNormalize;
     private int _colorTemperature = 6500;
     private double _shadowRed;
     private double _shadowGreen;
     private double _shadowBlue;
+    private double _midtoneRed;
+    private double _midtoneGreen;
+    private double _midtoneBlue;
     private double _highlightRed;
     private double _highlightGreen;
     private double _highlightBlue;
@@ -54,6 +59,24 @@ public class ColorGradingSettings : INotifyPropertyChanged
     }
 
     /// <summary>
+    /// Midtone exposure / gamma adjustment range from 0.5 to 2.0. Default is 1.0.
+    /// </summary>
+    public double Gamma
+    {
+        get => _gamma;
+        set => SetField(ref _gamma, Math.Clamp(value, 0.5, 2.0));
+    }
+
+    /// <summary>
+    /// Smart vibrance adjustment (boosts muted colors while protecting skin tones), range from -1.0 to 1.0. Default is 0.0.
+    /// </summary>
+    public double Vibrance
+    {
+        get => _vibrance;
+        set => SetField(ref _vibrance, Math.Clamp(value, -1.0, 1.0));
+    }
+
+    /// <summary>
     /// Toggles automatic dynamic range normalization (FFmpeg 'normalize' filter).
     /// </summary>
     public bool AutoNormalize
@@ -88,6 +111,25 @@ public class ColorGradingSettings : INotifyPropertyChanged
     {
         get => _shadowBlue;
         set => SetField(ref _shadowBlue, Math.Clamp(value, -1.0, 1.0));
+    }
+
+    // Midtone Tint (Color Balance / Gamma)
+    public double MidtoneRed
+    {
+        get => _midtoneRed;
+        set => SetField(ref _midtoneRed, Math.Clamp(value, -1.0, 1.0));
+    }
+
+    public double MidtoneGreen
+    {
+        get => _midtoneGreen;
+        set => SetField(ref _midtoneGreen, Math.Clamp(value, -1.0, 1.0));
+    }
+
+    public double MidtoneBlue
+    {
+        get => _midtoneBlue;
+        set => SetField(ref _midtoneBlue, Math.Clamp(value, -1.0, 1.0));
     }
 
     // Highlight Tint (Color Balance)
@@ -163,10 +205,15 @@ public class ColorGradingSettings : INotifyPropertyChanged
         || Math.Abs(_brightness) > 0.001
         || Math.Abs(_contrast - 1.0) > 0.001
         || Math.Abs(_saturation - 1.0) > 0.001
+        || Math.Abs(_gamma - 1.0) > 0.001
+        || Math.Abs(_vibrance) > 0.001
         || _colorTemperature != 6500
         || Math.Abs(_shadowRed) > 0.001
         || Math.Abs(_shadowGreen) > 0.001
         || Math.Abs(_shadowBlue) > 0.001
+        || Math.Abs(_midtoneRed) > 0.001
+        || Math.Abs(_midtoneGreen) > 0.001
+        || Math.Abs(_midtoneBlue) > 0.001
         || Math.Abs(_highlightRed) > 0.001
         || Math.Abs(_highlightGreen) > 0.001
         || Math.Abs(_highlightBlue) > 0.001
@@ -188,11 +235,16 @@ public class ColorGradingSettings : INotifyPropertyChanged
         Brightness = 0.0;
         Contrast = 1.0;
         Saturation = 1.0;
+        Gamma = 1.0;
+        Vibrance = 0.0;
         AutoNormalize = false;
         ColorTemperature = 6500;
         ShadowRed = 0.0;
         ShadowGreen = 0.0;
         ShadowBlue = 0.0;
+        MidtoneRed = 0.0;
+        MidtoneGreen = 0.0;
+        MidtoneBlue = 0.0;
         HighlightRed = 0.0;
         HighlightGreen = 0.0;
         HighlightBlue = 0.0;
@@ -215,11 +267,16 @@ public class ColorGradingSettings : INotifyPropertyChanged
         Brightness = other.Brightness;
         Contrast = other.Contrast;
         Saturation = other.Saturation;
+        Gamma = other.Gamma;
+        Vibrance = other.Vibrance;
         AutoNormalize = other.AutoNormalize;
         ColorTemperature = other.ColorTemperature;
         ShadowRed = other.ShadowRed;
         ShadowGreen = other.ShadowGreen;
         ShadowBlue = other.ShadowBlue;
+        MidtoneRed = other.MidtoneRed;
+        MidtoneGreen = other.MidtoneGreen;
+        MidtoneBlue = other.MidtoneBlue;
         HighlightRed = other.HighlightRed;
         HighlightGreen = other.HighlightGreen;
         HighlightBlue = other.HighlightBlue;
@@ -235,11 +292,16 @@ public class ColorGradingSettings : INotifyPropertyChanged
         Brightness = preset.Brightness;
         Contrast = preset.Contrast;
         Saturation = preset.Saturation;
+        Gamma = preset.Gamma;
+        Vibrance = preset.Vibrance;
         AutoNormalize = preset.AutoNormalize;
         ColorTemperature = preset.ColorTemperature;
         ShadowRed = preset.ShadowRed;
         ShadowGreen = preset.ShadowGreen;
         ShadowBlue = preset.ShadowBlue;
+        MidtoneRed = preset.MidtoneRed;
+        MidtoneGreen = preset.MidtoneGreen;
+        MidtoneBlue = preset.MidtoneBlue;
         HighlightRed = preset.HighlightRed;
         HighlightGreen = preset.HighlightGreen;
         HighlightBlue = preset.HighlightBlue;
@@ -263,11 +325,16 @@ public class ColorGradingSettings : INotifyPropertyChanged
             Brightness = Brightness,
             Contrast = Contrast,
             Saturation = Saturation,
+            Gamma = Gamma,
+            Vibrance = Vibrance,
             AutoNormalize = AutoNormalize,
             ColorTemperature = ColorTemperature,
             ShadowRed = ShadowRed,
             ShadowGreen = ShadowGreen,
             ShadowBlue = ShadowBlue,
+            MidtoneRed = MidtoneRed,
+            MidtoneGreen = MidtoneGreen,
+            MidtoneBlue = MidtoneBlue,
             HighlightRed = HighlightRed,
             HighlightGreen = HighlightGreen,
             HighlightBlue = HighlightBlue,

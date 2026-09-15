@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Threading.Tasks;
 using _855Media.Framework;
 using _855Media.Localization;
