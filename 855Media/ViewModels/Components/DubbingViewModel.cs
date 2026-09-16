@@ -73,6 +73,9 @@ public partial class DubbingViewModel : ViewModelBase
             ? "Unsaved Project"
             : (IsProjectDirty ? "Modified •" : "Saved");
 
+    public ModuleReadiness HardwareReadiness =>
+        ModuleHardwareCheck.CheckDubbing(HardwareDetector.GetGpuInfo());
+
     [ObservableProperty]
     private bool _isProcessing;
 

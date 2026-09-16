@@ -14,6 +14,7 @@ using _855Media.Localization;
 using _855Media.Services;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -51,6 +52,7 @@ public partial class VideoUpscalerViewModel : ViewModelBase
     private readonly DialogManager _dialogManager;
     private readonly SnackbarManager _snackbarManager;
     private readonly SettingsService _settingsService;
+    private readonly HardwareMonitorService? _hardwareMonitor;
     private readonly VideoPreviewService _previewService = new();
     private CancellationTokenSource? _previewCts;
     private CancellationTokenSource? _debouncedSaveCts;
@@ -180,6 +182,27 @@ public partial class VideoUpscalerViewModel : ViewModelBase
 
     [ObservableProperty]
     private PostBatchAction _selectedPostBatchAction = PostBatchAction.DoNothing;
+
+    [ObservableProperty]
+    private string _realtimeHardwareStatus = "GPU: 0% | VRAM: 0GB | CPU: 0%";
+
+    [ObservableProperty]
+    private double _hardwareCpuPercent;
+
+    [ObservableProperty]
+    private double _hardwareGpuPercent;
+
+    [ObservableProperty]
+    private double _hardwareVramPercent;
+
+    [ObservableProperty]
+    private string _hardwareVramText = string.Empty;
+
+    [ObservableProperty]
+    private int _hardwareGpuTemp;
+
+    [ObservableProperty]
+    private bool _hasHardwareGpuTemp;
 
     [ObservableProperty]
     private string _selectedColorPresetName = "Neutral / Custom";
@@ -323,12 +346,16 @@ public partial class VideoUpscalerViewModel : ViewModelBase
 
     public IReadOnlyList<string> AvailablePresetNames => PresetManager.PresetNames;
 
+    public ModuleReadiness HardwareReadiness =>
+        ModuleHardwareCheck.CheckUpscaler(HardwareDetector.GetGpuInfo());
+
     public string GpuStatusDescription
     {
         get
         {
             var info = HardwareDetector.GetGpuInfo();
-            return $"{info.Name} ({info.DedicatedVramGb:F1} GB VRAM) - Tile: {(info.SafeTileSize == 0 ? "Full (0)" : info.SafeTileSize.ToString())}";
+            var rtxBadge = info.HasRtx ? " [RTX Tensor Cores Ready]" : "";
+            return $"{info.Name} ({info.DedicatedVramGb:F1} GB VRAM){rtxBadge} - Tile: {(info.SafeTileSize == 0 ? "Full (0)" : info.SafeTileSize.ToString())}";
         }
     }
 
@@ -347,7 +374,8 @@ public partial class VideoUpscalerViewModel : ViewModelBase
         SnackbarManager snackbarManager,
         LocalizationManager localizationManager,
         SettingsService settingsService,
-        VideoUpscaleService? upscaleService = null
+        VideoUpscaleService? upscaleService = null,
+        HardwareMonitorService? hardwareMonitor = null
     )
     {
         _queueManager = queueManager;
@@ -356,9 +384,19 @@ public partial class VideoUpscalerViewModel : ViewModelBase
         _snackbarManager = snackbarManager;
         LocalizationManager = localizationManager;
         _settingsService = settingsService;
+        _hardwareMonitor = hardwareMonitor;
         _activeColorGrading = GlobalColorGrading;
         GlobalColorGrading.PropertyChanged += OnColorGradingSettingsChanged;
         _queueManager.BatchCompleted += OnBatchCompleted;
+
+        if (_hardwareMonitor != null)
+        {
+            UpdateRealtimeMetrics(_hardwareMonitor.CurrentMetrics);
+            _hardwareMonitor.MetricsUpdated += metrics =>
+            {
+                Dispatcher.UIThread.Post(() => UpdateRealtimeMetrics(metrics));
+            };
+        }
 
         RefreshColorPresetsList();
         RestoreSettingsFromService();
@@ -420,7 +458,20 @@ public partial class VideoUpscalerViewModel : ViewModelBase
             _queueManager.MaxConcurrency = MaxConcurrency;
             ScratchDirectory = _settingsService.UpscalerScratchDirectory;
             _upscaleService.ScratchDirectory = ScratchDirectory;
-            SelectedModelType = _settingsService.UpscalerModelType;
+
+            if (
+                !_settingsService.UpscalerHasConfiguredModelType
+                && HardwareDetector.GetGpuInfo().HasRtx
+            )
+            {
+                SelectedModelType = UpscaleModelType.NvidiaRtx;
+                _settingsService.UpscalerModelType = UpscaleModelType.NvidiaRtx;
+            }
+            else
+            {
+                SelectedModelType = _settingsService.UpscalerModelType;
+            }
+
             SelectedPresetName = _settingsService.UpscalerPresetName;
             SelectedPostBatchAction = _settingsService.UpscalerPostBatchAction;
 
@@ -977,6 +1028,7 @@ public partial class VideoUpscalerViewModel : ViewModelBase
         }
         if (!_isRestoringSettings)
         {
+            _settingsService.UpscalerHasConfiguredModelType = true;
             _settingsService.UpscalerModelType = value;
             ScheduleDebouncedSaveSettings();
         }
@@ -1785,7 +1837,9 @@ public partial class VideoUpscalerViewModel : ViewModelBase
             }
             else
             {
-                PreviewError = "Unable to render preview frame at this timestamp.";
+                PreviewError = !string.IsNullOrWhiteSpace(_previewService.LastPreviewError)
+                    ? $"Unable to render preview frame: {_previewService.LastPreviewError}"
+                    : "Unable to render preview frame at this timestamp.";
                 HasHistogramData = false;
             }
         }
@@ -1804,6 +1858,20 @@ public partial class VideoUpscalerViewModel : ViewModelBase
                 IsPreviewLoading = false;
             }
         }
+    }
+
+    private void UpdateRealtimeMetrics(HardwareMetrics metrics)
+    {
+        HardwareCpuPercent = metrics.CpuUsagePercent;
+        HardwareGpuPercent = metrics.GpuUsagePercent;
+        HardwareVramPercent = metrics.VramUsagePercent;
+        HardwareVramText = $"{metrics.VramUsedGb:F1}/{metrics.VramTotalGb:F0}GB";
+        HardwareGpuTemp = metrics.GpuTemperatureC;
+        HasHardwareGpuTemp = metrics.GpuTemperatureC > 0;
+
+        var tempStr = metrics.GpuTemperatureC > 0 ? $" | {metrics.GpuTemperatureC}°C" : "";
+        RealtimeHardwareStatus =
+            $"GPU: {metrics.GpuUsagePercent:0}% | VRAM: {HardwareVramText} | CPU: {metrics.CpuUsagePercent:0}%{tempStr}";
     }
 
     protected override void Dispose(bool disposing)

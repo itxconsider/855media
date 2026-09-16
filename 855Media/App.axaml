@@ -168,6 +168,14 @@
             <Setter Property="TextElement.FontStyle" Value="Normal" />
             <Setter Property="TextElement.FontStretch" Value="Normal" />
         </Style>
+
+        <!--  Flyout presenter  -->
+        <Style Selector="FlyoutPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="12" />
+        </Style>
     </Application.Styles>
 
     <Application.Resources>
@@ -177,6 +185,8 @@
                     <SolidColorBrush x:Key="ToggleBackgroundBrush" Color="#8E8E8E" />
                     <SolidColorBrush x:Key="AntigravityCanvasBrush" Color="#0D0D0D" />
                     <SolidColorBrush x:Key="AntigravityPanelBrush" Color="#161616" />
+                    <SolidColorBrush x:Key="AntigravityElevatedBrush" Color="#18181C" />
+                    <SolidColorBrush x:Key="AntigravityCardBrush" Color="#131316" />
                     <SolidColorBrush x:Key="AntigravityRailBrush" Color="#0D0D0D" />
                     <SolidColorBrush x:Key="AntigravityTextBrush" Color="#EDEDED" />
                     <SolidColorBrush x:Key="AntigravityMutedBrush" Color="#888888" />
@@ -190,6 +200,8 @@
                     <SolidColorBrush x:Key="ToggleBackgroundBrush" Color="#8E8E8E" />
                     <SolidColorBrush x:Key="AntigravityCanvasBrush" Color="#0D0D0D" />
                     <SolidColorBrush x:Key="AntigravityPanelBrush" Color="#161616" />
+                    <SolidColorBrush x:Key="AntigravityElevatedBrush" Color="#18181C" />
+                    <SolidColorBrush x:Key="AntigravityCardBrush" Color="#131316" />
                     <SolidColorBrush x:Key="AntigravityRailBrush" Color="#0D0D0D" />
                     <SolidColorBrush x:Key="AntigravityTextBrush" Color="#EDEDED" />
                     <SolidColorBrush x:Key="AntigravityMutedBrush" Color="#888888" />

@@ -213,11 +213,49 @@ public class SplitAndUpscalePipeline
                         {
                             masterJob.Fps = childJob.Fps;
                         }
+                        else if (e.PropertyName == nameof(UpscaleJob.ElapsedTime))
+                        {
+                            if (masterJob.StartTime.HasValue)
+                            {
+                                masterJob.ElapsedTime =
+                                    DateTimeOffset.Now - masterJob.StartTime.Value;
+                            }
+                        }
                         else if (e.PropertyName == nameof(UpscaleJob.ActiveProcess))
                         {
                             masterJob.ActiveProcess = childJob.ActiveProcess;
                         }
+                        else if (e.PropertyName == nameof(UpscaleJob.DetailedLog))
+                        {
+                            // Mirror child job log updates to master job so UI shows real-time progress
+                            if (!string.IsNullOrWhiteSpace(childJob.DetailedLog))
+                            {
+                                var lastLines = childJob.DetailedLog.Split(
+                                    '\n',
+                                    StringSplitOptions.RemoveEmptyEntries
+                                );
+                                if (lastLines.Length > 0)
+                                {
+                                    var lastLine = lastLines[^1].Trim();
+                                    if (
+                                        !string.IsNullOrWhiteSpace(lastLine)
+                                        && !masterJob.DetailedLog?.EndsWith(lastLine) == true
+                                    )
+                                    {
+                                        masterJob.DetailedLog =
+                                            (masterJob.DetailedLog ?? string.Empty)
+                                            + $"[Part {partNumber}] {lastLine}"
+                                            + Environment.NewLine;
+                                    }
+                                }
+                            }
+                        }
                     };
+
+                    if (childJob.TotalFrames <= 0)
+                    {
+                        await _upscaleService.ProbeVideoAsync(childJob, cancellationToken);
+                    }
 
                     await _upscaleService.ProcessJobAsync(childJob, cancellationToken);
                     accumulatedFrames +=
@@ -246,7 +284,7 @@ public class SplitAndUpscalePipeline
                 await File.WriteAllTextAsync(
                     concatFilePath,
                     manifestContent.ToString(),
-                    Encoding.UTF8,
+                    new UTF8Encoding(false),
                     cancellationToken
                 );
 

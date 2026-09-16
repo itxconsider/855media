@@ -6,6 +6,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using _855Media.Core.Downloading;
+using _855Media.Core.Utils;
 
 namespace _855Media.Core.Upscaling;
 
@@ -120,6 +121,9 @@ public static class SmartActionAnalyzer
         {
             if (!process.Start())
                 return result;
+
+            ChildProcessTracker.Track(process);
+            process.BeginErrorReadLine();
         }
         catch
         {

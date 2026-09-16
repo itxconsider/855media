@@ -114,6 +114,39 @@ public class VideoQueueManager : IDisposable
         _signalChannel = Channel.CreateUnbounded<bool>(channelOptions);
 
         AdjustWorkers();
+        _ = RunElapsedTimerAsync(_managerCts.Token);
+    }
+
+    private async Task RunElapsedTimerAsync(CancellationToken token)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+            while (
+                !token.IsCancellationRequested
+                && await timer.WaitForNextTickAsync(token).ConfigureAwait(false)
+            )
+            {
+                lock (_syncLock)
+                {
+                    foreach (var job in Jobs)
+                    {
+                        if (job.Status == UpscaleJobStatus.Processing && job.StartTime.HasValue)
+                        {
+                            job.ElapsedTime = DateTimeOffset.Now - job.StartTime.Value;
+                        }
+                    }
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Graceful shutdown
+        }
+        catch
+        {
+            // Suppress unexpected timer errors
+        }
     }
 
     private void SignalWork()
@@ -460,6 +493,7 @@ public class VideoQueueManager : IDisposable
                         {
                             _activeJobIds.Add(job.Id);
                             job.Status = UpscaleJobStatus.Processing;
+                            job.StartTime ??= DateTimeOffset.Now;
                         }
                     }
                 }

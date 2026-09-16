@@ -63,7 +63,7 @@
         </Style>
     </UserControl.Styles>
 
-    <Grid Background="{DynamicResource AntigravityCanvasBrush}" RowDefinitions="Auto,*">
+    <Grid Background="{DynamicResource AntigravityCanvasBrush}" RowDefinitions="Auto,*,Auto">
             <!--  Top Navigation Header Tabs  -->
             <Border
                 Grid.Row="0"
@@ -167,6 +167,199 @@
                             Margin="0,0,6,0" />
 
                         <Separator Width="1" Height="22" Margin="2,0" Background="{DynamicResource AntigravityBorderBrush}" />
+
+                        <!-- Global Hardware Check & Diagnostics Pill -->
+                        <Button
+                            Padding="8,4"
+                            CornerRadius="16"
+                            Background="#12FFFFFF"
+                            BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                            BorderThickness="1"
+                            Theme="{DynamicResource MaterialFlatButton}"
+                            ToolTip.Tip="Global Hardware Status &amp; Module Readiness (Click for Details)">
+                            <Button.Flyout>
+                                <Flyout Placement="BottomEdgeAlignedRight" ShowMode="Standard">
+                                    <Border
+                                        Width="500"
+                                        Padding="18"
+                                        Background="{DynamicResource AntigravityElevatedBrush}"
+                                        CornerRadius="14"
+                                        BorderBrush="#383842"
+                                        BorderThickness="1"
+                                        BoxShadow="0 18 50 0 #F8000000">
+                                        <StackPanel Spacing="14">
+                                            <!-- Header & Refresh -->
+                                            <Grid ColumnDefinitions="*,Auto">
+                                                <StackPanel Grid.Column="0" Spacing="3">
+                                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                                        <materialIcons:MaterialIcon Kind="CheckDecagram" Width="20" Height="20" Foreground="#10B981" VerticalAlignment="Center" />
+                                                        <TextBlock Text="Global Hardware Readiness" FontSize="16" FontWeight="Bold" Foreground="#FFFFFF" VerticalAlignment="Center" />
+                                                    </StackPanel>
+                                                    <TextBlock Text="Hardware acceleration &amp; compute status for all modules" FontSize="12" Foreground="#9CA3AF" />
+                                                </StackPanel>
+                                                <Button
+                                                    Grid.Column="1"
+                                                    Command="{Binding RefreshGlobalHardwareCommand}"
+                                                    Padding="8"
+                                                    CornerRadius="8"
+                                                    Background="#222228"
+                                                    BorderBrush="#33333C"
+                                                    BorderThickness="1"
+                                                    Theme="{DynamicResource MaterialFlatButton}"
+                                                    ToolTip.Tip="Refresh Hardware Detection">
+                                                    <materialIcons:MaterialIcon Kind="Refresh" Width="16" Height="16" Foreground="#D1D5DB" />
+                                                </Button>
+                                            </Grid>
+
+                                            <Separator Height="1" Background="#262630" />
+
+                                            <!-- Live System Specs & Telemetry Card -->
+                                            <Border Background="{DynamicResource AntigravityCardBrush}" BorderBrush="#2C2C34" BorderThickness="1" CornerRadius="10" Padding="14">
+                                                <StackPanel Spacing="10">
+                                                    <!-- GPU & CPU Header -->
+                                                    <Grid ColumnDefinitions="*,*">
+                                                        <StackPanel Grid.Column="0" Spacing="3">
+                                                            <TextBlock Text="GPU COMPUTE" FontSize="10" FontWeight="Bold" Foreground="#94A3B8" />
+                                                            <TextBlock Text="{Binding GlobalHardware.Gpu.Name, FallbackValue='Detecting GPU...'}" FontSize="13" FontWeight="Bold" Foreground="#FFFFFF" TextTrimming="CharacterEllipsis" />
+                                                            <TextBlock Text="{Binding GlobalHardware.Gpu.DedicatedVramGb, StringFormat='Dedicated VRAM: {0:F1} GB'}" FontSize="12" FontWeight="SemiBold" Foreground="#38BDF8" />
+                                                        </StackPanel>
+                                                        <StackPanel Grid.Column="1" Spacing="3">
+                                                            <TextBlock Text="PROCESSOR &amp; RAM" FontSize="10" FontWeight="Bold" Foreground="#94A3B8" />
+                                                            <TextBlock Text="{Binding GlobalHardware.CpuSummary, FallbackValue='CPU Detection...'}" FontSize="12" FontWeight="SemiBold" Foreground="#FFFFFF" TextTrimming="CharacterEllipsis" />
+                                                            <TextBlock Text="{Binding GlobalHardware.RamSummary, StringFormat='RAM: {0}'}" FontSize="12" Foreground="#D1D5DB" />
+                                                        </StackPanel>
+                                                    </Grid>
+
+                                                    <Separator Height="1" Background="#22222A" Margin="0,4" />
+
+                                                    <!-- Live Usage Meters -->
+                                                    <Grid ColumnDefinitions="*,*,*,*" Margin="0,2,0,0">
+                                                        <StackPanel Grid.Column="0" Spacing="3" HorizontalAlignment="Center">
+                                                            <TextBlock Text="CPU" FontSize="10" FontWeight="Bold" Foreground="#94A3B8" HorizontalAlignment="Center" />
+                                                            <TextBlock Text="{Binding CpuUsagePercent, StringFormat='{}{0:0}%'}" FontSize="14" FontWeight="Bold" Foreground="#FFFFFF" HorizontalAlignment="Center" />
+                                                            <ProgressBar Value="{Binding CpuUsagePercent}" Minimum="0" Maximum="100" Width="68" Height="6" CornerRadius="3" Background="#27272A" Foreground="#10B981" />
+                                                        </StackPanel>
+                                                        <StackPanel Grid.Column="1" Spacing="3" HorizontalAlignment="Center">
+                                                            <TextBlock Text="RAM" FontSize="10" FontWeight="Bold" Foreground="#94A3B8" HorizontalAlignment="Center" />
+                                                            <TextBlock Text="{Binding RamUsagePercent, StringFormat='{}{0:0}%'}" FontSize="14" FontWeight="Bold" Foreground="#FFFFFF" HorizontalAlignment="Center" />
+                                                            <ProgressBar Value="{Binding RamUsagePercent}" Minimum="0" Maximum="100" Width="68" Height="6" CornerRadius="3" Background="#27272A" Foreground="#3B82F6" />
+                                                        </StackPanel>
+                                                        <StackPanel Grid.Column="2" Spacing="3" HorizontalAlignment="Center">
+                                                            <TextBlock Text="GPU" FontSize="10" FontWeight="Bold" Foreground="#94A3B8" HorizontalAlignment="Center" />
+                                                            <TextBlock Text="{Binding GpuUsagePercent, StringFormat='{}{0:0}%'}" FontSize="14" FontWeight="Bold" Foreground="#FFFFFF" HorizontalAlignment="Center" />
+                                                            <ProgressBar Value="{Binding GpuUsagePercent}" Minimum="0" Maximum="100" Width="68" Height="6" CornerRadius="3" Background="#27272A" Foreground="#8B5CF6" />
+                                                        </StackPanel>
+                                                        <StackPanel Grid.Column="3" Spacing="3" HorizontalAlignment="Center">
+                                                            <TextBlock Text="VRAM" FontSize="10" FontWeight="Bold" Foreground="#94A3B8" HorizontalAlignment="Center" />
+                                                            <TextBlock Text="{Binding VramUsagePercent, StringFormat='{}{0:0}%'}" FontSize="14" FontWeight="Bold" Foreground="#FFFFFF" HorizontalAlignment="Center" />
+                                                            <ProgressBar Value="{Binding VramUsagePercent}" Minimum="0" Maximum="100" Width="68" Height="6" CornerRadius="3" Background="#27272A" Foreground="#EC4899" />
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </StackPanel>
+                                            </Border>
+
+                                            <!-- MODULE READINESS STATUS -->
+                                            <TextBlock Text="MODULE READINESS FOR ALL MODULES" FontSize="11" FontWeight="Bold" Foreground="#94A3B8" Margin="0,2,0,0" />
+
+                                            <StackPanel Spacing="10">
+                                                <!-- Module 1: Media Downloader -->
+                                                <Border Background="{DynamicResource AntigravityCardBrush}" BorderBrush="#2C2C34" BorderThickness="1" CornerRadius="10" Padding="12">
+                                                    <Grid ColumnDefinitions="Auto,*,Auto">
+                                                        <materialIcons:MaterialIcon Grid.Column="0" Kind="DownloadBox" Width="24" Height="24" Foreground="#06B6D4" VerticalAlignment="Center" Margin="0,0,12,0" />
+                                                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                                            <TextBlock Text="Media Downloader" FontSize="13" FontWeight="Bold" Foreground="#FFFFFF" />
+                                                            <TextBlock Text="{Binding GlobalHardware.Downloader.Summary}" FontSize="12" Foreground="#D1D5DB" />
+                                                            <TextBlock Text="{Binding GlobalHardware.Downloader.Details}" FontSize="11" Foreground="#9CA3AF" TextWrapping="Wrap" />
+                                                        </StackPanel>
+                                                        <Border Grid.Column="2" Background="#2010B981" BorderBrush="#5010B981" BorderThickness="1" CornerRadius="6" Padding="8,3" VerticalAlignment="Center">
+                                                            <TextBlock Text="{Binding GlobalHardware.Downloader.LevelBadgeText}" FontSize="11" FontWeight="Bold" Foreground="#10B981" />
+                                                        </Border>
+                                                    </Grid>
+                                                </Border>
+
+                                                <!-- Module 2: Video Upscaler -->
+                                                <Border Background="{DynamicResource AntigravityCardBrush}" BorderBrush="#2C2C34" BorderThickness="1" CornerRadius="10" Padding="12">
+                                                    <Grid ColumnDefinitions="Auto,*,Auto">
+                                                        <materialIcons:MaterialIcon Grid.Column="0" Kind="AutoFix" Width="24" Height="24" Foreground="#A855F7" VerticalAlignment="Center" Margin="0,0,12,0" />
+                                                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                                            <TextBlock Text="Video Upscaler" FontSize="13" FontWeight="Bold" Foreground="#FFFFFF" />
+                                                            <TextBlock Text="{Binding GlobalHardware.Upscaler.Summary}" FontSize="12" Foreground="#D1D5DB" />
+                                                            <TextBlock Text="{Binding GlobalHardware.Upscaler.Details}" FontSize="11" Foreground="#9CA3AF" TextWrapping="Wrap" />
+                                                        </StackPanel>
+                                                        <Border Grid.Column="2" Background="#2010B981" BorderBrush="#5010B981" BorderThickness="1" CornerRadius="6" Padding="8,3" VerticalAlignment="Center">
+                                                            <TextBlock Text="{Binding GlobalHardware.Upscaler.LevelBadgeText}" FontSize="11" FontWeight="Bold" Foreground="#10B981" />
+                                                        </Border>
+                                                    </Grid>
+                                                </Border>
+
+                                                <!-- Module 3: Khmer Dubbing & Voice -->
+                                                <Border Background="{DynamicResource AntigravityCardBrush}" BorderBrush="#2C2C34" BorderThickness="1" CornerRadius="10" Padding="12">
+                                                    <Grid ColumnDefinitions="Auto,*,Auto">
+                                                        <materialIcons:MaterialIcon Grid.Column="0" Kind="AccountVoice" Width="24" Height="24" Foreground="#3B82F6" VerticalAlignment="Center" Margin="0,0,12,0" />
+                                                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                                                            <TextBlock Text="Khmer Dubbing &amp; Voice" FontSize="13" FontWeight="Bold" Foreground="#FFFFFF" />
+                                                            <TextBlock Text="{Binding GlobalHardware.Dubbing.Summary}" FontSize="12" Foreground="#D1D5DB" />
+                                                            <TextBlock Text="{Binding GlobalHardware.Dubbing.Details}" FontSize="11" Foreground="#9CA3AF" TextWrapping="Wrap" />
+                                                        </StackPanel>
+                                                        <Border Grid.Column="2" Background="#2010B981" BorderBrush="#5010B981" BorderThickness="1" CornerRadius="6" Padding="8,3" VerticalAlignment="Center">
+                                                            <TextBlock Text="{Binding GlobalHardware.Dubbing.LevelBadgeText}" FontSize="11" FontWeight="Bold" Foreground="#10B981" />
+                                                        </Border>
+                                                    </Grid>
+                                                </Border>
+                                            </StackPanel>
+
+                                            <!-- Footer Actions -->
+                                            <Button
+                                                Command="{Binding CopyHardwareDiagnosticsCommand}"
+                                                HorizontalAlignment="Stretch"
+                                                Padding="10"
+                                                CornerRadius="8"
+                                                Background="#27272A"
+                                                BorderBrush="#3F3F46"
+                                                BorderThickness="1"
+                                                Theme="{DynamicResource MaterialFlatButton}">
+                                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8">
+                                                    <materialIcons:MaterialIcon Kind="ContentCopy" Width="16" Height="16" Foreground="#FFFFFF" />
+                                                    <TextBlock Text="Copy Diagnostic Report to Clipboard" FontSize="12" FontWeight="SemiBold" Foreground="#FFFFFF" />
+                                                </StackPanel>
+                                            </Button>
+                                        </StackPanel>
+                                    </Border>
+                                </Flyout>
+                            </Button.Flyout>
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <materialIcons:MaterialIcon
+                                    Kind="ExpansionCardVariant"
+                                    Width="16"
+                                    Height="16"
+                                    Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                <TextBlock
+                                    Text="{Binding GpuNameShort}"
+                                    FontSize="12"
+                                    FontWeight="SemiBold"
+                                    Foreground="{DynamicResource AntigravityTextBrush}"
+                                    VerticalAlignment="Center" />
+                                <Border
+                                    IsVisible="{Binding HasRtx}"
+                                    Background="#2010B981"
+                                    BorderBrush="#4010B981"
+                                    BorderThickness="1"
+                                    CornerRadius="6"
+                                    Padding="4,1">
+                                    <TextBlock
+                                        Text="RTX"
+                                        FontSize="10"
+                                        FontWeight="Bold"
+                                        Foreground="#10B981" />
+                                </Border>
+                                <Border
+                                    Width="6"
+                                    Height="6"
+                                    CornerRadius="3"
+                                    Background="#10B981"
+                                    VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
 
                         <!-- Auth Setup Button -->
                         <Button
@@ -738,6 +931,125 @@
                     </Grid>
                 </Grid>
             </Grid>
+
+            <!--  Real-Time Hardware Usage & System Performance Status Bar  -->
+            <Border
+                Grid.Row="2"
+                Background="{DynamicResource AntigravityRailBrush}"
+                BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                BorderThickness="0,1,0,0"
+                Padding="16,6">
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                    <!-- Left: Real-time Hardware Metrics (CPU, RAM, GPU, VRAM, Temp) -->
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+                        <!-- CPU Usage -->
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" ToolTip.Tip="Real-time CPU Utilization">
+                            <materialIcons:MaterialIcon Kind="Cpu64Bit" Width="16" Height="16" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                            <TextBlock Text="CPU" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                            <ProgressBar
+                                Value="{Binding CpuUsagePercent}"
+                                Minimum="0"
+                                Maximum="100"
+                                Width="50"
+                                Height="6"
+                                CornerRadius="3"
+                                VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding CpuUsagePercent, StringFormat='{}{0:0}%'}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" Width="32" />
+                        </StackPanel>
+
+                        <Separator Width="1" Height="14" Background="{DynamicResource AntigravityBorderBrush}" />
+
+                        <!-- RAM Usage -->
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" ToolTip.Tip="System Physical RAM Usage">
+                            <materialIcons:MaterialIcon Kind="Memory" Width="16" Height="16" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                            <TextBlock Text="RAM" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                            <ProgressBar
+                                Value="{Binding RamUsagePercent}"
+                                Minimum="0"
+                                Maximum="100"
+                                Width="50"
+                                Height="6"
+                                CornerRadius="3"
+                                VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding RamUsageText}" FontSize="11" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
+                        </StackPanel>
+
+                        <Separator Width="1" Height="14" Background="{DynamicResource AntigravityBorderBrush}" />
+
+                        <!-- GPU Usage -->
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" ToolTip.Tip="{Binding GpuNameShort, StringFormat='GPU Compute Utilization ({0})'}">
+                            <materialIcons:MaterialIcon Kind="ExpansionCardVariant" Width="16" Height="16" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                            <TextBlock Text="GPU" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                            <ProgressBar
+                                Value="{Binding GpuUsagePercent}"
+                                Minimum="0"
+                                Maximum="100"
+                                Width="50"
+                                Height="6"
+                                CornerRadius="3"
+                                VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding GpuUsagePercent, StringFormat='{}{0:0}%'}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" Width="32" />
+                            <TextBlock Text="{Binding GpuNameShort}" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                        </StackPanel>
+
+                        <Separator Width="1" Height="14" Background="{DynamicResource AntigravityBorderBrush}" />
+
+                        <!-- VRAM Usage -->
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" ToolTip.Tip="Dedicated GPU Video Memory (VRAM)">
+                            <materialIcons:MaterialIcon Kind="Memory" Width="16" Height="16" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                            <TextBlock Text="VRAM" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                            <ProgressBar
+                                Value="{Binding VramUsagePercent}"
+                                Minimum="0"
+                                Maximum="100"
+                                Width="50"
+                                Height="6"
+                                CornerRadius="3"
+                                VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding VramUsageText}" FontSize="11" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
+                        </StackPanel>
+
+                        <!-- GPU Temp -->
+                        <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" IsVisible="{Binding HasGpuTemp}" ToolTip.Tip="GPU Core Temperature">
+                            <Separator Width="1" Height="14" Background="{DynamicResource AntigravityBorderBrush}" Margin="0,0,6,0" />
+                            <materialIcons:MaterialIcon Kind="Thermometer" Width="16" Height="16" Foreground="#FF9800" />
+                            <TextBlock Text="{Binding GpuTemperatureC, StringFormat='{}{0}°C'}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Right: RTX Tensor Engine Badge & Diagnostics -->
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <Button
+                            Command="{Binding CopyHardwareDiagnosticsCommand}"
+                            Padding="6,2"
+                            CornerRadius="8"
+                            Background="#0FFFFFFF"
+                            BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                            BorderThickness="1"
+                            Theme="{DynamicResource MaterialFlatButton}"
+                            ToolTip.Tip="Copy Complete Hardware &amp; Module Diagnostics Report to Clipboard">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <materialIcons:MaterialIcon Kind="ContentCopy" Width="12" Height="12" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                <TextBlock Text="Diagnostics" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                            </StackPanel>
+                        </Button>
+
+                        <Border
+                            IsVisible="{Binding HasRtx}"
+                            Background="#1A10B981"
+                            BorderBrush="#4010B981"
+                            BorderThickness="1"
+                            CornerRadius="10"
+                            Padding="8,2"
+                            ToolTip.Tip="Hardware Tensor Cores Detected &amp; Ready for Ultra-Fast Super-Resolution">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <materialIcons:MaterialIcon Kind="LightningBolt" Width="12" Height="12" Foreground="#10B981" />
+                                <TextBlock Text="RTX Tensor Cores" FontSize="10" FontWeight="Bold" Foreground="#10B981" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Grid>
+            </Border>
         </Grid>
 </UserControl>
 

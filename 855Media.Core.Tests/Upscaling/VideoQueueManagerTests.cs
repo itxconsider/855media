@@ -5,9 +5,25 @@ using Xunit;
 
 namespace _855Media.Core.Tests.Upscaling;
 
-public class VideoQueueManagerTests
+public class VideoQueueManagerTests : IDisposable
 {
     private readonly VideoUpscaleService _service = new();
+    private readonly string _tempQueueFile;
+
+    public VideoQueueManagerTests()
+    {
+        _tempQueueFile = Path.Combine(Path.GetTempPath(), $"test_queue_{Guid.NewGuid():N}.json");
+        QueuePersistenceService.CustomQueueFilePath = _tempQueueFile;
+    }
+
+    public void Dispose()
+    {
+        QueuePersistenceService.CustomQueueFilePath = null;
+        if (File.Exists(_tempQueueFile))
+        {
+            try { File.Delete(_tempQueueFile); } catch { }
+        }
+    }
 
     [Fact]
     public async Task EnqueueJobAsync_AddsJobToCollectionAndAssignsPriority()

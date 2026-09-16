@@ -22,8 +22,11 @@ public static class QueuePersistenceService
         Converters = { new JsonStringEnumConverter() },
     };
 
+    public static string? CustomQueueFilePath { get; set; }
+
     public static string QueueFilePath =>
-        Path.Combine(
+        CustomQueueFilePath
+        ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "855Media",
             "upscale_queue.json"
@@ -75,8 +78,15 @@ public static class QueuePersistenceService
             if (jobs == null)
                 return [];
 
+            var validJobs = new List<UpscaleJob>();
             foreach (var job in jobs)
             {
+                // Discard invalid or non-existent files (e.g. test dummy files or deleted videos)
+                if (string.IsNullOrWhiteSpace(job.FilePath) || !File.Exists(job.FilePath))
+                {
+                    continue;
+                }
+
                 job.Cts = new CancellationTokenSource();
                 job.ActiveProcess = null;
 
@@ -85,9 +95,11 @@ public static class QueuePersistenceService
                 {
                     job.Status = UpscaleJobStatus.Paused;
                 }
+
+                validJobs.Add(job);
             }
 
-            return jobs;
+            return validJobs;
         }
         catch
         {

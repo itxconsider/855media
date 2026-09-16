@@ -16,6 +16,7 @@ namespace _855Media.Core.Upscaling;
 public class VideoPreviewService
 {
     private readonly string? _customFfmpegPath;
+    public string? LastPreviewError { get; private set; }
 
     public VideoPreviewService(string? customFfmpegPath = null)
     {
@@ -44,7 +45,8 @@ public class VideoPreviewService
         var ffmpegPath = GetFfmpegPath();
         using var process = new Process();
         process.StartInfo.FileName = ffmpegPath;
-        process.StartInfo.Arguments = $"-i \"{videoPath}\"";
+        process.StartInfo.ArgumentList.Add("-i");
+        process.StartInfo.ArgumentList.Add(videoPath);
         process.StartInfo.UseShellExecute = false;
         process.StartInfo.CreateNoWindow = true;
         process.StartInfo.RedirectStandardError = true;
@@ -150,13 +152,14 @@ public class VideoPreviewService
         string splitRatioStr = splitRatio.ToString("0.000", CultureInfo.InvariantCulture);
 
         // FFmpeg filter_complex graph construction:
-        // 1. Scale down for instantaneous preview rendering
+        // 1. Scale down base stream for instantaneous preview rendering
         // 2. Split into two identical streams [orig] and [graded_in]
-        // 3. Apply color grading filter chain to [graded_in] -> [graded]
-        // 4. Crop left according to splitRatio (with even pixel width alignment)
-        // 5. Crop right according to 1 - splitRatio
-        // 6. Horizontally stack left and right -> [stacked]
-        // 7. Draw 2px vertical dividing line down the split line -> [out]
+        // 3. Apply color grading filter chain to [graded_in] -> [graded_raw]
+        // 4. Force [graded_raw] to match [orig] height via scale2ref in case color/zoom filters altered dimensions
+        // 5. Crop left according to splitRatio (with even pixel width alignment)
+        // 6. Crop right according to 1 - splitRatio
+        // 7. Horizontally stack left and right -> [stacked]
+        // 8. Draw 2px vertical dividing line down the split line -> [out]
         string splitWidthExpr = $"trunc(iw*{splitRatioStr}/2)*2";
         string rightWidthExpr = $"iw-{splitWidthExpr}";
         string filterComplex;
@@ -165,8 +168,9 @@ public class VideoPreviewService
             filterComplex =
                 $"[0:v]scale='min({maxWidth},iw)':-2[base];"
                 + "[base]split=2[orig][graded_in];"
-                + $"[graded_in]{filterChain}[graded];"
-                + $"[orig]crop={splitWidthExpr}:ih:0:0[left];"
+                + $"[graded_in]{filterChain}[graded_raw];"
+                + "[graded_raw][orig]scale2ref=w='iw':h='ih'[graded][orig_ref];"
+                + $"[orig_ref]crop={splitWidthExpr}:ih:0:0[left];"
                 + $"[graded]crop={rightWidthExpr}:ih:{splitWidthExpr}:0[right];"
                 + "[left][right]hstack=inputs=2[stacked];"
                 + $"[stacked]drawbox=x={splitWidthExpr}-1:y=0:w=2:h=ih:color=white@0.8:t=fill[out]";
@@ -220,6 +224,12 @@ public class VideoPreviewService
                 return memoryStream.ToArray();
             }
 
+            var stderr = await stderrTask;
+            if (!string.IsNullOrWhiteSpace(stderr))
+            {
+                LastPreviewError = stderr.Trim();
+            }
+
             return null;
         }
         catch (OperationCanceledException)
@@ -234,8 +244,9 @@ public class VideoPreviewService
             catch { }
             throw;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            LastPreviewError = ex.Message;
             try
             {
                 if (!process.HasExited)

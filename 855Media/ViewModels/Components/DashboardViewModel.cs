@@ -10,6 +10,7 @@ using _855Media.Core.Downloading;
 using _855Media.Core.Licensing;
 using _855Media.Core.Resolving;
 using _855Media.Core.Tagging;
+using _855Media.Core.Upscaling;
 using _855Media.Framework;
 using _855Media.Localization;
 using _855Media.Services;
@@ -40,6 +41,40 @@ public partial class DashboardViewModel : ViewModelBase
 
     private readonly HistoryService _historyService;
     private readonly ILicenseService _licenseService;
+    private readonly HardwareMonitorService? _hardwareMonitor;
+
+    [ObservableProperty]
+    private double _cpuUsagePercent;
+
+    [ObservableProperty]
+    private double _ramUsagePercent;
+
+    [ObservableProperty]
+    private string _ramUsageText = "0 / 0 GB (0%)";
+
+    [ObservableProperty]
+    private double _gpuUsagePercent;
+
+    [ObservableProperty]
+    private double _vramUsagePercent;
+
+    [ObservableProperty]
+    private string _vramUsageText = "0 / 0 GB (0%)";
+
+    [ObservableProperty]
+    private int _gpuTemperatureC;
+
+    [ObservableProperty]
+    private bool _hasGpuTemp;
+
+    [ObservableProperty]
+    private string _gpuNameShort = "GPU";
+
+    [ObservableProperty]
+    private bool _hasRtx;
+
+    [ObservableProperty]
+    private GlobalHardwareSummary? _globalHardware;
 
     public DashboardViewModel(
         ViewModelManager viewModelManager,
@@ -48,7 +83,8 @@ public partial class DashboardViewModel : ViewModelBase
         LocalizationManager localizationManager,
         SettingsService settingsService,
         HistoryService historyService,
-        ILicenseService licenseService
+        ILicenseService licenseService,
+        HardwareMonitorService? hardwareMonitor = null
     )
     {
         _viewModelManager = viewModelManager;
@@ -59,6 +95,18 @@ public partial class DashboardViewModel : ViewModelBase
         _settingsService = settingsService;
         _historyService = historyService;
         _licenseService = licenseService;
+        _hardwareMonitor = hardwareMonitor;
+
+        GlobalHardware = ModuleHardwareCheck.GetGlobalCheck(_hardwareMonitor?.CurrentMetrics);
+
+        if (_hardwareMonitor != null)
+        {
+            UpdateHardwareMetrics(_hardwareMonitor.CurrentMetrics);
+            _hardwareMonitor.MetricsUpdated += metrics =>
+            {
+                Dispatcher.UIThread.Post(() => UpdateHardwareMetrics(metrics));
+            };
+        }
 
         _licenseService.LicenseChanged += () =>
         {
@@ -922,6 +970,56 @@ public partial class DashboardViewModel : ViewModelBase
     {
         foreach (var download in Downloads)
             download.CancelCommand.ExecuteIfCan(null);
+    }
+
+    private void UpdateHardwareMetrics(HardwareMetrics metrics)
+    {
+        CpuUsagePercent = metrics.CpuUsagePercent;
+        RamUsagePercent = metrics.RamUsagePercent;
+        RamUsageText =
+            $"{metrics.RamUsedGb:F1} / {metrics.RamTotalGb:F0} GB ({metrics.RamUsagePercent:F0}%)";
+        GpuUsagePercent = metrics.GpuUsagePercent;
+        VramUsagePercent = metrics.VramUsagePercent;
+        VramUsageText =
+            $"{metrics.VramUsedGb:F1} / {metrics.VramTotalGb:F0} GB ({metrics.VramUsagePercent:F0}%)";
+        GpuTemperatureC = metrics.GpuTemperatureC;
+        HasGpuTemp = metrics.GpuTemperatureC > 0;
+        GpuNameShort = ShortenGpuName(metrics.GpuName);
+        HasRtx = metrics.HasRtx;
+        GlobalHardware = ModuleHardwareCheck.GetGlobalCheck(metrics);
+    }
+
+    [RelayCommand]
+    private void RefreshGlobalHardware()
+    {
+        GlobalHardware = ModuleHardwareCheck.GetGlobalCheck(_hardwareMonitor?.CurrentMetrics);
+        _snackbarManager.Notify("Hardware status refreshed.");
+    }
+
+    [RelayCommand]
+    private async Task CopyHardwareDiagnosticsAsync()
+    {
+        if (
+            GlobalHardware != null
+            && Application.Current?.ApplicationLifetime?.TryGetTopLevel()?.Clipboard
+                is { } clipboard
+        )
+        {
+            await clipboard.SetTextAsync(GlobalHardware.GenerateDiagnosticReport());
+            _snackbarManager.Notify("Hardware diagnostics copied to clipboard.");
+        }
+    }
+
+    private static string ShortenGpuName(string fullName)
+    {
+        if (string.IsNullOrWhiteSpace(fullName))
+            return "GPU";
+
+        var name = fullName
+            .Replace("NVIDIA GeForce ", "", StringComparison.OrdinalIgnoreCase)
+            .Replace("NVIDIA ", "", StringComparison.OrdinalIgnoreCase)
+            .Trim();
+        return name.Length > 16 ? name[..16] + "…" : name;
     }
 
     protected override void Dispose(bool disposing)

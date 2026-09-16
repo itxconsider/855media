@@ -134,6 +134,9 @@ public partial class SettingsService()
     public partial UpscaleModelType UpscalerModelType { get; set; } = UpscaleModelType.RealWorld;
 
     [ObservableProperty]
+    public partial bool UpscalerHasConfiguredModelType { get; set; } = false;
+
+    [ObservableProperty]
     public partial string UpscalerPresetName { get; set; } = "Default / Neutral";
 
     [ObservableProperty]

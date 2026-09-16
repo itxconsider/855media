@@ -27,12 +27,12 @@ public class SmartTrackingTests
 
         Assert.NotNull(filter);
         Assert.Contains("crop=w='min(iw,ih*9/16)':h='min(ih,iw*16/9)',scale=1080:1920:flags=lanczos", filter);
-        Assert.DoesNotContain("clamp(iw*", filter);
+        Assert.DoesNotContain("out_w", filter);
     }
 
     [Theory]
-    [InlineData(SmartTrackingMode.MotionCentroid, 0.25, 0.50, "clamp(iw*0.250-w/2,0,iw-w)")]
-    [InlineData(SmartTrackingMode.FacePriority, 0.72, 0.40, "clamp(iw*0.720-w/2,0,iw-w)")]
+    [InlineData(SmartTrackingMode.MotionCentroid, 0.25, 0.50, "max(0,min(iw-out_w,iw*0.250-out_w/2))")]
+    [InlineData(SmartTrackingMode.FacePriority, 0.72, 0.40, "max(0,min(iw-out_w,iw*0.720-out_w/2))")]
     public void AspectRatioFilterBuilder_SmartTracking_ProducesActionAnchoredX(
         SmartTrackingMode mode,
         double centroidX,
@@ -66,8 +66,8 @@ public class SmartTrackingTests
 
         Assert.NotNull(filter);
         Assert.Contains("crop=w='min(iw,ih)':h='min(iw,ih)'", filter);
-        Assert.Contains("x='clamp(iw*0.350-w/2,0,iw-w)'", filter);
-        Assert.Contains("y='clamp(ih*0.650-h/2,0,ih-h)'", filter);
+        Assert.Contains("x='max(0,min(iw-out_w,iw*0.350-out_w/2))'", filter);
+        Assert.Contains("y='max(0,min(ih-out_h,ih*0.650-out_h/2))'", filter);
         Assert.Contains("scale=1080:1080:flags=lanczos", filter);
     }
 
@@ -97,8 +97,8 @@ public class SmartTrackingTests
 
         Assert.NotNull(filter);
         Assert.Contains("crop=w='iw*0.96':h='ih*0.96'", filter);
-        Assert.Contains("x='clamp(iw*0.250-w/2,0,iw-w)'", filter);
-        Assert.Contains("y='clamp(ih*0.700-h/2,0,ih-h)'", filter);
+        Assert.Contains("x='max(0,min(iw-out_w,iw*0.250-out_w/2))'", filter);
+        Assert.Contains("y='max(0,min(ih-out_h,ih*0.700-out_h/2))'", filter);
     }
 
     [Fact]
@@ -112,9 +112,9 @@ public class SmartTrackingTests
         );
 
         Assert.NotNull(filter);
-        Assert.Contains("(t/60)", filter);
-        Assert.Contains("x='clamp(iw*0.600-w/2,0,iw-w)'", filter);
-        Assert.Contains("y='clamp(ih*0.400-h/2,0,ih-h)'", filter);
+        Assert.Contains("sin(t/10)", filter);
+        Assert.Contains("x='max(0,min(iw-out_w,iw*0.600-out_w/2+sin(t/10)*15))'", filter);
+        Assert.Contains("y='max(0,min(ih-out_h,ih*0.400-out_h/2+cos(t/10)*15))'", filter);
     }
 
     [Fact]

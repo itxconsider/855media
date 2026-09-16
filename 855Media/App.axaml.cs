@@ -52,6 +52,7 @@ public class App : Application, IDisposable
         services.AddSingleton<FacebookBrowserLauncher>();
         services.AddSingleton<VideoUpscaleService>();
         services.AddSingleton<VideoQueueManager>();
+        services.AddSingleton<HardwareMonitorService>();
 
         // View models
         services.AddTransient<MainViewModel>();

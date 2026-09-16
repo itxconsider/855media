@@ -5,7 +5,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using _855Media.Core.Utils;
 
-namespace _855Media.Core.Upscaling;
+namespace _855Media.Core.Hardware;
 
 public enum GpuVendor
 {
@@ -27,6 +27,21 @@ public record GpuHardwareInfo(
 )
 {
     public double DedicatedVramGb => Math.Round(DedicatedVramBytes / (1024.0 * 1024.0 * 1024.0), 2);
+
+    /// <summary>
+    /// Indicates whether an NVIDIA RTX (or Tensor Core-equipped) GPU is present.
+    /// </summary>
+    public bool HasRtx =>
+        Vendor == GpuVendor.Nvidia
+        && (
+            Name.Contains("RTX", StringComparison.OrdinalIgnoreCase)
+            || Name.Contains("TITAN V", StringComparison.OrdinalIgnoreCase)
+            || Name.Contains("TITAN RTX", StringComparison.OrdinalIgnoreCase)
+            || Name.Contains("A100", StringComparison.OrdinalIgnoreCase)
+            || Name.Contains("H100", StringComparison.OrdinalIgnoreCase)
+            || Name.Contains("B200", StringComparison.OrdinalIgnoreCase)
+            || Name.Contains("Quadro RTX", StringComparison.OrdinalIgnoreCase)
+        );
 }
 
 public static class HardwareDetector

@@ -52,18 +52,18 @@ public static class AspectRatioFilterBuilder
         return mode switch
         {
             AspectRatioMode.Vertical916Crop => isSmart
-                ? $"crop=w='min(iw,ih*9/16)':h='min(ih,iw*16/9)':x='clamp(iw*{xStr}-w/2,0,iw-w)':y='(ih-h)/2',scale={targetW}:{targetH}:flags=lanczos"
+                ? $"crop=w='min(iw,ih*9/16)':h='min(ih,iw*16/9)':x='max(0,min(iw-out_w,iw*{xStr}-out_w/2))':y='(ih-out_h)/2',scale={targetW}:{targetH}:flags=lanczos"
                 : $"crop=w='min(iw,ih*9/16)':h='min(ih,iw*16/9)',scale={targetW}:{targetH}:flags=lanczos",
 
             AspectRatioMode.Vertical916BlurredCanvas =>
                 $"split=2[bg][fg];[bg]scale={targetW}:{targetH}:flags=lanczos,boxblur=25:5[blurred];[fg]scale={targetW}:-2:flags=lanczos[scaled];[blurred][scaled]overlay=(W-w)/2:(H-h)/2",
 
             AspectRatioMode.Square11 => isSmart
-                ? $"crop=w='min(iw,ih)':h='min(iw,ih)':x='clamp(iw*{xStr}-w/2,0,iw-w)':y='clamp(ih*{yStr}-h/2,0,ih-h)',scale={targetW}:{targetW}:flags=lanczos"
+                ? $"crop=w='min(iw,ih)':h='min(iw,ih)':x='max(0,min(iw-out_w,iw*{xStr}-out_w/2))':y='max(0,min(ih-out_h,ih*{yStr}-out_h/2))',scale={targetW}:{targetW}:flags=lanczos"
                 : $"crop=w='min(iw,ih)':h='min(iw,ih)',scale={targetW}:{targetW}:flags=lanczos",
 
             AspectRatioMode.Cinematic219 => isSmart
-                ? $"crop=w=iw:h='min(ih,iw*9/21)':x=0:y='clamp(ih*{yStr}-h/2,0,ih-h)',scale={(is4k ? 3840 : 2560)}:{(is4k ? 1640 : 1080)}:flags=lanczos"
+                ? $"crop=w=iw:h='min(ih,iw*9/21)':x=0:y='max(0,min(ih-out_h,ih*{yStr}-out_h/2))',scale={(is4k ? 3840 : 2560)}:{(is4k ? 1640 : 1080)}:flags=lanczos"
                 : $"crop=w=iw:h='min(ih,iw*9/21)',scale={(is4k ? 3840 : 2560)}:{(is4k ? 1640 : 1080)}:flags=lanczos",
 
             _ => null,
@@ -92,10 +92,10 @@ public static class AspectRatioFilterBuilder
             SmartZoomMode.CenterCrop => $"crop=w='iw*{factorStr}':h='ih*{factorStr}'",
 
             SmartZoomMode.ActionAnchored =>
-                $"crop=w='iw*{factorStr}':h='ih*{factorStr}':x='clamp(iw*{xStr}-w/2,0,iw-w)':y='clamp(ih*{yStr}-h/2,0,ih-h)'",
+                $"crop=w='iw*{factorStr}':h='ih*{factorStr}':x='max(0,min(iw-out_w,iw*{xStr}-out_w/2))':y='max(0,min(ih-out_h,ih*{yStr}-out_h/2))'",
 
             SmartZoomMode.CinematicPushIn =>
-                $"crop=w='iw*min(1.0,1.0-({zoomPercent.ToString("0.#", CultureInfo.InvariantCulture)}/100)*(t/60))':h='ih*min(1.0,1.0-({zoomPercent.ToString("0.#", CultureInfo.InvariantCulture)}/100)*(t/60))':x='clamp(iw*{xStr}-w/2,0,iw-w)':y='clamp(ih*{yStr}-h/2,0,ih-h)'",
+                $"crop=w='iw*{factorStr}':h='ih*{factorStr}':x='max(0,min(iw-out_w,iw*{xStr}-out_w/2+sin(t/10)*15))':y='max(0,min(ih-out_h,ih*{yStr}-out_h/2+cos(t/10)*15))'",
 
             _ => $"crop=w='iw*{factorStr}':h='ih*{factorStr}'",
         };

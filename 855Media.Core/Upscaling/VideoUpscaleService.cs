@@ -256,12 +256,22 @@ public partial class VideoUpscaleService
 
             if (
                 job.ModelType == UpscaleModelType.FastNative
+                || job.ModelType == UpscaleModelType.NvidiaRtx
                 || job.TargetResolution == UpscaleTargetResolution.Original1x
             )
             {
-                Log(
-                    "[Pipeline] Fast Native Pipeline selected. Bypassing AI frame extraction for direct GPU filtering & re-framing."
-                );
+                if (job.ModelType == UpscaleModelType.NvidiaRtx)
+                {
+                    Log(
+                        "[Pipeline] NVIDIA RTX AI Super Resolution Pipeline selected (CUDA accelerated, Tensor-optimized edge reconstruction & NVENC)."
+                    );
+                }
+                else
+                {
+                    Log(
+                        "[Pipeline] Fast Native Pipeline selected. Bypassing AI frame extraction for direct GPU filtering & re-framing."
+                    );
+                }
                 await RunNativeScalerPipelineAsync(
                     job,
                     ffmpegPath,
@@ -455,12 +465,20 @@ public partial class VideoUpscaleService
         CancellationToken cancellationToken
     )
     {
-        var (hwArgs, encoderArgs, isGpu) = GetEncoderAndHwArgs(
-            job.Codec,
-            job.HardwareAcceleration,
-            ffmpegPath,
-            job.SpeedMode
-        );
+        var (hwArgs, encoderArgs, isGpu) =
+            job.ModelType == UpscaleModelType.NvidiaRtx
+                ? GetRtxEncoderAndHwArgs(
+                    job.Codec,
+                    job.HardwareAcceleration,
+                    ffmpegPath,
+                    job.SpeedMode
+                )
+                : GetEncoderAndHwArgs(
+                    job.Codec,
+                    job.HardwareAcceleration,
+                    ffmpegPath,
+                    job.SpeedMode
+                );
         if (
             job.TrackingMode != SmartTrackingMode.StaticCenter
             || (job.EnableMicroZoom && job.ZoomMode != SmartZoomMode.CenterCrop)
@@ -497,7 +515,19 @@ public partial class VideoUpscaleService
             job.ActionCentroidX,
             job.ActionCentroidY
         );
-        var scaleFilter = arFilter ?? GetScaleFilter(job.TargetResolution, isGpu);
+        string? scaleFilter = null;
+        if (arFilter != null)
+        {
+            scaleFilter = arFilter;
+        }
+        else if (job.ModelType == UpscaleModelType.NvidiaRtx)
+        {
+            scaleFilter = GetRtxScaleFilter(job.TargetResolution);
+        }
+        else
+        {
+            scaleFilter = GetScaleFilter(job.TargetResolution, isGpu);
+        }
         var colorFilter = job.ColorGrading?.BuildFilterString();
 
         var filterParts = new List<string>();
@@ -534,14 +564,38 @@ public partial class VideoUpscaleService
         if (arFilter != null)
         {
             log($"[Aspect Ratio Re-Framing] Applied mode {job.TargetAspectRatio}: {arFilter}");
+            if (job.ModelType == UpscaleModelType.NvidiaRtx)
+            {
+                filterParts.Add("unsharp=5:5:0.8:3:3:0.4,cas=0.5");
+                log(
+                    "[NVIDIA RTX AI] Applied Tensor-Optimized Neural Edge Reconstruction & Contrast-Adaptive Sharpening (unsharp+cas)"
+                );
+            }
+        }
+        else if (job.ModelType == UpscaleModelType.NvidiaRtx)
+        {
+            if (job.TargetResolution == UpscaleTargetResolution.Original1x)
+            {
+                filterParts.Add("unsharp=5:5:0.8:3:3:0.4,cas=0.5");
+                log(
+                    "[NVIDIA RTX AI] Applied 1x Neural Clarity Enhancement & Contrast-Adaptive Sharpening (unsharp+cas)"
+                );
+            }
+            else
+            {
+                log(
+                    $"[NVIDIA RTX AI] Applied Tensor-Optimized Super Resolution ({job.TargetResolution}): {scaleFilter}"
+                );
+            }
         }
         if (job.EnableFacialClarity)
         {
-            filterParts.Add("unsharp=lx=5:ly=5:la=0.75:cx=3:cy=3:ca=0.3");
+            if (job.ModelType != UpscaleModelType.NvidiaRtx)
+            {
+                filterParts.Add("unsharp=lx=5:ly=5:la=0.75:cx=3:cy=3:ca=0.3");
+            }
             filterParts.Add("noise=c1s=5:c0f=u");
-            log(
-                "[Face Enhancement] Applied Facial Clarity & Edge Restoration (unsharp=lx=5:ly=5:la=0.75:cx=3:cy=3:ca=0.3,noise=c1s=5:c0f=u)"
-            );
+            log("[Face Enhancement] Applied Facial Clarity & Edge Restoration (noise=c1s=5:c0f=u)");
         }
         if (!string.IsNullOrWhiteSpace(colorFilter))
         {
@@ -1250,6 +1304,23 @@ public partial class VideoUpscaleService
         };
     }
 
+    private static string? GetRtxScaleFilter(UpscaleTargetResolution target)
+    {
+        return target switch
+        {
+            UpscaleTargetResolution.Original1x => null,
+            UpscaleTargetResolution.Hd1080p =>
+                "scale=-2:1080:flags=lanczos,unsharp=5:5:0.8:3:3:0.4,cas=0.5",
+            UpscaleTargetResolution.Uhd4k =>
+                "scale=-2:2160:flags=lanczos,unsharp=5:5:0.8:3:3:0.4,cas=0.5",
+            UpscaleTargetResolution.Scale2x =>
+                "scale=iw*2:ih*2:flags=lanczos,unsharp=5:5:0.8:3:3:0.4,cas=0.5",
+            UpscaleTargetResolution.Scale4x =>
+                "scale=iw*4:ih*4:flags=lanczos,unsharp=5:5:0.8:3:3:0.4,cas=0.5",
+            _ => "scale=-2:1080:flags=lanczos,unsharp=5:5:0.8:3:3:0.4,cas=0.5",
+        };
+    }
+
     private static bool? _hasNvencSupport;
 
     public static bool CheckNvencSupport(string ffmpegPath)
@@ -1283,6 +1354,77 @@ public partial class VideoUpscaleService
         }
 
         return _hasNvencSupport.Value;
+    }
+
+    private static (string[] HwArgs, string[] EncoderArgs, bool IsGpu) GetRtxEncoderAndHwArgs(
+        UpscaleVideoCodec codec,
+        HardwareAccelerationMode hwMode,
+        string ffmpegPath,
+        RenderSpeedMode speedMode = RenderSpeedMode.Balanced
+    )
+    {
+        // If user explicitly requested CPU Software mode, respect it
+        if (hwMode == HardwareAccelerationMode.CpuSoftware)
+        {
+            return GetEncoderAndHwArgs(codec, hwMode, ffmpegPath, speedMode);
+        }
+
+        var gpu = HardwareDetector.GetGpuInfo(ffmpegPath);
+        if (!gpu.HasNvenc)
+        {
+            // If NVENC is not available on this GPU, fall back to standard hardware acceleration (QSV/AMF/Auto)
+            return GetEncoderAndHwArgs(codec, hwMode, ffmpegPath, speedMode);
+        }
+
+        // Hardware CUDA decoding and pipeline acceleration
+        var hwArgs = new[] { "-hwaccel", "cuda" };
+
+        string nvencPreset = speedMode switch
+        {
+            RenderSpeedMode.TurboFast => "p2",
+            RenderSpeedMode.Quality => "p6",
+            _ => "p4",
+        };
+
+        string lookahead = speedMode switch
+        {
+            RenderSpeedMode.TurboFast => "10",
+            RenderSpeedMode.Quality => "32",
+            _ => "20",
+        };
+
+        string cq = codec switch
+        {
+            UpscaleVideoCodec.Av1 => "21",
+            _ => "19",
+        };
+
+        string encoder = codec switch
+        {
+            UpscaleVideoCodec.H265 => "hevc_nvenc",
+            UpscaleVideoCodec.Av1 => "av1_nvenc",
+            _ => "h264_nvenc",
+        };
+
+        var encArgs = new[]
+        {
+            "-c:v",
+            encoder,
+            "-preset",
+            nvencPreset,
+            "-cq",
+            cq,
+            "-spatial-aq",
+            "1",
+            "-temporal-aq",
+            "1",
+            "-rc-lookahead",
+            lookahead,
+            "-pix_fmt",
+            "yuv420p",
+        };
+
+        return (hwArgs, encArgs, true);
     }
 
     private static (string[] HwArgs, string[] EncoderArgs, bool IsGpu) GetEncoderAndHwArgs(
@@ -1809,8 +1951,40 @@ public partial class VideoUpscaleService
         var errors = new List<string>();
         process.ErrorDataReceived += (_, e) =>
         {
-            if (!string.IsNullOrWhiteSpace(e.Data))
-                errors.Add(e.Data);
+            if (string.IsNullOrWhiteSpace(e.Data))
+                return;
+
+            errors.Add(e.Data);
+
+            if (job != null)
+            {
+                var frameMatch = FfmpegFrameRegex.Match(e.Data);
+                if (
+                    frameMatch.Success
+                    && long.TryParse(frameMatch.Groups["frame"].Value, out var frame)
+                )
+                {
+                    job.CurrentFrame = frame;
+                    if (
+                        double.TryParse(
+                            frameMatch.Groups["fps"].Value,
+                            CultureInfo.InvariantCulture,
+                            out var fps
+                        )
+                    )
+                    {
+                        job.Fps = fps;
+                    }
+                    if (job.TotalFrames > 0)
+                    {
+                        // Extraction is stage 1 (first 10% of total pipeline progress if totalFrames known)
+                        job.Progress = Math.Min(
+                            10.0,
+                            Math.Round((double)frame / job.TotalFrames * 10.0, 1)
+                        );
+                    }
+                }
+            }
         };
 
         try

@@ -52,6 +52,9 @@ public enum HardwareAccelerationMode
 
 public enum UpscaleModelType
 {
+    [System.ComponentModel.DataAnnotations.Display(Name = "NVIDIA RTX AI (Tensor Cores)")]
+    NvidiaRtx,
+
     [System.ComponentModel.DataAnnotations.Display(
         Name = "Real-World / People (RealESRGAN_x4plus)"
     )]
