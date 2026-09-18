@@ -11,7 +11,8 @@ public class DialogueSenseEngineTests
     public void ImproveOriginalDialogue_CleansNoiseTags_AndHallucinatedRepeats()
     {
         // Arrange
-        var input = "[Music] uh, you know you know you know that that that we should go to the cinema , right ? [Applause]";
+        var input =
+            "[Music] uh, you know you know you know that that that we should go to the cinema , right ? [Applause]";
 
         // Act
         var result = DialogueSenseEngine.ImproveOriginalDialogue(input);
@@ -75,7 +76,8 @@ public class DialogueSenseEngineTests
     public void FindSenseSplitPoint_SplitsAtClauseBoundary()
     {
         // Arrange
-        var input = "The warrior reached the summit, because the dragon was sleeping inside the cavern.";
+        var input =
+            "The warrior reached the summit, because the dragon was sleeping inside the cavern.";
 
         // Act
         int splitIdx = DialogueSenseEngine.FindSenseSplitPoint(input);
@@ -114,7 +116,8 @@ public class DialogueSenseEngineTests
             Index = 1,
             StartTime = TimeSpan.FromSeconds(10),
             EndTime = TimeSpan.FromSeconds(20),
-            OriginalText = "The king entered the grand hall, and all the guards bowed down immediately.",
+            OriginalText =
+                "The king entered the grand hall, and all the guards bowed down immediately.",
             KhmerText = "ស្តេចបានយាងចូលទៅក្នុងសាលធំ ហើយកងការពារទាំងអស់បានក្រាបថ្វាយបង្គំភ្លាមៗ។",
             CharacterId = charId,
             SpeakerName = "Narrator",
@@ -129,7 +132,9 @@ public class DialogueSenseEngineTests
 
         // Assert
         Assert.Equal(TimeSpan.FromSeconds(10), first.StartTime);
-        Assert.True(first.EndTime > TimeSpan.FromSeconds(10) && first.EndTime < TimeSpan.FromSeconds(20));
+        Assert.True(
+            first.EndTime > TimeSpan.FromSeconds(10) && first.EndTime < TimeSpan.FromSeconds(20)
+        );
         Assert.Equal(first.EndTime, second.StartTime);
         Assert.Equal(TimeSpan.FromSeconds(20), second.EndTime);
 
@@ -216,7 +221,7 @@ public class DialogueSenseEngineTests
                 OriginalText = "Are you coming with us?",
                 CharacterId = Guid.NewGuid(), // Different speaker
                 SpeakerName = "Friend",
-            }
+            },
         };
 
         // Act
@@ -230,7 +235,10 @@ public class DialogueSenseEngineTests
         // First two segments merged into one complete sentence
         Assert.Equal(TimeSpan.FromSeconds(1), reconstructed[0].StartTime);
         Assert.Equal(TimeSpan.FromSeconds(4.5), reconstructed[0].EndTime);
-        Assert.Equal("Because I was very tired, I decided to stay at home.", reconstructed[0].OriginalText);
+        Assert.Equal(
+            "Because I was very tired, I decided to stay at home.",
+            reconstructed[0].OriginalText
+        );
 
         // Third segment kept separate because speaker is different and previous sentence was complete
         Assert.Equal("Friend", reconstructed[1].SpeakerName);

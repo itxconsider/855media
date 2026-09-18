@@ -26,13 +26,26 @@ public class SmartTrackingTests
         );
 
         Assert.NotNull(filter);
-        Assert.Contains("crop=w='min(iw,ih*9/16)':h='min(ih,iw*16/9)',scale=1080:1920:flags=lanczos", filter);
+        Assert.Contains(
+            "crop=w='min(iw,ih*9/16)':h='min(ih,iw*16/9)',scale=1080:1920:flags=lanczos",
+            filter
+        );
         Assert.DoesNotContain("out_w", filter);
     }
 
     [Theory]
-    [InlineData(SmartTrackingMode.MotionCentroid, 0.25, 0.50, "max(0,min(iw-out_w,iw*0.250-out_w/2))")]
-    [InlineData(SmartTrackingMode.FacePriority, 0.72, 0.40, "max(0,min(iw-out_w,iw*0.720-out_w/2))")]
+    [InlineData(
+        SmartTrackingMode.MotionCentroid,
+        0.25,
+        0.50,
+        "max(0,min(iw-out_w,iw*0.250-out_w/2))"
+    )]
+    [InlineData(
+        SmartTrackingMode.FacePriority,
+        0.72,
+        0.40,
+        "max(0,min(iw-out_w,iw*0.720-out_w/2))"
+    )]
     public void AspectRatioFilterBuilder_SmartTracking_ProducesActionAnchoredX(
         SmartTrackingMode mode,
         double centroidX,
@@ -131,7 +144,7 @@ public class SmartTrackingTests
             for (int x = 10; x <= 30; x++)
             {
                 int p = (y * width + x) * 3;
-                frame[p] = 110;     // Blue
+                frame[p] = 110; // Blue
                 frame[p + 1] = 140; // Green
                 frame[p + 2] = 200; // Red
             }

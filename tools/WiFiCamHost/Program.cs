@@ -23,10 +23,14 @@ var serverCertificate = GetOrGenerateSelfSignedCertificate(localIp);
 
 builder.WebHost.ConfigureKestrel(options =>
 {
-    options.Listen(IPAddress.Any, port, listenOptions =>
-    {
-        listenOptions.UseHttps(serverCertificate);
-    });
+    options.Listen(
+        IPAddress.Any,
+        port,
+        listenOptions =>
+        {
+            listenOptions.UseHttps(serverCertificate);
+        }
+    );
 });
 
 var app = builder.Build();
@@ -36,147 +40,175 @@ app.UseStaticFiles();
 app.UseWebSockets();
 
 // Serve the Root Certificate directly for iOS Safari installation
-app.MapGet("/cert", () =>
-{
-    var certBytes = serverCertificate.Export(X509ContentType.Cert);
-    return Results.File(certBytes, "application/x-x509-ca-cert", "WiFiCamRoot.crt");
-});
+app.MapGet(
+    "/cert",
+    () =>
+    {
+        var certBytes = serverCertificate.Export(X509ContentType.Cert);
+        return Results.File(certBytes, "application/x-x509-ca-cert", "WiFiCamRoot.crt");
+    }
+);
 
 PrintWelcomeAndQrCode(httpsUrl);
 
 using var vCamBridge = new VirtualCameraBridge(1920, 1080);
 
-app.Map("/ws", async context =>
-{
-    if (!context.WebSockets.IsWebSocketRequest)
+app.Map(
+    "/ws",
+    async context =>
     {
-        context.Response.StatusCode = 400;
-        return;
-    }
-
-    using var webSocket = await context.WebSockets.AcceptWebSocketAsync();
-    Console.WriteLine("[WS] iPhone client connected.");
-
-    var pc = new RTCPeerConnection(new RTCConfiguration());
-
-    var videoFormat = new VideoFormat(VideoCodecsEnum.VP8, 96);
-    var videoTrack = new MediaStreamTrack(videoFormat, MediaStreamStatusEnum.RecvOnly);
-    pc.addTrack(videoTrack);
-
-    var vp8Codec = new SIPSorceryMedia.Encoders.Codecs.Vp8Codec();
-    vp8Codec.InitialiseDecoder();
-
-    pc.OnVideoFormatsNegotiated += (formats) =>
-    {
-        if (formats != null && formats.Count > 0)
+        if (!context.WebSockets.IsWebSocketRequest)
         {
-            Console.WriteLine($"[WebRTC] Video format negotiated: {formats[0].FormatName}");
+            context.Response.StatusCode = 400;
+            return;
         }
-    };
 
-    pc.OnVideoFrameReceived += (IPEndPoint remoteEP, uint timestamp, byte[] payload, VideoFormat format) =>
-    {
+        using var webSocket = await context.WebSockets.AcceptWebSocketAsync();
+        Console.WriteLine("[WS] iPhone client connected.");
+
+        var pc = new RTCPeerConnection(new RTCConfiguration());
+
+        var videoFormat = new VideoFormat(VideoCodecsEnum.VP8, 96);
+        var videoTrack = new MediaStreamTrack(videoFormat, MediaStreamStatusEnum.RecvOnly);
+        pc.addTrack(videoTrack);
+
+        var vp8Codec = new SIPSorceryMedia.Encoders.Codecs.Vp8Codec();
+        vp8Codec.InitialiseDecoder();
+
+        pc.OnVideoFormatsNegotiated += (formats) =>
+        {
+            if (formats != null && formats.Count > 0)
+            {
+                Console.WriteLine($"[WebRTC] Video format negotiated: {formats[0].FormatName}");
+            }
+        };
+
+        pc.OnVideoFrameReceived += (
+            IPEndPoint remoteEP,
+            uint timestamp,
+            byte[] payload,
+            VideoFormat format
+        ) =>
+        {
+            try
+            {
+                uint width = 0;
+                uint height = 0;
+                var decodedFrames = vp8Codec.Decode(payload, payload.Length, out width, out height);
+                if (decodedFrames != null && width > 0 && height > 0)
+                {
+                    foreach (var i420Buffer in decodedFrames)
+                    {
+                        if (i420Buffer != null && i420Buffer.Length > 0)
+                        {
+                            vCamBridge.PushI420Frame(i420Buffer, (int)width, (int)height);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[WebRTC] Frame decode error: {ex.Message}");
+            }
+        };
+
+        pc.onicecandidate += async (candidate) =>
+        {
+            if (candidate != null && webSocket.State == WebSocketState.Open)
+            {
+                var json = JsonSerializer.Serialize(
+                    new
+                    {
+                        type = "candidate",
+                        candidate = new
+                        {
+                            candidate = candidate.candidate,
+                            sdpMid = candidate.sdpMid,
+                            sdpMLineIndex = candidate.sdpMLineIndex,
+                        },
+                    }
+                );
+                await SendWsAsync(webSocket, json);
+            }
+        };
+
+        var buffer = new byte[1024 * 16];
         try
         {
-            uint width = 0;
-            uint height = 0;
-            var decodedFrames = vp8Codec.Decode(payload, payload.Length, out width, out height);
-            if (decodedFrames != null && width > 0 && height > 0)
+            while (webSocket.State == WebSocketState.Open)
             {
-                foreach (var i420Buffer in decodedFrames)
+                var result = await webSocket.ReceiveAsync(
+                    new ArraySegment<byte>(buffer),
+                    CancellationToken.None
+                );
+                if (result.MessageType == WebSocketMessageType.Close)
+                    break;
+
+                var message = Encoding.UTF8.GetString(buffer, 0, result.Count);
+                using var doc = JsonDocument.Parse(message);
+                var root = doc.RootElement;
+
+                if (root.TryGetProperty("type", out var typeProp))
                 {
-                    if (i420Buffer != null && i420Buffer.Length > 0)
+                    var type = typeProp.GetString();
+                    if (type == "offer")
                     {
-                        vCamBridge.PushI420Frame(i420Buffer, (int)width, (int)height);
+                        var sdp = root.GetProperty("sdp").GetString()!;
+                        pc.setRemoteDescription(
+                            new RTCSessionDescriptionInit { type = RTCSdpType.offer, sdp = sdp }
+                        );
+
+                        var answer = pc.createAnswer();
+                        await pc.setLocalDescription(answer);
+
+                        var answerJson = JsonSerializer.Serialize(
+                            new { type = "answer", sdp = answer.sdp }
+                        );
+                        await SendWsAsync(webSocket, answerJson);
+                        Console.WriteLine("[WebRTC] Answer generated and dispatched.");
+                    }
+                    else if (type == "candidate")
+                    {
+                        var cand = root.GetProperty("candidate");
+                        pc.addIceCandidate(
+                            new RTCIceCandidateInit
+                            {
+                                candidate = cand.GetProperty("candidate").GetString(),
+                                sdpMid = cand.TryGetProperty("sdpMid", out var mid)
+                                    ? mid.GetString()
+                                    : null,
+                                sdpMLineIndex = cand.TryGetProperty("sdpMLineIndex", out var idx)
+                                    ? (ushort)idx.GetInt32()
+                                    : (ushort)0,
+                            }
+                        );
                     }
                 }
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[WebRTC] Frame decode error: {ex.Message}");
+            Console.WriteLine($"[WS] Session terminated: {ex.Message}");
         }
-    };
-
-    pc.onicecandidate += async (candidate) =>
-    {
-        if (candidate != null && webSocket.State == WebSocketState.Open)
+        finally
         {
-            var json = JsonSerializer.Serialize(new
-            {
-                type = "candidate",
-                candidate = new
-                {
-                    candidate = candidate.candidate,
-                    sdpMid = candidate.sdpMid,
-                    sdpMLineIndex = candidate.sdpMLineIndex
-                }
-            });
-            await SendWsAsync(webSocket, json);
-        }
-    };
-
-    var buffer = new byte[1024 * 16];
-    try
-    {
-        while (webSocket.State == WebSocketState.Open)
-        {
-            var result = await webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
-            if (result.MessageType == WebSocketMessageType.Close) break;
-
-            var message = Encoding.UTF8.GetString(buffer, 0, result.Count);
-            using var doc = JsonDocument.Parse(message);
-            var root = doc.RootElement;
-
-            if (root.TryGetProperty("type", out var typeProp))
-            {
-                var type = typeProp.GetString();
-                if (type == "offer")
-                {
-                    var sdp = root.GetProperty("sdp").GetString()!;
-                    pc.setRemoteDescription(new RTCSessionDescriptionInit
-                    {
-                        type = RTCSdpType.offer,
-                        sdp = sdp
-                    });
-
-                    var answer = pc.createAnswer();
-                    await pc.setLocalDescription(answer);
-
-                    var answerJson = JsonSerializer.Serialize(new { type = "answer", sdp = answer.sdp });
-                    await SendWsAsync(webSocket, answerJson);
-                    Console.WriteLine("[WebRTC] Answer generated and dispatched.");
-                }
-                else if (type == "candidate")
-                {
-                    var cand = root.GetProperty("candidate");
-                    pc.addIceCandidate(new RTCIceCandidateInit
-                    {
-                        candidate = cand.GetProperty("candidate").GetString(),
-                        sdpMid = cand.TryGetProperty("sdpMid", out var mid) ? mid.GetString() : null,
-                        sdpMLineIndex = cand.TryGetProperty("sdpMLineIndex", out var idx) ? (ushort)idx.GetInt32() : (ushort)0
-                    });
-                }
-            }
+            pc.Close("Client disconnected");
+            Console.WriteLine("[WS] iPhone client disconnected.");
         }
     }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"[WS] Session terminated: {ex.Message}");
-    }
-    finally
-    {
-        pc.Close("Client disconnected");
-        Console.WriteLine("[WS] iPhone client disconnected.");
-    }
-});
+);
 
 await app.RunAsync();
 
 static async Task SendWsAsync(WebSocket ws, string message)
 {
     var bytes = Encoding.UTF8.GetBytes(message);
-    await ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None);
+    await ws.SendAsync(
+        new ArraySegment<byte>(bytes),
+        WebSocketMessageType.Text,
+        true,
+        CancellationToken.None
+    );
 }
 
 static string GetLocalIPv4Address()
@@ -184,14 +216,20 @@ static string GetLocalIPv4Address()
     // First try: active Wi-Fi or Ethernet interfaces with non-APIPA (not 169.254.*) address
     foreach (var ni in NetworkInterface.GetAllNetworkInterfaces())
     {
-        if (ni.OperationalStatus == OperationalStatus.Up &&
-            (ni.NetworkInterfaceType == NetworkInterfaceType.Wireless80211 ||
-             ni.NetworkInterfaceType == NetworkInterfaceType.Ethernet))
+        if (
+            ni.OperationalStatus == OperationalStatus.Up
+            && (
+                ni.NetworkInterfaceType == NetworkInterfaceType.Wireless80211
+                || ni.NetworkInterfaceType == NetworkInterfaceType.Ethernet
+            )
+        )
         {
             foreach (var ip in ni.GetIPProperties().UnicastAddresses)
             {
-                if (ip.Address.AddressFamily == AddressFamily.InterNetwork &&
-                    !IPAddress.IsLoopback(ip.Address))
+                if (
+                    ip.Address.AddressFamily == AddressFamily.InterNetwork
+                    && !IPAddress.IsLoopback(ip.Address)
+                )
                 {
                     string str = ip.Address.ToString();
                     if (!str.StartsWith("169.254."))
@@ -252,7 +290,12 @@ static X509Certificate2 GetOrGenerateSelfSignedCertificate(string hostIp)
     }
 
     using var rsa = RSA.Create(2048);
-    var req = new CertificateRequest($"CN={hostIp}", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+    var req = new CertificateRequest(
+        $"CN={hostIp}",
+        rsa,
+        HashAlgorithmName.SHA256,
+        RSASignaturePadding.Pkcs1
+    );
 
     var sanBuilder = new SubjectAlternativeNameBuilder();
     if (IPAddress.TryParse(hostIp, out var ipAddress))
@@ -264,11 +307,19 @@ static X509Certificate2 GetOrGenerateSelfSignedCertificate(string hostIp)
     req.CertificateExtensions.Add(sanBuilder.Build());
 
     req.CertificateExtensions.Add(new X509BasicConstraintsExtension(true, false, 0, true));
-    req.CertificateExtensions.Add(new X509KeyUsageExtension(
-        X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment | X509KeyUsageFlags.KeyCertSign,
-        true));
+    req.CertificateExtensions.Add(
+        new X509KeyUsageExtension(
+            X509KeyUsageFlags.DigitalSignature
+                | X509KeyUsageFlags.KeyEncipherment
+                | X509KeyUsageFlags.KeyCertSign,
+            true
+        )
+    );
 
-    var cert = req.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(2));
+    var cert = req.CreateSelfSigned(
+        DateTimeOffset.UtcNow.AddDays(-1),
+        DateTimeOffset.UtcNow.AddYears(2)
+    );
     var pfxBytes = cert.Export(X509ContentType.Pfx, "wificam");
     File.WriteAllBytes(certPath, pfxBytes);
     return X509CertificateLoader.LoadPkcs12(pfxBytes, "wificam", X509KeyStorageFlags.Exportable);

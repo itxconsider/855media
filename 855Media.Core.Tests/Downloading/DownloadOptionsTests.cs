@@ -2,8 +2,8 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using _855Media.Core.Downloading;
-using YoutubeExplode.Videos.Streams;
 using Xunit;
+using YoutubeExplode.Videos.Streams;
 
 namespace _855Media.Core.Tests.Downloading;
 
@@ -95,12 +95,15 @@ public class DownloadOptionsTests
         // Ensure every video option has a valid video quality
         var videoOptions = options.Where(o => !o.IsAudioOnly).ToArray();
         Assert.NotEmpty(videoOptions);
-        Assert.All(videoOptions, o =>
-        {
-            Assert.NotNull(o.VideoQuality);
-            Assert.True(o.VideoQuality.Value.MaxHeight > 0);
-            Assert.False(string.IsNullOrWhiteSpace(o.VideoQuality.Value.Label));
-        });
+        Assert.All(
+            videoOptions,
+            o =>
+            {
+                Assert.NotNull(o.VideoQuality);
+                Assert.True(o.VideoQuality.Value.MaxHeight > 0);
+                Assert.False(string.IsNullOrWhiteSpace(o.VideoQuality.Value.Label));
+            }
+        );
 
         // Ensure we have choices (not just a single empty mp4)
         Assert.True(options.Count > 1, $"Expected multiple quality options, got {options.Count}");

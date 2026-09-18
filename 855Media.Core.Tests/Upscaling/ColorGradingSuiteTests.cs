@@ -40,7 +40,7 @@ public class ColorGradingSuiteTests
             Vibrance = vibrance,
             MidtoneRed = midR,
             MidtoneGreen = midG,
-            MidtoneBlue = midB
+            MidtoneBlue = midB,
         };
 
         Assert.True(settings.HasActiveGrading);
@@ -55,7 +55,7 @@ public class ColorGradingSuiteTests
             Vibrance = 0.5,
             MidtoneRed = 0.2,
             MidtoneGreen = -0.1,
-            MidtoneBlue = 0.3
+            MidtoneBlue = 0.3,
         };
 
         settings.Reset();
@@ -75,7 +75,7 @@ public class ColorGradingSuiteTests
         {
             MidtoneRed = 0.12,
             MidtoneGreen = -0.08,
-            MidtoneBlue = 0.05
+            MidtoneBlue = 0.05,
         };
 
         var filter = AdvancedColorGradeService.BuildFilterString(settings);
@@ -90,10 +90,7 @@ public class ColorGradingSuiteTests
     [Fact]
     public void AdvancedColorGradeService_Gamma_ProducesEqGamma()
     {
-        var settings = new ColorGradingSettings
-        {
-            Gamma = 1.35
-        };
+        var settings = new ColorGradingSettings { Gamma = 1.35 };
 
         var filter = AdvancedColorGradeService.BuildFilterString(settings);
 
@@ -105,10 +102,7 @@ public class ColorGradingSuiteTests
     [Fact]
     public void AdvancedColorGradeService_Vibrance_ProducesVibranceFilter()
     {
-        var settings = new ColorGradingSettings
-        {
-            Vibrance = 0.45
-        };
+        var settings = new ColorGradingSettings { Vibrance = 0.45 };
 
         var filter = AdvancedColorGradeService.BuildFilterString(settings);
 
@@ -124,10 +118,7 @@ public class ColorGradingSuiteTests
     [InlineData("Golden Hour Warmth")]
     public void AdvancedColorGradeService_NewToneCurves_GenerateCurvesFilter(string curveName)
     {
-        var settings = new ColorGradingSettings
-        {
-            ToneCurve = curveName
-        };
+        var settings = new ColorGradingSettings { ToneCurve = curveName };
 
         var filter = AdvancedColorGradeService.BuildFilterString(settings);
 
@@ -208,7 +199,7 @@ public class ColorGradingSuiteTests
             for (int x = 0; x < width; x++)
             {
                 int p = rowStart + x * 3;
-                bmp[p] = 50;     // Blue
+                bmp[p] = 50; // Blue
                 bmp[p + 1] = 100; // Green
                 bmp[p + 2] = 200; // Red
             }

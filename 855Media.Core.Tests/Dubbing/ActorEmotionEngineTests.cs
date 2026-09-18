@@ -85,7 +85,11 @@ public class ActorEmotionEngineTests
     [InlineData("+10%", "+20%", "+30%")]
     [InlineData("-20%", "-30%", "-40%")] // Clamped at -40%
     [InlineData("+50%", "+30%", "+60%")] // Clamped at +60%
-    public void ComputeEffectiveRate_CorrectlyCalculatesAndClamps(string baseRate, string emotionOffset, string expected)
+    public void ComputeEffectiveRate_CorrectlyCalculatesAndClamps(
+        string baseRate,
+        string emotionOffset,
+        string expected
+    )
     {
         var rate = ActorEmotionEngine.ComputeEffectiveRate(baseRate, emotionOffset);
         Assert.Equal(expected, rate);
@@ -98,9 +102,18 @@ public class ActorEmotionEngineTests
     [InlineData(-3, "-20Hz", -3, "-65Hz")] // (-3 + -3)*7.5 - 20 = -45 - 20 = -65Hz
     [InlineData(4, "+32Hz", 4, "+85Hz")] // (4+4)*7.5 + 32 = 60 + 32 = 92 -> clamped to +85Hz
     [InlineData(0, "+30Hz", 3, "+52Hz")] // Scream: (0 + 3)*7.5 + 30 = 22.5 + 30 = 52.5 -> banker's rounding to +52Hz
-    public void ComputeEffectiveTtsPitch_CalculatesHzCorrectly(int pitchShift, string? emotionPitch, int emotionOffset, string expected)
+    public void ComputeEffectiveTtsPitch_CalculatesHzCorrectly(
+        int pitchShift,
+        string? emotionPitch,
+        int emotionOffset,
+        string expected
+    )
     {
-        var pitch = ActorEmotionEngine.ComputeEffectiveTtsPitch(pitchShift, emotionPitch, emotionOffset);
+        var pitch = ActorEmotionEngine.ComputeEffectiveTtsPitch(
+            pitchShift,
+            emotionPitch,
+            emotionOffset
+        );
         Assert.Equal(expected, pitch);
     }
 
@@ -199,7 +212,11 @@ public class ActorEmotionEngineTests
     [InlineData("", "ស្រែកខ្លាំងៗ ឈឺចាប់ខ្លាំងណាស់!", ActorEmotionEngine.EmotionScream)]
     [InlineData("She was shrieking in agony", "", ActorEmotionEngine.EmotionScream)]
     // Frustration detections
-    [InlineData("I'm so frustrated with this whole situation! [groan]", "", ActorEmotionEngine.EmotionFrustrated)]
+    [InlineData(
+        "I'm so frustrated with this whole situation! [groan]",
+        "",
+        ActorEmotionEngine.EmotionFrustrated
+    )]
     [InlineData("Damn it, I can't take it anymore", "", ActorEmotionEngine.EmotionFrustrated)]
     [InlineData("", "ខ្ញុំធុញថប់ណាស់ ទ្រាំមិនបានទេ!", ActorEmotionEngine.EmotionFrustrated)]
     [InlineData("", "មួម៉ៅខ្លាំងណាស់ ហត់ចិត្ត", ActorEmotionEngine.EmotionFrustrated)]
@@ -231,7 +248,7 @@ public class ActorEmotionEngineTests
     public void MovieCharacter_ApplyToneArchetype_UpdatesAllVocalParameters()
     {
         var character = new MovieCharacter { Name = "Main Villain" };
-        
+
         // Apply Villain
         character.ToneArchetype = "Villain";
 
@@ -274,7 +291,7 @@ public class ActorEmotionEngineTests
             ToneArchetype = "Action",
             ToneWarmth = 0.45,
             ToneClarity = 0.55,
-            PitchShift = 1
+            PitchShift = 1,
         };
 
         var charData = new MovieCharacterData
@@ -284,7 +301,7 @@ public class ActorEmotionEngineTests
             ToneArchetype = character.ToneArchetype,
             ToneWarmth = character.ToneWarmth,
             ToneClarity = character.ToneClarity,
-            PitchShift = character.PitchShift
+            PitchShift = character.PitchShift,
         };
 
         var json = JsonSerializer.Serialize(charData);

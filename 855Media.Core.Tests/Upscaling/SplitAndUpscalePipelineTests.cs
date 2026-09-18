@@ -28,11 +28,7 @@ public class SplitAndUpscalePipelineTests
     public void CalculateSlices_ByPartCount_ReturnsRequestedPartCount()
     {
         double durationSeconds = 120.0;
-        var options = new CustomSplitOptions
-        {
-            Mode = SplitMode.ByPartCount,
-            PartCount = 3
-        };
+        var options = new CustomSplitOptions { Mode = SplitMode.ByPartCount, PartCount = 3 };
 
         var slices = SplitAndUpscalePipeline.CalculateSlices(durationSeconds, options);
 
@@ -58,7 +54,7 @@ public class SplitAndUpscalePipelineTests
         var options = new CustomSplitOptions
         {
             Mode = SplitMode.ByDuration,
-            SegmentDurationSeconds = 50.0
+            SegmentDurationSeconds = 50.0,
         };
 
         var slices = SplitAndUpscalePipeline.CalculateSlices(durationSeconds, options);

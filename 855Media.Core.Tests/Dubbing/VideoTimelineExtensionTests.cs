@@ -12,20 +12,35 @@ public class VideoTimelineExtensionTests
     [Fact]
     public async Task ConcatenateVideosAsync_EmptyOrMissingList_ReturnsFalse()
     {
-        var result = await DubbingPipeline.ConcatenateVideosAsync("ffmpeg", new List<string>(), "output.mp4");
+        var result = await DubbingPipeline.ConcatenateVideosAsync(
+            "ffmpeg",
+            new List<string>(),
+            "output.mp4"
+        );
         Assert.False(result);
 
-        var resultNull = await DubbingPipeline.ConcatenateVideosAsync("ffmpeg", null!, "output.mp4");
+        var resultNull = await DubbingPipeline.ConcatenateVideosAsync(
+            "ffmpeg",
+            null!,
+            "output.mp4"
+        );
         Assert.False(resultNull);
 
-        var resultMissingFiles = await DubbingPipeline.ConcatenateVideosAsync("ffmpeg", new[] { "non_existent_12345.mp4" }, "output.mp4");
+        var resultMissingFiles = await DubbingPipeline.ConcatenateVideosAsync(
+            "ffmpeg",
+            new[] { "non_existent_12345.mp4" },
+            "output.mp4"
+        );
         Assert.False(resultMissingFiles);
     }
 
     [Fact]
     public async Task ConcatenateVideosAsync_SingleVideo_CopiesToTargetDirectly()
     {
-        var tempDir = Path.Combine(Path.GetTempPath(), "ConcatTest_" + Guid.NewGuid().ToString("N"));
+        var tempDir = Path.Combine(
+            Path.GetTempPath(),
+            "ConcatTest_" + Guid.NewGuid().ToString("N")
+        );
         Directory.CreateDirectory(tempDir);
         var sourceFile = Path.Combine(tempDir, "clip1.mp4");
         var targetFile = Path.Combine(tempDir, "clip1_extended.mp4");
@@ -33,7 +48,11 @@ public class VideoTimelineExtensionTests
         try
         {
             await File.WriteAllTextAsync(sourceFile, "mock video stream content");
-            var result = await DubbingPipeline.ConcatenateVideosAsync("ffmpeg", new[] { sourceFile }, targetFile);
+            var result = await DubbingPipeline.ConcatenateVideosAsync(
+                "ffmpeg",
+                new[] { sourceFile },
+                targetFile
+            );
 
             Assert.True(result);
             Assert.True(File.Exists(targetFile));
@@ -56,15 +75,39 @@ public class VideoTimelineExtensionTests
         var video1Duration = TimeSpan.FromSeconds(10);
         var segments = new List<SubtitleSegment>
         {
-            new() { Index = 1, StartTime = TimeSpan.FromSeconds(1), EndTime = TimeSpan.FromSeconds(3), OriginalText = "Clip 1 Line 1" },
-            new() { Index = 2, StartTime = TimeSpan.FromSeconds(4), EndTime = TimeSpan.FromSeconds(8), OriginalText = "Clip 1 Line 2" },
+            new()
+            {
+                Index = 1,
+                StartTime = TimeSpan.FromSeconds(1),
+                EndTime = TimeSpan.FromSeconds(3),
+                OriginalText = "Clip 1 Line 1",
+            },
+            new()
+            {
+                Index = 2,
+                StartTime = TimeSpan.FromSeconds(4),
+                EndTime = TimeSpan.FromSeconds(8),
+                OriginalText = "Clip 1 Line 2",
+            },
         };
 
         // Video 2 has 2 lines (at 2s and 5s within Video 2)
         var clip2Lines = new List<SubtitleSegment>
         {
-            new() { Index = 1, StartTime = TimeSpan.FromSeconds(2), EndTime = TimeSpan.FromSeconds(4), OriginalText = "Clip 2 Line 1" },
-            new() { Index = 2, StartTime = TimeSpan.FromSeconds(5), EndTime = TimeSpan.FromSeconds(9), OriginalText = "Clip 2 Line 2" },
+            new()
+            {
+                Index = 1,
+                StartTime = TimeSpan.FromSeconds(2),
+                EndTime = TimeSpan.FromSeconds(4),
+                OriginalText = "Clip 2 Line 1",
+            },
+            new()
+            {
+                Index = 2,
+                StartTime = TimeSpan.FromSeconds(5),
+                EndTime = TimeSpan.FromSeconds(9),
+                OriginalText = "Clip 2 Line 2",
+            },
         };
 
         // Act: Offset clip 2 lines by video 1 duration

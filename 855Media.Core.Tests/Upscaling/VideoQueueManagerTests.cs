@@ -21,7 +21,11 @@ public class VideoQueueManagerTests : IDisposable
         QueuePersistenceService.CustomQueueFilePath = null;
         if (File.Exists(_tempQueueFile))
         {
-            try { File.Delete(_tempQueueFile); } catch { }
+            try
+            {
+                File.Delete(_tempQueueFile);
+            }
+            catch { }
         }
     }
 

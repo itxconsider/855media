@@ -39,7 +39,11 @@ public class UpscaleJobTests
     }
 
     [Fact]
-    [System.Diagnostics.CodeAnalysis.SuppressMessage("Assertions", "xUnit2000:ConstantsFirst", Justification = "Testing getter output against expected summary")]
+    [System.Diagnostics.CodeAnalysis.SuppressMessage(
+        "Assertions",
+        "xUnit2000:ConstantsFirst",
+        Justification = "Testing getter output against expected summary"
+    )]
     public void SplitSummary_CalculatesCorrectSummary()
     {
         var job = new UpscaleJob { FilePath = "test.mp4" };
@@ -50,17 +54,13 @@ public class UpscaleJobTests
         Assert.Equal("Split & Merge", job.SplitSummary);
 
         job.MergeAfterUpscale = false;
-        job.SplitOptions = new CustomSplitOptions
-        {
-            Mode = SplitMode.ByPartCount,
-            PartCount = 4
-        };
+        job.SplitOptions = new CustomSplitOptions { Mode = SplitMode.ByPartCount, PartCount = 4 };
         Assert.Equal("Split (4 parts)", job.SplitSummary);
 
         job.SplitOptions = new CustomSplitOptions
         {
             Mode = SplitMode.ByDuration,
-            SegmentDurationSeconds = 120.0
+            SegmentDurationSeconds = 120.0,
         };
         Assert.Equal("Split (120s)", job.SplitSummary);
 
@@ -77,7 +77,7 @@ public class UpscaleJobTests
         var job = new UpscaleJob
         {
             FilePath = "input.mp4",
-            CustomOutputFilePath = @"C:\Custom\Output\master.mp4"
+            CustomOutputFilePath = @"C:\Custom\Output\master.mp4",
         };
 
         Assert.Equal(@"C:\Custom\Output\master.mp4", job.OutputFilePath);

@@ -63,7 +63,6 @@
     <PackageReference Include="Avalonia.Diagnostics" Condition="'$(Configuration)' == 'Debug'" />
     <PackageReference Include="Cogwheel" />
     <PackageReference Include="CommunityToolkit.Mvvm" />
-    <PackageReference Include="CSharpier.MsBuild" PrivateAssets="all" />
     <PackageReference Include="Deorcify" PrivateAssets="all" />
     <PackageReference Include="DialogHost.Avalonia" />
     <PackageReference Include="Gress" />
@@ -100,7 +99,7 @@
   <!-- Publish macOS bundle -->
   <Target Name="PublishMacOSBundle" AfterTargets="Publish" Condition="$(PublishMacOSBundle)">
     <Exec
-      Command="dotnet run --file &quot;$(ProjectDir)PublishMacOSBundle.csx&quot; -- --publish-dir &quot;$(PublishDir)&quot; --icons-file &quot;$(ProjectDir)../favicon.icns&quot; --full-version $(Version) --short-version $(AssemblyVersion)"
+      Command="dotnet run --file &quot;$(ProjectDir)PublishMacOSBundle.csx&quot; -- --publish-dir &quot;$(PublishDir.TrimEnd('\').TrimEnd('/'))&quot; --icons-file &quot;$(ProjectDir)../favicon.icns&quot; --full-version $(Version) --short-version $(AssemblyVersion)"
       LogStandardErrorAsError="true"
     />
   </Target>

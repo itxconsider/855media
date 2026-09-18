@@ -45,10 +45,22 @@ public class NvidiaRtxPipelineTests
     }
 
     [Theory]
-    [InlineData(UpscaleTargetResolution.Hd1080p, "scale=-2:1080:flags=lanczos,unsharp=5:5:0.8:3:3:0.4,cas=0.5")]
-    [InlineData(UpscaleTargetResolution.Uhd4k, "scale=-2:2160:flags=lanczos,unsharp=5:5:0.8:3:3:0.4,cas=0.5")]
-    [InlineData(UpscaleTargetResolution.Scale2x, "scale=iw*2:ih*2:flags=lanczos,unsharp=5:5:0.8:3:3:0.4,cas=0.5")]
-    [InlineData(UpscaleTargetResolution.Scale4x, "scale=iw*4:ih*4:flags=lanczos,unsharp=5:5:0.8:3:3:0.4,cas=0.5")]
+    [InlineData(
+        UpscaleTargetResolution.Hd1080p,
+        "scale=-2:1080:flags=lanczos,unsharp=5:5:0.8:3:3:0.4,cas=0.5"
+    )]
+    [InlineData(
+        UpscaleTargetResolution.Uhd4k,
+        "scale=-2:2160:flags=lanczos,unsharp=5:5:0.8:3:3:0.4,cas=0.5"
+    )]
+    [InlineData(
+        UpscaleTargetResolution.Scale2x,
+        "scale=iw*2:ih*2:flags=lanczos,unsharp=5:5:0.8:3:3:0.4,cas=0.5"
+    )]
+    [InlineData(
+        UpscaleTargetResolution.Scale4x,
+        "scale=iw*4:ih*4:flags=lanczos,unsharp=5:5:0.8:3:3:0.4,cas=0.5"
+    )]
     public void GetRtxScaleFilter_ProducesLanczosCasFilter(
         UpscaleTargetResolution targetResolution,
         string expectedFilter
@@ -119,7 +131,10 @@ public class NvidiaRtxPipelineTests
     [InlineData(TargetFramerate.Fps30, 30)]
     [InlineData(TargetFramerate.Fps60, 60)]
     [InlineData(TargetFramerate.Fps120, 120)]
-    public void TargetFramerate_EnumValues_MatchExpectedFrequencies(TargetFramerate rate, int expectedFps)
+    public void TargetFramerate_EnumValues_MatchExpectedFrequencies(
+        TargetFramerate rate,
+        int expectedFps
+    )
     {
         Assert.Equal(expectedFps, (int)rate);
     }

@@ -27,9 +27,14 @@ public class VirtualCameraBridge : IDisposable
         {
             // Frame size for BGRA 32bpp + header offset
             long bufferSize = (long)_width * _height * 4 + 64;
-            _mmf = MemoryMappedFile.CreateOrOpen(MMF_NAME, bufferSize);
-            _accessor = _mmf.CreateViewAccessor();
-            Console.WriteLine($"[VCam] Shared memory bridge initialized: '{MMF_NAME}' ({_width}x{_height})");
+            if (OperatingSystem.IsWindows())
+            {
+                _mmf = MemoryMappedFile.CreateOrOpen(MMF_NAME, bufferSize);
+                _accessor = _mmf.CreateViewAccessor();
+                Console.WriteLine(
+                    $"[VCam] Shared memory bridge initialized: '{MMF_NAME}' ({_width}x{_height})"
+                );
+            }
         }
         catch (Exception ex)
         {
@@ -39,7 +44,8 @@ public class VirtualCameraBridge : IDisposable
 
     public unsafe void PushFrame(IntPtr samplePtr, int width, int height, int stride)
     {
-        if (_accessor == null || samplePtr == IntPtr.Zero) return;
+        if (_accessor == null || samplePtr == IntPtr.Zero)
+            return;
 
         lock (_lock)
         {
@@ -64,7 +70,8 @@ public class VirtualCameraBridge : IDisposable
 
     public unsafe void PushFrame(byte[] sample, int width, int height, int stride)
     {
-        if (_accessor == null || sample == null) return;
+        if (_accessor == null || sample == null)
+            return;
 
         lock (_lock)
         {
@@ -78,7 +85,12 @@ public class VirtualCameraBridge : IDisposable
                 intPtr[1] = height;
 
                 byte* frameDataPtr = ptr + 16;
-                Marshal.Copy(sample, 0, (IntPtr)frameDataPtr, Math.Min(sample.Length, width * height * 4));
+                Marshal.Copy(
+                    sample,
+                    0,
+                    (IntPtr)frameDataPtr,
+                    Math.Min(sample.Length, width * height * 4)
+                );
             }
             finally
             {
@@ -89,7 +101,8 @@ public class VirtualCameraBridge : IDisposable
 
     public unsafe void PushI420Frame(byte[] i420Data, int width, int height)
     {
-        if (_accessor == null || i420Data == null || i420Data.Length < width * height * 3 / 2) return;
+        if (_accessor == null || i420Data == null || i420Data.Length < width * height * 3 / 2)
+            return;
 
         lock (_lock)
         {
@@ -123,7 +136,8 @@ public class VirtualCameraBridge : IDisposable
                         for (int x = 0; x < width; x++)
                         {
                             int yVal = yPtr[yLine + x] - 16;
-                            if (yVal < 0) yVal = 0;
+                            if (yVal < 0)
+                                yVal = 0;
 
                             int uvIdx = uvLine + (x / 2);
                             int uVal = uPtr[uvIdx] - 128;
@@ -137,7 +151,7 @@ public class VirtualCameraBridge : IDisposable
                             bgraRow[pixelIdx + 0] = (byte)(b < 0 ? 0 : (b > 255 ? 255 : b)); // B
                             bgraRow[pixelIdx + 1] = (byte)(g < 0 ? 0 : (g > 255 ? 255 : g)); // G
                             bgraRow[pixelIdx + 2] = (byte)(r < 0 ? 0 : (r > 255 ? 255 : r)); // R
-                            bgraRow[pixelIdx + 3] = 255;                                     // A
+                            bgraRow[pixelIdx + 3] = 255; // A
                         }
                     }
                 }

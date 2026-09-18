@@ -10,7 +10,7 @@ public class CameraMetadataSettingsTests
     {
         var settings = new CameraMetadataSettings
         {
-            ProfileType = CameraProfileType.CleanNormalized
+            ProfileType = CameraProfileType.CleanNormalized,
         };
 
         var args = settings.BuildFfmpegMetadataArgs("test_video");
@@ -27,7 +27,7 @@ public class CameraMetadataSettingsTests
         var settings = new CameraMetadataSettings
         {
             ProfileType = CameraProfileType.AppleIPhone15Pro,
-            InjectCurrentTimestamp = true
+            InjectCurrentTimestamp = true,
         };
 
         var args = settings.BuildFfmpegMetadataArgs("clip1");
@@ -49,7 +49,7 @@ public class CameraMetadataSettingsTests
         {
             ProfileType = CameraProfileType.SonyAlphaA7IV,
             Artist = "Creator Studios",
-            Copyright = "2026 Creator Studios"
+            Copyright = "2026 Creator Studios",
         };
 
         var args = settings.BuildFfmpegMetadataArgs("sony_clip");
@@ -66,7 +66,7 @@ public class CameraMetadataSettingsTests
         var settings = new CameraMetadataSettings
         {
             ProfileType = CameraProfileType.AppleIPhone17ProMax,
-            InjectCurrentTimestamp = true
+            InjectCurrentTimestamp = true,
         };
 
         var args = settings.BuildFfmpegMetadataArgs("iphone17_clip");
@@ -86,10 +86,7 @@ public class CameraMetadataSettingsTests
     [Fact]
     public void BuildFfmpegMetadataArgs_None_PreservesOriginalMapping()
     {
-        var settings = new CameraMetadataSettings
-        {
-            ProfileType = CameraProfileType.None
-        };
+        var settings = new CameraMetadataSettings { ProfileType = CameraProfileType.None };
 
         var args = settings.BuildFfmpegMetadataArgs("raw_clip");
 

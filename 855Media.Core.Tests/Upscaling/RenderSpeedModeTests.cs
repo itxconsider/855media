@@ -87,7 +87,10 @@ public class RenderSpeedModeTests
     [InlineData(2.5, "atempo=2.0,atempo=1.25")]
     [InlineData(0.5, "atempo=0.5")]
     [InlineData(0.25, "atempo=0.5,atempo=0.5")]
-    public void BuildAudioSpeedFilter_GeneratesValidAtempoChains(double speed, string expectedFilter)
+    public void BuildAudioSpeedFilter_GeneratesValidAtempoChains(
+        double speed,
+        string expectedFilter
+    )
     {
         var filter = VideoUpscaleService.BuildAudioSpeedFilter(speed);
         Assert.Equal(expectedFilter, filter);

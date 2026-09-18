@@ -96,7 +96,7 @@ public class SubtitleTranslationServiceTests
                 EndTime = TimeSpan.FromSeconds(3.5),
                 OriginalText = "Hello everyone",
                 KhmerText = "សួស្តីអ្នកទាំងអស់គ្នា",
-                SpeakerName = "Sophea"
+                SpeakerName = "Sophea",
             },
             new()
             {
@@ -105,16 +105,26 @@ public class SubtitleTranslationServiceTests
                 EndTime = TimeSpan.FromSeconds(6.25),
                 OriginalText = "Good morning",
                 KhmerText = "អរុណសួស្តី",
-                SpeakerName = "Bora"
-            }
+                SpeakerName = "Bora",
+            },
         };
 
         // Act
-        var srt = SubtitleTranslationService.GenerateSrt(segments, includeOriginal: false, includeSpeakerTag: false);
+        var srt = SubtitleTranslationService.GenerateSrt(
+            segments,
+            includeOriginal: false,
+            includeSpeakerTag: false
+        );
 
         // Assert
-        Assert.Contains("1\r\n00:00:01,000 --> 00:00:03,500\r\nសួស្តីអ្នកទាំងអស់គ្នា", srt.Replace("\r\n", "\n").Replace("\n", "\r\n"));
-        Assert.Contains("2\r\n00:00:04,000 --> 00:00:06,250\r\nអរុណសួស្តី", srt.Replace("\r\n", "\n").Replace("\n", "\r\n"));
+        Assert.Contains(
+            "1\r\n00:00:01,000 --> 00:00:03,500\r\nសួស្តីអ្នកទាំងអស់គ្នា",
+            srt.Replace("\r\n", "\n").Replace("\n", "\r\n")
+        );
+        Assert.Contains(
+            "2\r\n00:00:04,000 --> 00:00:06,250\r\nអរុណសួស្តី",
+            srt.Replace("\r\n", "\n").Replace("\n", "\r\n")
+        );
     }
 
     [Fact]
@@ -130,12 +140,16 @@ public class SubtitleTranslationServiceTests
                 EndTime = TimeSpan.FromSeconds(3),
                 OriginalText = "Where are you going?",
                 KhmerText = "ឯងទៅណា?",
-                SpeakerName = "Dara"
-            }
+                SpeakerName = "Dara",
+            },
         };
 
         // Act
-        var srt = SubtitleTranslationService.GenerateSrt(segments, includeOriginal: true, includeSpeakerTag: true);
+        var srt = SubtitleTranslationService.GenerateSrt(
+            segments,
+            includeOriginal: true,
+            includeSpeakerTag: true
+        );
 
         // Assert
         Assert.Contains("[Dara] ឯងទៅណា?", srt);
@@ -154,12 +168,16 @@ public class SubtitleTranslationServiceTests
                 StartTime = TimeSpan.FromSeconds(2.5),
                 EndTime = TimeSpan.FromSeconds(5.75),
                 KhmerText = "តោះទៅជាមួយគ្នា",
-                OriginalText = "Let's go together"
-            }
+                OriginalText = "Let's go together",
+            },
         };
 
         // Act
-        var vtt = SubtitleTranslationService.GenerateVtt(segments, includeOriginal: false, includeSpeakerTag: false);
+        var vtt = SubtitleTranslationService.GenerateVtt(
+            segments,
+            includeOriginal: false,
+            includeSpeakerTag: false
+        );
 
         // Assert
         Assert.StartsWith("WEBVTT", vtt);

@@ -20,7 +20,7 @@ public partial class PublishMacOSBundleCommand : ICommand
     public required string PublishDirPath { get; set; }
 
     [CommandOption("icons-file", Description = "Path to the .icns icons file.")]
-    public required string IconsFilePath { get; set; }
+    public string? IconsFilePath { get; set; }
 
     [CommandOption("full-version", Description = "Full version string (e.g. '1.2.3.4').")]
     public required string FullVersion { get; set; }
@@ -45,13 +45,18 @@ public partial class PublishMacOSBundleCommand : ICommand
 
         try
         {
-            // Copy icons into the .app's Resources folder
-            Directory.CreateDirectory(Path.Combine(contentsDirPath, "Resources"));
-            File.Copy(
-                IconsFilePath,
-                Path.Combine(contentsDirPath, "Resources", "AppIcon.icns"),
-                true
-            );
+            Directory.CreateDirectory(contentsDirPath);
+
+            // Copy icons into the .app's Resources folder if present
+            if (!string.IsNullOrWhiteSpace(IconsFilePath) && File.Exists(IconsFilePath))
+            {
+                Directory.CreateDirectory(Path.Combine(contentsDirPath, "Resources"));
+                File.Copy(
+                    IconsFilePath,
+                    Path.Combine(contentsDirPath, "Resources", "AppIcon.icns"),
+                    true
+                );
+            }
 
             // Generate the Info.plist metadata file with the app information
             // lang=xml

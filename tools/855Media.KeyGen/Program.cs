@@ -46,7 +46,8 @@ public static class Program
 
     private static void ShowHelp()
     {
-        Console.WriteLine(@"
+        Console.WriteLine(
+            @"
 Usage:
   dotnet run -- gen-keys
       Generates a new RSA 2048-bit Public and Private keypair.
@@ -61,7 +62,8 @@ Usage:
 
   dotnet run -- gen-serial [count]
       Generates offline short serial keys (e.g. 855M-XXXX-XXXX-XXXX-XXXX).
-");
+"
+        );
     }
 
     private static void GenerateSerials(string[] args)
@@ -73,7 +75,9 @@ Usage:
             var key = LicenseCrypto.GenerateShortSerialKey();
             Console.WriteLine(key);
         }
-        Console.WriteLine("\nBuyers can paste any of these keys directly into the app to activate offline!\n");
+        Console.WriteLine(
+            "\nBuyers can paste any of these keys directly into the app to activate offline!\n"
+        );
     }
 
     private static void GenerateKeys()
@@ -92,7 +96,9 @@ Usage:
     {
         if (args.Length < 3)
         {
-            Console.WriteLine("Usage: dotnet run -- create-license <customerName> <customerEmail> [machineId] [daysValid] [privateKeyFile]");
+            Console.WriteLine(
+                "Usage: dotnet run -- create-license <customerName> <customerEmail> [machineId] [daysValid] [privateKeyFile]"
+            );
             return;
         }
 
@@ -130,8 +136,12 @@ Usage:
         Console.WriteLine("\n--- License Generated Successfully ---");
         Console.WriteLine($"License Key:  {payload.LicenseKey}");
         Console.WriteLine($"Customer:     {payload.CustomerName} ({payload.CustomerEmail})");
-        Console.WriteLine($"Machine Lock: {(string.IsNullOrWhiteSpace(machineId) ? "Any Machine" : machineId)}");
-        Console.WriteLine($"Type:         {payload.Type} (Expires: {payload.ExpiresAt?.ToString("yyyy-MM-dd") ?? "Never"})");
+        Console.WriteLine(
+            $"Machine Lock: {(string.IsNullOrWhiteSpace(machineId) ? "Any Machine" : machineId)}"
+        );
+        Console.WriteLine(
+            $"Type:         {payload.Type} (Expires: {payload.ExpiresAt?.ToString("yyyy-MM-dd") ?? "Never"})"
+        );
         Console.WriteLine($"Saved to:     {filename}");
         Console.WriteLine($"\nToken String:\n{token}\n");
     }
@@ -146,9 +156,8 @@ Usage:
 
         var input = args[1];
         var token = File.Exists(input) ? File.ReadAllText(input).Trim() : input.Trim();
-        var pubKey = args.Length > 2 && File.Exists(args[2])
-            ? File.ReadAllText(args[2]).Trim()
-            : null;
+        var pubKey =
+            args.Length > 2 && File.Exists(args[2]) ? File.ReadAllText(args[2]).Trim() : null;
 
         var (isValid, payload, error) = LicenseCrypto.VerifyToken(token, pubKey);
 
@@ -159,6 +168,8 @@ Usage:
         }
 
         Console.WriteLine("License verification SUCCESSFUL!");
-        Console.WriteLine(JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }));
+        Console.WriteLine(
+            JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true })
+        );
     }
 }
