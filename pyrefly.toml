@@ -1,0 +1,9 @@
+python-interpreter-path = "C:/Applio-3.6.4/env/python.exe"
+search-path = [
+    "tools",
+    "C:/Applio-3.6.4",
+    "C:/Applio-3.6.4/env/Lib/site-packages"
+]
+site-package-path = [
+    "C:/Applio-3.6.4/env/Lib/site-packages"
+]

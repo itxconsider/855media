@@ -9,8 +9,12 @@ from torchaudio.pipelines import HDEMUCS_HIGH_MUSDB_PLUS
 
 if sys.platform == "win32":
     try:
-        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+        reconfigure = getattr(sys.stdout, "reconfigure", None)
+        if callable(reconfigure):
+            reconfigure(encoding="utf-8", errors="replace")
+        reconfigure_err = getattr(sys.stderr, "reconfigure", None)
+        if callable(reconfigure_err):
+            reconfigure_err(encoding="utf-8", errors="replace")
     except Exception:
         pass
 
@@ -19,8 +23,20 @@ def load_audio(file_path, target_sr=44100):
     temp_created = False
     if not file_path.lower().endswith(".wav"):
         wav_path = file_path + ".temp.wav"
-        ffmpeg = r"d:\repos\855Media\855Media\bin\Debug\net10.0\ffmpeg.exe"
-        if not os.path.exists(ffmpeg):
+        import shutil
+        ffmpeg = shutil.which("ffmpeg")
+        if not ffmpeg:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            rel_candidates = [
+                os.path.join(script_dir, "..", "855Media", "bin", "Debug", "net10.0", "ffmpeg.exe"),
+                os.path.join(script_dir, "..", "bin", "ffmpeg.exe"),
+                os.path.join(script_dir, "ffmpeg.exe"),
+            ]
+            for c in rel_candidates:
+                if os.path.exists(c):
+                    ffmpeg = os.path.abspath(c)
+                    break
+        if not ffmpeg:
             ffmpeg = "ffmpeg"
         cmd = [ffmpeg, "-y", "-i", file_path, "-vn", "-ac", "2", "-ar", str(target_sr), wav_path]
         subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -55,7 +71,8 @@ def separate_stems(input_path, output_vocals_path, output_no_vocals_path=None):
     model.eval()
     
     total_len = waveform.shape[1]
-    vocals_idx = model.sources.index("vocals")
+    sources: list[str] = getattr(model, "sources", ["drums", "bass", "other", "vocals"])
+    vocals_idx = sources.index("vocals") if "vocals" in sources else 3
     
     # 20s chunks with 2s overlap for smooth crossfade
     chunk_len = 20 * sr

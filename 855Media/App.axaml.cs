@@ -60,6 +60,7 @@ public class App : Application, IDisposable
         services.AddTransient<YouTubeDownloaderViewModel>();
         services.AddTransient<TikTokDownloaderViewModel>();
         services.AddTransient<FacebookDownloaderViewModel>();
+        services.AddTransient<DramaBoxDownloaderViewModel>();
         services.AddTransient<HistoryViewModel>();
         services.AddTransient<VideoUpscalerViewModel>();
         services.AddTransient<DubbingViewModel>();

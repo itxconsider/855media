@@ -34,6 +34,24 @@ public enum UpscaleTargetResolution
     Original1x,
 }
 
+public enum TargetFramerate
+{
+    [System.ComponentModel.DataAnnotations.Display(Name = "Original (Match Source)")]
+    Original = 0,
+
+    [System.ComponentModel.DataAnnotations.Display(Name = "24 FPS (Cinematic)")]
+    Fps24 = 24,
+
+    [System.ComponentModel.DataAnnotations.Display(Name = "30 FPS (Standard Video)")]
+    Fps30 = 30,
+
+    [System.ComponentModel.DataAnnotations.Display(Name = "60 FPS (Ultra Smooth)")]
+    Fps60 = 60,
+
+    [System.ComponentModel.DataAnnotations.Display(Name = "120 FPS (High Frame Rate)")]
+    Fps120 = 120,
+}
+
 public enum UpscaleVideoCodec
 {
     H264,
@@ -259,6 +277,13 @@ public class UpscaleJob : INotifyPropertyChanged
     {
         get => _playbackSpeed;
         set => SetField(ref _playbackSpeed, Math.Clamp(value, 0.25, 4.0));
+    }
+
+    private TargetFramerate _targetFramerate = TargetFramerate.Original;
+    public TargetFramerate TargetFramerate
+    {
+        get => _targetFramerate;
+        set => SetField(ref _targetFramerate, value);
     }
 
     public string? ActivePresetName { get; set; }

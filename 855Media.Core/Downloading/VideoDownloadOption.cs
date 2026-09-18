@@ -9,13 +9,15 @@ namespace _855Media.Core.Downloading;
 public partial record VideoDownloadOption(
     Container Container,
     bool IsAudioOnly,
-    IReadOnlyList<IStreamInfo> StreamInfos
+    IReadOnlyList<IStreamInfo> StreamInfos,
+    VideoQuality? CustomVideoQuality = null
 )
 {
-    public VideoQuality? VideoQuality { get; } =
-        StreamInfos.OfType<IVideoStreamInfo>().MaxBy(s => s.VideoQuality)?.VideoQuality;
+    public VideoQuality? VideoQuality { get; init; } =
+        CustomVideoQuality
+        ?? StreamInfos.OfType<IVideoStreamInfo>().MaxBy(s => s.VideoQuality)?.VideoQuality;
 
-    public bool IsVideoUpscaled { get; } =
+    public bool IsVideoUpscaled { get; init; } =
         StreamInfos.OfType<IVideoStreamInfo>().Any(s => s.IsVideoUpscaled);
 }
 
@@ -148,10 +150,18 @@ public partial record VideoDownloadOption
         // Deduplicate download options
         var comparer = EqualityComparer<VideoDownloadOption>.Create(
             (x, y) =>
-                x?.VideoQuality == y?.VideoQuality
+                x?.VideoQuality?.MaxHeight == y?.VideoQuality?.MaxHeight
+                && x?.VideoQuality?.Label == y?.VideoQuality?.Label
                 && x?.IsVideoUpscaled == y?.IsVideoUpscaled
-                && x?.Container == y?.Container,
-            x => HashCode.Combine(x.VideoQuality, x.IsVideoUpscaled, x.Container)
+                && x?.Container == y?.Container
+                && x?.IsAudioOnly == y?.IsAudioOnly,
+            x =>
+                HashCode.Combine(
+                    x?.VideoQuality?.MaxHeight,
+                    x?.IsVideoUpscaled,
+                    x?.Container,
+                    x?.IsAudioOnly
+                )
         );
 
         var options = new HashSet<VideoDownloadOption>(comparer);

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
@@ -58,7 +59,7 @@ public class SubtitleTranslationService
 
             process.Start();
             ChildProcessTracker.Track(process);
-            await process.WaitForExitAsync(cancellationToken);
+            await process.WaitForExitWithCancellationAsync(cancellationToken);
 
             if (process.ExitCode == 0 && File.Exists(tempSrt) && new FileInfo(tempSrt).Length > 0)
             {
@@ -252,7 +253,7 @@ public class SubtitleTranslationService
 
         var blocks = Regex.Split(srtContent.Trim(), @"\r?\n\r?\n");
         var timeRegex = new Regex(
-            @"(?<sh>\d{1,2}):(?<sm>\d{2}):(?<ss>\d{2})[,.](?<sms>\d{3})\s*-->\s*(?<eh>\d{1,2}):(?<em>\d{2}):(?<es>\d{2})[,.](?<ems>\d{3})"
+            @"(?:(?<sh>\d{1,2}):)?(?<sm>\d{2}):(?<ss>\d{2})[,.](?<sms>\d{3})\s*-->\s*(?:(?<eh>\d{1,2}):)?(?<em>\d{2}):(?<es>\d{2})[,.](?<ems>\d{3})"
         );
 
         int index = 1;
@@ -279,21 +280,17 @@ public class SubtitleTranslationService
             if (match == null || !match.Success)
                 continue;
 
-            var startTime = new TimeSpan(
-                0,
-                int.Parse(match.Groups["sh"].Value),
-                int.Parse(match.Groups["sm"].Value),
-                int.Parse(match.Groups["ss"].Value),
-                int.Parse(match.Groups["sms"].Value)
-            );
+            int sh = match.Groups["sh"].Success ? int.Parse(match.Groups["sh"].Value) : 0;
+            int sm = int.Parse(match.Groups["sm"].Value);
+            int ss = int.Parse(match.Groups["ss"].Value);
+            int sms = int.Parse(match.Groups["sms"].Value);
+            var startTime = new TimeSpan(0, sh, sm, ss, sms);
 
-            var endTime = new TimeSpan(
-                0,
-                int.Parse(match.Groups["eh"].Value),
-                int.Parse(match.Groups["em"].Value),
-                int.Parse(match.Groups["es"].Value),
-                int.Parse(match.Groups["ems"].Value)
-            );
+            int eh = match.Groups["eh"].Success ? int.Parse(match.Groups["eh"].Value) : 0;
+            int em = int.Parse(match.Groups["em"].Value);
+            int es = int.Parse(match.Groups["es"].Value);
+            int ems = int.Parse(match.Groups["ems"].Value);
+            var endTime = new TimeSpan(0, eh, em, es, ems);
 
             var textBuilder = new StringBuilder();
             for (int i = textStartIndex; i < lines.Length; i++)
@@ -315,7 +312,7 @@ public class SubtitleTranslationService
                         Index = index++,
                         StartTime = startTime,
                         EndTime = endTime,
-                        OriginalText = rawText,
+                        OriginalText = DialogueSenseEngine.ImproveOriginalDialogue(rawText),
                         KhmerText = string.Empty,
                     }
                 );
@@ -323,5 +320,225 @@ public class SubtitleTranslationService
         }
 
         return segments;
+    }
+
+    /// <summary>
+    /// Transforms mechanical machine-translated Khmer text into natural, idiomatic movie dialogue.
+    /// Replaces textbook constructs, literal idioms, and stiff pronouns with conversational Cambodian cinema phrasing.
+    /// </summary>
+    public static string PolishKhmerDialogue(string rawKhmer)
+    {
+        if (string.IsNullOrWhiteSpace(rawKhmer))
+            return string.Empty;
+
+        var text = rawKhmer.Trim();
+
+        // Decode any HTML entities left from web translation APIs
+        text = text.Replace("&quot;", "\"")
+            .Replace("&#39;", "'")
+            .Replace("&amp;", "&")
+            .Replace("&lt;", "<")
+            .Replace("&gt;", ">");
+
+        // 1. Literal English-to-Khmer translation idiom fixes
+        var idiomReplacements = new (string Pattern, string Replacement)[]
+        {
+            // "What the hell / What on earth" -> literal "ឋាននរក" -> "ស្អីគេ"
+            (@"តើឋាននរក\s*(អ្វី|អី)?", "ស្អីគេ"),
+            (@"ឋាននរក\s*(អ្វី|អី)?", "ស្អីគេ"),
+            // "What is going on / What happened"
+            (@"តើមានរឿងអ្វីកើតឡើង\??", "មានរឿងអីកើតឡើងហ្នឹង?"),
+            (@"តើមានអ្វីកើតឡើង\??", "មានរឿងអីកើតឡើង?"),
+            // "Shut up" -> "បិទមាត់របស់អ្នក" -> "បិទមាត់ទៅ!"
+            (@"បិទមាត់(របស់)?(អ្នក|ឯង)", "បិទមាត់ទៅ!"),
+            (@"បិទមាត់ទៅ", "បិទមាត់ទៅ!"),
+            // "Are you crazy / Are you insane"
+            (@"តើ(អ្នក|ឯង)ឆ្កួត(ទេ|ឬ)\??", "$1ឆ្កួតទេដឹង?"),
+            (@"(អ្នក|ឯង)ឆ្កួតទេ\??", "$1ឆ្កួតទេដឹង?"),
+            // "Don't worry" -> "កុំបារម្ភអំពី(វា)?" -> "កុំបារម្ភអី"
+            (@"កុំបារម្ភ(អំពី|ពី)?(វា)?(អី)?", "កុំបារម្ភអី"),
+            // "Oh my god" -> "ឱព្រះជាម្ចាស់របស់ខ្ញុំ" -> "ព្រះអើយ!"
+            (@"ឱព្រះជាម្ចាស់(របស់ខ្ញុំ)?", "ព្រះអើយ!"),
+            (@"ព្រះជាម្ចាស់អើយ", "ព្រះអើយ!"),
+            // "Leave me alone / Get lost"
+            (@"ទុកឱ្យខ្ញុំនៅម្នាក់ឯង(ទៅ)?", "ទុកឱ្យខ្ញុំនៅម្នាក់ឯងទៅ!"),
+            (@"ចេញ(ឱ្យ)?ឆ្ងាយពីខ្ញុំ(ទៅ)?", "ទៅឱ្យឆ្ងាយទៅ!"),
+            (@"ទៅឆ្ងាយពីខ្ញុំ", "ទៅឱ្យឆ្ងាយទៅ!"),
+            // "Hurry up"
+            (@"ប្រញាប់ឡើង(មក)?", "លឿនឡើង!"),
+            // "Take care"
+            (@"ថែរក្សាខ្លួន(អ្នក)?", "មើលថែខ្លួនផង!"),
+            (@"មើលថែខ្លួនឯង", "មើលថែខ្លួនផង!"),
+            // "I don't care"
+            (@"ខ្ញុំមិនខ្វល់(អំពីវា)?ទេ", "ខ្ញុំមិនខ្វល់ទេ!"),
+            // "No way / Impossible"
+            (@"មិនអាចទៅរួចទេ", "មិនអាចទេ!"),
+            // "Help me"
+            (@"ជួយខ្ញុំ(ផង)?", "ជួយផង!"),
+            // English idioms if untranslated
+            (@"\bwhat the hell\b", "ស្អីគេ"),
+            (@"\bshut up\b", "បិទមាត់ទៅ!"),
+            (@"\boh my god\b", "ព្រះអើយ!"),
+            (@"\bhurry up\b", "លឿនឡើង!"),
+            (@"\bdon'?t worry\b", "កុំបារម្ភអី"),
+            (@"\bare you crazy\b", "ឯងឆ្កួតទេដឹង?"),
+            // Chinese drama idioms & cinema spoken fixes (DramaBox / C-dramas)
+            (@"怎么回事\??", "មានរឿងអីកើតឡើងហ្នឹង?"),
+            (@"发生(了)?什么(事)?\??", "មានរឿងអីកើតឡើង?"),
+            (@"放开我(!|！)?", "លែងខ្ញុំទៅ!"),
+            (@"放手(!|！)?", "លែងទៅ!"),
+            (@"救命(啊)?(!|！)?", "ជួយផង!"),
+            (@"快走(!|！)?", "លឿនឡើង!"),
+            (@"快跑(!|！)?", "រត់ទៅ!"),
+            (@"住手(!|！)?", "ឈប់ទៅ!"),
+            (@"闭嘴(!|！)?", "បិទមាត់ទៅ!"),
+            (@"不可能(!|！)?", "មិនអាចទេ!"),
+            (@"别担心", "កុំបារម្ភអី"),
+            (@"放心(吧)?", "កុំបារម្ភអី"),
+            (@"滚开(!|！)?", "ទៅឱ្យឆ្ងាយទៅ!"),
+            (@"滚(!|！)?", "ទៅឱ្យឆ្ងាយទៅ!"),
+            (@"你疯了(吗)?\??", "ឯងឆ្កួតទេដឹង?"),
+            (@"王爷", "លោកម្ចាស់"),
+            (@"陛下", "ព្រះករុណា"),
+            (@"(师傅|师父)", "លោកគ្រូ"),
+            (@"殿下", "ទ្រង់"),
+            (@"老天爷(啊)?", "ព្រះអើយ!"),
+        };
+
+        foreach (var (pattern, replacement) in idiomReplacements)
+        {
+            text = Regex.Replace(text, pattern, replacement, RegexOptions.IgnoreCase);
+        }
+
+        // 2. Natural spoken particle replacements:
+        // Replace textbook "ធ្វើអ្វី" -> "ធ្វើអី" (casual movie speech)
+        text = Regex.Replace(text, @"ធ្វើអ្វី", "ធ្វើអី");
+        text = Regex.Replace(text, @"ទៅណា\?", "ទៅណាដែរ?");
+        text = Regex.Replace(text, @"តើឯង", "ឯង");
+        text = Regex.Replace(text, @"តើអ្នក", "អ្នក");
+        text = Regex.Replace(text, @"តើខ្ញុំ", "ខ្ញុំ");
+        text = Regex.Replace(text, @"តើពួកគេ", "ពួកគេ");
+
+        // Clean up redundant textbook "តើ" at start of line followed by question mark
+        if (text.StartsWith("តើ") && text.Contains('?'))
+        {
+            text = text[2..].TrimStart();
+        }
+
+        // Clean up duplicate punctuation (e.g. "??", "!!", " !?")
+        text = Regex.Replace(text, @"\?{2,}", "?");
+        text = Regex.Replace(text, @"!{2,}", "!");
+        text = Regex.Replace(text, @"\s+([!?.,])", "$1");
+
+        return text.Trim();
+    }
+
+    /// <summary>
+    /// Generates an SRT subtitle document from subtitle segments.
+    /// Supports Khmer-only, Original-only, or Bilingual dual subtitles with speaker tags.
+    /// </summary>
+    public static string GenerateSrt(
+        IEnumerable<SubtitleSegment> segments,
+        bool includeOriginal = false,
+        bool includeSpeakerTag = true
+    )
+    {
+        var sb = new StringBuilder();
+        int counter = 1;
+
+        foreach (var seg in segments.OrderBy(s => s.StartTime))
+        {
+            sb.AppendLine(counter.ToString());
+            var startStr =
+                $"{seg.StartTime.Hours:D2}:{seg.StartTime.Minutes:D2}:{seg.StartTime.Seconds:D2},{seg.StartTime.Milliseconds:D3}";
+            var endStr =
+                $"{seg.EndTime.Hours:D2}:{seg.EndTime.Minutes:D2}:{seg.EndTime.Seconds:D2},{seg.EndTime.Milliseconds:D3}";
+            sb.AppendLine($"{startStr} --> {endStr}");
+
+            var speakerPrefix =
+                includeSpeakerTag && !string.IsNullOrWhiteSpace(seg.SpeakerName)
+                    ? $"[{seg.SpeakerName}] "
+                    : string.Empty;
+
+            var khmer = !string.IsNullOrWhiteSpace(seg.KhmerText)
+                ? seg.KhmerText
+                : seg.OriginalText;
+
+            if (
+                includeOriginal
+                && !string.IsNullOrWhiteSpace(seg.OriginalText)
+                && seg.OriginalText != khmer
+            )
+            {
+                sb.AppendLine($"{speakerPrefix}{khmer}");
+                sb.AppendLine(seg.OriginalText);
+            }
+            else
+            {
+                sb.AppendLine($"{speakerPrefix}{khmer}");
+            }
+
+            sb.AppendLine();
+            counter++;
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Generates a WebVTT (.vtt) subtitle document from subtitle segments.
+    /// </summary>
+    public static string GenerateVtt(
+        IEnumerable<SubtitleSegment> segments,
+        bool includeOriginal = false,
+        bool includeSpeakerTag = true
+    )
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("WEBVTT");
+        sb.AppendLine();
+
+        int counter = 1;
+        foreach (var seg in segments.OrderBy(s => s.StartTime))
+        {
+            sb.AppendLine(counter.ToString());
+            var startStr =
+                $"{seg.StartTime.Hours:D2}:{seg.StartTime.Minutes:D2}:{seg.StartTime.Seconds:D2}.{seg.StartTime.Milliseconds:D3}";
+            var endStr =
+                $"{seg.EndTime.Hours:D2}:{seg.EndTime.Minutes:D2}:{seg.EndTime.Seconds:D2}.{seg.EndTime.Milliseconds:D3}";
+            sb.AppendLine($"{startStr} --> {endStr}");
+
+            var speakerPrefix =
+                includeSpeakerTag && !string.IsNullOrWhiteSpace(seg.SpeakerName)
+                    ? $"<v {seg.SpeakerName}>"
+                    : string.Empty;
+            var speakerSuffix =
+                includeSpeakerTag && !string.IsNullOrWhiteSpace(seg.SpeakerName)
+                    ? "</v>"
+                    : string.Empty;
+
+            var khmer = !string.IsNullOrWhiteSpace(seg.KhmerText)
+                ? seg.KhmerText
+                : seg.OriginalText;
+
+            if (
+                includeOriginal
+                && !string.IsNullOrWhiteSpace(seg.OriginalText)
+                && seg.OriginalText != khmer
+            )
+            {
+                sb.AppendLine($"{speakerPrefix}{khmer}{speakerSuffix}");
+                sb.AppendLine(seg.OriginalText);
+            }
+            else
+            {
+                sb.AppendLine($"{speakerPrefix}{khmer}{speakerSuffix}");
+            }
+
+            sb.AppendLine();
+            counter++;
+        }
+
+        return sb.ToString();
     }
 }

@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>WiFi Cam - Safari Transmitter</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: #0b0f19;
+      color: #e2e8f0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+    #preview-container {
+      position: relative;
+      flex: 1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: #000;
+    }
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .badge {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      padding: 6px 14px;
+      border-radius: 9999px;
+      font-size: 13px;
+      font-weight: 600;
+      background: rgba(15, 23, 42, 0.85);
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      z-index: 10;
+    }
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #ef4444;
+      transition: background 0.3s;
+    }
+    .status-dot.connected { background: #22c55e; }
+    .status-dot.connecting { background: #eab308; }
+
+    #controls {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 16px 20px;
+      background: rgba(15, 23, 42, 0.92);
+      backdrop-filter: blur(12px);
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-around;
+      z-index: 999;
+      box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.4);
+    }
+    button {
+      flex: 1;
+      padding: 14px;
+      border-radius: 12px;
+      border: none;
+      font-size: 15px;
+      font-weight: 600;
+      background: #2563eb;
+      color: white;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    button:active { opacity: 0.8; }
+    button.secondary { background: #334155; }
+  </style>
+</head>
+<body>
+  <div id="preview-container">
+    <video id="localVideo" autoplay playsinline muted></video>
+    <div class="badge">
+      <div id="statusDot" class="status-dot"></div>
+      <span id="statusText">Disconnected</span>
+    </div>
+  </div>
+
+  <div id="controls">
+    <button id="startBtn">Start Streaming</button>
+    <button id="torchBtn" class="secondary" style="display:none;">Torch</button>
+    <button id="flipBtn" class="secondary">Flip Camera</button>
+  </div>
+
+  <script>
+    let localStream = null;
+    let peerConnection = null;
+    let ws = null;
+    let wakeLock = null;
+    let facingMode = "environment"; // Preferred rear camera
+
+    const videoEl = document.getElementById("localVideo");
+    const statusDot = document.getElementById("statusDot");
+    const statusText = document.getElementById("statusText");
+    const startBtn = document.getElementById("startBtn");
+    const torchBtn = document.getElementById("torchBtn");
+    const flipBtn = document.getElementById("flipBtn");
+
+    const rtcConfig = {
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+    };
+
+    // Keep screen awake (iOS Safari 16.4+)
+    async function requestWakeLock() {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLock = await navigator.wakeLock.request('screen');
+          console.log("Wake Lock active");
+        }
+      } catch (err) {
+        console.warn("Wake Lock not granted:", err);
+      }
+    }
+
+    async function initCamera() {
+      if (localStream) {
+        localStream.getTracks().forEach(t => t.stop());
+      }
+
+      // Try highest quality mobile constraints first
+      const constraintOptions = [
+        {
+          audio: false,
+          video: {
+            facingMode: { ideal: facingMode },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
+          }
+        },
+        {
+          audio: false,
+          video: {
+            facingMode: facingMode
+          }
+        },
+        {
+          audio: false,
+          video: true // Universal fallback (PC webcam, virtual cams, etc.)
+        }
+      ];
+
+      let lastErr = null;
+      for (const opts of constraintOptions) {
+        try {
+          localStream = await navigator.mediaDevices.getUserMedia(opts);
+          break;
+        } catch (err) {
+          lastErr = err;
+        }
+      }
+
+      if (!localStream) {
+        throw lastErr || new Error("No camera found on this device");
+      }
+
+      videoEl.srcObject = localStream;
+
+      // Check torch capability
+      const track = localStream.getVideoTracks()[0];
+      const capabilities = track.getCapabilities ? track.getCapabilities() : {};
+      if (capabilities.torch) {
+        torchBtn.style.display = "inline-block";
+      } else {
+        torchBtn.style.display = "none";
+      }
+    }
+
+    function updateStatus(state, text) {
+      statusDot.className = "status-dot " + state;
+      statusText.innerText = text;
+    }
+
+    async function startConnection() {
+      updateStatus("connecting", "Connecting Signaling...");
+
+      const wsProto = location.protocol === "https:" ? "wss:" : "ws:";
+      ws = new WebSocket(`${wsProto}//${location.host}/ws`);
+
+      ws.onopen = async () => {
+        updateStatus("connecting", "Negotiating WebRTC...");
+        await setupWebRTC();
+      };
+
+      ws.onmessage = async (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.type === "answer") {
+          await peerConnection.setRemoteDescription(new RTCSessionDescription({ type: "answer", sdp: msg.sdp }));
+        } else if (msg.type === "candidate" && msg.candidate) {
+          await peerConnection.addIceCandidate(new RTCIceCandidate(msg.candidate));
+        }
+      };
+
+      ws.onclose = () => updateStatus("", "Disconnected");
+      ws.onerror = (e) => updateStatus("", "Socket Error");
+    }
+
+    async function setupWebRTC() {
+      peerConnection = new RTCPeerConnection(rtcConfig);
+
+      localStream.getTracks().forEach(track => {
+        peerConnection.addTrack(track, localStream);
+      });
+
+      peerConnection.onicecandidate = (event) => {
+        if (event.candidate && ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: "candidate", candidate: event.candidate }));
+        }
+      };
+
+      peerConnection.onconnectionstatechange = () => {
+        if (peerConnection.connectionState === "connected") {
+          updateStatus("connected", "Live Streaming");
+        } else if (peerConnection.connectionState === "disconnected" || peerConnection.connectionState === "failed") {
+          updateStatus("", "RTC Closed");
+        }
+      };
+
+      const offer = await peerConnection.createOffer({
+        offerToReceiveAudio: false,
+        offerToReceiveVideo: false
+      });
+      await peerConnection.setLocalDescription(offer);
+
+      ws.send(JSON.stringify({ type: "offer", sdp: offer.sdp }));
+    }
+
+    startBtn.addEventListener("click", async () => {
+      try {
+        await initCamera();
+        await requestWakeLock();
+        await startConnection();
+        startBtn.style.display = "none";
+      } catch (err) {
+        alert("Camera access error: " + err.message);
+      }
+    });
+
+    flipBtn.addEventListener("click", async () => {
+      facingMode = facingMode === "environment" ? "user" : "environment";
+      await initCamera();
+      if (peerConnection) {
+        const videoSender = peerConnection.getSenders().find(s => s.track && s.track.kind === "video");
+        if (videoSender) {
+          videoSender.replaceTrack(localStream.getVideoTracks()[0]);
+        }
+      }
+    });
+
+    let torchOn = false;
+    torchBtn.addEventListener("click", async () => {
+      const track = localStream.getVideoTracks()[0];
+      torchOn = !torchOn;
+      await track.applyConstraints({ advanced: [{ torch: torchOn }] });
+      torchBtn.innerText = torchOn ? "Torch Off" : "Torch";
+    });
+
+    document.addEventListener("visibilitychange", async () => {
+      if (document.visibilityState === "visible" && localStream) {
+        await requestWakeLock();
+      }
+    });
+  </script>
+</body>
+</html>

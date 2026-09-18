@@ -120,6 +120,7 @@ public partial class DashboardViewModel : ViewModelBase
         YouTubeDownloader = _viewModelManager.GetYouTubeDownloaderViewModel(this);
         TikTokDownloader = _viewModelManager.GetTikTokDownloaderViewModel(this);
         FacebookDownloader = _viewModelManager.GetFacebookDownloaderViewModel(this);
+        DramaBoxDownloader = _viewModelManager.GetDramaBoxDownloaderViewModel(this);
         History = _viewModelManager.GetHistoryViewModel(this);
         VideoUpscaler = _viewModelManager.GetVideoUpscalerViewModel();
         Dubbing = _viewModelManager.GetDubbingViewModel();
@@ -168,6 +169,7 @@ public partial class DashboardViewModel : ViewModelBase
     public YouTubeDownloaderViewModel YouTubeDownloader { get; }
     public TikTokDownloaderViewModel TikTokDownloader { get; }
     public FacebookDownloaderViewModel FacebookDownloader { get; }
+    public DramaBoxDownloaderViewModel DramaBoxDownloader { get; }
     public HistoryViewModel History { get; }
     public VideoUpscalerViewModel VideoUpscaler { get; }
     public DubbingViewModel Dubbing { get; }
@@ -187,6 +189,7 @@ public partial class DashboardViewModel : ViewModelBase
         YouTubeDownloader?.ProcessQueryCommand.NotifyCanExecuteChanged();
         TikTokDownloader?.ProcessQueryCommand.NotifyCanExecuteChanged();
         FacebookDownloader?.ProcessQueryCommand.NotifyCanExecuteChanged();
+        DramaBoxDownloader?.ProcessQueryCommand.NotifyCanExecuteChanged();
     }
 
     public ProgressContainer<Percentage> Progress { get; } = new();
@@ -197,6 +200,7 @@ public partial class DashboardViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsYouTubeTab))]
     [NotifyPropertyChangedFor(nameof(IsTikTokTab))]
     [NotifyPropertyChangedFor(nameof(IsFacebookTab))]
+    [NotifyPropertyChangedFor(nameof(IsDramaBoxTab))]
     [NotifyPropertyChangedFor(nameof(IsBatchTab))]
     [NotifyPropertyChangedFor(nameof(IsUpscalerTab))]
     [NotifyPropertyChangedFor(nameof(IsDubbingTab))]
@@ -214,6 +218,7 @@ public partial class DashboardViewModel : ViewModelBase
     public bool IsYouTubeTab => SelectedTab == DashboardTab.YouTube;
     public bool IsTikTokTab => SelectedTab == DashboardTab.TikTok;
     public bool IsFacebookTab => SelectedTab == DashboardTab.Facebook;
+    public bool IsDramaBoxTab => SelectedTab == DashboardTab.DramaBox;
     public bool IsBatchTab => SelectedTab == DashboardTab.Batch;
     public bool IsUpscalerTab => SelectedTab == DashboardTab.Upscaler;
     public bool IsDubbingTab => SelectedTab == DashboardTab.Dubbing;
@@ -228,6 +233,9 @@ public partial class DashboardViewModel : ViewModelBase
 
     [RelayCommand]
     private void SelectFacebookTab() => SelectedTab = DashboardTab.Facebook;
+
+    [RelayCommand]
+    private void SelectDramaBoxTab() => SelectedTab = DashboardTab.DramaBox;
 
     [RelayCommand]
     private void SelectBatchTab() => SelectedTab = DashboardTab.Batch;
@@ -492,6 +500,24 @@ public partial class DashboardViewModel : ViewModelBase
                     download.FilePath!,
                     download.Video,
                     container,
+                    download.DownloadOption,
+                    _settingsService.FFmpegFilePath,
+                    download.Progress.Merge(progress),
+                    download.CancellationToken
+                );
+            }
+            else if (download.Video?.Source == VideoSource.DramaBox)
+            {
+                var container =
+                    download.DownloadOption?.Container
+                    ?? download.DownloadPreference?.PreferredContainer
+                    ?? YoutubeExplode.Videos.Streams.Container.Mp4;
+
+                await new DramaBoxDownloader(_settingsService.LastAuthCookies).DownloadVideoAsync(
+                    download.FilePath!,
+                    download.Video,
+                    container,
+                    download.DownloadOption,
                     _settingsService.FFmpegFilePath,
                     download.Progress.Merge(progress),
                     download.CancellationToken
@@ -744,18 +770,7 @@ public partial class DashboardViewModel : ViewModelBase
             if (queryResult.Videos.Count == 1)
             {
                 var video = queryResult.Videos.Single();
-
-                var downloadOptions =
-                    video.Source == VideoSource.YouTube
-                        ? await GetYoutubeDownloadOptionsAsync(video)
-                        :
-                        [
-                            new VideoDownloadOption(
-                                YoutubeExplode.Videos.Streams.Container.Mp4,
-                                false,
-                                []
-                            ),
-                        ];
+                var downloadOptions = await GetDownloadOptionsAsync(video);
 
                 var download = await _dialogManager.ShowDialogAsync(
                     _viewModelManager.GetDownloadSingleSetupViewModel(video, downloadOptions)
@@ -838,20 +853,18 @@ public partial class DashboardViewModel : ViewModelBase
         }
     }
 
-    private async Task<IReadOnlyList<VideoDownloadOption>> GetYoutubeDownloadOptionsAsync(
-        VideoInfo video
-    )
+    private async Task<IReadOnlyList<VideoDownloadOption>> GetDownloadOptionsAsync(VideoInfo video)
     {
-        using var downloader = new VideoDownloader(_settingsService.LastAuthCookies);
+        if (video.Source == VideoSource.YouTube && video.YoutubeVideo is { } youtubeVideo)
+        {
+            using var downloader = new VideoDownloader(_settingsService.LastAuthCookies);
+            return await downloader.GetDownloadOptionsAsync(
+                youtubeVideo.Id,
+                _settingsService.ShouldInjectLanguageSpecificAudioStreams
+            );
+        }
 
-        var youtubeVideo =
-            video.YoutubeVideo
-            ?? throw new InvalidOperationException("YouTube video metadata is missing.");
-
-        return await downloader.GetDownloadOptionsAsync(
-            youtubeVideo.Id,
-            _settingsService.ShouldInjectLanguageSpecificAudioStreams
-        );
+        return await YtDlp.ResolveDownloadOptionsAsync(video.Url, _settingsService.LastAuthCookies);
     }
 
     public async Task QueueFacebookPhotosAsync(QueryResult queryResult)
@@ -1041,6 +1054,7 @@ public enum DashboardTab
     YouTube,
     TikTok,
     Facebook,
+    DramaBox,
     Batch,
     Manager,
     History,

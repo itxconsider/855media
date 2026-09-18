@@ -37,10 +37,21 @@ public partial class DownloadSingleSetupViewModel(
 
     public override Task InitializeAsync()
     {
+        var preference = new VideoDownloadPreference(
+            settingsService.LastContainer,
+            settingsService.LastVideoQualityPreference
+        );
+
         SelectedDownloadOption =
-            AvailableDownloadOptions?.FirstOrDefault(o =>
+            preference.TryGetBestOption(AvailableDownloadOptions ?? [])
+            ?? AvailableDownloadOptions?.FirstOrDefault(o =>
+                !o.IsAudioOnly && o.Container == settingsService.LastContainer
+            )
+            ?? AvailableDownloadOptions?.FirstOrDefault(o =>
                 o.Container == settingsService.LastContainer
-            ) ?? AvailableDownloadOptions?.FirstOrDefault();
+            )
+            ?? AvailableDownloadOptions?.FirstOrDefault(o => !o.IsAudioOnly)
+            ?? AvailableDownloadOptions?.FirstOrDefault();
 
         return Task.CompletedTask;
     }
@@ -78,6 +89,17 @@ public partial class DownloadSingleSetupViewModel(
         await File.WriteAllBytesAsync(filePath, []);
 
         settingsService.LastContainer = container;
+        if (SelectedDownloadOption.VideoQuality is { } vq)
+        {
+            settingsService.LastVideoQualityPreference = vq.MaxHeight switch
+            {
+                >= 1080 => VideoQualityPreference.UpTo1080p,
+                >= 720 => VideoQualityPreference.UpTo720p,
+                >= 480 => VideoQualityPreference.UpTo480p,
+                >= 360 => VideoQualityPreference.UpTo360p,
+                _ => VideoQualityPreference.Lowest,
+            };
+        }
 
         Close(viewModelManager.GetDownloadViewModel(Video, SelectedDownloadOption, filePath));
     }

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
@@ -42,7 +43,7 @@ public class AudioStemSeparationService
 
         process.Start();
         ChildProcessTracker.Track(process);
-        await process.WaitForExitAsync(cancellationToken);
+        await process.WaitForExitWithCancellationAsync(cancellationToken);
 
         if (process.ExitCode != 0 || !File.Exists(outputAudioPath))
             throw new InvalidOperationException(
@@ -126,7 +127,7 @@ public class AudioStemSeparationService
 
             vocalProcess.Start();
             ChildProcessTracker.Track(vocalProcess);
-            await vocalProcess.WaitForExitAsync(cancellationToken);
+            await vocalProcess.WaitForExitWithCancellationAsync(cancellationToken);
         }
 
         // 3. Fallback: Generate Background Music Stem via FFmpeg (center channel notch)
@@ -149,18 +150,34 @@ public class AudioStemSeparationService
 
             bgmProcess.Start();
             ChildProcessTracker.Track(bgmProcess);
-            await bgmProcess.WaitForExitAsync(cancellationToken);
+            await bgmProcess.WaitForExitWithCancellationAsync(cancellationToken);
         }
     }
 
     private static string? FindPythonExecutable()
     {
-        var candidates = new[]
+        var candidates = new List<string>
         {
             @"C:\Applio-3.6.4\env\python.exe",
             Path.Combine(AppContext.BaseDirectory, "python", "python.exe"),
             Path.Combine(AppContext.BaseDirectory, "env", "python.exe"),
+            Path.Combine(AppContext.BaseDirectory, "env", "Scripts", "python.exe"),
         };
+
+        // Walk up from AppContext.BaseDirectory
+        DirectoryInfo? cur = null;
+        try
+        {
+            cur = new DirectoryInfo(AppContext.BaseDirectory);
+        }
+        catch { }
+        for (int i = 0; i < 6 && cur?.Parent != null; i++)
+        {
+            cur = cur.Parent;
+            candidates.Add(Path.Combine(cur.FullName, "env", "Scripts", "python.exe"));
+            candidates.Add(Path.Combine(cur.FullName, "env", "python.exe"));
+            candidates.Add(Path.Combine(cur.FullName, "python", "python.exe"));
+        }
 
         foreach (var p in candidates)
         {
@@ -168,17 +185,43 @@ public class AudioStemSeparationService
                 return p;
         }
 
+        // Check system PATH
+        var pathEnv = Environment.GetEnvironmentVariable("PATH");
+        if (!string.IsNullOrWhiteSpace(pathEnv))
+        {
+            foreach (var part in pathEnv.Split(Path.PathSeparator))
+            {
+                if (string.IsNullOrWhiteSpace(part))
+                    continue;
+                var py = Path.Combine(part.Trim(), "python.exe");
+                if (File.Exists(py))
+                    return py;
+            }
+        }
+
         return null;
     }
 
     private static string? FindSeparateScript()
     {
-        var candidates = new[]
+        var candidates = new List<string>
         {
             Path.Combine(AppContext.BaseDirectory, "tools", "separate_vocals.py"),
-            @"D:\repos\855Media\tools\separate_vocals.py",
             Path.Combine(Directory.GetCurrentDirectory(), "tools", "separate_vocals.py"),
         };
+
+        // Walk up from AppContext.BaseDirectory
+        DirectoryInfo? cur = null;
+        try
+        {
+            cur = new DirectoryInfo(AppContext.BaseDirectory);
+        }
+        catch { }
+        for (int i = 0; i < 6 && cur?.Parent != null; i++)
+        {
+            cur = cur.Parent;
+            candidates.Add(Path.Combine(cur.FullName, "tools", "separate_vocals.py"));
+        }
 
         foreach (var p in candidates)
         {
@@ -238,7 +281,7 @@ public class AudioStemSeparationService
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 
-        await process.WaitForExitAsync(cancellationToken);
+        await process.WaitForExitWithCancellationAsync(cancellationToken);
         return process.ExitCode == 0;
     }
 }

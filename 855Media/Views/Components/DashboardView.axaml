@@ -105,6 +105,16 @@
                             </Button>
 
                             <Button
+                                Command="{Binding SelectDramaBoxTabCommand}"
+                                Classes="tab-button"
+                                Classes.active="{Binding IsDramaBoxTab}">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <materialIcons:MaterialIcon Kind="MoviePlay" Width="18" Height="18" Foreground="#E11D48" />
+                                    <TextBlock Text="{Binding LocalizationManager.DramaBoxTabTitle}" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+
+                            <Button
                                 Command="{Binding SelectBatchTabCommand}"
                                 Classes="tab-button"
                                 Classes.active="{Binding IsBatchTab}">
@@ -415,6 +425,9 @@
 
                 <!--  FACEBOOK DOWNLOADER VIEW  -->
                 <ContentControl Content="{Binding FacebookDownloader}" IsVisible="{Binding IsFacebookTab}" />
+
+                <!--  DRAMABOX DOWNLOADER VIEW  -->
+                <ContentControl Content="{Binding DramaBoxDownloader}" IsVisible="{Binding IsDramaBoxTab}" />
 
                 <!--  HISTORY VIEW  -->
                 <ContentControl Content="{Binding History}" IsVisible="{Binding IsHistoryTab}" />

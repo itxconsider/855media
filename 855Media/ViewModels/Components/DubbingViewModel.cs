@@ -5,13 +5,17 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using _855Media.Core.Downloading;
 using _855Media.Core.Dubbing;
+using _855Media.Core.Utils;
 using _855Media.Framework;
 using _855Media.Services;
 using Avalonia.Platform.Storage;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -27,6 +31,12 @@ public partial class DubbingViewModel : ViewModelBase
     private readonly SubtitleTranslationService _subService = new();
     private readonly AudioTranscriptionService _transcriptionService = new();
     private readonly AudioStemSeparationService _stemService = new();
+
+    private string? GetFfmpegPath() =>
+        !string.IsNullOrWhiteSpace(_settingsService.FFmpegFilePath)
+        && File.Exists(_settingsService.FFmpegFilePath)
+            ? _settingsService.FFmpegFilePath
+            : FFmpeg.TryGetCliFilePath();
 
     private CancellationTokenSource? _activeCts;
 
@@ -112,6 +122,12 @@ public partial class DubbingViewModel : ViewModelBase
 
     [ObservableProperty]
     private bool _enableDynamicDucking = true;
+
+    [ObservableProperty]
+    private bool _enableLoudnessNormalization = true;
+
+    [ObservableProperty]
+    private bool _enableSmartTimeStretch = true;
 
     [ObservableProperty]
     private MovieCharacter? _selectedCharacter;
@@ -236,7 +252,12 @@ public partial class DubbingViewModel : ViewModelBase
 
     public IReadOnlyList<string> AvailableEmotionPresets => ActorEmotionEngine.EmotionNames;
 
-    public IReadOnlyList<string> AvailableGenders { get; } = ["Male", "Female"];
+    public IReadOnlyList<ActorToneArchetype> AvailableToneArchetypes =>
+        ActorEmotionEngine.AllArchetypes;
+
+    public IReadOnlyList<string> AvailableArchetypeNames => ActorEmotionEngine.ArchetypeNames;
+
+    public IReadOnlyList<string> AvailableGenders { get; } = ["Male", "Female", "Child"];
 
     public string? SelectedCharacterEmotionPreset
     {
@@ -251,11 +272,26 @@ public partial class DubbingViewModel : ViewModelBase
         }
     }
 
+    public string? SelectedCharacterToneArchetype
+    {
+        get => SelectedCharacter?.ToneArchetype ?? AvailableArchetypeNames.FirstOrDefault();
+        set
+        {
+            if (SelectedCharacter != null && !string.IsNullOrWhiteSpace(value))
+            {
+                SelectedCharacter.ToneArchetype = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(SelectedCharacterEmotionPreset));
+            }
+        }
+    }
+
     partial void OnSelectedCharacterChanged(MovieCharacter? value)
     {
         OnPropertyChanged(nameof(SelectedCharacterRvcModel));
         OnPropertyChanged(nameof(SelectedCharacterBaseVoice));
         OnPropertyChanged(nameof(SelectedCharacterEmotionPreset));
+        OnPropertyChanged(nameof(SelectedCharacterToneArchetype));
     }
 
     public DubbingViewModel(
@@ -320,6 +356,19 @@ public partial class DubbingViewModel : ViewModelBase
                 SpeechRate = "+12%",
                 EnableRvc = false,
                 ColorTag = "#EC4899",
+            }
+        );
+
+        Characters.Add(
+            new MovieCharacter
+            {
+                Name = "Child / Little Voice (កុមារ)",
+                Gender = "Child",
+                BaseVoice = "km-KH-SreymomNeural",
+                PitchShift = 4,
+                SpeechRate = "+18%",
+                EnableRvc = false,
+                ColorTag = "#F59E0B",
             }
         );
 
@@ -522,6 +571,413 @@ public partial class DubbingViewModel : ViewModelBase
     }
 
     [RelayCommand]
+    public void PolishKhmerDialogue()
+    {
+        if (Segments.Count == 0)
+        {
+            _snackbarManager.Notify("No dialogue segments available to polish.");
+            return;
+        }
+
+        int count = 0;
+        foreach (var seg in Segments)
+        {
+            if (!string.IsNullOrWhiteSpace(seg.KhmerText))
+            {
+                var polished = SubtitleTranslationService.PolishKhmerDialogue(seg.KhmerText);
+                if (polished != seg.KhmerText)
+                {
+                    seg.KhmerText = polished;
+                    count++;
+                }
+            }
+        }
+
+        IsProjectDirty = true;
+        _snackbarManager.Notify($"Polished {count} dialogue lines into natural movie Khmer.");
+        StatusMessage = $"Polished {count} dialogue lines with cinematic phrasing.";
+    }
+
+    [RelayCommand]
+    public async Task AutoFitSegmentAudioAsync(SubtitleSegment? seg)
+    {
+        var target = seg ?? SelectedSegment;
+        if (
+            target == null
+            || string.IsNullOrWhiteSpace(target.AudioClipPath)
+            || !File.Exists(target.AudioClipPath)
+        )
+        {
+            _snackbarManager.Notify(
+                "Please synthesize Khmer voice for this line first before time-fitting."
+            );
+            return;
+        }
+
+        var ffmpeg = GetFfmpegPath();
+        if (string.IsNullOrWhiteSpace(ffmpeg))
+        {
+            _snackbarManager.Notify("FFmpeg not found.");
+            return;
+        }
+
+        try
+        {
+            StatusMessage = $"Time-fitting speech for line #{target.Index}...";
+            var tempDir = Path.Combine(Path.GetTempPath(), "855Media_Dubbing");
+            Directory.CreateDirectory(tempDir);
+
+            var fittedPath = Path.Combine(
+                tempDir,
+                $"clip_fitted_{target.Index:D4}_{Guid.NewGuid():N}.wav"
+            );
+            var ok = await DubbingPipeline.ScaleAudioClipDurationAsync(
+                ffmpeg,
+                target.AudioClipPath,
+                fittedPath,
+                target.DurationSeconds
+            );
+
+            if (ok && File.Exists(fittedPath))
+            {
+                target.AudioClipPath = fittedPath;
+                var newDuration = await DubbingPipeline.GetAudioDurationAsync(ffmpeg, fittedPath);
+                target.AudioDurationSeconds = newDuration.TotalSeconds;
+                IsProjectDirty = true;
+
+                _snackbarManager.Notify(
+                    $"Line #{target.Index} fitted to {target.DurationSeconds:F2}s scene duration."
+                );
+                StatusMessage = $"Fitted line #{target.Index} ({target.AudioDurationSeconds:F2}s).";
+
+                CurrentPlayingMediaPath = fittedPath;
+                IsCurrentMediaVideo = false;
+                HasActiveMedia = true;
+                IsMonitorPlaying = true;
+                ActiveMediaTitle = $"Fitted Speech #{target.Index} ({target.SpeakerName})";
+                PlayMediaRequested?.Invoke(fittedPath, false, ActiveMediaTitle);
+            }
+            else
+            {
+                _snackbarManager.Notify("Unable to scale audio clip duration.");
+            }
+        }
+        catch (Exception ex)
+        {
+            _snackbarManager.Notify($"Time-fit failed: {ex.Message}");
+        }
+    }
+
+    [RelayCommand]
+    public async Task AutoFitAllSegmentsAudioAsync()
+    {
+        var eligible = Segments
+            .Where(s => !string.IsNullOrWhiteSpace(s.AudioClipPath) && File.Exists(s.AudioClipPath))
+            .ToList();
+        if (eligible.Count == 0)
+        {
+            _snackbarManager.Notify(
+                "No synthesized audio clips found to fit. Please generate voices first."
+            );
+            return;
+        }
+
+        var ffmpeg = GetFfmpegPath();
+        if (string.IsNullOrWhiteSpace(ffmpeg))
+        {
+            _snackbarManager.Notify("FFmpeg not found.");
+            return;
+        }
+
+        IsProcessing = true;
+        StatusMessage = $"Auto-fitting {eligible.Count} dialogue clips to scene durations...";
+        int fittedCount = 0;
+
+        try
+        {
+            var tempDir = Path.Combine(Path.GetTempPath(), "855Media_Dubbing");
+            Directory.CreateDirectory(tempDir);
+
+            foreach (var seg in eligible)
+            {
+                var fittedPath = Path.Combine(
+                    tempDir,
+                    $"clip_fitted_{seg.Index:D4}_{Guid.NewGuid():N}.wav"
+                );
+                var ok = await DubbingPipeline.ScaleAudioClipDurationAsync(
+                    ffmpeg,
+                    seg.AudioClipPath!,
+                    fittedPath,
+                    seg.DurationSeconds
+                );
+
+                if (ok && File.Exists(fittedPath))
+                {
+                    seg.AudioClipPath = fittedPath;
+                    var newDuration = await DubbingPipeline.GetAudioDurationAsync(
+                        ffmpeg,
+                        fittedPath
+                    );
+                    seg.AudioDurationSeconds = newDuration.TotalSeconds;
+                    fittedCount++;
+                }
+            }
+
+            IsProjectDirty = true;
+            _snackbarManager.Notify(
+                $"Successfully fitted {fittedCount} audio lines to scene cuts."
+            );
+            StatusMessage = $"Auto-fit completed: {fittedCount} lines synchronized.";
+        }
+        catch (Exception ex)
+        {
+            _snackbarManager.Notify($"Auto-fit error: {ex.Message}");
+        }
+        finally
+        {
+            IsProcessing = false;
+        }
+    }
+
+    [RelayCommand]
+    public void MergeWithNextSegment(SubtitleSegment? seg = null)
+    {
+        var target = seg ?? SelectedSegment;
+        if (target == null)
+            return;
+
+        int idx = Segments.IndexOf(target);
+        if (idx < 0 || idx >= Segments.Count - 1)
+        {
+            _snackbarManager.Notify("Cannot merge: this is the last dialogue line.");
+            return;
+        }
+
+        var next = Segments[idx + 1];
+
+        // Semantic sense-to-sense merge with language-aware punctuation, spacing, and Khmer polishing
+        DialogueSenseEngine.MergeSegmentsSenseToSense(target, next);
+
+        Segments.RemoveAt(idx + 1);
+
+        for (int i = 0; i < Segments.Count; i++)
+        {
+            Segments[i].Index = i + 1;
+        }
+
+        IsProjectDirty = true;
+        SelectedSegment = target;
+        _snackbarManager.Notify(
+            $"Merged line #{target.Index} with next line (sense-to-sense matched)."
+        );
+    }
+
+    [RelayCommand]
+    public async Task SplitSegmentInHalfAsync(SubtitleSegment? seg)
+    {
+        var target = seg ?? SelectedSegment;
+        if (target == null)
+            return;
+
+        if (target.DurationSeconds < 0.6)
+        {
+            _snackbarManager.Notify("Line duration is too short to split (< 0.6s).");
+            return;
+        }
+
+        int idx = Segments.IndexOf(target);
+        if (idx < 0)
+            return;
+
+        // Perform semantic sense-to-sense splitting with proportional timestamps
+        var (first, second) = DialogueSenseEngine.SplitSegmentSenseToSense(target, SourceLanguage);
+
+        Segments.Insert(idx + 1, second);
+
+        for (int i = 0; i < Segments.Count; i++)
+        {
+            Segments[i].Index = i + 1;
+        }
+
+        IsProjectDirty = true;
+        SelectedSegment = first;
+
+        // If Khmer translation was present, re-translate both halves to ensure 100% clause-by-clause semantic match
+        if (
+            !string.IsNullOrWhiteSpace(first.OriginalText)
+            && !string.IsNullOrWhiteSpace(second.OriginalText)
+            && (
+                !string.IsNullOrWhiteSpace(first.KhmerText)
+                || !string.IsNullOrWhiteSpace(second.KhmerText)
+            )
+        )
+        {
+            try
+            {
+                var t1Task = _subService.TranslateToKhmerAsync(first.OriginalText, SourceLanguage);
+                var t2Task = _subService.TranslateToKhmerAsync(second.OriginalText, SourceLanguage);
+                await Task.WhenAll(t1Task, t2Task);
+
+                if (!string.IsNullOrWhiteSpace(t1Task.Result))
+                    first.KhmerText = SubtitleTranslationService.PolishKhmerDialogue(t1Task.Result);
+
+                if (!string.IsNullOrWhiteSpace(t2Task.Result))
+                    second.KhmerText = SubtitleTranslationService.PolishKhmerDialogue(
+                        t2Task.Result
+                    );
+            }
+            catch
+            {
+                // Non-fatal, offline fallback already provided by SplitKhmerDialogueSenseToSense
+            }
+        }
+
+        _snackbarManager.Notify(
+            $"Split line #{first.Index} into matching sense-to-sense lines #{first.Index} & #{second.Index}."
+        );
+    }
+
+    [RelayCommand]
+    public void BulkAssignCharacter(MovieCharacter? character)
+    {
+        var targetChar = character ?? SelectedCharacter;
+        if (targetChar == null)
+        {
+            _snackbarManager.Notify("Please select a character to assign.");
+            return;
+        }
+
+        if (SelectedSegment != null)
+        {
+            SelectedSegment.CharacterId = targetChar.Id;
+            SelectedSegment.SpeakerName = targetChar.Name;
+            SelectedSegment.SpeakerColor = targetChar.ColorTag;
+            IsProjectDirty = true;
+            _snackbarManager.Notify(
+                $"Assigned line #{SelectedSegment.Index} to {targetChar.Name}."
+            );
+        }
+    }
+
+    [RelayCommand]
+    public async Task ExportKhmerSubtitlesAsync()
+    {
+        if (Segments.Count == 0)
+        {
+            _snackbarManager.Notify("No subtitle segments to export.");
+            return;
+        }
+
+        var defaultName = !string.IsNullOrWhiteSpace(ProjectName)
+            ? $"{ProjectName}_Khmer.srt"
+            : "Subtitles_Khmer.srt";
+        var filePath = await _dialogManager.PromptSaveFilePathAsync(
+            [
+                new FilePickerFileType("SubRip Subtitle (*.srt)") { Patterns = ["*.srt"] },
+                new FilePickerFileType("WebVTT Subtitle (*.vtt)") { Patterns = ["*.vtt"] },
+            ],
+            defaultName
+        );
+
+        if (string.IsNullOrWhiteSpace(filePath))
+            return;
+
+        var isVtt = filePath.EndsWith(".vtt", StringComparison.OrdinalIgnoreCase);
+        var content = isVtt
+            ? SubtitleTranslationService.GenerateVtt(Segments, includeOriginal: false)
+            : SubtitleTranslationService.GenerateSrt(Segments, includeOriginal: false);
+
+        await File.WriteAllTextAsync(filePath, content, Encoding.UTF8);
+        _snackbarManager.Notify($"Exported Khmer subtitles to {Path.GetFileName(filePath)}");
+    }
+
+    [RelayCommand]
+    public async Task ExportBilingualSubtitlesAsync()
+    {
+        if (Segments.Count == 0)
+        {
+            _snackbarManager.Notify("No subtitle segments to export.");
+            return;
+        }
+
+        var defaultName = !string.IsNullOrWhiteSpace(ProjectName)
+            ? $"{ProjectName}_Dual.srt"
+            : "Subtitles_Dual.srt";
+        var filePath = await _dialogManager.PromptSaveFilePathAsync(
+            [
+                new FilePickerFileType("SubRip Subtitle (*.srt)") { Patterns = ["*.srt"] },
+                new FilePickerFileType("WebVTT Subtitle (*.vtt)") { Patterns = ["*.vtt"] },
+            ],
+            defaultName
+        );
+
+        if (string.IsNullOrWhiteSpace(filePath))
+            return;
+
+        var isVtt = filePath.EndsWith(".vtt", StringComparison.OrdinalIgnoreCase);
+        var content = isVtt
+            ? SubtitleTranslationService.GenerateVtt(Segments, includeOriginal: true)
+            : SubtitleTranslationService.GenerateSrt(Segments, includeOriginal: true);
+
+        await File.WriteAllTextAsync(filePath, content, Encoding.UTF8);
+        _snackbarManager.Notify($"Exported Bilingual subtitles to {Path.GetFileName(filePath)}");
+    }
+
+    [RelayCommand]
+    public async Task ExportDubbedVocalTrackAsync()
+    {
+        var clipsWithAudio = Segments
+            .Where(s => !string.IsNullOrWhiteSpace(s.AudioClipPath) && File.Exists(s.AudioClipPath))
+            .ToList();
+        if (clipsWithAudio.Count == 0)
+        {
+            _snackbarManager.Notify(
+                "No synthesized audio clips found. Please generate speech first."
+            );
+            return;
+        }
+
+        var defaultName = !string.IsNullOrWhiteSpace(ProjectName)
+            ? $"{ProjectName}_Khmer_Vocals.wav"
+            : "Khmer_Vocals.wav";
+        var filePath = await _dialogManager.PromptSaveFilePathAsync(
+            [new FilePickerFileType("Broadcast WAV Audio (*.wav)") { Patterns = ["*.wav"] }],
+            defaultName
+        );
+
+        if (string.IsNullOrWhiteSpace(filePath))
+            return;
+
+        var ffmpeg = GetFfmpegPath();
+        if (string.IsNullOrWhiteSpace(ffmpeg))
+        {
+            _snackbarManager.Notify("FFmpeg not found.");
+            return;
+        }
+
+        try
+        {
+            StatusMessage = "Assembling clean Khmer vocal track for export...";
+            var tempJob = new DubbingJob
+            {
+                VideoFilePath = VideoFilePath,
+                OutputFilePath = filePath,
+                EnableSmartTimeStretch = EnableSmartTimeStretch,
+            };
+            foreach (var s in Segments)
+                tempJob.Segments.Add(s);
+
+            await DubbingPipeline.AssembleVocalTrackAsync(ffmpeg, tempJob, filePath);
+            _snackbarManager.Notify($"Vocal track exported to {Path.GetFileName(filePath)}");
+            StatusMessage = $"Vocal track exported successfully.";
+        }
+        catch (Exception ex)
+        {
+            _snackbarManager.Notify($"Export failed: {ex.Message}");
+        }
+    }
+
+    [RelayCommand]
     public async Task AutoDetectGenderAsync()
     {
         if (Segments.Count == 0)
@@ -560,15 +1016,33 @@ public partial class DubbingViewModel : ViewModelBase
                 ?? Characters.Skip(1).FirstOrDefault()
                 ?? maleChar;
 
+            var childChar =
+                Characters.FirstOrDefault(c =>
+                    string.Equals(c.Gender, "Child", StringComparison.OrdinalIgnoreCase)
+                    || c.Name.Contains("child", StringComparison.OrdinalIgnoreCase)
+                    || c.Name.Contains("girl", StringComparison.OrdinalIgnoreCase)
+                    || c.Name.Contains("kid", StringComparison.OrdinalIgnoreCase)
+                    || c.Name.Contains("ក្មេង", StringComparison.OrdinalIgnoreCase)
+                    || c.BaseVoice.Contains("child", StringComparison.OrdinalIgnoreCase)
+                ) ?? femaleChar;
+
             int maleCount = 0;
             int femaleCount = 0;
+            int childCount = 0;
 
             foreach (var seg in Segments)
             {
                 if (detectionResults.TryGetValue(seg.Index, out var res))
                 {
                     seg.DetectedGender = res.Gender;
-                    if (res.Gender == VoiceGenderDetector.GenderFemale && femaleChar != null)
+                    if (res.Gender == VoiceGenderDetector.GenderChild && childChar != null)
+                    {
+                        seg.CharacterId = childChar.Id;
+                        seg.SpeakerName = childChar.Name;
+                        seg.SpeakerColor = childChar.ColorTag;
+                        childCount++;
+                    }
+                    else if (res.Gender == VoiceGenderDetector.GenderFemale && femaleChar != null)
                     {
                         seg.CharacterId = femaleChar.Id;
                         seg.SpeakerName = femaleChar.Name;
@@ -586,9 +1060,13 @@ public partial class DubbingViewModel : ViewModelBase
             }
 
             StatusMessage =
-                $"Voice Gender Detection Complete: {maleCount} Male scenes, {femaleCount} Female scenes assigned.";
+                childCount > 0
+                    ? $"Voice Actor Detection Complete: {maleCount} Male, {femaleCount} Female, {childCount} Child scenes assigned."
+                    : $"Voice Gender Detection Complete: {maleCount} Male, {femaleCount} Female scenes assigned.";
             _snackbarManager.Notify(
-                $"Auto-assigned {maleCount} Male & {femaleCount} Female dialogue scenes!"
+                childCount > 0
+                    ? $"Auto-assigned {maleCount} Male, {femaleCount} Female & {childCount} Child dialogue scenes!"
+                    : $"Auto-assigned {maleCount} Male & {femaleCount} Female dialogue scenes!"
             );
         }
         catch (Exception ex)
@@ -884,6 +1362,63 @@ public partial class DubbingViewModel : ViewModelBase
     }
 
     [RelayCommand]
+    public async Task ImportRvcModelAsync()
+    {
+        var filePath = await _dialogManager.PromptOpenFilePathAsync([
+            new FilePickerFileType("RVC Voice Model (*.pth)") { Patterns = ["*.pth"] },
+        ]);
+
+        if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+            return;
+
+        try
+        {
+            var modelName = Path.GetFileNameWithoutExtension(filePath);
+            var targetDir = Path.Combine(RvcInferenceService.DefaultModelsDirectory, modelName);
+            Directory.CreateDirectory(targetDir);
+
+            var destPth = Path.Combine(targetDir, Path.GetFileName(filePath));
+            File.Copy(filePath, destPth, overwrite: true);
+
+            // Also copy companion .index if present in source folder
+            var sourceDir = Path.GetDirectoryName(filePath);
+            if (!string.IsNullOrEmpty(sourceDir))
+            {
+                var indexFile = Directory.EnumerateFiles(sourceDir, "*.index").FirstOrDefault();
+                if (indexFile != null && File.Exists(indexFile))
+                {
+                    var destIndex = Path.Combine(targetDir, Path.GetFileName(indexFile));
+                    File.Copy(indexFile, destIndex, overwrite: true);
+                }
+            }
+
+            RefreshRvcModels();
+
+            var imported = AvailableRvcModels.FirstOrDefault(m =>
+                m.PthPath.Equals(destPth, StringComparison.OrdinalIgnoreCase)
+                || m.Name.Equals(modelName, StringComparison.OrdinalIgnoreCase)
+            );
+            if (imported != null)
+            {
+                SelectedRvcModel = imported;
+                if (SelectedCharacter != null)
+                {
+                    SelectedCharacter.EnableRvc = true;
+                    SelectedCharacter.RvcModelPath = imported.PthPath;
+                    SelectedCharacter.RvcIndexPath = imported.IndexPath;
+                }
+            }
+
+            StatusMessage = $"Imported RVC voice model '{modelName}' successfully.";
+            _snackbarManager.Notify($"Added RVC voice model '{modelName}' to project!");
+        }
+        catch (Exception ex)
+        {
+            _snackbarManager.Notify($"Failed to import RVC model: {ex.Message}");
+        }
+    }
+
+    [RelayCommand]
     public async Task BrowseVideoFileAsync()
     {
         var filePath = await _dialogManager.PromptOpenFilePathAsync([
@@ -896,6 +1431,14 @@ public partial class DubbingViewModel : ViewModelBase
         if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
             return;
 
+        await LoadVideoAsync(filePath);
+    }
+
+    public async Task LoadVideoAsync(string filePath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+            return;
+
         VideoFilePath = filePath;
 
         var dir = Path.GetDirectoryName(VideoFilePath) ?? string.Empty;
@@ -905,7 +1448,7 @@ public partial class DubbingViewModel : ViewModelBase
         // Scan for existing embedded or sidecar subtitles
         try
         {
-            var ffmpeg = _855Media.Core.Downloading.FFmpeg.TryGetCliFilePath() ?? "ffmpeg";
+            var ffmpeg = GetFfmpegPath() ?? "ffmpeg";
             var discovered = await new SubtitleTranslationService().ExtractOrGenerateSubtitlesAsync(
                 ffmpeg,
                 VideoFilePath,
@@ -922,17 +1465,274 @@ public partial class DubbingViewModel : ViewModelBase
             {
                 StatusMessage =
                     $"Loaded {Segments.Count} dialogue lines from {Path.GetFileName(VideoFilePath)}";
+                _snackbarManager.Notify(
+                    $"Loaded {Segments.Count} dialogue lines from {Path.GetFileName(VideoFilePath)}."
+                );
                 _ = ExtractSceneThumbnailsAsync();
             }
             else
             {
-                StatusMessage = $"Scanning audio speech from {Path.GetFileName(VideoFilePath)}...";
-                await ScanAudioToTextAsync();
+                StatusMessage =
+                    $"Loaded video: {Path.GetFileName(VideoFilePath)}. Ready to scan speech or import subtitles.";
+                _snackbarManager.Notify(
+                    $"Video loaded: {Path.GetFileName(VideoFilePath)}. Click 'Scan Audio' or import subtitles."
+                );
             }
         }
         catch (Exception ex)
         {
             StatusMessage = $"Selected: {Path.GetFileName(VideoFilePath)} ({ex.Message})";
+        }
+        finally
+        {
+            BrowseVideoFileCommand.NotifyCanExecuteChanged();
+            ExtendCurrentVideoCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    [RelayCommand]
+    public async Task ExtendCurrentVideoAsync()
+    {
+        if (string.IsNullOrWhiteSpace(VideoFilePath) || !File.Exists(VideoFilePath))
+        {
+            await BrowseVideoFileAsync();
+            return;
+        }
+
+        var files = await _dialogManager.PromptOpenFilePathsAsync([
+            new FilePickerFileType("Video Files")
+            {
+                Patterns = ["*.mp4", "*.mkv", "*.mov", "*.webm", "*.avi", "*.ts"],
+            },
+        ]);
+
+        if (files == null || files.Count == 0)
+            return;
+
+        await ExtendVideoWithFilesAsync(files);
+    }
+
+    public async Task ExtendVideoWithFilesAsync(IReadOnlyList<string> additionalVideoPaths)
+    {
+        if (string.IsNullOrWhiteSpace(VideoFilePath) || !File.Exists(VideoFilePath))
+        {
+            if (additionalVideoPaths.Count > 0)
+            {
+                await LoadVideoAsync(additionalVideoPaths[0]);
+                if (additionalVideoPaths.Count > 1)
+                {
+                    await ExtendVideoWithFilesAsync(additionalVideoPaths.Skip(1).ToList());
+                }
+            }
+            return;
+        }
+
+        var validPaths = additionalVideoPaths
+            .Where(p =>
+                !string.IsNullOrWhiteSpace(p)
+                && File.Exists(p)
+                && !string.Equals(p, VideoFilePath, StringComparison.OrdinalIgnoreCase)
+            )
+            .ToList();
+
+        if (validPaths.Count == 0)
+        {
+            _snackbarManager.Notify("No new video files selected to extend timeline.");
+            return;
+        }
+
+        var ffmpeg = GetFfmpegPath() ?? "ffmpeg";
+        StatusMessage =
+            $"Measuring current video duration and preparing to extend timeline with {validPaths.Count} clip(s)...";
+
+        try
+        {
+            var currentDuration = await DubbingPipeline.GetAudioDurationAsync(
+                ffmpeg,
+                VideoFilePath
+            );
+
+            var currentDir = Path.GetDirectoryName(VideoFilePath) ?? Path.GetTempPath();
+            var baseName = Path.GetFileNameWithoutExtension(VideoFilePath);
+            if (baseName.EndsWith("_extended", StringComparison.OrdinalIgnoreCase))
+            {
+                baseName = baseName[..^9];
+            }
+            var ext = Path.GetExtension(VideoFilePath);
+            if (string.IsNullOrWhiteSpace(ext))
+                ext = ".mp4";
+
+            var targetCombinedPath = Path.Combine(currentDir, $"{baseName}_extended{ext}");
+            if (
+                string.Equals(VideoFilePath, targetCombinedPath, StringComparison.OrdinalIgnoreCase)
+            )
+            {
+                targetCombinedPath = Path.Combine(
+                    currentDir,
+                    $"{baseName}_extended_{DateTime.Now:yyyyMMdd_HHmmss}{ext}"
+                );
+            }
+
+            var allVideos = new List<string> { VideoFilePath };
+            allVideos.AddRange(validPaths);
+
+            var progress = new Progress<string>(msg => StatusMessage = msg);
+            var success = await DubbingPipeline.ConcatenateVideosAsync(
+                ffmpeg,
+                allVideos,
+                targetCombinedPath,
+                progress
+            );
+
+            if (!success || !File.Exists(targetCombinedPath))
+            {
+                StatusMessage = "Failed to extend video clips with FFmpeg.";
+                _snackbarManager.Notify(
+                    "Failed to extend video. Check video codecs and FFmpeg logs."
+                );
+                return;
+            }
+
+            // Offset and append dialogue lines from newly attached videos
+            var cumulativeDuration = currentDuration;
+            var subService = new SubtitleTranslationService();
+            var defaultChar = Characters.FirstOrDefault();
+            int newSegmentsAdded = 0;
+
+            foreach (var addPath in validPaths)
+            {
+                var thisVidDuration = await DubbingPipeline.GetAudioDurationAsync(ffmpeg, addPath);
+
+                try
+                {
+                    var discovered = await subService.ExtractOrGenerateSubtitlesAsync(
+                        ffmpeg,
+                        addPath,
+                        SourceLanguage
+                    );
+
+                    foreach (var seg in discovered)
+                    {
+                        seg.StartTime += cumulativeDuration;
+                        seg.EndTime += cumulativeDuration;
+                        seg.Index = Segments.Count + 1;
+                        if (defaultChar != null && seg.CharacterId == null)
+                        {
+                            seg.CharacterId = defaultChar.Id;
+                            seg.SpeakerName = defaultChar.Name;
+                            seg.SpeakerColor = defaultChar.ColorTag;
+                        }
+                        Segments.Add(seg);
+                        newSegmentsAdded++;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[ExtendVideo] Subtitle extract note: {ex.Message}"
+                    );
+                }
+
+                cumulativeDuration += thisVidDuration;
+            }
+
+            VideoFilePath = targetCombinedPath;
+            var outDir = Path.GetDirectoryName(targetCombinedPath) ?? string.Empty;
+            var outName = Path.GetFileNameWithoutExtension(targetCombinedPath);
+            OutputFilePath = Path.Combine(outDir, $"{outName}_khmer_dubbed.mp4");
+            IsProjectDirty = true;
+
+            if (HasActiveMedia)
+            {
+                CurrentPlayingMediaPath = VideoFilePath;
+                ActiveMediaTitle = $"Movie (Extended): {Path.GetFileName(VideoFilePath)}";
+                PlayMediaRequested?.Invoke(VideoFilePath, true, ActiveMediaTitle);
+            }
+
+            if (newSegmentsAdded > 0)
+            {
+                _ = ExtractSceneThumbnailsAsync();
+                StatusMessage =
+                    $"Timeline extended! Duration: {cumulativeDuration:hh\\:mm\\:ss}. Loaded {newSegmentsAdded} new dialogue lines (Total: {Segments.Count}).";
+                _snackbarManager.Notify(
+                    $"Video extended with {validPaths.Count} clip(s) and {newSegmentsAdded} dialogue lines."
+                );
+            }
+            else
+            {
+                StatusMessage =
+                    $"Timeline extended! Duration: {cumulativeDuration:hh\\:mm\\:ss}. You can click 'Scan Audio' to transcribe new segments.";
+                _snackbarManager.Notify(
+                    $"Video extended with {validPaths.Count} clip(s). Click 'Scan Audio' to transcribe speech."
+                );
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Error extending video: {ex.Message}";
+            _snackbarManager.Notify($"Error extending video: {ex.Message}");
+        }
+        finally
+        {
+            BrowseVideoFileCommand.NotifyCanExecuteChanged();
+            ExtendCurrentVideoCommand.NotifyCanExecuteChanged();
+        }
+    }
+
+    public async Task HandleDroppedFilesAsync(IReadOnlyList<string> paths)
+    {
+        if (paths == null || paths.Count == 0)
+            return;
+
+        // 1. Check for project file (.855dub or .json)
+        var projectFile = paths.FirstOrDefault(p =>
+            p.EndsWith(".855dub", StringComparison.OrdinalIgnoreCase)
+            || (
+                p.EndsWith(".json", StringComparison.OrdinalIgnoreCase)
+                && !p.EndsWith(".voice.json", StringComparison.OrdinalIgnoreCase)
+            )
+        );
+        if (!string.IsNullOrWhiteSpace(projectFile) && File.Exists(projectFile))
+        {
+            await LoadProjectInternalAsync(projectFile);
+            return;
+        }
+
+        // 2. Check for subtitle files (.srt, .vtt, .sub, .ass)
+        var subFile = paths.FirstOrDefault(p =>
+            p.EndsWith(".srt", StringComparison.OrdinalIgnoreCase)
+            || p.EndsWith(".vtt", StringComparison.OrdinalIgnoreCase)
+            || p.EndsWith(".ass", StringComparison.OrdinalIgnoreCase)
+        );
+        if (!string.IsNullOrWhiteSpace(subFile) && File.Exists(subFile))
+        {
+            await ImportSubtitlesFromFileAsync(subFile);
+            return;
+        }
+
+        // 3. Check for video files (.mp4, .mkv, .mov, .webm, .avi, .ts)
+        var videoFiles = paths
+            .Where(p =>
+            {
+                var ext = Path.GetExtension(p).ToLowerInvariant();
+                return ext is ".mp4" or ".mkv" or ".mov" or ".webm" or ".avi" or ".ts";
+            })
+            .ToList();
+
+        if (videoFiles.Count == 0)
+            return;
+
+        if (string.IsNullOrWhiteSpace(VideoFilePath) || !File.Exists(VideoFilePath))
+        {
+            await LoadVideoAsync(videoFiles[0]);
+            if (videoFiles.Count > 1)
+            {
+                await ExtendVideoWithFilesAsync(videoFiles.Skip(1).ToList());
+            }
+        }
+        else
+        {
+            await ExtendVideoWithFilesAsync(videoFiles);
         }
     }
 
@@ -965,9 +1765,14 @@ public partial class DubbingViewModel : ViewModelBase
             Directory.CreateDirectory(cacheDir);
 
             var segmentsToProcess = Segments.ToList();
-            await Task.Run(async () =>
-            {
-                foreach (var seg in segmentsToProcess)
+            int total = segmentsToProcess.Count;
+            int processedCount = 0;
+            int degreeOfParallelism = Math.Clamp(Environment.ProcessorCount / 2, 2, 6);
+
+            await Parallel.ForEachAsync(
+                segmentsToProcess,
+                new ParallelOptions { MaxDegreeOfParallelism = degreeOfParallelism },
+                async (seg, ct) =>
                 {
                     var thumbPath = Path.Combine(cacheDir, $"scene_{seg.Index:D4}.jpg");
                     if (!File.Exists(thumbPath) || new FileInfo(thumbPath).Length == 0)
@@ -997,8 +1802,10 @@ public partial class DubbingViewModel : ViewModelBase
                             proc.StartInfo.ArgumentList.Add(thumbPath);
                             proc.StartInfo.UseShellExecute = false;
                             proc.StartInfo.CreateNoWindow = true;
+
                             proc.Start();
-                            await proc.WaitForExitAsync();
+                            ChildProcessTracker.Track(proc);
+                            await proc.WaitForExitWithCancellationAsync(ct);
                         }
                         catch { }
                     }
@@ -1007,11 +1814,18 @@ public partial class DubbingViewModel : ViewModelBase
                     {
                         seg.ThumbnailPath = thumbPath;
                     }
-                }
-            });
 
-            StatusMessage =
-                $"Ready. Extracted {Segments.Count(s => !string.IsNullOrEmpty(s.ThumbnailPath))} scene snapshots.";
+                    int current = Interlocked.Increment(ref processedCount);
+                    if (current % 5 == 0 || current == total)
+                    {
+                        StatusMessage = $"Extracting scene thumbnails {current}/{total}...";
+                    }
+                }
+            );
+
+            int extracted = Segments.Count(s => !string.IsNullOrEmpty(s.ThumbnailPath));
+            StatusMessage = $"Ready. Extracted {extracted}/{total} scene snapshots.";
+            _snackbarManager.Notify($"Extracted {extracted} scene snapshots!");
         }
         catch (Exception ex)
         {
@@ -1159,13 +1973,36 @@ public partial class DubbingViewModel : ViewModelBase
                         )
                     ) ?? Characters.FirstOrDefault();
                 var voiceToUse = character?.BaseVoice ?? SelectedVoice.Id;
-                var speechRate = character?.SpeechRate ?? "+15%";
                 var textToSpeak = !string.IsNullOrWhiteSpace(target.KhmerText)
                     ? target.KhmerText
                     : target.OriginalText;
 
+                var emotionName =
+                    !string.IsNullOrWhiteSpace(target.Emotion)
+                    && target.Emotion != ActorEmotionEngine.EmotionNormal
+                        ? target.Emotion
+                        : (character?.EmotionPreset ?? ActorEmotionEngine.EmotionNormal);
+                var emotionCfg = ActorEmotionEngine.GetConfig(emotionName);
+
+                var effectiveRate = ActorEmotionEngine.ComputeEffectiveRate(
+                    character?.SpeechRate,
+                    emotionCfg.TtsRateOffset
+                );
+                var effectivePitch = ActorEmotionEngine.ComputeEffectiveTtsPitch(
+                    character?.PitchShift ?? 0,
+                    emotionCfg.TtsPitch,
+                    emotionCfg.PitchShiftOffset
+                );
+
                 var clipPath = Path.Combine(tempDir, $"preview_{target.Index:D4}.mp3");
-                await tts.SynthesizeKhmerSpeechAsync(textToSpeak, clipPath, voiceToUse, speechRate);
+                await tts.SynthesizeKhmerSpeechAsync(
+                    textToSpeak,
+                    clipPath,
+                    voiceToUse,
+                    rate: effectiveRate,
+                    pitch: effectivePitch,
+                    volume: emotionCfg.TtsVolume
+                );
 
                 if (
                     character != null
@@ -1176,12 +2013,13 @@ public partial class DubbingViewModel : ViewModelBase
                 {
                     StatusMessage = $"Applying RVC voice clone for {character.Name}...";
                     var clonedClip = Path.Combine(tempDir, $"preview_{target.Index:D4}_rvc.wav");
+                    int effectivePitchShift = character.PitchShift + emotionCfg.PitchShiftOffset;
                     await _rvcService.ConvertVoiceAsync(
                         clipPath,
                         clonedClip,
                         character.RvcModelPath,
                         character.RvcIndexPath,
-                        character.PitchShift,
+                        effectivePitchShift,
                         null,
                         CancellationToken.None
                     );
@@ -1189,6 +2027,32 @@ public partial class DubbingViewModel : ViewModelBase
                     {
                         clipPath = clonedClip;
                     }
+                }
+
+                // Apply character tone & emotion acoustic filter
+                var ffmpeg = _855Media.Core.Downloading.FFmpeg.TryGetCliFilePath() ?? "ffmpeg";
+                var filteredClip = Path.Combine(tempDir, $"preview_{target.Index:D4}_tone.wav");
+                var warmth = character?.ToneWarmth ?? 0.0;
+                var clarity = character?.ToneClarity ?? 0.0;
+                var archetype = character?.ToneArchetype;
+
+                var applied = await ActorEmotionEngine.ApplyActorAcousticFilterAsync(
+                    ffmpeg,
+                    clipPath,
+                    filteredClip,
+                    emotionCfg.Name,
+                    warmth,
+                    clarity,
+                    archetype,
+                    CancellationToken.None
+                );
+                if (
+                    applied
+                    && File.Exists(filteredClip)
+                    && new FileInfo(filteredClip).Length > 1024
+                )
+                {
+                    clipPath = filteredClip;
                 }
 
                 target.AudioClipPath = clipPath;
@@ -1325,12 +2189,29 @@ public partial class DubbingViewModel : ViewModelBase
             var tempDir = Path.Combine(Path.GetTempPath(), "855Media_Dubbing_VoiceTest");
             Directory.CreateDirectory(tempDir);
 
-            var sampleText = "ជំរាបសួរ! ខ្ញុំកំពុងសាកល្បងសំឡេងបញ្ចូលតួអង្គ។";
+            var arch = ActorEmotionEngine.GetArchetype(target.ToneArchetype);
+            var emotionCfg = ActorEmotionEngine.GetConfig(target.EmotionPreset);
+            var sampleText = !string.IsNullOrWhiteSpace(arch.SampleLine)
+                ? arch.SampleLine
+                : "ជំរាបសួរ! ខ្ញុំកំពុងសាកល្បងសំឡេងបញ្ចូលតួអង្គ។";
+
             var voiceToUse = target.BaseVoice ?? SelectedVoice.Id;
             var speechRate = target.SpeechRate ?? "+12%";
-            var rawTts = Path.Combine(tempDir, $"test_{target.Id:N}.mp3");
+            var effectivePitch = ActorEmotionEngine.ComputeEffectiveTtsPitch(
+                target.PitchShift,
+                emotionCfg.TtsPitch,
+                emotionCfg.PitchShiftOffset
+            );
 
-            await tts.SynthesizeKhmerSpeechAsync(sampleText, rawTts, voiceToUse, speechRate);
+            var rawTts = Path.Combine(tempDir, $"test_{target.Id:N}.mp3");
+            await tts.SynthesizeKhmerSpeechAsync(
+                sampleText,
+                rawTts,
+                voiceToUse,
+                rate: speechRate,
+                pitch: effectivePitch,
+                volume: emotionCfg.TtsVolume
+            );
 
             string finalClip = rawTts;
             if (
@@ -1342,12 +2223,13 @@ public partial class DubbingViewModel : ViewModelBase
                 StatusMessage =
                     $"Applying {Path.GetFileNameWithoutExtension(target.RvcModelPath)} voice clone...";
                 var clonedClip = Path.Combine(tempDir, $"cloned_{target.Id:N}.wav");
+                int effectivePitchShift = target.PitchShift + emotionCfg.PitchShiftOffset;
                 await _rvcService.ConvertVoiceAsync(
                     rawTts,
                     clonedClip,
                     target.RvcModelPath,
                     target.RvcIndexPath,
-                    target.PitchShift,
+                    effectivePitchShift,
                     null,
                     CancellationToken.None
                 );
@@ -1357,16 +2239,37 @@ public partial class DubbingViewModel : ViewModelBase
                 }
             }
 
+            // Apply acoustic tone filter (warmth, clarity, emotion DSP)
+            var ffmpeg = _855Media.Core.Downloading.FFmpeg.TryGetCliFilePath() ?? "ffmpeg";
+            var filteredClip = Path.Combine(tempDir, $"tone_{target.Id:N}.wav");
+            var applied = await ActorEmotionEngine.ApplyActorAcousticFilterAsync(
+                ffmpeg,
+                finalClip,
+                filteredClip,
+                emotionCfg.Name,
+                target.ToneWarmth,
+                target.ToneClarity,
+                target.ToneArchetype,
+                CancellationToken.None
+            );
+            if (applied && File.Exists(filteredClip) && new FileInfo(filteredClip).Length > 1024)
+            {
+                finalClip = filteredClip;
+            }
+
             if (File.Exists(finalClip))
             {
                 CurrentPlayingMediaPath = finalClip;
                 IsCurrentMediaVideo = false;
                 HasActiveMedia = true;
                 IsMonitorPlaying = true;
-                ActiveMediaTitle = $"Audition: {target.Name} (Khmer Voice)";
+                ActiveMediaTitle = $"Audition: {target.Name} [{arch.DisplayName}]";
                 PlayMediaRequested?.Invoke(finalClip, false, ActiveMediaTitle);
-                _snackbarManager.Notify($"Auditioning voice for {target.Name} in Studio Monitor!");
-                StatusMessage = $"Auditioning {target.Name} voice in Studio Monitor.";
+                _snackbarManager.Notify(
+                    $"Auditioning {target.Name} ({arch.DisplayName}) in Studio Monitor!"
+                );
+                StatusMessage =
+                    $"Auditioning {target.Name} ({arch.DisplayName}) in Studio Monitor.";
             }
         }
         catch (Exception ex)
@@ -1604,20 +2507,42 @@ public partial class DubbingViewModel : ViewModelBase
 
             if (Segments.Count > 0)
             {
+                var segmentsToTranslate = Segments
+                    .Where(s => !string.IsNullOrWhiteSpace(s.OriginalText))
+                    .ToList();
+                int totalToTranslate = segmentsToTranslate.Count;
+                int translatedCount = 0;
+
                 StatusMessage =
-                    $"Scanned {Segments.Count} dialogue segments. Translating to Khmer (ភាសាខ្មែរ)...";
-                for (int i = 0; i < Segments.Count; i++)
+                    $"Scanned {Segments.Count} dialogue lines. Parallel translating to Khmer (ភាសាខ្មែរ)...";
+
+                if (totalToTranslate > 0)
                 {
-                    var seg = Segments[i];
-                    if (!string.IsNullOrWhiteSpace(seg.OriginalText))
-                    {
-                        seg.KhmerText = await _subService.TranslateToKhmerAsync(
-                            seg.OriginalText,
-                            SourceLanguage
-                        );
-                    }
-                    StatusMessage =
-                        $"Scanned & translated {i + 1}/{Segments.Count} lines to Khmer...";
+                    await Parallel.ForEachAsync(
+                        segmentsToTranslate,
+                        new ParallelOptions { MaxDegreeOfParallelism = 5 },
+                        async (seg, ct) =>
+                        {
+                            try
+                            {
+                                seg.KhmerText = await _subService.TranslateToKhmerAsync(
+                                    seg.OriginalText,
+                                    SourceLanguage
+                                );
+                            }
+                            catch
+                            {
+                                // Fallback: preserve original text if API error
+                            }
+
+                            int current = Interlocked.Increment(ref translatedCount);
+                            if (current % 5 == 0 || current == totalToTranslate)
+                            {
+                                StatusMessage =
+                                    $"Translated {current}/{totalToTranslate} lines to Khmer (ភាសាខ្មែរ)...";
+                            }
+                        }
+                    );
                 }
 
                 StatusMessage = $"Scanned {Segments.Count} dialogue lines and translated to Khmer.";
@@ -1685,6 +2610,27 @@ public partial class DubbingViewModel : ViewModelBase
     [RelayCommand]
     public void NewProject()
     {
+        try
+        {
+            _activeCts?.Cancel();
+            _activeCts?.Dispose();
+        }
+        catch { }
+        finally
+        {
+            _activeCts = null;
+        }
+
+        IsProcessing = false;
+        IsScanningAudio = false;
+        IsExtractingScenes = false;
+        IsTranslating = false;
+        IsPreSynthesizing = false;
+        Progress = 0;
+
+        StopMonitor();
+        CurrentPlayingMediaPath = string.Empty;
+
         CurrentProjectPath = null;
         ProjectName = "Untitled Project";
         VideoFilePath = string.Empty;
@@ -1692,6 +2638,13 @@ public partial class DubbingViewModel : ViewModelBase
         Segments.Clear();
         InitDefaultCharacters();
         IsProjectDirty = false;
+
+        BrowseVideoFileCommand.NotifyCanExecuteChanged();
+        ExtendCurrentVideoCommand.NotifyCanExecuteChanged();
+        StartDubbingCommand.NotifyCanExecuteChanged();
+        CancelDubbingCommand.NotifyCanExecuteChanged();
+        ScanAudioToTextCommand.NotifyCanExecuteChanged();
+
         StatusMessage = "Started new dubbing project.";
         _snackbarManager.Notify("New project started.");
     }
@@ -1773,6 +2726,8 @@ public partial class DubbingViewModel : ViewModelBase
                 VoiceVolume = VoiceVolume,
                 EnableDynamicDucking = EnableDynamicDucking,
                 EnableAiStemSeparation = EnableAiStemSeparation,
+                EnableLoudnessNormalization = EnableLoudnessNormalization,
+                EnableSmartTimeStretch = EnableSmartTimeStretch,
             };
 
             foreach (var c in Characters)
@@ -1790,6 +2745,9 @@ public partial class DubbingViewModel : ViewModelBase
                         RvcIndexPath = c.RvcIndexPath,
                         PitchShift = c.PitchShift,
                         EmotionPreset = c.EmotionPreset,
+                        ToneArchetype = c.ToneArchetype,
+                        ToneWarmth = c.ToneWarmth,
+                        ToneClarity = c.ToneClarity,
                         ColorTag = c.ColorTag,
                     }
                 );
@@ -1865,6 +2823,8 @@ public partial class DubbingViewModel : ViewModelBase
             VoiceVolume = project.VoiceVolume;
             EnableDynamicDucking = project.EnableDynamicDucking;
             EnableAiStemSeparation = project.EnableAiStemSeparation;
+            EnableLoudnessNormalization = project.EnableLoudnessNormalization;
+            EnableSmartTimeStretch = project.EnableSmartTimeStretch;
 
             if (project.Characters.Count > 0)
             {
@@ -1884,6 +2844,9 @@ public partial class DubbingViewModel : ViewModelBase
                             RvcIndexPath = cd.RvcIndexPath,
                             PitchShift = cd.PitchShift,
                             EmotionPreset = cd.EmotionPreset ?? "Normal",
+                            ToneArchetype = cd.ToneArchetype ?? "Hero",
+                            ToneWarmth = cd.ToneWarmth,
+                            ToneClarity = cd.ToneClarity,
                             ColorTag = cd.ColorTag,
                         }
                     );
@@ -1940,6 +2903,14 @@ public partial class DubbingViewModel : ViewModelBase
         if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
             return;
 
+        await ImportSubtitlesFromFileAsync(filePath);
+    }
+
+    public async Task ImportSubtitlesFromFileAsync(string filePath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+            return;
+
         try
         {
             var content = await File.ReadAllTextAsync(filePath);
@@ -1982,63 +2953,18 @@ public partial class DubbingViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    public void RemoveSegment()
+    public void RemoveSegment(SubtitleSegment? seg = null)
     {
-        if (SelectedSegment != null)
+        var target = seg ?? SelectedSegment;
+        if (target != null)
         {
-            Segments.Remove(SelectedSegment);
+            Segments.Remove(target);
             for (int i = 0; i < Segments.Count; i++)
             {
                 Segments[i].Index = i + 1;
             }
+            IsProjectDirty = true;
         }
-    }
-
-    [RelayCommand]
-    public void MergeWithNextSegment()
-    {
-        if (SelectedSegment == null)
-            return;
-
-        var currentIndex = Segments.IndexOf(SelectedSegment);
-        if (currentIndex < 0 || currentIndex >= Segments.Count - 1)
-        {
-            _snackbarManager.Notify("No next line to merge with.");
-            return;
-        }
-
-        var nextSeg = Segments[currentIndex + 1];
-
-        // Merge timing
-        SelectedSegment.EndTime = nextSeg.EndTime;
-
-        // Merge original text
-        var orig1 = SelectedSegment.OriginalText?.Trim() ?? string.Empty;
-        var orig2 = nextSeg.OriginalText?.Trim() ?? string.Empty;
-        SelectedSegment.OriginalText = string.IsNullOrWhiteSpace(orig1)
-            ? orig2
-            : $"{orig1} {orig2}";
-
-        // Merge Khmer text
-        var kh1 = SelectedSegment.KhmerText?.Trim() ?? string.Empty;
-        var kh2 = nextSeg.KhmerText?.Trim() ?? string.Empty;
-        SelectedSegment.KhmerText = string.IsNullOrWhiteSpace(kh1) ? kh2 : $"{kh1} {kh2}";
-
-        // Clear cached audio clip so it gets re-synthesized as a full sentence
-        SelectedSegment.AudioClipPath = null;
-
-        // Remove the next segment
-        Segments.RemoveAt(currentIndex + 1);
-
-        // Re-index
-        for (int i = 0; i < Segments.Count; i++)
-        {
-            Segments[i].Index = i + 1;
-        }
-
-        _snackbarManager.Notify(
-            $"Merged line {currentIndex + 1} with line {currentIndex + 2} into one complete sentence."
-        );
     }
 
     [RelayCommand]
@@ -2050,72 +2976,79 @@ public partial class DubbingViewModel : ViewModelBase
             return;
         }
 
-        char[] sentenceTerminators = ['.', '?', '!', '。', '؟', 'ฯ', '។'];
-        int mergedCount = 0;
-        int i = 0;
-
-        while (i < Segments.Count - 1)
-        {
-            var cur = Segments[i];
-            var next = Segments[i + 1];
-
-            var text = cur.OriginalText?.Trim() ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(text))
-            {
-                i++;
-                continue;
-            }
-
-            char lastChar = text[^1];
-            bool isCompleteSentence = sentenceTerminators.Contains(lastChar);
-
-            // Check if gap between segments is small (< 2.5 seconds)
-            var gap =
-                (next.StartTime > cur.EndTime) ? (next.StartTime - cur.EndTime).TotalSeconds : 0;
-
-            // Merge if current segment is an incomplete sentence fragment
-            if (!isCompleteSentence && gap < 2.5)
-            {
-                cur.EndTime = next.EndTime;
-
-                var nextOrig = next.OriginalText?.Trim() ?? string.Empty;
-                cur.OriginalText = $"{text} {nextOrig}".Trim();
-
-                var kh1 = cur.KhmerText?.Trim() ?? string.Empty;
-                var kh2 = next.KhmerText?.Trim() ?? string.Empty;
-                if (!string.IsNullOrWhiteSpace(kh2))
-                {
-                    cur.KhmerText = string.IsNullOrWhiteSpace(kh1) ? kh2 : $"{kh1} {kh2}";
-                }
-
-                cur.AudioClipPath = null;
-                Segments.RemoveAt(i + 1);
-                mergedCount++;
-                // Check current segment again to see if it still needs merging with the next fragment
-            }
-            else
-            {
-                i++;
-            }
-        }
-
-        for (int idx = 0; idx < Segments.Count; idx++)
-        {
-            Segments[idx].Index = idx + 1;
-        }
+        int originalCount = Segments.Count;
+        var reconstructed = DialogueSenseEngine.ReconstructSentences(
+            Segments,
+            maxGapSeconds: 2.2,
+            maxDurationSeconds: 12.0
+        );
+        int mergedCount = originalCount - reconstructed.Count;
 
         if (mergedCount > 0)
         {
+            Segments.Clear();
+            foreach (var seg in reconstructed)
+            {
+                Segments.Add(seg);
+            }
+
+            IsProjectDirty = true;
+            SelectedSegment = Segments.FirstOrDefault();
             StatusMessage =
-                $"Merged {mergedCount} sentence fragments into complete dialogue sentences.";
+                $"Merged {mergedCount} sentence fragments into complete dialogue sentences (sense-to-sense matched).";
             _snackbarManager.Notify(
-                $"Merged {mergedCount} sentence fragments into complete dialogue sentences."
+                $"Merged {mergedCount} sentence fragments into complete dialogue sentences (sense-to-sense matched)."
             );
         }
         else
         {
-            _snackbarManager.Notify("All segments already end in complete sentences.");
+            _snackbarManager.Notify(
+                "All segments are already complete sentences with continuous speaker dialogue."
+            );
         }
+    }
+
+    [RelayCommand]
+    public void ImproveOriginalDialogue(SubtitleSegment? seg = null)
+    {
+        if (Segments.Count == 0)
+        {
+            _snackbarManager.Notify("No dialogue lines to improve. Import or add lines first.");
+            return;
+        }
+
+        var target = seg ?? SelectedSegment;
+        if (target != null && seg != null)
+        {
+            target.OriginalText = DialogueSenseEngine.ImproveOriginalDialogue(
+                target.OriginalText,
+                SourceLanguage
+            );
+            IsProjectDirty = true;
+            _snackbarManager.Notify($"Improved original dialogue for line #{target.Index}.");
+            return;
+        }
+
+        int improvedCount = 0;
+        foreach (var s in Segments)
+        {
+            var improved = DialogueSenseEngine.ImproveOriginalDialogue(
+                s.OriginalText,
+                SourceLanguage
+            );
+            if (improved != s.OriginalText)
+            {
+                s.OriginalText = improved;
+                improvedCount++;
+            }
+        }
+
+        IsProjectDirty = true;
+        StatusMessage =
+            $"Improved {improvedCount} original dialogue lines (noise tags removed, stutters cleaned, sense formatted).";
+        _snackbarManager.Notify(
+            $"Improved {improvedCount} original dialogue lines (noise tags removed, stutters cleaned, sense formatted)."
+        );
     }
 
     [RelayCommand]
@@ -2135,21 +3068,44 @@ public partial class DubbingViewModel : ViewModelBase
 
         try
         {
-            int total = Segments.Count;
-            for (int i = 0; i < total; i++)
-            {
-                var seg = Segments[i];
-                if (!string.IsNullOrWhiteSpace(seg.OriginalText))
-                {
-                    seg.KhmerText = await _subService.TranslateToKhmerAsync(
-                        seg.OriginalText,
-                        SourceLanguage
-                    );
-                }
+            var segmentsToTranslate = Segments
+                .Where(s => !string.IsNullOrWhiteSpace(s.OriginalText))
+                .ToList();
+            int total = segmentsToTranslate.Count;
+            int translatedCount = 0;
 
-                StatusMessage = $"Translated {i + 1}/{total} lines into Khmer...";
-                await Task.Delay(50);
+            if (total == 0)
+            {
+                StatusMessage = "No lines with text to translate.";
+                return;
             }
+
+            StatusMessage = $"Translating {total} dialogue lines to Khmer (ភាសាខ្មែរ)...";
+
+            await Parallel.ForEachAsync(
+                segmentsToTranslate,
+                new ParallelOptions { MaxDegreeOfParallelism = 5 },
+                async (seg, ct) =>
+                {
+                    try
+                    {
+                        seg.KhmerText = await _subService.TranslateToKhmerAsync(
+                            seg.OriginalText,
+                            SourceLanguage
+                        );
+                    }
+                    catch
+                    {
+                        // Fallback: preserve original text if API error
+                    }
+
+                    int current = Interlocked.Increment(ref translatedCount);
+                    if (current % 5 == 0 || current == total)
+                    {
+                        StatusMessage = $"Translated {current}/{total} lines into Khmer...";
+                    }
+                }
+            );
 
             StatusMessage = $"Auto translation completed ({total} lines).";
             _snackbarManager.Notify($"Successfully translated {total} dialogue lines to Khmer!");
@@ -2216,6 +3172,8 @@ public partial class DubbingViewModel : ViewModelBase
             VoiceVolume = VoiceVolume,
             EnableAiStemSeparation = EnableAiStemSeparation,
             EnableDynamicDucking = EnableDynamicDucking,
+            EnableLoudnessNormalization = EnableLoudnessNormalization,
+            EnableSmartTimeStretch = EnableSmartTimeStretch,
         };
 
         foreach (var c in Characters)
@@ -2230,18 +3188,21 @@ public partial class DubbingViewModel : ViewModelBase
 
         job.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(DubbingJob.Progress))
+            Dispatcher.UIThread.Post(() =>
             {
-                Progress = job.Progress;
-            }
-            else if (e.PropertyName == nameof(DubbingJob.StatusMessage))
-            {
-                StatusMessage = job.StatusMessage;
-            }
-            else if (e.PropertyName == nameof(DubbingJob.DetailedLog))
-            {
-                DetailedLog = job.DetailedLog;
-            }
+                if (e.PropertyName == nameof(DubbingJob.Progress))
+                {
+                    Progress = job.Progress;
+                }
+                else if (e.PropertyName == nameof(DubbingJob.StatusMessage))
+                {
+                    StatusMessage = job.StatusMessage;
+                }
+                else if (e.PropertyName == nameof(DubbingJob.DetailedLog))
+                {
+                    DetailedLog = job.DetailedLog;
+                }
+            });
         };
 
         try
@@ -2362,6 +3323,8 @@ public partial class DubbingViewModel : ViewModelBase
                 VoiceVolume = VoiceVolume,
                 EnableAiStemSeparation = EnableAiStemSeparation,
                 EnableDynamicDucking = EnableDynamicDucking,
+                EnableLoudnessNormalization = EnableLoudnessNormalization,
+                EnableSmartTimeStretch = EnableSmartTimeStretch,
                 Status = DubbingJobStatus.Queued,
                 StatusMessage = "Queued in batch list",
             };

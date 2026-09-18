@@ -18,6 +18,7 @@ public class QueryResolver(IReadOnlyList<Cookie>? initialCookies = null) : IDisp
     private readonly YoutubeClient _youtube = new(Http.Client, initialCookies ?? []);
     private readonly TikTokQueryResolver _tikTok = new(initialCookies);
     private readonly FacebookQueryResolver _facebook = new();
+    private readonly DramaBoxQueryResolver _dramaBox = new(initialCookies);
     private readonly bool _isAuthenticated = initialCookies?.Any() == true;
 
     private async Task<QueryResult?> TryResolvePlaylistAsync(
@@ -153,6 +154,9 @@ public class QueryResolver(IReadOnlyList<Cookie>? initialCookies = null) : IDisp
 
         if (TikTokQueryResolver.IsTikTokQuery(query))
             return await _tikTok.ResolveAsync(query, cancellationToken);
+
+        if (DramaBoxQueryResolver.IsDramaBoxQuery(query))
+            return await _dramaBox.ResolveAsync(query, cancellationToken);
 
         return await TryResolvePlaylistAsync(query, cancellationToken)
             ?? await TryResolveVideoAsync(query, cancellationToken)

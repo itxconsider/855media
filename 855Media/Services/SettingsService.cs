@@ -128,6 +128,9 @@ public partial class SettingsService()
         HardwareAccelerationMode.Auto;
 
     [ObservableProperty]
+    public partial TargetFramerate UpscalerTargetFramerate { get; set; } = TargetFramerate.Original;
+
+    [ObservableProperty]
     public partial int UpscalerMaxConcurrency { get; set; } = 2;
 
     [ObservableProperty]
@@ -203,6 +206,15 @@ public partial class SettingsService()
 
     [ObservableProperty]
     public partial string? UpscalerCameraSoftware { get; set; }
+
+    [ObservableProperty]
+    public partial string? UpscalerCameraLensModel { get; set; }
+
+    [ObservableProperty]
+    public partial string? UpscalerCameraFocalLength { get; set; }
+
+    [ObservableProperty]
+    public partial string? UpscalerCameraFNumber { get; set; }
 
     [ObservableProperty]
     public partial string? UpscalerCameraArtist { get; set; }

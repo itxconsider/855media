@@ -108,13 +108,16 @@ public partial class LocalizationManager
     public string YouTubeTabTitle => Get();
     public string TikTokTabTitle => Get();
     public string FacebookTabTitle => Get();
+    public string DramaBoxTabTitle => Get();
     public string UpscalerTabTitle => Get();
     public string YouTubePromptTitle => Get();
     public string TikTokPromptTitle => Get();
     public string FacebookPromptTitle => Get();
+    public string DramaBoxPromptTitle => Get();
     public string YouTubeWatermark => Get();
     public string TikTokWatermark => Get();
     public string FacebookWatermark => Get();
+    public string DramaBoxWatermark => Get();
     public string StatusFilterAll => Get();
     public string StatusFilterActive => Get();
     public string StatusFilterCompleted => Get();

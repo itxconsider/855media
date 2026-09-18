@@ -20,6 +20,9 @@ public class MovieCharacterData
     public string? RvcIndexPath { get; set; }
     public int PitchShift { get; set; }
     public string EmotionPreset { get; set; } = "Normal";
+    public string ToneArchetype { get; set; } = "Hero";
+    public double ToneWarmth { get; set; } = 0.25;
+    public double ToneClarity { get; set; } = 0.35;
     public string ColorTag { get; set; } = "#3B82F6";
 }
 
@@ -62,6 +65,8 @@ public class DubbingProject
     public double VoiceVolume { get; set; } = 1.0;
     public bool EnableDynamicDucking { get; set; } = true;
     public bool EnableAiStemSeparation { get; set; } = true;
+    public bool EnableLoudnessNormalization { get; set; } = true;
+    public bool EnableSmartTimeStretch { get; set; } = true;
 
     // Cast & Dialogue Timelines
     public List<MovieCharacterData> Characters { get; set; } = [];

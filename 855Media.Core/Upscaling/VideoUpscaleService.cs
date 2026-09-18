@@ -613,6 +613,15 @@ public partial class VideoUpscaleService
             );
         }
 
+        if (job.TargetFramerate != TargetFramerate.Original)
+        {
+            int targetFps = (int)job.TargetFramerate;
+            filterParts.Add($"fps={targetFps}");
+            log(
+                $"[Target Framerate] Converted output framerate to {targetFps} FPS (fps={targetFps})"
+            );
+        }
+
         var videoFilter = string.Join(",", filterParts);
 
         log(
@@ -621,9 +630,20 @@ public partial class VideoUpscaleService
                 : "[Hardware Acceleration] Using CPU software encoder"
         );
 
+        // Multithread Safety: allocate a balanced thread count per worker based on total logical cores
+        // On low-profile CPUs (<= 4-8 cores), avoid starving the OS/UI; on high-core CPUs, allow rich throughput
+        int totalLogicalCores = Environment.ProcessorCount;
+        int safeThreads = totalLogicalCores switch
+        {
+            <= 4 => Math.Max(2, totalLogicalCores - 1), // 2-4 core: reserve at least 1 core for OS
+            <= 8 => Math.Max(3, totalLogicalCores - 2), // 6-8 core: reserve 2 cores
+            <= 16 => Math.Min(totalLogicalCores - 2, 12), // 12-16 core: up to 12 threads
+            _ => Math.Min(totalLogicalCores - 4, 24), // 20-32+ core (Ultra 7, Ryzen 9): up to 24 threads
+        };
+
         var arguments = new List<string> { "-y" };
         arguments.AddRange(hwArgs);
-        arguments.AddRange(["-threads", "4"]);
+        arguments.AddRange(["-threads", safeThreads.ToString(CultureInfo.InvariantCulture)]);
         arguments.AddRange(["-i", job.FilePath, "-vf", videoFilter]);
         arguments.AddRange(encoderArgs);
 
@@ -646,8 +666,6 @@ public partial class VideoUpscaleService
                 "0:s?",
                 "-c:s",
                 "copy",
-                "-map_metadata",
-                "0",
             ]);
         }
         else
@@ -664,10 +682,19 @@ public partial class VideoUpscaleService
                 "0:s?",
                 "-c:s",
                 "copy",
-                "-map_metadata",
-                "0",
             ]);
         }
+
+        var metaArgs =
+            job.CameraMetadata?.BuildFfmpegMetadataArgs(
+                Path.GetFileNameWithoutExtension(job.FilePath)
+            )
+            ?? ["-map_metadata", "-1"];
+        arguments.AddRange(metaArgs);
+        log(
+            $"[Metadata Normalization] Applied profile: {job.CameraMetadata?.ProfileType.ToString() ?? "CleanNormalized"}"
+        );
+
         arguments.Add(job.OutputFilePath);
 
         log($"Executing FFmpeg pipeline: {string.Join(" ", arguments)}");
@@ -708,9 +735,8 @@ public partial class VideoUpscaleService
                 "0:s?",
                 "-c:s",
                 "copy",
-                "-map_metadata",
-                "0",
             ]);
+            fallbackArgs.AddRange(metaArgs);
             fallbackArgs.Add(job.OutputFilePath);
 
             await ExecuteProcessWithProgressAsync(
@@ -1024,8 +1050,16 @@ public partial class VideoUpscaleService
         // Stage 3: Re-encode & Mux with Full Stream Preservation (All original audio tracks & subtitles)
         log("Muxing upscaled frames with full original audio & subtitle streams...");
         double baseFps = job.VideoFps > 0 ? job.VideoFps : (job.Fps > 0 ? job.Fps : 30.0);
+        if (job.TargetFramerate != TargetFramerate.Original)
+        {
+            baseFps = (double)job.TargetFramerate;
+        }
         double outputFps = Math.Clamp(baseFps * job.PlaybackSpeed, 1.0, 240.0);
-        if (Math.Abs(job.PlaybackSpeed - 1.0) >= 0.001)
+        if (job.TargetFramerate != TargetFramerate.Original)
+        {
+            log($"[Target Framerate] Set output framerate to {outputFps:0.##} fps");
+        }
+        else if (Math.Abs(job.PlaybackSpeed - 1.0) >= 0.001)
         {
             log(
                 $"[Playback Speed] Adjusted output framerate from {baseFps:0.##} fps to {outputFps:0.##} fps ({job.PlaybackSpeed:0.##}x speed factor)"
@@ -1807,6 +1841,17 @@ public partial class VideoUpscaleService
             process.Start();
             ChildProcessTracker.Track(process);
             job.ActiveProcess = process;
+
+            // Multithread Safety: Set background priority so low-profile CPUs never freeze the Windows UI or mouse
+            try
+            {
+                process.PriorityClass = ProcessPriorityClass.BelowNormal;
+            }
+            catch
+            {
+                // Non-fatal if OS security denies priority adjustment
+            }
+
             process.BeginErrorReadLine();
             process.BeginOutputReadLine();
 

@@ -151,7 +151,65 @@ public class MovieCharacter : INotifyPropertyChanged
         }
     }
 
-    private string _emotionPreset = "Normal Dialogue";
+    private string _baseSpeechRate = "+15%";
+    public string BaseSpeechRate
+    {
+        get => _baseSpeechRate;
+        set
+        {
+            if (_baseSpeechRate != value)
+            {
+                _baseSpeechRate = value;
+                OnPropertyChanged(nameof(BaseSpeechRate));
+                ApplyEmotionPreset(EmotionPreset);
+            }
+        }
+    }
+
+    private string _toneArchetype = "Hero";
+    public string ToneArchetype
+    {
+        get => _toneArchetype;
+        set
+        {
+            if (_toneArchetype != value)
+            {
+                _toneArchetype = value;
+                OnPropertyChanged(nameof(ToneArchetype));
+                ApplyToneArchetype(value);
+            }
+        }
+    }
+
+    private double _toneWarmth = 0.25;
+    public double ToneWarmth
+    {
+        get => _toneWarmth;
+        set
+        {
+            if (Math.Abs(_toneWarmth - value) > 0.01)
+            {
+                _toneWarmth = value;
+                OnPropertyChanged(nameof(ToneWarmth));
+            }
+        }
+    }
+
+    private double _toneClarity = 0.35;
+    public double ToneClarity
+    {
+        get => _toneClarity;
+        set
+        {
+            if (Math.Abs(_toneClarity - value) > 0.01)
+            {
+                _toneClarity = value;
+                OnPropertyChanged(nameof(ToneClarity));
+            }
+        }
+    }
+
+    private string _emotionPreset = "Normal";
     public string EmotionPreset
     {
         get => _emotionPreset;
@@ -166,11 +224,22 @@ public class MovieCharacter : INotifyPropertyChanged
         }
     }
 
+    public void ApplyToneArchetype(string archetype)
+    {
+        var arch = ActorEmotionEngine.GetArchetype(archetype);
+        PitchShift = arch.DefaultPitchShift;
+        BaseSpeechRate = arch.DefaultRate;
+        ToneWarmth = arch.DefaultWarmth;
+        ToneClarity = arch.DefaultClarity;
+        _emotionPreset = arch.DefaultEmotion;
+        OnPropertyChanged(nameof(EmotionPreset));
+        ApplyEmotionPreset(arch.DefaultEmotion);
+    }
+
     public void ApplyEmotionPreset(string preset)
     {
         var cfg = ActorEmotionEngine.GetConfig(preset);
-        PitchShift = cfg.PitchShiftOffset;
-        SpeechRate = ActorEmotionEngine.ComputeEffectiveRate(SpeechRate, cfg.TtsRateOffset);
+        SpeechRate = ActorEmotionEngine.ComputeEffectiveRate(BaseSpeechRate, cfg.TtsRateOffset);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -440,6 +509,10 @@ public class DubbingJob : INotifyPropertyChanged
     public bool EnableDynamicDucking { get; set; } = true; // Sidechain ducking during speech
 
     public bool EnableAiStemSeparation { get; set; } // GPU Demucs / MDX-Net stem isolation
+
+    public bool EnableLoudnessNormalization { get; set; } = true; // EBU R128 (-16 LUFS) broadcast loudness mastering
+
+    public bool EnableSmartTimeStretch { get; set; } = true; // Auto-fit translated speech to visual scene duration
 
     public ObservableCollection<MovieCharacter> Characters { get; } = [];
 

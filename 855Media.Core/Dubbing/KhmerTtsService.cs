@@ -8,6 +8,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using _855Media.Core.Utils;
 
 namespace _855Media.Core.Dubbing;
 
@@ -37,6 +38,22 @@ public class KhmerTtsService
         var dir = Path.GetDirectoryName(outputMp3Path);
         if (!string.IsNullOrWhiteSpace(dir))
             Directory.CreateDirectory(dir);
+
+        // 0. If Google Khmer Voice was selected explicitly, synthesize via Google TTS
+        if (voiceName.Contains("google", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                await SynthesizeViaGoogleTtsAsync(text, outputMp3Path, cancellationToken);
+                if (File.Exists(outputMp3Path) && new FileInfo(outputMp3Path).Length > 100)
+                    return;
+            }
+            catch
+            {
+                // Fall back to Microsoft Edge-TTS
+                voiceName = "km-KH-SreymomNeural";
+            }
+        }
 
         // 1. Try local Edge-TTS CLI runner first (100% stable with exact gender voice)
         try
@@ -200,7 +217,8 @@ public class KhmerTtsService
         if (proc == null)
             return false;
 
-        await proc.WaitForExitAsync(cancellationToken);
+        ChildProcessTracker.Track(proc);
+        await proc.WaitForExitWithCancellationAsync(cancellationToken);
         return proc.ExitCode == 0
             && File.Exists(outputMp3Path)
             && new FileInfo(outputMp3Path).Length > 100;

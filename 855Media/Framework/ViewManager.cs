@@ -19,6 +19,7 @@ public partial class ViewManager
             YouTubeDownloaderViewModel => new YouTubeDownloaderView(),
             TikTokDownloaderViewModel => new TikTokDownloaderView(),
             FacebookDownloaderViewModel => new FacebookDownloaderView(),
+            DramaBoxDownloaderViewModel => new DramaBoxDownloaderView(),
             AuthSetupViewModel => new AuthSetupView(),
             DownloadMultipleSetupViewModel => new DownloadMultipleSetupView(),
             DownloadSingleSetupViewModel => new DownloadSingleSetupView(),

@@ -231,6 +231,23 @@
                             </ComboBox>
                         </StackPanel>
 
+                        <!-- Target Framerate (FPS) -->
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,2,16,2">
+                            <materialIcons:MaterialIcon Kind="Filmstrip" Width="16" Height="16" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                            <TextBlock Text="FPS:" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                            <ComboBox
+                                ItemsSource="{Binding AvailableTargetFramerates}"
+                                SelectedItem="{Binding SelectedTargetFramerate}"
+                                Width="185"
+                                ToolTip.Tip="Target Output Framerate: Preserve original source FPS or convert to 60 FPS / 120 FPS ultra-smooth playback.">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Converter={x:Static converters:EnumDisplayNameConverter.Instance}}" FontSize="12" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </StackPanel>
+
                         <!-- Enhancements & Performance Flyout -->
                         <Button
                             Theme="{DynamicResource MaterialOutlineButton}"
@@ -449,6 +466,20 @@
                                                         </StackPanel>
 
                                                         <StackPanel Spacing="4">
+                                                            <TextBlock Text="Target Output Framerate (FPS):" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                                            <ComboBox
+                                                                ItemsSource="{Binding AvailableTargetFramerates}"
+                                                                SelectedItem="{Binding SelectedTargetFramerate}"
+                                                                HorizontalAlignment="Stretch">
+                                                                <ComboBox.ItemTemplate>
+                                                                    <DataTemplate>
+                                                                        <TextBlock Text="{Binding Converter={x:Static converters:EnumDisplayNameConverter.Instance}}" FontSize="12" />
+                                                                    </DataTemplate>
+                                                                </ComboBox.ItemTemplate>
+                                                            </ComboBox>
+                                                        </StackPanel>
+
+                                                        <StackPanel Spacing="4">
                                                             <TextBlock Text="Scratch / Temp Directory:" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                                             <Grid ColumnDefinitions="*,Auto,Auto">
                                                                 <TextBox
@@ -514,8 +545,22 @@
                                                             </Grid>
                                                             <StackPanel Spacing="4">
                                                                 <TextBlock Text="Software / Firmware:" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                                                <TextBox Text="{Binding CameraSoftware}" Watermark="e.g. v3.00, iOS 17.5.1" FontSize="12" />
+                                                                <TextBox Text="{Binding CameraSoftware}" Watermark="e.g. v3.00, iOS 19.1" FontSize="12" />
                                                             </StackPanel>
+                                                            <StackPanel Spacing="4">
+                                                                <TextBlock Text="Lens Model / Hardware:" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                                                <TextBox Text="{Binding CameraLensModel}" Watermark="e.g. iPhone 17 Pro Max back triple camera 24mm f/1.78" FontSize="12" />
+                                                            </StackPanel>
+                                                            <Grid ColumnDefinitions="*,*">
+                                                                <StackPanel Grid.Column="0" Spacing="4" Margin="0,0,4,0">
+                                                                    <TextBlock Text="Focal Length:" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                                                    <TextBox Text="{Binding CameraFocalLength}" Watermark="e.g. 24mm" FontSize="12" />
+                                                                </StackPanel>
+                                                                <StackPanel Grid.Column="1" Spacing="4" Margin="4,0,0,0">
+                                                                    <TextBlock Text="Aperture / f-stop:" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                                                    <TextBox Text="{Binding CameraFNumber}" Watermark="e.g. 1.78" FontSize="12" />
+                                                                </StackPanel>
+                                                            </Grid>
                                                         </StackPanel>
 
                                                         <CheckBox

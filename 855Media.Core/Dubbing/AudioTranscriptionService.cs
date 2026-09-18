@@ -229,7 +229,7 @@ public class AudioTranscriptionService
 
                 proc.Start();
                 ChildProcessTracker.Track(proc);
-                await proc.WaitForExitAsync(cancellationToken);
+                await proc.WaitForExitWithCancellationAsync(cancellationToken);
 
                 if (proc.ExitCode != 0 || !File.Exists(audioWavPath))
                 {
@@ -346,14 +346,14 @@ public class AudioTranscriptionService
         proc.BeginOutputReadLine();
         proc.BeginErrorReadLine();
 
-        await proc.WaitForExitAsync(cancellationToken);
+        await proc.WaitForExitWithCancellationAsync(cancellationToken);
 
         if (File.Exists(outputSrt))
         {
             var content = await File.ReadAllTextAsync(outputSrt, Encoding.UTF8, cancellationToken);
             var parsed = new SubtitleTranslationService().ParseSrt(content);
             if (parsed.Count > 0)
-                return parsed;
+                return DialogueSenseEngine.ReconstructSentences(parsed);
         }
         else
         {
@@ -396,7 +396,7 @@ public class AudioTranscriptionService
         proc.Start();
         ChildProcessTracker.Track(proc);
         proc.BeginErrorReadLine();
-        await proc.WaitForExitAsync(cancellationToken);
+        await proc.WaitForExitWithCancellationAsync(cancellationToken);
 
         // Parse silence intervals
         var silenceEndRegex = new Regex(@"silence_end:\s*([0-9\.]+)", RegexOptions.Compiled);
@@ -471,6 +471,30 @@ public class AudioTranscriptionService
 
             lastSpeechStart = silenceEnd;
         }
+
+        // Capture trailing speech interval between the last silence and end of audio
+        try
+        {
+            var totalDuration = await DubbingPipeline.GetAudioDurationAsync(
+                ffmpegPath,
+                wavPath,
+                cancellationToken
+            );
+            if (totalDuration.TotalSeconds > lastSpeechStart + 0.4)
+            {
+                segments.Add(
+                    new SubtitleSegment
+                    {
+                        Index = index++,
+                        StartTime = TimeSpan.FromSeconds(lastSpeechStart),
+                        EndTime = totalDuration,
+                        OriginalText = $"[Dialogue segment {index - 1}]",
+                        KhmerText = string.Empty,
+                    }
+                );
+            }
+        }
+        catch { }
 
         // If no speech intervals detected, create an initial dialogue segment
         if (segments.Count == 0)

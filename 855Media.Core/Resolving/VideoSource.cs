@@ -5,4 +5,5 @@ public enum VideoSource
     YouTube,
     TikTok,
     FacebookPhoto,
+    DramaBox,
 }

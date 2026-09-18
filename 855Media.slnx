@@ -11,4 +11,5 @@
   <Project Path="855Media/855Media.csproj" />
   <Project Path="855Media.Core/855Media.Core.csproj" />
   <Project Path="tools/855Media.KeyGen/855Media.KeyGen.csproj" />
+  <Project Path="tools/WiFiCamHost/WiFiCamHost.csproj" />
 </Solution>

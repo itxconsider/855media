@@ -19,12 +19,13 @@ public class TikTokDownloader(IReadOnlyList<Cookie>? initialCookies = null)
         string filePath,
         VideoInfo video,
         Container container,
+        VideoDownloadOption? downloadOption = null,
         string? ffmpegPath = null,
         IProgress<Percentage>? progress = null,
         CancellationToken cancellationToken = default
     )
     {
-        var (cookieFilePath, isTemp) = await TryCreateCookieFileAsync(
+        var (cookieFilePath, isTemp) = await YtDlp.TryCreateCookieFileAsync(
             initialCookies,
             cancellationToken
         );
@@ -53,22 +54,32 @@ public class TikTokDownloader(IReadOnlyList<Cookie>? initialCookies = null)
             arguments.Add(actualFFmpegPath);
         }
 
-        if (container.IsAudioOnly)
+        var isAudio = container.IsAudioOnly || downloadOption?.IsAudioOnly == true;
+        if (isAudio)
         {
             if (!string.IsNullOrWhiteSpace(actualFFmpegPath))
             {
                 arguments.Add("--extract-audio");
                 arguments.Add("--audio-format");
-                arguments.Add(container == Container.Mp3 ? "mp3" : "vorbis");
+                arguments.Add(container == Container.Mp3 ? "mp3" : "m4a");
             }
         }
         else
         {
+            var heightFilter = downloadOption?.VideoQuality?.MaxHeight is { } mh and > 0
+                ? $"[height<={mh}]"
+                : "";
+
             arguments.Add("--format-sort");
-            arguments.Add("vcodec:h264,res,fps");
+            arguments.Add(
+                downloadOption?.VideoQuality?.MaxHeight is { } sortHeight and > 0
+                    ? $"res:{sortHeight},vcodec:h264,fps"
+                    : "vcodec:h264,res,fps"
+            );
+
             arguments.Add("--format");
             arguments.Add(
-                "bestvideo[vcodec^=avc1]+bestaudio/bestvideo[vcodec^=avc]+bestaudio/best[vcodec^=avc1]/best[vcodec^=avc]/bestvideo*+bestaudio/best"
+                $"bestvideo{heightFilter}[vcodec^=avc1]+bestaudio/bestvideo{heightFilter}[vcodec^=avc]+bestaudio/best{heightFilter}[vcodec^=avc1]/best{heightFilter}[vcodec^=avc]/bestvideo*{heightFilter}+bestaudio/best{heightFilter}/best"
             );
         }
 

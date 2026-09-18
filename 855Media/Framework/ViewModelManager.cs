@@ -44,6 +44,15 @@ public class ViewModelManager(IServiceProvider services)
         return viewModel;
     }
 
+    public DramaBoxDownloaderViewModel GetDramaBoxDownloaderViewModel(
+        DashboardViewModel dashboardViewModel
+    )
+    {
+        var viewModel = services.GetRequiredService<DramaBoxDownloaderViewModel>();
+        viewModel.Initialize(dashboardViewModel);
+        return viewModel;
+    }
+
     public HistoryViewModel GetHistoryViewModel(DashboardViewModel dashboardViewModel)
     {
         var viewModel = services.GetRequiredService<HistoryViewModel>();

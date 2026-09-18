@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using _855Media.Core.Utils;
 
 namespace _855Media.Core.Dubbing;
 
@@ -20,24 +21,32 @@ public static class VoiceGenderDetector
 {
     public const string GenderMale = "Male";
     public const string GenderFemale = "Female";
+    public const string GenderChild = "Child";
 
     // Standard human pitch thresholds (Hz)
     // Adult Male: typically 85 Hz - 160 Hz (average ~120 Hz)
-    // Adult Female: typically 165 Hz - 265+ Hz (average ~210 Hz)
+    // Adult Female: typically 165 Hz - 265 Hz (average ~210 Hz)
+    // Child / High Voice: typically 265 Hz - 450+ Hz (average ~330 Hz)
     public const double GenderPitchThresholdHz = 165.0;
+    public const double ChildPitchThresholdHz = 265.0;
+
+    private static readonly Regex ChildTextRegex = new(
+        @"\b(child|kid|kids|baby|toddler|little\s+girl|little\s+boy|daughter|son|childhood)\b|\[(?:child|kid|baby|girl|boy)\]|\((?:child|kid|baby|girl|boy)\)|ក្មេង|កូន|កូនស្រី|កូនប្រុស|កុមារ|កុមារី|ទារក|ក្មេងស្រី|ក្មេងប្រុស|ចៅ",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled
+    );
 
     private static readonly Regex FemaleTextRegex = new(
-        @"\b(she|her|hers|herself|woman|women|girl|girls|lady|ladies|mother|mom|mama|sister|sisters|wife|daughter|daughters|queen|miss|mrs|ms|madam|madame|aunt|princess|actress|mary|elena|sarah|lisa|anna|sreymom|female|heroine|honey|baby|darling)\b|\[(?:female|heroine|woman|girl|actor\s*b)\]|\((?:female|heroine|woman|girl|actor\s*b)\)|actor\s*b|នាង|កញ្ញា|លោកស្រី|អ្នកស្រី|អ្នកមីង|យាយ|ម៉ែ|ម្តាយ|បងស្រី|អូនស្រី|ក្មេងស្រី|អូនសម្លាញ់",
+        @"\b(she|her|hers|herself|woman|women|girl|girls|lady|ladies|mother|mom|mama|sister|sisters|wife|queen|miss|mrs|ms|madam|madame|aunt|princess|actress|mary|elena|sarah|lisa|anna|sreymom|female|heroine|honey|darling)\b|\[(?:female|heroine|woman|actor\s*b)\]|\((?:female|heroine|woman|actor\s*b)\)|actor\s*b|នាង|កញ្ញា|លោកស្រី|អ្នកស្រី|អ្នកមីង|យាយ|ម៉ែ|ម្តាយ|បងស្រី|អូនស្រី|អូនសម្លាញ់",
         RegexOptions.IgnoreCase | RegexOptions.Compiled
     );
 
     private static readonly Regex MaleTextRegex = new(
-        @"\b(he|him|his|himself|man|men|boy|boys|guy|guys|gentleman|gentlemen|father|dad|papa|brother|brothers|husband|son|sons|king|mr|sir|uncle|prince|actor|john|david|michael|jack|piseth|male|hero)\b|\[(?:male|hero|man|boy|actor\s*a)\]|\((?:male|hero|man|boy|actor\s*a)\)|actor\s*a|លោក|លោកពូ|តា|ឪពុក|ពុក|បងប្រុស|អូនប្រុស|ក្មេងប្រុស|បុរស",
+        @"\b(he|him|his|himself|man|men|boy|boys|guy|guys|gentleman|gentlemen|father|dad|papa|brother|brothers|husband|king|mr|sir|uncle|prince|actor|john|david|michael|jack|piseth|male|hero)\b|\[(?:male|hero|man|actor\s*a)\]|\((?:male|hero|man|actor\s*a)\)|actor\s*a|លោក|លោកពូ|តា|ឪពុក|ពុក|បងប្រុស|អូនប្រុស|បុរស",
         RegexOptions.IgnoreCase | RegexOptions.Compiled
     );
 
     /// <summary>
-    /// Scans dialogue text for gender cues.
+    /// Scans dialogue text for gender and child cues.
     /// </summary>
     public static string? DetectGenderFromText(string? originalText, string? khmerText)
     {
@@ -45,9 +54,12 @@ public static class VoiceGenderDetector
         if (string.IsNullOrWhiteSpace(text))
             return null;
 
+        int childHits = ChildTextRegex.Matches(text).Count;
         int femaleHits = FemaleTextRegex.Matches(text).Count;
         int maleHits = MaleTextRegex.Matches(text).Count;
 
+        if (childHits > femaleHits && childHits > maleHits)
+            return GenderChild;
         if (femaleHits > maleHits)
             return GenderFemale;
         if (maleHits > femaleHits)
@@ -66,8 +78,8 @@ public static class VoiceGenderDetector
 
         int frameSize = (int)(sampleRate * 0.04); // 40ms frame
         int hopSize = (int)(sampleRate * 0.02); // 20ms hop
-        int minLag = (int)(sampleRate / 350.0); // ~350 Hz upper limit (~45 samples)
-        int maxLag = (int)(sampleRate / 75.0); // ~75 Hz lower limit (~213 samples)
+        int minLag = (int)(sampleRate / 480.0); // ~480 Hz upper limit for child speech (~33 samples)
+        int maxLag = (int)(sampleRate / 70.0); // ~70 Hz lower limit for deep male speech (~228 samples)
 
         var pitchValues = new List<double>();
 
@@ -217,7 +229,8 @@ public static class VoiceGenderDetector
             using var proc = Process.Start(psi);
             if (proc != null)
             {
-                await proc.WaitForExitAsync(cancellationToken);
+                ChildProcessTracker.Track(proc);
+                await proc.WaitForExitWithCancellationAsync(cancellationToken);
             }
 
             if (!File.Exists(tempPcmWav) || new FileInfo(tempPcmWav).Length < 44)
@@ -279,14 +292,23 @@ public static class VoiceGenderDetector
                 double confidence;
                 string source;
 
-                if (pitchHz >= GenderPitchThresholdHz)
+                if (pitchHz >= ChildPitchThresholdHz)
+                {
+                    finalGender = GenderChild;
+                    confidence = Math.Min(
+                        0.95,
+                        0.75 + ((pitchHz - ChildPitchThresholdHz) / 100.0) * 0.20
+                    );
+                    source = "Acoustic Pitch (Child/High)";
+                }
+                else if (pitchHz >= GenderPitchThresholdHz)
                 {
                     finalGender = GenderFemale;
                     confidence = Math.Min(
                         0.95,
                         0.70 + ((pitchHz - GenderPitchThresholdHz) / 100.0) * 0.25
                     );
-                    source = "Acoustic Pitch";
+                    source = "Acoustic Pitch (Female)";
                 }
                 else if (pitchHz > 0)
                 {
@@ -295,7 +317,7 @@ public static class VoiceGenderDetector
                         0.95,
                         0.70 + ((GenderPitchThresholdHz - pitchHz) / 80.0) * 0.25
                     );
-                    source = "Acoustic Pitch";
+                    source = "Acoustic Pitch (Male)";
                 }
                 else if (!string.IsNullOrWhiteSpace(textGender))
                 {

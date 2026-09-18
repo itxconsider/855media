@@ -61,6 +61,29 @@ public class CameraMetadataSettingsTests
     }
 
     [Fact]
+    public void BuildFfmpegMetadataArgs_IPhone17ProMaxProfile_InjectsAppleOpticalMetadata()
+    {
+        var settings = new CameraMetadataSettings
+        {
+            ProfileType = CameraProfileType.AppleIPhone17ProMax,
+            InjectCurrentTimestamp = true
+        };
+
+        var args = settings.BuildFfmpegMetadataArgs("iphone17_clip");
+
+        Assert.Contains("-map_metadata", args);
+        Assert.Contains("-1", args);
+        Assert.Contains("make=Apple", args);
+        Assert.Contains("model=iPhone 17 Pro Max", args);
+        Assert.Contains("software=iOS 19.1", args);
+        Assert.Contains("encoder=Apple HEVC Encoder", args);
+        Assert.Contains("com.apple.quicktime.model=iPhone 17 Pro Max", args);
+        Assert.Contains("lens_model=iPhone 17 Pro Max back triple camera 24mm f/1.78", args);
+        Assert.Contains("focal_length=24mm", args);
+        Assert.Contains("f_number=1.78", args);
+    }
+
+    [Fact]
     public void BuildFfmpegMetadataArgs_None_PreservesOriginalMapping()
     {
         var settings = new CameraMetadataSettings

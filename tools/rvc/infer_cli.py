@@ -21,7 +21,7 @@ def main():
     sys.path.insert(0, applio_root)
     os.chdir(applio_root)
 
-    from core import run_infer_script
+    from core import run_infer_script  # type: ignore
 
     print(f"[RVC CLI] Converting {args.input} -> {args.output}")
     print(f"[RVC CLI] Model: {args.model}")

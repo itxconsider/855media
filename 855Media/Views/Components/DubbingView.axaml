@@ -6,7 +6,8 @@
     xmlns:dubbing="clr-namespace:_855Media.Core.Dubbing;assembly=855Media.Core"
     xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
     xmlns:asyncImageLoader="clr-namespace:AsyncImageLoader;assembly=AsyncImageLoader.Avalonia"
-    x:DataType="components:DubbingViewModel">
+    x:DataType="components:DubbingViewModel"
+    DragDrop.AllowDrop="True">
 
     <Grid RowDefinitions="Auto,Auto,*,Auto">
         <!--  Row 0: Top Project & Session Management Bar (DaVinci / Premiere Pro Style)  -->
@@ -146,6 +147,18 @@
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <materialIcons:MaterialIcon Kind="VideoPlusOutline" Width="18" Height="18" Foreground="{DynamicResource AntigravityAccentBrush}" />
                             <TextBlock Text="Open Video" VerticalAlignment="Center" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button
+                        Command="{Binding ExtendCurrentVideoCommand}"
+                        Theme="{DynamicResource MaterialOutlineButton}"
+                        CornerRadius="8"
+                        Padding="10,8"
+                        ToolTip.Tip="Add another video to extend / concatenate to the current video timeline">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <materialIcons:MaterialIcon Kind="MoviePlusOutline" Width="18" Height="18" Foreground="#38BDF8" />
+                            <TextBlock Text="+ Extend Video" VerticalAlignment="Center" FontWeight="SemiBold" />
                         </StackPanel>
                     </Button>
 
@@ -411,10 +424,19 @@
                             </Grid>
 
                             <StackPanel Spacing="8" IsVisible="{Binding EnableVoiceCloning}">
-                                <Grid ColumnDefinitions="*,Auto,Auto">
+                                <Grid ColumnDefinitions="*,Auto,Auto,Auto">
                                     <TextBlock Text="Target Voice Model (.pth)" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
                                     <Button
                                         Grid.Column="1"
+                                        Command="{Binding ImportRvcModelCommand}"
+                                        Theme="{DynamicResource MaterialFlatButton}"
+                                        Padding="4"
+                                        Margin="0,0,4,0"
+                                        ToolTip.Tip="Import new RVC voice model (.pth + .index)">
+                                        <materialIcons:MaterialIcon Kind="PlusCircleOutline" Width="16" Height="16" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                    </Button>
+                                    <Button
+                                        Grid.Column="2"
                                         Command="{Binding RefreshRvcModelsCommand}"
                                         Theme="{DynamicResource MaterialFlatButton}"
                                         Padding="4"
@@ -423,7 +445,7 @@
                                         <materialIcons:MaterialIcon Kind="Refresh" Width="16" Height="16" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                     </Button>
                                     <Button
-                                        Grid.Column="2"
+                                        Grid.Column="3"
                                         Command="{Binding OpenRvcModelsFolderCommand}"
                                         Theme="{DynamicResource MaterialFlatButton}"
                                         Padding="4"
@@ -687,6 +709,60 @@
                                         </ComboBox>
                                     </StackPanel>
 
+                                    <!-- Actor Tone Archetype -->
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="Actor Tone Archetype" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        <ComboBox
+                                            ItemsSource="{Binding AvailableArchetypeNames}"
+                                            SelectedItem="{Binding SelectedCharacterToneArchetype, Mode=TwoWay}"
+                                            HorizontalAlignment="Stretch" />
+                                    </StackPanel>
+
+                                    <!-- Emotion & Acting Tone -->
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="Emotion &amp; Delivery Tone" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        <ComboBox
+                                            ItemsSource="{Binding AvailableEmotionPresets}"
+                                            SelectedItem="{Binding SelectedCharacterEmotionPreset, Mode=TwoWay}"
+                                            HorizontalAlignment="Stretch" />
+                                    </StackPanel>
+
+                                    <!-- Voice Pitch Shift (Works for both standard TTS and RVC) -->
+                                    <StackPanel Spacing="2">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Text="Voice Pitch Register" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                            <TextBlock
+                                                Grid.Column="1"
+                                                Text="{Binding SelectedCharacter.PitchShift, StringFormat='{}{0:+0;-0;0} semitones'}"
+                                                FontSize="11"
+                                                FontWeight="SemiBold"
+                                                Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                        </Grid>
+                                        <Slider
+                                            Minimum="-12"
+                                            Maximum="12"
+                                            Value="{Binding SelectedCharacter.PitchShift, Mode=TwoWay}" />
+                                    </StackPanel>
+
+                                    <!-- Acoustic Tone EQ: Warmth & Clarity -->
+                                    <Grid ColumnDefinitions="*,*" Margin="0,2">
+                                        <StackPanel Grid.Column="0" Margin="0,0,4,0" Spacing="2">
+                                            <Grid ColumnDefinitions="*,Auto">
+                                                <TextBlock Text="Chest Warmth" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                                <TextBlock Grid.Column="1" Text="{Binding SelectedCharacter.ToneWarmth, StringFormat='{}{0:+0.0;-0.0;0.0}'}" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                            </Grid>
+                                            <Slider Minimum="-1.0" Maximum="1.0" Value="{Binding SelectedCharacter.ToneWarmth, Mode=TwoWay}" Height="20" />
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Column="1" Margin="4,0,0,0" Spacing="2">
+                                            <Grid ColumnDefinitions="*,Auto">
+                                                <TextBlock Text="Vocal Clarity" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                                <TextBlock Grid.Column="1" Text="{Binding SelectedCharacter.ToneClarity, StringFormat='{}{0:+0.0;-0.0;0.0}'}" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                            </Grid>
+                                            <Slider Minimum="-1.0" Maximum="1.0" Value="{Binding SelectedCharacter.ToneClarity, Mode=TwoWay}" Height="20" />
+                                        </StackPanel>
+                                    </Grid>
+
                                     <!-- Speech Pace / Speed Rate -->
                                     <StackPanel Spacing="4">
                                         <TextBlock Text="Dialogue Speaking Pace" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
@@ -719,10 +795,19 @@
                                             <StackPanel Spacing="8" IsVisible="{Binding SelectedCharacter.EnableRvc}">
                                                 <!-- RVC Model Dropdown -->
                                                 <StackPanel Spacing="4">
-                                                    <Grid ColumnDefinitions="*,Auto">
+                                                    <Grid ColumnDefinitions="*,Auto,Auto">
                                                         <TextBlock Text="Voice Model (.pth)" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                                         <Button
                                                             Grid.Column="1"
+                                                            Command="{Binding ImportRvcModelCommand}"
+                                                            Theme="{DynamicResource MaterialFlatButton}"
+                                                            Padding="2"
+                                                            Margin="0,0,2,0"
+                                                            ToolTip.Tip="Import new RVC voice model (.pth + .index)">
+                                                            <materialIcons:MaterialIcon Kind="PlusCircleOutline" Width="12" Height="12" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                                        </Button>
+                                                        <Button
+                                                            Grid.Column="2"
                                                             Command="{Binding RefreshRvcModelsCommand}"
                                                             Theme="{DynamicResource MaterialFlatButton}"
                                                             Padding="2"
@@ -734,23 +819,6 @@
                                                         ItemsSource="{Binding AvailableRvcModels}"
                                                         SelectedItem="{Binding SelectedCharacterRvcModel}"
                                                         HorizontalAlignment="Stretch" />
-                                                </StackPanel>
-
-                                                <!-- Pitch Shift Slider -->
-                                                <StackPanel Spacing="2">
-                                                    <Grid ColumnDefinitions="*,Auto">
-                                                        <TextBlock Text="Voice Pitch Shift" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                                        <TextBlock
-                                                            Grid.Column="1"
-                                                            Text="{Binding SelectedCharacter.PitchShift, StringFormat='{}{0:+0;-0;0} semitones'}"
-                                                            FontSize="11"
-                                                            FontWeight="SemiBold"
-                                                            Foreground="{DynamicResource AntigravityAccentBrush}" />
-                                                    </Grid>
-                                                    <Slider
-                                                        Minimum="-12"
-                                                        Maximum="12"
-                                                        Value="{Binding SelectedCharacter.PitchShift, Mode=TwoWay}" />
                                                 </StackPanel>
 
                                                 <!-- Feature Index Indicator -->
@@ -802,6 +870,24 @@
                                     <TextBlock Text="Auto-lowers BGM/SFX only while characters speak" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" TextWrapping="Wrap" />
                                 </StackPanel>
                                 <ToggleSwitch Grid.Column="1" IsChecked="{Binding EnableDynamicDucking}" />
+                            </Grid>
+
+                            <!-- Broadcast Loudness Normalization (EBU R128) -->
+                            <Grid ColumnDefinitions="*,Auto">
+                                <StackPanel Grid.Column="0" Spacing="2">
+                                    <TextBlock Text="Broadcast Loudness Mastering (EBU R128)" FontSize="12" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                    <TextBlock Text="Normalizes soundtrack to -16 LUFS for cinema &amp; streaming clarity" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ToggleSwitch Grid.Column="1" IsChecked="{Binding EnableLoudnessNormalization}" />
+                            </Grid>
+
+                            <!-- Smart Lip-Sync Auto-Fit (Time-Stretch) -->
+                            <Grid ColumnDefinitions="*,Auto">
+                                <StackPanel Grid.Column="0" Spacing="2">
+                                    <TextBlock Text="Smart Lip-Sync Auto-Fit" FontSize="12" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                    <TextBlock Text="Conforms speech tempo (0.7x-1.6x) so voices fit scene cuts" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ToggleSwitch Grid.Column="1" IsChecked="{Binding EnableSmartTimeStretch}" />
                             </Grid>
 
                             <!-- Background Music / Action Volume -->
@@ -935,9 +1021,30 @@
                             <Grid RowDefinitions="Auto,*" Margin="0,8,0,0">
                                 <!-- Dialogue Header & Action Toolbar -->
                                 <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
-                                    <StackPanel Grid.Column="0" Spacing="2">
-                                        <TextBlock Text="Dialogue &amp; Khmer Translation Script" FontWeight="SemiBold" FontSize="14" Foreground="{DynamicResource AntigravityTextBrush}" />
-                                        <TextBlock Text="Edit timing, speaker assignments, and Khmer translated dialogue" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                    <StackPanel Grid.Column="0" Spacing="3" VerticalAlignment="Center">
+                                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                            <TextBlock Text="Dialogue &amp; Khmer Translation Script" FontWeight="SemiBold" FontSize="14" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                            <!-- Live Activity Status Pills -->
+                                            <Border IsVisible="{Binding IsScanningAudio}" Background="#1E3A8A" CornerRadius="10" Padding="8,2" VerticalAlignment="Center">
+                                                <StackPanel Orientation="Horizontal" Spacing="5">
+                                                    <ProgressBar Theme="{DynamicResource MaterialCircularProgressBar}" Width="11" Height="11" IsIndeterminate="True" Foreground="#60A5FA" />
+                                                    <TextBlock Text="Scanning Speech &amp; Voices..." FontSize="11" FontWeight="SemiBold" Foreground="#93C5FD" />
+                                                </StackPanel>
+                                            </Border>
+                                            <Border IsVisible="{Binding IsExtractingScenes}" Background="#064E3B" CornerRadius="10" Padding="8,2" VerticalAlignment="Center">
+                                                <StackPanel Orientation="Horizontal" Spacing="5">
+                                                    <ProgressBar Theme="{DynamicResource MaterialCircularProgressBar}" Width="11" Height="11" IsIndeterminate="True" Foreground="#34D399" />
+                                                    <TextBlock Text="Extracting Scenes..." FontSize="11" FontWeight="SemiBold" Foreground="#6EE7B7" />
+                                                </StackPanel>
+                                            </Border>
+                                            <Border IsVisible="{Binding IsTranslating}" Background="#581C87" CornerRadius="10" Padding="8,2" VerticalAlignment="Center">
+                                                <StackPanel Orientation="Horizontal" Spacing="5">
+                                                    <ProgressBar Theme="{DynamicResource MaterialCircularProgressBar}" Width="11" Height="11" IsIndeterminate="True" Foreground="#C084FC" />
+                                                    <TextBlock Text="Translating to Khmer..." FontSize="11" FontWeight="SemiBold" Foreground="#E9D5FF" />
+                                                </StackPanel>
+                                            </Border>
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding StatusMessage}" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" TextTrimming="CharacterEllipsis" />
                                     </StackPanel>
 
                                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
@@ -950,8 +1057,10 @@
                                             Padding="9,5"
                                             ToolTip.Tip="Scan audio speech with Whisper &amp; AI Demucs stem isolation">
                                             <StackPanel Orientation="Horizontal" Spacing="5">
-                                                <materialIcons:MaterialIcon Kind="Microphone" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentBrush}" />
-                                                <TextBlock Text="Scan Audio" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                                                <materialIcons:MaterialIcon Kind="Microphone" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentBrush}" IsVisible="{Binding !IsScanningAudio}" />
+                                                <ProgressBar Theme="{DynamicResource MaterialCircularProgressBar}" Width="14" Height="14" IsIndeterminate="True" Foreground="{DynamicResource AntigravityAccentBrush}" IsVisible="{Binding IsScanningAudio}" />
+                                                <TextBlock Text="Scan Audio" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" IsVisible="{Binding !IsScanningAudio}" />
+                                                <TextBlock Text="Scanning..." FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityAccentBrush}" IsVisible="{Binding IsScanningAudio}" />
                                             </StackPanel>
                                         </Button>
 
@@ -963,8 +1072,10 @@
                                             Padding="9,5"
                                             ToolTip.Tip="Extract video scene frame snapshots for each dialogue line">
                                             <StackPanel Orientation="Horizontal" Spacing="5">
-                                                <materialIcons:MaterialIcon Kind="ImageMultipleOutline" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentBrush}" />
-                                                <TextBlock Text="Extract Scenes" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                                                <materialIcons:MaterialIcon Kind="ImageMultipleOutline" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentBrush}" IsVisible="{Binding !IsExtractingScenes}" />
+                                                <ProgressBar Theme="{DynamicResource MaterialCircularProgressBar}" Width="14" Height="14" IsIndeterminate="True" Foreground="{DynamicResource AntigravityAccentBrush}" IsVisible="{Binding IsExtractingScenes}" />
+                                                <TextBlock Text="Extract Scenes" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" IsVisible="{Binding !IsExtractingScenes}" />
+                                                <TextBlock Text="Extracting..." FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityAccentBrush}" IsVisible="{Binding IsExtractingScenes}" />
                                             </StackPanel>
                                         </Button>
 
@@ -974,10 +1085,12 @@
                                             Theme="{DynamicResource MaterialOutlineButton}"
                                             CornerRadius="6"
                                             Padding="9,5"
-                                            ToolTip.Tip="Translate all dialogue lines into Khmer (ភាសាខ្មែរ)">
+                                            ToolTip.Tip="Fast parallel translate all dialogue lines into Khmer (ភាសាខ្មែរ)">
                                             <StackPanel Orientation="Horizontal" Spacing="5">
-                                                <materialIcons:MaterialIcon Kind="Translate" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentBrush}" />
-                                                <TextBlock Text="Auto Translate" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                                                <materialIcons:MaterialIcon Kind="Translate" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentBrush}" IsVisible="{Binding !IsTranslating}" />
+                                                <ProgressBar Theme="{DynamicResource MaterialCircularProgressBar}" Width="14" Height="14" IsIndeterminate="True" Foreground="{DynamicResource AntigravityAccentBrush}" IsVisible="{Binding IsTranslating}" />
+                                                <TextBlock Text="Auto Translate" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" IsVisible="{Binding !IsTranslating}" />
+                                                <TextBlock Text="Translating..." FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityAccentBrush}" IsVisible="{Binding IsTranslating}" />
                                             </StackPanel>
                                         </Button>
 
@@ -1010,10 +1123,10 @@
                                             Theme="{DynamicResource MaterialOutlineButton}"
                                             CornerRadius="6"
                                             Padding="9,5"
-                                            ToolTip.Tip="Auto-detect male/female voice from audio pitch (F0) &amp; dialogue cues and assign characters">
+                                            ToolTip.Tip="Auto-detect Male, Female, and Child voice actors from pitch (F0) &amp; dialogue cues">
                                             <StackPanel Orientation="Horizontal" Spacing="5">
-                                                <materialIcons:MaterialIcon Kind="GenderMaleFemale" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentBrush}" />
-                                                <TextBlock Text="Auto Male/Female" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                                                <materialIcons:MaterialIcon Kind="AccountMultipleOutline" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                                <TextBlock Text="Auto Voices (M/F/Child)" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
                                             </StackPanel>
                                         </Button>
 
@@ -1062,6 +1175,76 @@
                                             </StackPanel>
                                         </Button>
 
+                                        <!-- Improve Original Dialogue -->
+                                        <Button
+                                            Command="{Binding ImproveOriginalDialogueCommand}"
+                                            Theme="{DynamicResource MaterialOutlineButton}"
+                                            CornerRadius="6"
+                                            Padding="9,5"
+                                            ToolTip.Tip="Improve Original Dialogue: cleans noise tags ([Music], [Applause]), removes stutter hallucinations, and formats complete sense-to-sense sentences">
+                                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                                <materialIcons:MaterialIcon Kind="TextBoxCheckOutline" Width="15" Height="15" Foreground="#38BDF8" />
+                                                <TextBlock Text="Improve Original Dialogue" FontWeight="SemiBold" FontSize="12" Foreground="#38BDF8" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+
+                                        <!-- Polish Movie Khmer Dialogue -->
+                                        <Button
+                                            Command="{Binding PolishKhmerDialogueCommand}"
+                                            Theme="{DynamicResource MaterialOutlineButton}"
+                                            CornerRadius="6"
+                                            Padding="9,5"
+                                            ToolTip.Tip="Polish dialogue: transforms mechanical machine translations into natural, idiomatic Cambodian movie dialogue">
+                                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                                <materialIcons:MaterialIcon Kind="AutoFix" Width="15" Height="15" Foreground="#10B981" />
+                                                <TextBlock Text="Polish Movie Khmer" FontWeight="SemiBold" FontSize="12" Foreground="#10B981" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+
+                                        <!-- Auto-Fit All Audio to Scene Cuts -->
+                                        <Button
+                                            Command="{Binding AutoFitAllSegmentsAudioCommand}"
+                                            Theme="{DynamicResource MaterialOutlineButton}"
+                                            CornerRadius="6"
+                                            Padding="9,5"
+                                            ToolTip.Tip="Automatically scales speech tempo (atempo) so Khmer audio matches scene duration slots">
+                                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                                <materialIcons:MaterialIcon Kind="TimerSyncOutline" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                                <TextBlock Text="Auto-Fit Audio" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+
+                                        <!-- Export Production Deliverables Menu -->
+                                        <Button
+                                            Theme="{DynamicResource MaterialOutlineButton}"
+                                            CornerRadius="6"
+                                            Padding="9,5"
+                                            ToolTip.Tip="Export production deliverables (Khmer subtitles, bilingual dual subtitles, vocal track)">
+                                            <Button.Flyout>
+                                                <MenuFlyout Placement="BottomEdgeAlignedRight">
+                                                    <MenuItem Header="Export Khmer Subtitles (.srt / .vtt)" Command="{Binding ExportKhmerSubtitlesCommand}">
+                                                        <MenuItem.Icon>
+                                                            <materialIcons:MaterialIcon Kind="SubtitlesOutline" Width="16" Height="16" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                                        </MenuItem.Icon>
+                                                    </MenuItem>
+                                                    <MenuItem Header="Export Bilingual Dual Subtitles (.srt)" Command="{Binding ExportBilingualSubtitlesCommand}">
+                                                        <MenuItem.Icon>
+                                                            <materialIcons:MaterialIcon Kind="Translate" Width="16" Height="16" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                                        </MenuItem.Icon>
+                                                    </MenuItem>
+                                                    <MenuItem Header="Export Clean Dubbed Vocal Track (.wav)" Command="{Binding ExportDubbedVocalTrackCommand}">
+                                                        <MenuItem.Icon>
+                                                            <materialIcons:MaterialIcon Kind="MicrophoneVariant" Width="16" Height="16" Foreground="#10B981" />
+                                                        </MenuItem.Icon>
+                                                    </MenuItem>
+                                                </MenuFlyout>
+                                            </Button.Flyout>
+                                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                                <materialIcons:MaterialIcon Kind="ExportVariant" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                                <TextBlock Text="Export ▾" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+
                                         <Button
                                             Command="{Binding AddSegmentCommand}"
                                             Theme="{DynamicResource MaterialOutlineButton}"
@@ -1094,6 +1277,61 @@
                                     CornerRadius="8"
                                     VerticalScrollBarVisibility="Visible"
                                     HorizontalScrollBarVisibility="Auto">
+                                    <DataGrid.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="Auto-Fit Audio to Scene Duration"
+                                                      Command="{Binding AutoFitSegmentAudioCommand}"
+                                                      CommandParameter="{Binding SelectedSegment}">
+                                                <MenuItem.Icon>
+                                                    <materialIcons:MaterialIcon Kind="AutoFix" Width="16" Height="16" Foreground="#F59E0B" />
+                                                </MenuItem.Icon>
+                                            </MenuItem>
+                                            <MenuItem Header="Split Line Sense-to-Sense (Matching Clauses)"
+                                                      Command="{Binding SplitSegmentInHalfCommand}"
+                                                      CommandParameter="{Binding SelectedSegment}">
+                                                <MenuItem.Icon>
+                                                    <materialIcons:MaterialIcon Kind="CallSplit" Width="16" Height="16" Foreground="#38BDF8" />
+                                                </MenuItem.Icon>
+                                            </MenuItem>
+                                            <MenuItem Header="Merge with Next Line (Sense-to-Sense)"
+                                                      Command="{Binding MergeWithNextSegmentCommand}"
+                                                      CommandParameter="{Binding SelectedSegment}">
+                                                <MenuItem.Icon>
+                                                    <materialIcons:MaterialIcon Kind="CallMerge" Width="16" Height="16" Foreground="#34D399" />
+                                                </MenuItem.Icon>
+                                            </MenuItem>
+                                            <MenuItem Header="Improve Original Dialogue for This Line"
+                                                      Command="{Binding ImproveOriginalDialogueCommand}"
+                                                      CommandParameter="{Binding SelectedSegment}">
+                                                <MenuItem.Icon>
+                                                    <materialIcons:MaterialIcon Kind="TextBoxCheckOutline" Width="16" Height="16" Foreground="#38BDF8" />
+                                                </MenuItem.Icon>
+                                            </MenuItem>
+                                            <Separator />
+                                            <MenuItem Header="Cycle Character Actor"
+                                                      Command="{Binding CycleNextCharacterCommand}"
+                                                      CommandParameter="{Binding SelectedSegment}">
+                                                <MenuItem.Icon>
+                                                    <materialIcons:MaterialIcon Kind="AccountSwitchOutline" Width="16" Height="16" Foreground="#818CF8" />
+                                                </MenuItem.Icon>
+                                            </MenuItem>
+                                            <MenuItem Header="Cycle Acting Emotion"
+                                                      Command="{Binding CycleSegmentEmotionCommand}"
+                                                      CommandParameter="{Binding SelectedSegment}">
+                                                <MenuItem.Icon>
+                                                    <materialIcons:MaterialIcon Kind="EmoticonExcitedOutline" Width="16" Height="16" Foreground="#EC4899" />
+                                                </MenuItem.Icon>
+                                            </MenuItem>
+                                            <Separator />
+                                            <MenuItem Header="Delete Line"
+                                                      Command="{Binding RemoveSegmentCommand}"
+                                                      CommandParameter="{Binding SelectedSegment}">
+                                                <MenuItem.Icon>
+                                                    <materialIcons:MaterialIcon Kind="DeleteOutline" Width="16" Height="16" Foreground="#EF4444" />
+                                                </MenuItem.Icon>
+                                            </MenuItem>
+                                        </ContextMenu>
+                                    </DataGrid.ContextMenu>
                                     <DataGrid.Columns>
                                         <DataGridTextColumn Header="#" Binding="{Binding Index}" Width="36" IsReadOnly="True" />
                                         
@@ -1289,6 +1527,64 @@
                                                         Foreground="{DynamicResource AntigravityTextBrush}"
                                                         VerticalAlignment="Center"
                                                         Padding="6,4" />
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+
+                                        <DataGridTemplateColumn Header="Actions" Width="135">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate DataType="dubbing:SubtitleSegment">
+                                                    <StackPanel Orientation="Horizontal" Spacing="2" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                        <Button
+                                                            Command="{Binding $parent[UserControl].((components:DubbingViewModel)DataContext).AutoFitSegmentAudioCommand}"
+                                                            CommandParameter="{Binding}"
+                                                            Theme="{DynamicResource MaterialFlatButton}"
+                                                            Padding="4,3"
+                                                            CornerRadius="4"
+                                                            ToolTip.Tip="Auto-Fit audio duration to match scene duration">
+                                                            <materialIcons:MaterialIcon Kind="AutoFix" Width="14" Height="14" Foreground="#F59E0B" />
+                                                        </Button>
+
+                                                        <Button
+                                                            Command="{Binding $parent[UserControl].((components:DubbingViewModel)DataContext).SplitSegmentInHalfCommand}"
+                                                            CommandParameter="{Binding}"
+                                                            Theme="{DynamicResource MaterialFlatButton}"
+                                                            Padding="4,3"
+                                                            CornerRadius="4"
+                                                            ToolTip.Tip="Split line sense-to-sense at natural clause (matching translation)">
+                                                            <materialIcons:MaterialIcon Kind="CallSplit" Width="14" Height="14" Foreground="#38BDF8" />
+                                                        </Button>
+
+                                                        <Button
+                                                            Command="{Binding $parent[UserControl].((components:DubbingViewModel)DataContext).MergeWithNextSegmentCommand}"
+                                                            CommandParameter="{Binding}"
+                                                            Theme="{DynamicResource MaterialFlatButton}"
+                                                            Padding="4,3"
+                                                            CornerRadius="4"
+                                                            ToolTip.Tip="Merge with next line (sense-to-sense matching)">
+                                                            <materialIcons:MaterialIcon Kind="CallMerge" Width="14" Height="14" Foreground="#34D399" />
+                                                        </Button>
+
+                                                        <Button
+                                                            Command="{Binding $parent[UserControl].((components:DubbingViewModel)DataContext).ImproveOriginalDialogueCommand}"
+                                                            CommandParameter="{Binding}"
+                                                            Theme="{DynamicResource MaterialFlatButton}"
+                                                            Padding="4,3"
+                                                            CornerRadius="4"
+                                                            ToolTip.Tip="Improve original dialogue (clean noise tags, stutters, and formatting)">
+                                                            <materialIcons:MaterialIcon Kind="TextBoxCheckOutline" Width="14" Height="14" Foreground="#38BDF8" />
+                                                        </Button>
+
+                                                        <Button
+                                                            Command="{Binding $parent[UserControl].((components:DubbingViewModel)DataContext).RemoveSegmentCommand}"
+                                                            CommandParameter="{Binding}"
+                                                            Theme="{DynamicResource MaterialFlatButton}"
+                                                            Padding="4,3"
+                                                            CornerRadius="4"
+                                                            ToolTip.Tip="Delete this line">
+                                                            <materialIcons:MaterialIcon Kind="DeleteOutline" Width="14" Height="14" Foreground="#EF4444" />
+                                                        </Button>
+                                                    </StackPanel>
                                                 </DataTemplate>
                                             </DataGridTemplateColumn.CellTemplate>
                                         </DataGridTemplateColumn>
@@ -1651,7 +1947,17 @@
                                                             <ToggleSwitch Grid.Column="1" IsChecked="{Binding EnableRvc, Mode=TwoWay}" />
                                                         </Grid>
 
-                                                        <!-- Emotion / Tone Preset -->
+                                                        <!-- Tone Archetype -->
+                                                        <StackPanel Spacing="3">
+                                                            <TextBlock Text="Tone Archetype" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                                            <ComboBox
+                                                                ItemsSource="{Binding $parent[UserControl].((components:DubbingViewModel)DataContext).AvailableArchetypeNames}"
+                                                                SelectedItem="{Binding ToneArchetype, Mode=TwoWay}"
+                                                                HorizontalAlignment="Stretch"
+                                                                CornerRadius="6" />
+                                                        </StackPanel>
+
+                                                        <!-- Emotion / Delivery Preset -->
                                                         <StackPanel Spacing="3">
                                                             <TextBlock Text="Emotion &amp; Acting Tone" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                                             <ComboBox
@@ -1661,10 +1967,29 @@
                                                                 CornerRadius="6" />
                                                         </StackPanel>
 
+                                                        <!-- Vocal Warmth & Clarity Sliders -->
+                                                        <Grid ColumnDefinitions="*,*" Margin="0,2">
+                                                            <StackPanel Grid.Column="0" Margin="0,0,4,0" Spacing="2">
+                                                                <Grid ColumnDefinitions="*,Auto">
+                                                                    <TextBlock Text="Chest Warmth" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                                                    <TextBlock Grid.Column="1" Text="{Binding ToneWarmth, StringFormat='{}{0:+0.0;-0.0;0.0}'}" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                                                </Grid>
+                                                                <Slider Minimum="-1.0" Maximum="1.0" Value="{Binding ToneWarmth, Mode=TwoWay}" Height="20" />
+                                                            </StackPanel>
+
+                                                            <StackPanel Grid.Column="1" Margin="4,0,0,0" Spacing="2">
+                                                                <Grid ColumnDefinitions="*,Auto">
+                                                                    <TextBlock Text="Vocal Clarity" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                                                    <TextBlock Grid.Column="1" Text="{Binding ToneClarity, StringFormat='{}{0:+0.0;-0.0;0.0}'}" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                                                </Grid>
+                                                                <Slider Minimum="-1.0" Maximum="1.0" Value="{Binding ToneClarity, Mode=TwoWay}" Height="20" />
+                                                            </StackPanel>
+                                                        </Grid>
+
                                                         <!-- Pitch Shift Slider -->
                                                         <StackPanel Spacing="2">
                                                             <Grid ColumnDefinitions="*,Auto">
-                                                                <TextBlock Text="Pitch Shift" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                                                <TextBlock Text="Pitch Register" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                                                 <TextBlock Grid.Column="1" Text="{Binding PitchShift, StringFormat='{}{0:+0;-0;0} semitones'}" FontSize="11" Foreground="{DynamicResource AntigravityTextBrush}" />
                                                             </Grid>
                                                             <Slider Minimum="-12" Maximum="12" Value="{Binding PitchShift, Mode=TwoWay}" />
@@ -2025,11 +2350,21 @@
                                 </Grid>
 
                                 <!-- Middle Row: Edit TextBoxes -->
-                                <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto,*,Auto" VerticalAlignment="Center">
+                                <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto,Auto,*,Auto,Auto" VerticalAlignment="Center">
                                     <TextBlock Grid.Column="0" Text="Line:" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,8,0" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                    <TextBox Grid.Column="1" Text="{Binding SelectedSegment.OriginalText, Mode=TwoWay}" TextWrapping="Wrap" MaxHeight="60" Watermark="Original text" Margin="0,0,8,0" />
+                                    <TextBox Grid.Column="1" Text="{Binding SelectedSegment.OriginalText, Mode=TwoWay}" TextWrapping="Wrap" MaxHeight="60" Watermark="Original text" Margin="0,0,6,0" />
                                     <Button
                                         Grid.Column="2"
+                                        Command="{Binding ImproveOriginalDialogueCommand}"
+                                        CommandParameter="{Binding SelectedSegment}"
+                                        Theme="{DynamicResource MaterialFlatButton}"
+                                        Padding="4,3"
+                                        Margin="0,0,4,0"
+                                        ToolTip.Tip="Improve original dialogue for this line (clean noise, stutters, and formatting)">
+                                        <materialIcons:MaterialIcon Kind="TextBoxCheckOutline" Width="14" Height="14" Foreground="#38BDF8" />
+                                    </Button>
+                                    <Button
+                                        Grid.Column="3"
                                         Command="{Binding TranslateSelectedLineCommand}"
                                         Theme="{DynamicResource MaterialFlatButton}"
                                         Padding="4,3"
@@ -2037,14 +2372,25 @@
                                         ToolTip.Tip="Translate this line into Khmer">
                                         <materialIcons:MaterialIcon Kind="Translate" Width="14" Height="14" Foreground="{DynamicResource AntigravityAccentBrush}" />
                                     </Button>
-                                    <TextBox Grid.Column="3" Text="{Binding SelectedSegment.KhmerText, Mode=TwoWay}" TextWrapping="Wrap" MaxHeight="60" Watermark="Khmer translation (ភាសាខ្មែរ)" />
+                                    <TextBox Grid.Column="4" Text="{Binding SelectedSegment.KhmerText, Mode=TwoWay}" TextWrapping="Wrap" MaxHeight="60" Watermark="Khmer translation (ភាសាខ្មែរ)" />
                                     <Button
-                                        Grid.Column="4"
-                                        Command="{Binding MergeWithNextSegmentCommand}"
+                                        Grid.Column="5"
+                                        Command="{Binding SplitSegmentInHalfCommand}"
+                                        CommandParameter="{Binding SelectedSegment}"
                                         Theme="{DynamicResource MaterialFlatButton}"
                                         Padding="4,3"
                                         Margin="6,0,0,0"
-                                        ToolTip.Tip="Merge with next line into a single complete sentence">
+                                        ToolTip.Tip="Split line sense-to-sense at natural clause (matching translation)">
+                                        <materialIcons:MaterialIcon Kind="CallSplit" Width="14" Height="14" Foreground="#38BDF8" />
+                                    </Button>
+                                    <Button
+                                        Grid.Column="6"
+                                        Command="{Binding MergeWithNextSegmentCommand}"
+                                        CommandParameter="{Binding SelectedSegment}"
+                                        Theme="{DynamicResource MaterialFlatButton}"
+                                        Padding="4,3"
+                                        Margin="4,0,0,0"
+                                        ToolTip.Tip="Merge with next line (sense-to-sense matching)">
                                         <materialIcons:MaterialIcon Kind="ArrowCollapseDown" Width="14" Height="14" Foreground="{DynamicResource AntigravityAccentBrush}" />
                                     </Button>
                                 </Grid>

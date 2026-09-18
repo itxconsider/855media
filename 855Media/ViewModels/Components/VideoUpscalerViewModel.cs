@@ -80,6 +80,12 @@ public partial class VideoUpscalerViewModel : ViewModelBase
     private HardwareAccelerationMode _selectedHardwareAcceleration = HardwareAccelerationMode.Auto;
 
     [ObservableProperty]
+    private TargetFramerate _selectedTargetFramerate = TargetFramerate.Original;
+
+    public IReadOnlyList<TargetFramerate> AvailableTargetFramerates { get; } =
+        Enum.GetValues<TargetFramerate>();
+
+    [ObservableProperty]
     private string _outputDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyVideos);
 
     [ObservableProperty]
@@ -276,6 +282,15 @@ public partial class VideoUpscalerViewModel : ViewModelBase
     private string? _cameraSoftware;
 
     [ObservableProperty]
+    private string? _cameraLensModel;
+
+    [ObservableProperty]
+    private string? _cameraFocalLength;
+
+    [ObservableProperty]
+    private string? _cameraFNumber;
+
+    [ObservableProperty]
     private string? _cameraArtist;
 
     [ObservableProperty]
@@ -294,6 +309,9 @@ public partial class VideoUpscalerViewModel : ViewModelBase
             Make = CameraMake,
             Model = CameraModel,
             Software = CameraSoftware,
+            LensModel = CameraLensModel,
+            FocalLength = CameraFocalLength,
+            FNumber = CameraFNumber,
             Artist = CameraArtist,
             Copyright = CameraCopyright,
             InjectCurrentTimestamp = CameraInjectTimestamp,
@@ -454,6 +472,7 @@ public partial class VideoUpscalerViewModel : ViewModelBase
             SelectedTrackingMode = _settingsService.UpscalerTrackingMode;
             SelectedCodec = _settingsService.UpscalerCodec;
             SelectedHardwareAcceleration = _settingsService.UpscalerHardwareAcceleration;
+            SelectedTargetFramerate = _settingsService.UpscalerTargetFramerate;
             MaxConcurrency = Math.Clamp(_settingsService.UpscalerMaxConcurrency, 1, 4);
             _queueManager.MaxConcurrency = MaxConcurrency;
             ScratchDirectory = _settingsService.UpscalerScratchDirectory;
@@ -500,6 +519,9 @@ public partial class VideoUpscalerViewModel : ViewModelBase
             CameraMake = _settingsService.UpscalerCameraMake;
             CameraModel = _settingsService.UpscalerCameraModel;
             CameraSoftware = _settingsService.UpscalerCameraSoftware;
+            CameraLensModel = _settingsService.UpscalerCameraLensModel;
+            CameraFocalLength = _settingsService.UpscalerCameraFocalLength;
+            CameraFNumber = _settingsService.UpscalerCameraFNumber;
             CameraArtist = _settingsService.UpscalerCameraArtist;
             CameraCopyright = _settingsService.UpscalerCameraCopyright;
             CameraInjectTimestamp = _settingsService.UpscalerCameraInjectTimestamp;
@@ -796,6 +818,19 @@ public partial class VideoUpscalerViewModel : ViewModelBase
         if (!_isRestoringSettings)
         {
             _settingsService.UpscalerHardwareAcceleration = value;
+            ScheduleDebouncedSaveSettings();
+        }
+    }
+
+    partial void OnSelectedTargetFramerateChanged(TargetFramerate value)
+    {
+        if (SelectedJob != null)
+        {
+            SelectedJob.TargetFramerate = value;
+        }
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerTargetFramerate = value;
             ScheduleDebouncedSaveSettings();
         }
     }
@@ -1113,6 +1148,33 @@ public partial class VideoUpscalerViewModel : ViewModelBase
         }
     }
 
+    partial void OnCameraLensModelChanged(string? value)
+    {
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerCameraLensModel = value;
+            ScheduleDebouncedSaveSettings();
+        }
+    }
+
+    partial void OnCameraFocalLengthChanged(string? value)
+    {
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerCameraFocalLength = value;
+            ScheduleDebouncedSaveSettings();
+        }
+    }
+
+    partial void OnCameraFNumberChanged(string? value)
+    {
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerCameraFNumber = value;
+            ScheduleDebouncedSaveSettings();
+        }
+    }
+
     partial void OnCameraArtistChanged(string? value)
     {
         if (!_isRestoringSettings)
@@ -1384,6 +1446,7 @@ public partial class VideoUpscalerViewModel : ViewModelBase
             TrackingMode = SelectedTrackingMode,
             Codec = SelectedCodec,
             HardwareAcceleration = SelectedHardwareAcceleration,
+            TargetFramerate = SelectedTargetFramerate,
             ColorGrading = GlobalColorGrading.Clone(),
             CameraMetadata = GetCurrentCameraMetadataSettings(),
             EnableDenoise = EnableDenoise,
@@ -1490,6 +1553,7 @@ public partial class VideoUpscalerViewModel : ViewModelBase
                     TrackingMode = job.TrackingMode,
                     Codec = job.Codec,
                     HardwareAcceleration = job.HardwareAcceleration,
+                    TargetFramerate = job.TargetFramerate,
                     ColorGrading = job.ColorGrading.Clone(),
                     CameraMetadata = job.CameraMetadata.Clone(),
                     EnableDenoise = job.EnableDenoise,

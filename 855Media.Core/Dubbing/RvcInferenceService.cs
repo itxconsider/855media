@@ -42,6 +42,22 @@ public class RvcInferenceService
             cur = cur.Parent;
             yield return Path.Combine(cur.FullName, "models", "voices");
         }
+
+        // Probe local Applio training export directories
+        var applioRoots = new[]
+        {
+            @"C:\Applio-3.6.4\logs",
+            @"C:\Applio\logs",
+            @"D:\Applio-3.6.4\logs",
+            @"D:\Applio\logs",
+        };
+        foreach (var a in applioRoots)
+        {
+            if (Directory.Exists(a))
+            {
+                yield return a;
+            }
+        }
     }
 
     public IReadOnlyList<RvcModelInfo> GetAvailableVoiceModels()
@@ -66,11 +82,35 @@ public class RvcInferenceService
                 var pthFiles = Directory.EnumerateFiles(dir, "*.pth", SearchOption.AllDirectories);
                 foreach (var pth in pthFiles)
                 {
+                    var fileName = Path.GetFileName(pth);
+                    // Skip training optimizer and discriminator/generator checkpoints
+                    if (
+                        fileName.StartsWith("D_", StringComparison.OrdinalIgnoreCase)
+                        || fileName.StartsWith("G_", StringComparison.OrdinalIgnoreCase)
+                        || fileName.Contains("f0D", StringComparison.OrdinalIgnoreCase)
+                        || fileName.Contains("f0G", StringComparison.OrdinalIgnoreCase)
+                    )
+                    {
+                        continue;
+                    }
+
                     var name = Path.GetFileNameWithoutExtension(pth);
+                    var parentDir = Path.GetDirectoryName(pth) ?? dir;
+                    var parentName = Path.GetFileName(parentDir);
+
+                    // If file is named like "modelname_200e_6400s.pth" inside a "modelname" directory, use clean folder name
+                    if (
+                        !string.IsNullOrEmpty(parentName)
+                        && !string.Equals(parentName, "voices", StringComparison.OrdinalIgnoreCase)
+                        && name.StartsWith(parentName, StringComparison.OrdinalIgnoreCase)
+                    )
+                    {
+                        name = parentName;
+                    }
+
                     if (!seenNames.Add(name))
                         continue;
 
-                    var parentDir = Path.GetDirectoryName(pth) ?? dir;
                     var index = Directory.EnumerateFiles(parentDir, "*.index").FirstOrDefault();
 
                     models.Add(new RvcModelInfo(name, pth, index));
@@ -84,21 +124,24 @@ public class RvcInferenceService
 
     private static string? FindRvcCliScript()
     {
-        var candidates = new[]
+        var candidates = new List<string>
         {
             Path.Combine(AppContext.BaseDirectory, "tools", "rvc", "infer_cli.py"),
-            Path.Combine(
-                AppContext.BaseDirectory,
-                "..",
-                "..",
-                "..",
-                "..",
-                "tools",
-                "rvc",
-                "infer_cli.py"
-            ),
-            @"d:\repos\855Media\tools\rvc\infer_cli.py",
+            Path.Combine(Directory.GetCurrentDirectory(), "tools", "rvc", "infer_cli.py"),
         };
+
+        // Walk up from AppContext.BaseDirectory
+        DirectoryInfo? cur = null;
+        try
+        {
+            cur = new DirectoryInfo(AppContext.BaseDirectory);
+        }
+        catch { }
+        for (int i = 0; i < 6 && cur?.Parent != null; i++)
+        {
+            cur = cur.Parent;
+            candidates.Add(Path.Combine(cur.FullName, "tools", "rvc", "infer_cli.py"));
+        }
 
         foreach (var c in candidates)
         {
@@ -116,16 +159,46 @@ public class RvcInferenceService
 
     private static string? FindPythonExecutable()
     {
-        var candidates = new[]
+        var candidates = new List<string>
         {
             @"C:\Applio-3.6.4\env\python.exe",
             Path.Combine(AppContext.BaseDirectory, "python", "python.exe"),
+            Path.Combine(AppContext.BaseDirectory, "env", "python.exe"),
+            Path.Combine(AppContext.BaseDirectory, "env", "Scripts", "python.exe"),
         };
+
+        DirectoryInfo? cur = null;
+        try
+        {
+            cur = new DirectoryInfo(AppContext.BaseDirectory);
+        }
+        catch { }
+        for (int i = 0; i < 6 && cur?.Parent != null; i++)
+        {
+            cur = cur.Parent;
+            candidates.Add(Path.Combine(cur.FullName, "env", "Scripts", "python.exe"));
+            candidates.Add(Path.Combine(cur.FullName, "env", "python.exe"));
+            candidates.Add(Path.Combine(cur.FullName, "python", "python.exe"));
+        }
 
         foreach (var c in candidates)
         {
             if (File.Exists(c))
                 return c;
+        }
+
+        // Check system PATH
+        var pathEnv = Environment.GetEnvironmentVariable("PATH");
+        if (!string.IsNullOrWhiteSpace(pathEnv))
+        {
+            foreach (var part in pathEnv.Split(Path.PathSeparator))
+            {
+                if (string.IsNullOrWhiteSpace(part))
+                    continue;
+                var py = Path.Combine(part.Trim(), "python.exe");
+                if (File.Exists(py))
+                    return py;
+            }
         }
 
         return null;
@@ -214,7 +287,7 @@ public class RvcInferenceService
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
 
-            await process.WaitForExitAsync(cancellationToken);
+            await process.WaitForExitWithCancellationAsync(cancellationToken);
 
             if (
                 process.ExitCode == 0
@@ -256,7 +329,7 @@ public class RvcInferenceService
             );
             process.Start();
             ChildProcessTracker.Track(process);
-            await process.WaitForExitAsync(cancellationToken);
+            await process.WaitForExitWithCancellationAsync(cancellationToken);
 
             if (process.ExitCode == 0 && File.Exists(outputAudioPath))
                 return;

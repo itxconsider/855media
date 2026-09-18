@@ -1,0 +1,210 @@
+<UserControl
+    x:Class="_855Media.Views.Components.DramaBoxDownloaderView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:components="clr-namespace:_855Media.ViewModels.Components"
+    xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+    x:DataType="components:DramaBoxDownloaderViewModel">
+
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+        <StackPanel
+            MaxWidth="880"
+            Margin="48,44,48,24"
+            HorizontalAlignment="Center"
+            Spacing="24">
+
+            <!-- Title & Branding -->
+            <StackPanel HorizontalAlignment="Center" Spacing="12">
+                <Border
+                    Width="60"
+                    Height="60"
+                    HorizontalAlignment="Center"
+                    Background="#E11D48"
+                    BoxShadow="0 6 24 0 #4DE11D48"
+                    CornerRadius="16">
+                    <materialIcons:MaterialIcon
+                        Width="36"
+                        Height="36"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Foreground="#FFFFFF"
+                        Kind="MoviePlay" />
+                </Border>
+
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    FontSize="28"
+                    FontWeight="Bold"
+                    Foreground="{DynamicResource AntigravityTextBrush}"
+                    Text="{Binding LocalizationManager.DramaBoxPromptTitle}" />
+
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    FontSize="14"
+                    Foreground="{DynamicResource AntigravityMutedBrush}"
+                    Text="Download HD mini-drama series, full movies, and individual episodes with ultra-fast stream copy" />
+            </StackPanel>
+
+            <!-- Query Box -->
+            <StackPanel HorizontalAlignment="Center" Spacing="12">
+                <Border
+                    Width="680"
+                    Height="48"
+                    ClipToBounds="True"
+                    Background="{DynamicResource AntigravityPanelBrush}"
+                    BorderBrush="#E11D48"
+                    BorderThickness="1"
+                    BoxShadow="0 4 20 0 #26E11D48"
+                    CornerRadius="24">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBox
+                            Grid.Column="0"
+                            Padding="20,0,12,0"
+                            VerticalContentAlignment="Center"
+                            AcceptsReturn="False"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            FontSize="15"
+                            Foreground="{DynamicResource AntigravityTextBrush}"
+                            Text="{Binding Query}"
+                            Theme="{DynamicResource SoloTextBox}"
+                            Watermark="{Binding LocalizationManager.DramaBoxWatermark}" />
+
+                        <Button
+                            Grid.Column="1"
+                            Width="64"
+                            VerticalAlignment="Stretch"
+                            Background="#E11D48"
+                            Command="{Binding ProcessQueryCommand}"
+                            CornerRadius="0,24,24,0"
+                            Foreground="#FFFFFF"
+                            IsDefault="True"
+                            Theme="{DynamicResource MaterialFlatButton}">
+                            <materialIcons:MaterialIcon Width="22" Height="22" Kind="Download" />
+                        </Button>
+                    </Grid>
+                </Border>
+            </StackPanel>
+
+            <!-- DramaBox Features Overview Cards -->
+            <UniformGrid Columns="2" Width="740" Margin="0,12,0,0">
+                <Border Margin="6" Padding="16" Background="{DynamicResource AntigravityPanelBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="12">
+                    <Grid ColumnDefinitions="Auto,*">
+                        <materialIcons:MaterialIcon Grid.Column="0" Kind="PlaylistPlay" Width="28" Height="28" Foreground="#E11D48" VerticalAlignment="Top" Margin="0,2,14,0" />
+                        <StackPanel Grid.Column="1" Spacing="4">
+                            <TextBlock Text="Full Series &amp; Playlists" FontWeight="Bold" FontSize="14" Foreground="{DynamicResource AntigravityTextBrush}" />
+                            <TextBlock Text="Paste a movie or series URL to resolve all episodes and download the entire drama in batch." FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <Border Margin="6" Padding="16" Background="{DynamicResource AntigravityPanelBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="12">
+                    <Grid ColumnDefinitions="Auto,*">
+                        <materialIcons:MaterialIcon Grid.Column="0" Kind="Flash" Width="28" Height="28" Foreground="#E11D48" VerticalAlignment="Top" Margin="0,2,14,0" />
+                        <StackPanel Grid.Column="1" Spacing="4">
+                            <TextBlock Text="Ultra-Fast HLS Stream Copy" FontWeight="Bold" FontSize="14" Foreground="{DynamicResource AntigravityTextBrush}" />
+                            <TextBlock Text="Native FFmpeg HLS stream copy downloads full episodes in seconds with zero re-encoding quality loss." FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <Border Margin="6" Padding="16" Background="{DynamicResource AntigravityPanelBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="12">
+                    <Grid ColumnDefinitions="Auto,*">
+                        <materialIcons:MaterialIcon Grid.Column="0" Kind="VideoHighDefinition" Width="28" Height="28" Foreground="#E11D48" VerticalAlignment="Top" Margin="0,2,14,0" />
+                        <StackPanel Grid.Column="1" Spacing="4">
+                            <TextBlock Text="Crisp HD Video" FontWeight="Bold" FontSize="14" Foreground="{DynamicResource AntigravityTextBrush}" />
+                            <TextBlock Text="Captures top 1080p and 720p drama video streams packaged directly into Windows-compatible MP4 files." FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <Border Margin="6" Padding="16" Background="{DynamicResource AntigravityPanelBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="12">
+                    <Grid ColumnDefinitions="Auto,*">
+                        <materialIcons:MaterialIcon Grid.Column="0" Kind="MusicNote" Width="28" Height="28" Foreground="#E11D48" VerticalAlignment="Top" Margin="0,2,14,0" />
+                        <StackPanel Grid.Column="1" Spacing="4">
+                            <TextBlock Text="OST &amp; Audio Extraction" FontWeight="Bold" FontSize="14" Foreground="{DynamicResource AntigravityTextBrush}" />
+                            <TextBlock Text="Extract background music, soundtrack, and audio dialogue into high-bitrate MP3 or M4A tracks." FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </UniformGrid>
+
+            <!-- DramaBox Episode Length & VIP Info Callout -->
+            <Border
+                Width="740"
+                Margin="0,4,0,0"
+                Padding="16,14"
+                Background="{DynamicResource AntigravityElevatedBrush}"
+                BorderBrush="#40E11D48"
+                BorderThickness="1"
+                CornerRadius="10">
+                <Grid ColumnDefinitions="Auto,*">
+                    <materialIcons:MaterialIcon
+                        Grid.Column="0"
+                        Kind="InformationOutline"
+                        Width="22"
+                        Height="22"
+                        Foreground="#E11D48"
+                        VerticalAlignment="Top"
+                        Margin="0,2,14,0" />
+                    <StackPanel Grid.Column="1" Spacing="6">
+                        <TextBlock
+                            FontSize="13"
+                            FontWeight="Bold"
+                            Foreground="{DynamicResource AntigravityTextBrush}"
+                            Text="Micro-Drama Episode Length &amp; VIP Previews" />
+                        <TextBlock
+                            FontSize="12"
+                            Foreground="{DynamicResource AntigravityMutedBrush}"
+                            LineHeight="18"
+                            TextWrapping="Wrap">
+                            <Run Text="• " FontWeight="Bold" Foreground="#E11D48" />
+                            <Run Text="DramaBox series are vertical micro-dramas (" />
+                            <Run Text="typically 1 to 2.5 minutes per full episode" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" />
+                            <Run Text="). A 2-minute video is the complete, uncut episode." />
+                            <LineBreak />
+                            <Run Text="• " FontWeight="Bold" Foreground="#E11D48" />
+                            <Run Text="DramaBox provides the first 10–12 episodes for free. Subsequent episodes (Ep 13+) are VIP-locked by DramaBox and will download as " />
+                            <Run Text="15-second teaser clips" FontWeight="SemiBold" Foreground="#F59E0B" />
+                            <Run Text=" unless unlocked with an authenticated DramaBox VIP account." />
+                        </TextBlock>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Quick Tip Callout -->
+            <Border
+                Width="740"
+                Margin="0,0,0,0"
+                Padding="16,12"
+                Background="{DynamicResource AntigravityElevatedBrush}"
+                BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                BorderThickness="1"
+                CornerRadius="10">
+                <Grid ColumnDefinitions="Auto,*">
+                    <materialIcons:MaterialIcon
+                        Grid.Column="0"
+                        Kind="LightbulbOutline"
+                        Width="20"
+                        Height="20"
+                        Foreground="#F59E0B"
+                        VerticalAlignment="Center"
+                        Margin="0,0,12,0" />
+                    <TextBlock
+                        Grid.Column="1"
+                        FontSize="12"
+                        Foreground="{DynamicResource AntigravityMutedBrush}"
+                        VerticalAlignment="Center"
+                        TextWrapping="Wrap">
+                        <Run Text="Tip: " FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
+                        <Run Text="Paste an episode URL (" />
+                        <Run Text="https://www.dramaboxdb.com/ep/..." Foreground="#E11D48" />
+                        <Run Text=") for single episode download, or paste a series page (" />
+                        <Run Text="https://www.dramaboxdb.com/movie/..." Foreground="#E11D48" />
+                        <Run Text=") to download all available episodes in batch." />
+                    </TextBlock>
+                </Grid>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

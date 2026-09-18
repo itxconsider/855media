@@ -1,4 +1,4 @@
-﻿<UserControl
+<UserControl
     x:Class="_855Media.Views.Dialogs.DownloadSingleSetupView"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -84,7 +84,7 @@
                             <TextBlock Classes.audioOnly="{Binding IsAudioOnly}" FontWeight="SemiBold">
                                 <TextBlock.Styles>
                                     <Style Selector="TextBlock">
-                                        <Setter Property="Text" Value="{Binding VideoQuality, Mode=OneWay}" />
+                                        <Setter Property="Text" Value="{Binding VideoQuality, Mode=OneWay, TargetNullValue='Best Quality'}" />
 
                                         <Style Selector="^.audioOnly">
                                             <Setter Property="Text" Value="{Binding #UserControl.DataContext.LocalizationManager.AudioLabel}" />

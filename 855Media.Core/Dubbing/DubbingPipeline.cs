@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
@@ -132,6 +133,31 @@ public class DubbingPipeline
                 );
             }
 
+            // Improve original dialogue and reconstruct fragmented sentences into complete sense-to-sense dialogue
+            if (job.Segments.Count > 1)
+            {
+                var reconstructed = DialogueSenseEngine.ReconstructSentences(job.Segments);
+                if (reconstructed.Count != job.Segments.Count)
+                {
+                    Log(
+                        $"Reconstructed {job.Segments.Count} speech fragments into {reconstructed.Count} complete sense-to-sense dialogue sentences."
+                    );
+                    job.Segments.Clear();
+                    foreach (var s in reconstructed)
+                    {
+                        job.Segments.Add(s);
+                    }
+                }
+            }
+
+            foreach (var s in job.Segments)
+            {
+                s.OriginalText = DialogueSenseEngine.ImproveOriginalDialogue(
+                    s.OriginalText,
+                    job.SourceLanguage
+                );
+            }
+
             job.Progress = 35;
 
             // Stage 3: Translation to Khmer
@@ -222,13 +248,20 @@ public class DubbingPipeline
                             emotionCfg.TtsRateOffset
                         );
 
+                        // Unified pitch: Combines character's pitch shift (semitones) + emotion pitch offset
+                        var effectivePitch = ActorEmotionEngine.ComputeEffectiveTtsPitch(
+                            character?.PitchShift ?? 0,
+                            emotionCfg.TtsPitch,
+                            emotionCfg.PitchShiftOffset
+                        );
+
                         var clipPath = Path.Combine(tempDir, $"clip_{seg.Index:D4}.mp3");
                         await _ttsService.SynthesizeKhmerSpeechAsync(
                             textToSpeak,
                             clipPath,
                             voiceToUse,
                             rate: effectiveRate,
-                            pitch: emotionCfg.TtsPitch,
+                            pitch: effectivePitch,
                             volume: emotionCfg.TtsVolume,
                             cancellationToken: ct
                         );
@@ -283,18 +316,31 @@ public class DubbingPipeline
                             }
                         }
 
-                        // Apply emotional acoustic acting DSP filter (quiver/tremor for crying, breath bounce for laughing, etc.)
-                        if (!string.IsNullOrWhiteSpace(emotionCfg.FfmpegFilter))
+                        // Apply character acoustic tone & acting emotion DSP filter (chest warmth, clarity presence, sobbing quiver, etc.)
+                        var warmth = character?.ToneWarmth ?? 0.0;
+                        var clarity = character?.ToneClarity ?? 0.0;
+                        var archetype = character?.ToneArchetype;
+                        var filterString = ActorEmotionEngine.BuildActorAcousticFilter(
+                            emotionCfg.Name,
+                            warmth,
+                            clarity,
+                            archetype
+                        );
+
+                        if (!string.IsNullOrWhiteSpace(filterString))
                         {
                             var emotionalClipPath = Path.Combine(
                                 tempDir,
-                                $"clip_{seg.Index:D4}_emo.wav"
+                                $"clip_{seg.Index:D4}_tone.wav"
                             );
-                            var applied = await ActorEmotionEngine.ApplyEmotionAcousticFilterAsync(
+                            var applied = await ActorEmotionEngine.ApplyActorAcousticFilterAsync(
                                 ffmpeg,
                                 clipPath,
                                 emotionalClipPath,
                                 emotionCfg.Name,
+                                warmth,
+                                clarity,
+                                archetype,
                                 ct
                             );
                             if (
@@ -379,6 +425,7 @@ public class DubbingPipeline
                 job.VoiceVolume,
                 job.BgmVolume,
                 job.EnableDynamicDucking,
+                job.EnableLoudnessNormalization,
                 cancellationToken
             );
 
@@ -434,6 +481,145 @@ public class DubbingPipeline
         }
     }
 
+    /// <summary>
+    /// Concatenates multiple video files into a single unified extended video file.
+    /// First attempts fast stream copy (-c copy). If codecs/formats differ, re-encodes with fast x264/aac.
+    /// </summary>
+    public static async Task<bool> ConcatenateVideosAsync(
+        string ffmpegPath,
+        IReadOnlyList<string> videoPaths,
+        string outputPath,
+        IProgress<string>? progress = null,
+        CancellationToken cancellationToken = default
+    )
+    {
+        if (videoPaths == null || videoPaths.Count == 0)
+            return false;
+
+        var existingFiles = videoPaths.Where(File.Exists).ToList();
+        if (existingFiles.Count == 0)
+            return false;
+
+        if (existingFiles.Count == 1)
+        {
+            if (!string.Equals(existingFiles[0], outputPath, StringComparison.OrdinalIgnoreCase))
+            {
+                File.Copy(existingFiles[0], outputPath, overwrite: true);
+            }
+            return true;
+        }
+
+        var outDir = Path.GetDirectoryName(outputPath);
+        if (!string.IsNullOrWhiteSpace(outDir))
+            Directory.CreateDirectory(outDir);
+
+        var tempDir = Path.Combine(
+            Path.GetTempPath(),
+            "855Media_Concat_" + Guid.NewGuid().ToString("N")
+        );
+        Directory.CreateDirectory(tempDir);
+        var listFile = Path.Combine(tempDir, "concat_list.txt");
+
+        try
+        {
+            var sb = new StringBuilder();
+            foreach (var path in existingFiles)
+            {
+                var escaped = path.Replace("'", "'\\''");
+                sb.AppendLine($"file '{escaped}'");
+            }
+            await File.WriteAllTextAsync(listFile, sb.ToString(), cancellationToken);
+
+            progress?.Report($"Joining {existingFiles.Count} videos with stream copy...");
+
+            // Pass 1: Try ultra-fast stream copy
+            using (var copyProc = new Process())
+            {
+                copyProc.StartInfo.FileName = ffmpegPath;
+                copyProc.StartInfo.ArgumentList.Add("-y");
+                copyProc.StartInfo.ArgumentList.Add("-f");
+                copyProc.StartInfo.ArgumentList.Add("concat");
+                copyProc.StartInfo.ArgumentList.Add("-safe");
+                copyProc.StartInfo.ArgumentList.Add("0");
+                copyProc.StartInfo.ArgumentList.Add("-i");
+                copyProc.StartInfo.ArgumentList.Add(listFile);
+                copyProc.StartInfo.ArgumentList.Add("-c");
+                copyProc.StartInfo.ArgumentList.Add("copy");
+                copyProc.StartInfo.ArgumentList.Add(outputPath);
+                copyProc.StartInfo.UseShellExecute = false;
+                copyProc.StartInfo.CreateNoWindow = true;
+
+                copyProc.Start();
+                ChildProcessTracker.Track(copyProc);
+                await copyProc.WaitForExitWithCancellationAsync(cancellationToken);
+
+                if (
+                    copyProc.ExitCode == 0
+                    && File.Exists(outputPath)
+                    && new FileInfo(outputPath).Length > 1000
+                )
+                {
+                    progress?.Report("Videos concatenated successfully (Stream Copy).");
+                    return true;
+                }
+            }
+
+            // Pass 2: Fallback re-encode if video containers/codecs/dimensions differ
+            progress?.Report(
+                "Stream copy failed; re-encoding videos for seamless timeline extension..."
+            );
+            using (var encProc = new Process())
+            {
+                encProc.StartInfo.FileName = ffmpegPath;
+                encProc.StartInfo.ArgumentList.Add("-y");
+                encProc.StartInfo.ArgumentList.Add("-f");
+                encProc.StartInfo.ArgumentList.Add("concat");
+                encProc.StartInfo.ArgumentList.Add("-safe");
+                encProc.StartInfo.ArgumentList.Add("0");
+                encProc.StartInfo.ArgumentList.Add("-i");
+                encProc.StartInfo.ArgumentList.Add(listFile);
+                encProc.StartInfo.ArgumentList.Add("-c:v");
+                encProc.StartInfo.ArgumentList.Add("libx264");
+                encProc.StartInfo.ArgumentList.Add("-preset");
+                encProc.StartInfo.ArgumentList.Add("veryfast");
+                encProc.StartInfo.ArgumentList.Add("-crf");
+                encProc.StartInfo.ArgumentList.Add("19");
+                encProc.StartInfo.ArgumentList.Add("-c:a");
+                encProc.StartInfo.ArgumentList.Add("aac");
+                encProc.StartInfo.ArgumentList.Add("-b:a");
+                encProc.StartInfo.ArgumentList.Add("192k");
+                encProc.StartInfo.ArgumentList.Add(outputPath);
+                encProc.StartInfo.UseShellExecute = false;
+                encProc.StartInfo.CreateNoWindow = true;
+
+                encProc.Start();
+                ChildProcessTracker.Track(encProc);
+                await encProc.WaitForExitWithCancellationAsync(cancellationToken);
+
+                if (
+                    encProc.ExitCode == 0
+                    && File.Exists(outputPath)
+                    && new FileInfo(outputPath).Length > 1000
+                )
+                {
+                    progress?.Report("Videos concatenated successfully (Re-encoded).");
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        finally
+        {
+            try
+            {
+                if (Directory.Exists(tempDir))
+                    Directory.Delete(tempDir, recursive: true);
+            }
+            catch { }
+        }
+    }
+
     public static async Task<TimeSpan> GetAudioDurationAsync(
         string ffmpegPath,
         string filePath,
@@ -464,7 +650,7 @@ public class DubbingPipeline
         proc.Start();
         ChildProcessTracker.Track(proc);
         proc.BeginErrorReadLine();
-        await proc.WaitForExitAsync(cancellationToken);
+        await proc.WaitForExitWithCancellationAsync(cancellationToken);
 
         var match = System.Text.RegularExpressions.Regex.Match(
             errSb.ToString(),
@@ -481,11 +667,11 @@ public class DubbingPipeline
         return TimeSpan.Zero;
     }
 
-    private static async Task AssembleVocalTrackAsync(
+    public static async Task AssembleVocalTrackAsync(
         string ffmpegPath,
         DubbingJob job,
         string outputPath,
-        CancellationToken cancellationToken
+        CancellationToken cancellationToken = default
     )
     {
         var tempDir = Path.GetDirectoryName(outputPath)!;
@@ -593,7 +779,7 @@ public class DubbingPipeline
 
                 proc.Start();
                 ChildProcessTracker.Track(proc);
-                await proc.WaitForExitAsync(ct);
+                await proc.WaitForExitWithCancellationAsync(ct);
 
                 if (File.Exists(normClip) && new FileInfo(normClip).Length > 44)
                 {
@@ -726,31 +912,39 @@ public class DubbingPipeline
 
                 // Read existing bytes in target range
                 outFs.Seek(startByte, SeekOrigin.Begin);
-                byte[] existingBytes = new byte[bytesToWrite];
-                int read = outFs.Read(existingBytes, 0, bytesToWrite);
-
-                // Mix 16-bit PCM samples with clipping protection
-                Span<short> existingSamples = MemoryMarshal.Cast<byte, short>(
-                    existingBytes.AsSpan(0, read)
-                );
-                ReadOnlySpan<short> newSamples = MemoryMarshal.Cast<byte, short>(
-                    pcmBytes.AsSpan(0, read)
-                );
-
-                for (int s = 0; s < existingSamples.Length; s++)
+                byte[] rentedBytes = ArrayPool<byte>.Shared.Rent(bytesToWrite);
+                try
                 {
-                    int mixed = existingSamples[s] + newSamples[s];
-                    existingSamples[s] = (short)Math.Clamp(mixed, short.MinValue, short.MaxValue);
+                    int read = outFs.Read(rentedBytes, 0, bytesToWrite);
+
+                    // Mix 16-bit PCM samples with clipping protection
+                    Span<short> existingSamples = MemoryMarshal.Cast<byte, short>(
+                        rentedBytes.AsSpan(0, read)
+                    );
+                    ReadOnlySpan<short> newSamples = MemoryMarshal.Cast<byte, short>(
+                        pcmBytes.AsSpan(0, read)
+                    );
+
+                    for (int s = 0; s < existingSamples.Length; s++)
+                    {
+                        int mixed = existingSamples[s] + newSamples[s];
+                        existingSamples[s] = (short)
+                            Math.Clamp(mixed, short.MinValue, short.MaxValue);
+                    }
+
+                    // Write mixed bytes back to the timeline
+                    outFs.Seek(startByte, SeekOrigin.Begin);
+                    outFs.Write(rentedBytes, 0, read);
+
+                    // If clip extended past previously allocated length
+                    if (bytesToWrite > read)
+                    {
+                        outFs.Write(pcmBytes, read, bytesToWrite - read);
+                    }
                 }
-
-                // Write mixed bytes back to the timeline
-                outFs.Seek(startByte, SeekOrigin.Begin);
-                outFs.Write(existingBytes, 0, read);
-
-                // If clip extended past previously allocated length
-                if (bytesToWrite > read)
+                finally
                 {
-                    outFs.Write(pcmBytes, read, bytesToWrite - read);
+                    ArrayPool<byte>.Shared.Return(rentedBytes);
                 }
             }
 
@@ -809,7 +1003,7 @@ public class DubbingPipeline
         proc.StartInfo.CreateNoWindow = true;
         proc.Start();
         ChildProcessTracker.Track(proc);
-        await proc.WaitForExitAsync(cancellationToken);
+        await proc.WaitForExitWithCancellationAsync(cancellationToken);
     }
 
     private static MovieCharacter? ResolveCharacter(SubtitleSegment seg, DubbingJob job)
@@ -842,6 +1036,7 @@ public class DubbingPipeline
         double vocalVolume,
         double bgmVolume,
         bool enableDynamicDucking,
+        bool enableLoudnessNormalization,
         CancellationToken cancellationToken
     )
     {
@@ -883,12 +1078,21 @@ public class DubbingPipeline
                     $"[1:a]volume={vVol},asplit=2[sc][vocal];"
                     + $"[2:a]volume={bVol}[bgm_norm];"
                     + $"[bgm_norm][sc]sidechaincompress=threshold=0.08:ratio=4:attack=20:release=350[bgm_ducked];"
-                    + $"[vocal][bgm_ducked]amix=inputs=2:duration=first:dropout_transition=2[aout]";
+                    + $"[vocal][bgm_ducked]amix=inputs=2:duration=first:dropout_transition=2";
             }
             else
             {
                 filter =
-                    $"[1:a]volume={vVol}[vocal];[2:a]volume={bVol}[bgm];[vocal][bgm]amix=inputs=2:duration=first:dropout_transition=2[aout]";
+                    $"[1:a]volume={vVol}[vocal];[2:a]volume={bVol}[bgm];[vocal][bgm]amix=inputs=2:duration=first:dropout_transition=2";
+            }
+
+            if (enableLoudnessNormalization)
+            {
+                filter += "[mix_raw];[mix_raw]loudnorm=I=-16:TP=-1.5:LRA=11[aout]";
+            }
+            else
+            {
+                filter += "[aout]";
             }
 
             process.StartInfo.ArgumentList.Add("-filter_complex");
@@ -900,10 +1104,22 @@ public class DubbingPipeline
         }
         else
         {
-            process.StartInfo.ArgumentList.Add("-map");
-            process.StartInfo.ArgumentList.Add("0:v:0");
-            process.StartInfo.ArgumentList.Add("-map");
-            process.StartInfo.ArgumentList.Add("1:a:0");
+            if (enableLoudnessNormalization)
+            {
+                process.StartInfo.ArgumentList.Add("-filter_complex");
+                process.StartInfo.ArgumentList.Add("[1:a]loudnorm=I=-16:TP=-1.5:LRA=11[aout]");
+                process.StartInfo.ArgumentList.Add("-map");
+                process.StartInfo.ArgumentList.Add("0:v:0");
+                process.StartInfo.ArgumentList.Add("-map");
+                process.StartInfo.ArgumentList.Add("[aout]");
+            }
+            else
+            {
+                process.StartInfo.ArgumentList.Add("-map");
+                process.StartInfo.ArgumentList.Add("0:v:0");
+                process.StartInfo.ArgumentList.Add("-map");
+                process.StartInfo.ArgumentList.Add("1:a:0");
+            }
         }
 
         // Lossless video copy - instantaneous and highest visual quality
@@ -935,7 +1151,7 @@ public class DubbingPipeline
         process.Start();
         ChildProcessTracker.Track(process);
         process.BeginErrorReadLine();
-        await process.WaitForExitAsync(cancellationToken);
+        await process.WaitForExitWithCancellationAsync(cancellationToken);
 
         if (process.ExitCode != 0 || !File.Exists(outputVideoPath))
             throw new InvalidOperationException(
@@ -961,4 +1177,76 @@ public class DubbingPipeline
 
     private static string FormatTime(TimeSpan ts) =>
         $"{ts.Hours:D2}:{ts.Minutes:D2}:{ts.Seconds:D2},{ts.Milliseconds:D3}";
+
+    /// <summary>
+    /// Scales an audio clip duration to fit precisely within a visual scene timecode window using FFmpeg atempo.
+    /// Clamps tempo between 0.70x and 1.60x to avoid unnatural artifacts while ensuring dialogue does not bleed across scene cuts.
+    /// </summary>
+    public static async Task<bool> ScaleAudioClipDurationAsync(
+        string ffmpegPath,
+        string inputClipPath,
+        string outputClipPath,
+        double targetDurationSeconds,
+        CancellationToken cancellationToken = default
+    )
+    {
+        if (!File.Exists(inputClipPath) || targetDurationSeconds <= 0.2)
+            return false;
+
+        var clipDuration = await GetAudioDurationAsync(
+            ffmpegPath,
+            inputClipPath,
+            cancellationToken
+        );
+        if (clipDuration <= TimeSpan.Zero)
+            return false;
+
+        var ratio = clipDuration.TotalSeconds / targetDurationSeconds;
+        // If within 3% tolerance, no stretch needed
+        if (Math.Abs(ratio - 1.0) < 0.03)
+        {
+            if (inputClipPath != outputClipPath)
+                File.Copy(inputClipPath, outputClipPath, overwrite: true);
+            return true;
+        }
+
+        // Clamp ratio between 0.70x (slow down) and 1.60x (speed up)
+        var speed = Math.Clamp(ratio, 0.70, 1.60);
+
+        string filterStr;
+        if (speed >= 0.5 && speed <= 2.0)
+        {
+            filterStr =
+                $"atempo={speed.ToString("0.000", CultureInfo.InvariantCulture)},aformat=sample_rates=44100:channel_layouts=stereo";
+        }
+        else
+        {
+            filterStr = "aformat=sample_rates=44100:channel_layouts=stereo";
+        }
+
+        using var proc = new Process();
+        proc.StartInfo.FileName = ffmpegPath;
+        proc.StartInfo.ArgumentList.Add("-y");
+        proc.StartInfo.ArgumentList.Add("-i");
+        proc.StartInfo.ArgumentList.Add(inputClipPath);
+        proc.StartInfo.ArgumentList.Add("-filter:a");
+        proc.StartInfo.ArgumentList.Add(filterStr);
+        proc.StartInfo.ArgumentList.Add("-ar");
+        proc.StartInfo.ArgumentList.Add("44100");
+        proc.StartInfo.ArgumentList.Add("-ac");
+        proc.StartInfo.ArgumentList.Add("2");
+        proc.StartInfo.ArgumentList.Add("-c:a");
+        proc.StartInfo.ArgumentList.Add("pcm_s16le");
+        proc.StartInfo.ArgumentList.Add(outputClipPath);
+        proc.StartInfo.UseShellExecute = false;
+        proc.StartInfo.CreateNoWindow = true;
+
+        proc.Start();
+        ChildProcessTracker.Track(proc);
+        await proc.WaitForExitWithCancellationAsync(cancellationToken);
+
+        return proc.ExitCode == 0
+            && File.Exists(outputClipPath)
+            && new FileInfo(outputClipPath).Length > 1024;
+    }
 }

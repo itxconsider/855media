@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace _855Media.Core.Utils;
 
@@ -16,6 +18,36 @@ public static class ChildProcessTracker
     private static readonly object SyncLock = new();
     private static readonly HashSet<Process> TrackedProcesses = [];
     private static IntPtr _jobHandle = IntPtr.Zero;
+
+    /// <summary>
+    /// Waits for process exit asynchronously, actively terminating the entire process tree if cancellation is requested.
+    /// </summary>
+    public static async Task WaitForExitWithCancellationAsync(
+        this Process process,
+        CancellationToken cancellationToken
+    )
+    {
+        try
+        {
+            await process.WaitForExitAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+            }
+            catch
+            {
+                // Non-fatal if process already exited or access denied
+            }
+
+            throw;
+        }
+    }
 
     static ChildProcessTracker()
     {

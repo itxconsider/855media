@@ -12,6 +12,9 @@ public enum CameraProfileType
     [Display(Name = "Clean Normalized (Strip Tracking Metadata)")]
     CleanNormalized,
 
+    [Display(Name = "Apple iPhone 17 Pro Max (iOS Camera)")]
+    AppleIPhone17ProMax,
+
     [Display(Name = "Apple iPhone 15 Pro (iOS Camera)")]
     AppleIPhone15Pro,
 
@@ -34,6 +37,9 @@ public class CameraMetadataSettings
     public string? Make { get; set; }
     public string? Model { get; set; }
     public string? Software { get; set; }
+    public string? LensModel { get; set; }
+    public string? FocalLength { get; set; }
+    public string? FNumber { get; set; }
     public string? Artist { get; set; }
     public string? Copyright { get; set; }
     public bool InjectCurrentTimestamp { get; set; } = true;
@@ -46,6 +52,9 @@ public class CameraMetadataSettings
             Make = Make,
             Model = Model,
             Software = Software,
+            LensModel = LensModel,
+            FocalLength = FocalLength,
+            FNumber = FNumber,
             Artist = Artist,
             Copyright = Copyright,
             InjectCurrentTimestamp = InjectCurrentTimestamp,
@@ -64,6 +73,9 @@ public class CameraMetadataSettings
         string make = Make ?? string.Empty;
         string model = Model ?? string.Empty;
         string software = Software ?? string.Empty;
+        string lensModel = LensModel ?? string.Empty;
+        string focalLength = FocalLength ?? string.Empty;
+        string fNumber = FNumber ?? string.Empty;
         string handler = "VideoHandler";
         string encoder = "855Media Normalized Encoder";
 
@@ -76,10 +88,28 @@ public class CameraMetadataSettings
                 args.AddRange(["-metadata", "artist="]);
                 return args;
 
+            case CameraProfileType.AppleIPhone17ProMax:
+                make = string.IsNullOrWhiteSpace(make) ? "Apple" : make;
+                model = string.IsNullOrWhiteSpace(model) ? "iPhone 17 Pro Max" : model;
+                software = string.IsNullOrWhiteSpace(software) ? "iOS 19.1" : software;
+                lensModel = string.IsNullOrWhiteSpace(lensModel)
+                    ? "iPhone 17 Pro Max back triple camera 24mm f/1.78"
+                    : lensModel;
+                focalLength = string.IsNullOrWhiteSpace(focalLength) ? "24mm" : focalLength;
+                fNumber = string.IsNullOrWhiteSpace(fNumber) ? "1.78" : fNumber;
+                handler = "Core Media Video";
+                encoder = "Apple HEVC Encoder";
+                break;
+
             case CameraProfileType.AppleIPhone15Pro:
                 make = string.IsNullOrWhiteSpace(make) ? "Apple" : make;
                 model = string.IsNullOrWhiteSpace(model) ? "iPhone 15 Pro" : model;
-                software = string.IsNullOrWhiteSpace(software) ? "17.5.1" : software;
+                software = string.IsNullOrWhiteSpace(software) ? "iOS 17.5.1" : software;
+                lensModel = string.IsNullOrWhiteSpace(lensModel)
+                    ? "iPhone 15 Pro back camera 24mm f/1.78"
+                    : lensModel;
+                focalLength = string.IsNullOrWhiteSpace(focalLength) ? "24mm" : focalLength;
+                fNumber = string.IsNullOrWhiteSpace(fNumber) ? "1.78" : fNumber;
                 handler = "Core Media Video";
                 encoder = "Apple H.264 Encoder";
                 break;
@@ -88,6 +118,9 @@ public class CameraMetadataSettings
                 make = string.IsNullOrWhiteSpace(make) ? "Sony" : make;
                 model = string.IsNullOrWhiteSpace(model) ? "ILCE-7M4" : model;
                 software = string.IsNullOrWhiteSpace(software) ? "v3.00" : software;
+                lensModel = string.IsNullOrWhiteSpace(lensModel)
+                    ? "FE 24-70mm F2.8 GM II"
+                    : lensModel;
                 handler = "Sony Video Media Handler";
                 encoder = "Sony XAVC S Encoder";
                 break;
@@ -96,6 +129,9 @@ public class CameraMetadataSettings
                 make = string.IsNullOrWhiteSpace(make) ? "Canon" : make;
                 model = string.IsNullOrWhiteSpace(model) ? "Canon EOS R6 Mark II" : model;
                 software = string.IsNullOrWhiteSpace(software) ? "Firmware 1.3.0" : software;
+                lensModel = string.IsNullOrWhiteSpace(lensModel)
+                    ? "RF24-70mm F2.8 L IS USM"
+                    : lensModel;
                 handler = "Canon Video Media Handler";
                 encoder = "Canon MP4 Encoder";
                 break;
@@ -104,6 +140,9 @@ public class CameraMetadataSettings
                 make = string.IsNullOrWhiteSpace(make) ? "Samsung" : make;
                 model = string.IsNullOrWhiteSpace(model) ? "SM-S928B" : model;
                 software = string.IsNullOrWhiteSpace(software) ? "Android 14" : software;
+                lensModel = string.IsNullOrWhiteSpace(lensModel)
+                    ? "Galaxy S24 Ultra Main Camera 24mm f/1.7"
+                    : lensModel;
                 handler = "VideoHandler";
                 encoder = "Samsung AVC Encoder";
                 break;
@@ -135,6 +174,27 @@ public class CameraMetadataSettings
         {
             args.AddRange(["-metadata", $"software={software}"]);
             args.AddRange(["-metadata:g", $"com.apple.quicktime.software={software}"]);
+        }
+
+        if (!string.IsNullOrWhiteSpace(lensModel))
+        {
+            args.AddRange(["-metadata", $"lens_model={lensModel}"]);
+            args.AddRange(["-metadata:s:v", $"lens_model={lensModel}"]);
+            args.AddRange(["-metadata:g", $"com.apple.quicktime.lens_model={lensModel}"]);
+        }
+
+        if (!string.IsNullOrWhiteSpace(focalLength))
+        {
+            args.AddRange(["-metadata", $"focal_length={focalLength}"]);
+            args.AddRange(["-metadata:s:v", $"focal_length={focalLength}"]);
+            args.AddRange(["-metadata:g", $"com.apple.quicktime.focal_length={focalLength}"]);
+        }
+
+        if (!string.IsNullOrWhiteSpace(fNumber))
+        {
+            args.AddRange(["-metadata", $"f_number={fNumber}"]);
+            args.AddRange(["-metadata:s:v", $"f_number={fNumber}"]);
+            args.AddRange(["-metadata:g", $"com.apple.quicktime.f_number={fNumber}"]);
         }
 
         args.AddRange(["-metadata", $"handler_name={handler}"]);

@@ -112,4 +112,24 @@ public class NvidiaRtxPipelineTests
         Assert.InRange(metrics.GpuUsagePercent, 0, 100);
         Assert.InRange(metrics.VramUsagePercent, 0, 100);
     }
+
+    [Theory]
+    [InlineData(TargetFramerate.Original, 0)]
+    [InlineData(TargetFramerate.Fps24, 24)]
+    [InlineData(TargetFramerate.Fps30, 30)]
+    [InlineData(TargetFramerate.Fps60, 60)]
+    [InlineData(TargetFramerate.Fps120, 120)]
+    public void TargetFramerate_EnumValues_MatchExpectedFrequencies(TargetFramerate rate, int expectedFps)
+    {
+        Assert.Equal(expectedFps, (int)rate);
+    }
+
+    [Fact]
+    public void UpscaleJob_TargetFramerate_DefaultsToOriginal()
+    {
+        var job = new UpscaleJob();
+        Assert.Equal(TargetFramerate.Original, job.TargetFramerate);
+        job.TargetFramerate = TargetFramerate.Fps60;
+        Assert.Equal(TargetFramerate.Fps60, job.TargetFramerate);
+    }
 }
