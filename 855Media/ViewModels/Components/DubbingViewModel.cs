@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
@@ -31,6 +32,7 @@ public partial class DubbingViewModel : ViewModelBase
     private readonly SubtitleTranslationService _subService = new();
     private readonly AudioTranscriptionService _transcriptionService = new();
     private readonly AudioStemSeparationService _stemService = new();
+    private readonly GeminiTranslationService _geminiService = new();
 
     private string? GetFfmpegPath() =>
         !string.IsNullOrWhiteSpace(_settingsService.FFmpegFilePath)
@@ -87,6 +89,9 @@ public partial class DubbingViewModel : ViewModelBase
         ModuleHardwareCheck.CheckDubbing(HardwareDetector.GetGpuInfo());
 
     [ObservableProperty]
+    private bool _isAutoPreparing;
+
+    [ObservableProperty]
     private bool _isProcessing;
 
     [ObservableProperty]
@@ -133,7 +138,47 @@ public partial class DubbingViewModel : ViewModelBase
     private MovieCharacter? _selectedCharacter;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSelectedSegment))]
+    [NotifyPropertyChangedFor(nameof(SelectedSegmentCharacter))]
+    [NotifyPropertyChangedFor(nameof(SelectedSegmentEmotion))]
     private SubtitleSegment? _selectedSegment;
+
+    public bool HasSelectedSegment => SelectedSegment != null;
+
+    public MovieCharacter? SelectedSegmentCharacter
+    {
+        get =>
+            Characters.FirstOrDefault(c => c.Id == SelectedSegment?.CharacterId)
+            ?? Characters.FirstOrDefault();
+        set
+        {
+            if (SelectedSegment != null && value != null)
+            {
+                SelectedSegment.CharacterId = value.Id;
+                SelectedSegment.SpeakerName = value.Name;
+                SelectedSegment.SpeakerColor = value.ColorTag;
+                IsProjectDirty = true;
+                OnPropertyChanged();
+            }
+        }
+    }
+
+    public ActorEmotionConfig? SelectedSegmentEmotion
+    {
+        get =>
+            AvailableEmotions.FirstOrDefault(e =>
+                string.Equals(e.Name, SelectedSegment?.Emotion, StringComparison.OrdinalIgnoreCase)
+            ) ?? AvailableEmotions.FirstOrDefault();
+        set
+        {
+            if (SelectedSegment != null && value != null)
+            {
+                SelectedSegment.Emotion = value.Name;
+                IsProjectDirty = true;
+                OnPropertyChanged();
+            }
+        }
+    }
 
     public ObservableCollection<MovieCharacter> Characters { get; } = [];
 
@@ -168,6 +213,123 @@ public partial class DubbingViewModel : ViewModelBase
 
     public IReadOnlyList<string> AvailablePacingOptions { get; } =
     ["+25%", "+20%", "+15%", "+10%", "+5%", "0%", "-5%", "-10%"];
+
+    private readonly HashSet<SubtitleSegment> _dataGridSelectedSegments = [];
+    private bool _isPropagatingBatchChange;
+
+    public bool HasSelectedRows =>
+        Segments.Any(s => s.IsSelected) || _dataGridSelectedSegments.Count > 0;
+
+    public int SelectedSegmentsCount => GetSelectedSegments().Count;
+
+    public bool HasSegments => Segments.Count > 0;
+
+    [ObservableProperty]
+    private string _searchFilter = string.Empty;
+
+    public IEnumerable<SubtitleSegment> DisplayedSegments
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(SearchFilter))
+                return Segments;
+
+            var term = SearchFilter.Trim();
+            return Segments.Where(s =>
+                (
+                    !string.IsNullOrEmpty(s.OriginalText)
+                    && s.OriginalText.Contains(term, StringComparison.OrdinalIgnoreCase)
+                )
+                || (
+                    !string.IsNullOrEmpty(s.KhmerText)
+                    && s.KhmerText.Contains(term, StringComparison.OrdinalIgnoreCase)
+                )
+                || (
+                    !string.IsNullOrEmpty(s.SpeakerName)
+                    && s.SpeakerName.Contains(term, StringComparison.OrdinalIgnoreCase)
+                )
+                || s.Index.ToString().Contains(term, StringComparison.OrdinalIgnoreCase)
+            );
+        }
+    }
+
+    partial void OnSearchFilterChanged(string value)
+    {
+        OnPropertyChanged(nameof(DisplayedSegments));
+    }
+
+    public bool IsAllSegmentsSelected
+    {
+        get => Segments.Count > 0 && Segments.All(s => s.IsSelected);
+        set
+        {
+            foreach (var seg in Segments)
+            {
+                seg.IsSelected = value;
+            }
+            OnPropertyChanged(nameof(IsAllSegmentsSelected));
+            OnPropertyChanged(nameof(HasSelectedRows));
+            OnPropertyChanged(nameof(SelectedSegmentsCount));
+        }
+    }
+
+    private MovieCharacter? _batchSelectedCharacter;
+    public MovieCharacter? BatchSelectedCharacter
+    {
+        get => _batchSelectedCharacter;
+        set
+        {
+            _batchSelectedCharacter = value;
+            if (value != null)
+            {
+                ApplyCharacterToSelectedSegments(value);
+                _batchSelectedCharacter = null;
+            }
+            OnPropertyChanged(nameof(BatchSelectedCharacter));
+        }
+    }
+
+    private ActorEmotionConfig? _batchSelectedEmotion;
+    public ActorEmotionConfig? BatchSelectedEmotion
+    {
+        get => _batchSelectedEmotion;
+        set
+        {
+            _batchSelectedEmotion = value;
+            if (value != null)
+            {
+                ApplyEmotionToSelectedSegments(value.Name);
+                _batchSelectedEmotion = null;
+            }
+            OnPropertyChanged(nameof(BatchSelectedEmotion));
+        }
+    }
+
+    public List<SubtitleSegment> GetSelectedSegments()
+    {
+        var checkedSegments = Segments.Where(s => s.IsSelected).ToList();
+        if (checkedSegments.Count > 0)
+            return checkedSegments;
+
+        if (_dataGridSelectedSegments.Count > 0)
+            return _dataGridSelectedSegments.ToList();
+
+        if (SelectedSegment != null)
+            return [SelectedSegment];
+
+        return [];
+    }
+
+    public void UpdateDataGridSelection(IEnumerable<SubtitleSegment> items)
+    {
+        _dataGridSelectedSegments.Clear();
+        foreach (var item in items)
+        {
+            _dataGridSelectedSegments.Add(item);
+        }
+        OnPropertyChanged(nameof(HasSelectedRows));
+        OnPropertyChanged(nameof(SelectedSegmentsCount));
+    }
 
     public RvcModelInfo? SelectedCharacterRvcModel
     {
@@ -224,6 +386,22 @@ public partial class DubbingViewModel : ViewModelBase
     [ObservableProperty]
     private double _timelineZoom = 1.0;
 
+    public double TimelineColumnWidth => Math.Clamp(220.0 * TimelineZoom, 140.0, 480.0);
+
+    partial void OnTimelineZoomChanged(double value)
+    {
+        OnPropertyChanged(nameof(TimelineColumnWidth));
+    }
+
+    [RelayCommand]
+    public void SelectSegment(SubtitleSegment? seg)
+    {
+        if (seg != null)
+        {
+            SelectedSegment = seg;
+        }
+    }
+
     [ObservableProperty]
     private bool _isPreSynthesizing;
 
@@ -258,6 +436,18 @@ public partial class DubbingViewModel : ViewModelBase
     public IReadOnlyList<string> AvailableArchetypeNames => ActorEmotionEngine.ArchetypeNames;
 
     public IReadOnlyList<string> AvailableGenders { get; } = ["Male", "Female", "Child"];
+
+    public bool IsGeminiConfigured => !string.IsNullOrWhiteSpace(_settingsService.GeminiApiKey);
+
+    public string ActiveTranslationEngineBadge =>
+        IsGeminiConfigured
+            ? $"Gemini AI ({_settingsService.GeminiModel})"
+            : "Google Translate (Free)";
+
+    public string TranslationTooltip =>
+        IsGeminiConfigured
+            ? $"Translate using Google Gemini AI ({_settingsService.GeminiModel}) with cinematic phrasing and character continuity"
+            : "Translate using fast multi-tier Google Translate. (To use Gemini 2.0 Flash AI, set API key in Settings)";
 
     public string? SelectedCharacterEmotionPreset
     {
@@ -307,8 +497,165 @@ public partial class DubbingViewModel : ViewModelBase
         RefreshRvcModels();
         InitDefaultCharacters();
 
-        Segments.CollectionChanged += (_, _) => IsProjectDirty = true;
-        Characters.CollectionChanged += (_, _) => IsProjectDirty = true;
+        SubtitleSegment.CharacterResolver = (id, name) =>
+        {
+            if (Characters == null || Characters.Count == 0)
+                return null;
+
+            if (id != null)
+            {
+                var byId = Characters.FirstOrDefault(c => c.Id == id.Value);
+                if (byId != null)
+                    return byId;
+            }
+
+            if (!string.IsNullOrWhiteSpace(name))
+            {
+                var byName = Characters.FirstOrDefault(c =>
+                    string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase)
+                );
+                if (byName != null)
+                    return byName;
+            }
+
+            return Characters.FirstOrDefault();
+        };
+
+        Segments.CollectionChanged += (s, e) =>
+        {
+            IsProjectDirty = true;
+            if (e.NewItems != null)
+            {
+                foreach (SubtitleSegment item in e.NewItems)
+                {
+                    item.PropertyChanged += OnSegmentPropertyChanged;
+                    SyncSegmentCharacter(item);
+                }
+            }
+            if (e.OldItems != null)
+            {
+                foreach (SubtitleSegment item in e.OldItems)
+                {
+                    item.PropertyChanged -= OnSegmentPropertyChanged;
+                }
+            }
+            OnPropertyChanged(nameof(HasSelectedRows));
+            OnPropertyChanged(nameof(SelectedSegmentsCount));
+            OnPropertyChanged(nameof(IsAllSegmentsSelected));
+            OnPropertyChanged(nameof(HasSegments));
+            OnPropertyChanged(nameof(DisplayedSegments));
+        };
+
+        Characters.CollectionChanged += (s, e) =>
+        {
+            IsProjectDirty = true;
+            SyncAllSegmentCharacters();
+        };
+    }
+
+    public void SyncSegmentCharacter(SubtitleSegment seg)
+    {
+        if (Characters.Count == 0)
+            return;
+        var matched =
+            Characters.FirstOrDefault(c => c.Id == seg.CharacterId)
+            ?? Characters.FirstOrDefault(c =>
+                string.Equals(c.Name, seg.SpeakerName, StringComparison.OrdinalIgnoreCase)
+            )
+            ?? Characters.FirstOrDefault();
+        if (matched != null && !ReferenceEquals(seg.AssignedCharacter, matched))
+        {
+            seg.AssignedCharacter = matched;
+        }
+    }
+
+    public void SyncAllSegmentCharacters()
+    {
+        if (Characters.Count == 0)
+            return;
+
+        var prevPropagating = _isPropagatingBatchChange;
+        _isPropagatingBatchChange = true;
+        try
+        {
+            foreach (var seg in Segments)
+            {
+                SyncSegmentCharacter(seg);
+            }
+        }
+        finally
+        {
+            _isPropagatingBatchChange = prevPropagating;
+        }
+    }
+
+    private void OnSegmentPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (sender is not SubtitleSegment changedSeg)
+            return;
+
+        if (e.PropertyName == nameof(SubtitleSegment.IsSelected))
+        {
+            OnPropertyChanged(nameof(HasSelectedRows));
+            OnPropertyChanged(nameof(SelectedSegmentsCount));
+            OnPropertyChanged(nameof(IsAllSegmentsSelected));
+            return;
+        }
+
+        if (_isPropagatingBatchChange)
+            return;
+
+        if (e.PropertyName == nameof(SubtitleSegment.AssignedCharacter))
+        {
+            var selectedList = GetSelectedSegments();
+            if (
+                selectedList.Count > 1
+                && selectedList.Contains(changedSeg)
+                && changedSeg.AssignedCharacter != null
+            )
+            {
+                _isPropagatingBatchChange = true;
+                try
+                {
+                    foreach (var seg in selectedList)
+                    {
+                        if (seg != changedSeg)
+                        {
+                            seg.AssignedCharacter = changedSeg.AssignedCharacter;
+                        }
+                    }
+                }
+                finally
+                {
+                    _isPropagatingBatchChange = false;
+                }
+            }
+        }
+        else if (
+            e.PropertyName == nameof(SubtitleSegment.Emotion)
+            || e.PropertyName == nameof(SubtitleSegment.AssignedEmotionConfig)
+        )
+        {
+            var selectedList = GetSelectedSegments();
+            if (selectedList.Count > 1 && selectedList.Contains(changedSeg))
+            {
+                _isPropagatingBatchChange = true;
+                try
+                {
+                    foreach (var seg in selectedList)
+                    {
+                        if (seg != changedSeg)
+                        {
+                            seg.Emotion = changedSeg.Emotion;
+                        }
+                    }
+                }
+                finally
+                {
+                    _isPropagatingBatchChange = false;
+                }
+            }
+        }
     }
 
     partial void OnVideoFilePathChanged(string value)
@@ -339,6 +686,7 @@ public partial class DubbingViewModel : ViewModelBase
                 Name = "Hero (Male)",
                 Gender = "Male",
                 BaseVoice = "km-KH-PisethNeural",
+                ToneArchetype = "Hero",
                 SpeechRate = "+15%",
                 EnableRvc = sengDynaModel != null,
                 RvcModelPath = sengDynaModel?.PthPath,
@@ -353,6 +701,7 @@ public partial class DubbingViewModel : ViewModelBase
                 Name = "Heroine (Female)",
                 Gender = "Female",
                 BaseVoice = "km-KH-SreymomNeural",
+                ToneArchetype = "Hero",
                 SpeechRate = "+12%",
                 EnableRvc = false,
                 ColorTag = "#EC4899",
@@ -365,6 +714,7 @@ public partial class DubbingViewModel : ViewModelBase
                 Name = "Child / Little Voice (កុមារ)",
                 Gender = "Child",
                 BaseVoice = "km-KH-SreymomNeural",
+                ToneArchetype = "Youth",
                 PitchShift = 4,
                 SpeechRate = "+18%",
                 EnableRvc = false,
@@ -378,6 +728,7 @@ public partial class DubbingViewModel : ViewModelBase
                 Name = "Villain / Deep Voice",
                 Gender = "Male",
                 BaseVoice = "km-KH-PisethNeural",
+                ToneArchetype = "Villain",
                 PitchShift = -4,
                 SpeechRate = "+8%",
                 EnableRvc = false,
@@ -391,6 +742,7 @@ public partial class DubbingViewModel : ViewModelBase
                 Name = "Narrator / Extras",
                 Gender = "Male",
                 BaseVoice = "km-KH-PisethNeural",
+                ToneArchetype = "Narrator",
                 SpeechRate = "+15%",
                 ColorTag = "#10B981",
             }
@@ -464,9 +816,7 @@ public partial class DubbingViewModel : ViewModelBase
         var targetChar = character ?? SelectedCharacter;
         if (SelectedSegment != null && targetChar != null)
         {
-            SelectedSegment.CharacterId = targetChar.Id;
-            SelectedSegment.SpeakerName = targetChar.Name;
-            SelectedSegment.SpeakerColor = targetChar.ColorTag;
+            SelectedSegment.AssignedCharacter = targetChar;
             _snackbarManager.Notify($"Line {SelectedSegment.Index} assigned to {targetChar.Name}");
         }
     }
@@ -478,12 +828,19 @@ public partial class DubbingViewModel : ViewModelBase
         if (targetChar == null || Segments.Count == 0)
             return;
 
-        foreach (var seg in Segments)
+        var prevPropagating = _isPropagatingBatchChange;
+        _isPropagatingBatchChange = true;
+        try
         {
-            seg.CharacterId = targetChar.Id;
-            seg.SpeakerName = targetChar.Name;
-            seg.SpeakerColor = targetChar.ColorTag;
-            seg.AudioClipPath = null;
+            foreach (var seg in Segments)
+            {
+                seg.AssignedCharacter = targetChar;
+                seg.AudioClipPath = null;
+            }
+        }
+        finally
+        {
+            _isPropagatingBatchChange = prevPropagating;
         }
 
         _snackbarManager.Notify(
@@ -505,9 +862,54 @@ public partial class DubbingViewModel : ViewModelBase
         var nextIndex = (currentIndex + 1) % Characters.Count;
         var nextChar = Characters[nextIndex];
 
+        target.AssignedCharacter = nextChar;
         target.CharacterId = nextChar.Id;
         target.SpeakerName = nextChar.Name;
         target.SpeakerColor = nextChar.ColorTag;
+    }
+
+    [RelayCommand]
+    public void SetSegmentCharacter(MovieCharacter? character)
+    {
+        if (character == null)
+            return;
+        ApplyCharacterToSelectedSegments(character);
+    }
+
+    [RelayCommand]
+    public void ApplyCharacterToSelectedSegments(MovieCharacter? targetChar)
+    {
+        if (targetChar == null)
+            return;
+        var selected = GetSelectedSegments();
+        if (selected.Count == 0 && SelectedSegment != null)
+            selected = [SelectedSegment];
+
+        if (selected.Count == 0)
+            return;
+
+        _isPropagatingBatchChange = true;
+        try
+        {
+            foreach (var seg in selected)
+            {
+                seg.AssignedCharacter = targetChar;
+                seg.CharacterId = targetChar.Id;
+                seg.SpeakerName = targetChar.Name;
+                seg.SpeakerColor = targetChar.ColorTag;
+            }
+        }
+        finally
+        {
+            _isPropagatingBatchChange = false;
+        }
+
+        IsProjectDirty = true;
+        StatusMessage =
+            $"Assigned '{targetChar.Name}' to {selected.Count} selected dialogue lines.";
+        _snackbarManager.Notify(
+            $"Assigned '{targetChar.Name}' to {selected.Count} selected dialogue lines."
+        );
     }
 
     [RelayCommand]
@@ -528,15 +930,135 @@ public partial class DubbingViewModel : ViewModelBase
     [RelayCommand]
     public void SetSegmentEmotion(string emotion)
     {
-        var target = SelectedSegment;
-        if (target == null || string.IsNullOrWhiteSpace(emotion))
+        if (string.IsNullOrWhiteSpace(emotion))
             return;
 
-        target.Emotion = emotion;
+        ApplyEmotionToSelectedSegments(emotion);
     }
 
     [RelayCommand]
-    public void AutoDetectEmotions()
+    public void ApplyEmotionToSelectedSegments(string? emotion)
+    {
+        if (string.IsNullOrWhiteSpace(emotion))
+            return;
+        var selected = GetSelectedSegments();
+        if (selected.Count == 0 && SelectedSegment != null)
+            selected = [SelectedSegment];
+
+        if (selected.Count == 0)
+            return;
+
+        _isPropagatingBatchChange = true;
+        try
+        {
+            foreach (var seg in selected)
+            {
+                seg.Emotion = emotion;
+            }
+        }
+        finally
+        {
+            _isPropagatingBatchChange = false;
+        }
+
+        IsProjectDirty = true;
+        StatusMessage = $"Applied '{emotion}' tone to {selected.Count} selected dialogue lines.";
+        _snackbarManager.Notify(
+            $"Applied '{emotion}' tone to {selected.Count} selected dialogue lines."
+        );
+    }
+
+    [RelayCommand]
+    public void ToggleSelectAll()
+    {
+        bool newState = !IsAllSegmentsSelected;
+        foreach (var seg in Segments)
+        {
+            seg.IsSelected = newState;
+        }
+        OnPropertyChanged(nameof(IsAllSegmentsSelected));
+        OnPropertyChanged(nameof(HasSelectedRows));
+        OnPropertyChanged(nameof(SelectedSegmentsCount));
+    }
+
+    [RelayCommand]
+    public void SelectAllSegments()
+    {
+        foreach (var seg in Segments)
+        {
+            seg.IsSelected = true;
+        }
+        OnPropertyChanged(nameof(IsAllSegmentsSelected));
+        OnPropertyChanged(nameof(HasSelectedRows));
+        OnPropertyChanged(nameof(SelectedSegmentsCount));
+    }
+
+    [RelayCommand]
+    public void DeselectAllSegments()
+    {
+        foreach (var seg in Segments)
+        {
+            seg.IsSelected = false;
+        }
+        _dataGridSelectedSegments.Clear();
+        OnPropertyChanged(nameof(IsAllSegmentsSelected));
+        OnPropertyChanged(nameof(HasSelectedRows));
+        OnPropertyChanged(nameof(SelectedSegmentsCount));
+    }
+
+    [RelayCommand]
+    public async Task AutoFitSelectedAudioAsync()
+    {
+        var targets = GetSelectedSegments()
+            .Where(s => !string.IsNullOrWhiteSpace(s.AudioClipPath) && File.Exists(s.AudioClipPath))
+            .ToList();
+
+        if (targets.Count == 0)
+        {
+            _snackbarManager.Notify("No synthesized audio clips found in selected rows to fit.");
+            return;
+        }
+
+        var ffmpeg = GetFfmpegPath();
+        if (string.IsNullOrWhiteSpace(ffmpeg))
+        {
+            _snackbarManager.Notify("FFmpeg not found.");
+            return;
+        }
+
+        int fitted = 0;
+        var tempDir = Path.Combine(Path.GetTempPath(), "855Media_Dubbing");
+        Directory.CreateDirectory(tempDir);
+
+        foreach (var target in targets)
+        {
+            StatusMessage = $"Time-fitting line #{target.Index} ({fitted + 1}/{targets.Count})...";
+            var fittedPath = Path.Combine(
+                tempDir,
+                $"clip_fitted_{target.Index:D4}_{Guid.NewGuid():N}.wav"
+            );
+            var ok = await DubbingPipeline.ScaleAudioClipDurationAsync(
+                ffmpeg,
+                target.AudioClipPath!,
+                fittedPath,
+                target.DurationSeconds
+            );
+            if (ok && File.Exists(fittedPath))
+            {
+                target.AudioClipPath = fittedPath;
+                var newDuration = await DubbingPipeline.GetAudioDurationAsync(ffmpeg, fittedPath);
+                target.AudioDurationSeconds = newDuration.TotalSeconds;
+                fitted++;
+            }
+        }
+
+        IsProjectDirty = true;
+        StatusMessage = $"Auto-fitted {fitted} selected dialogue lines.";
+        _snackbarManager.Notify($"Auto-fitted {fitted} selected lines to their scene durations.");
+    }
+
+    [RelayCommand]
+    public async Task AutoDetectEmotionsAsync()
     {
         if (Segments.Count == 0)
         {
@@ -545,28 +1067,87 @@ public partial class DubbingViewModel : ViewModelBase
         }
 
         int detectedCount = 0;
+
+        // 1. If Gemini AI is configured, perform AI cinematic acting tone analysis
+        if (IsGeminiConfigured && !string.IsNullOrWhiteSpace(_settingsService.GeminiApiKey))
+        {
+            try
+            {
+                StatusMessage =
+                    $"Analyzing {Segments.Count} dialogue lines for cinematic acting tones with Gemini AI...";
+                var apiKey = _settingsService.GeminiApiKey.Trim();
+                var model = _settingsService.GeminiModel;
+                var aiEmotions = await _geminiService.DetectEmotionsBatchAsync(
+                    apiKey,
+                    Segments.ToList(),
+                    model
+                );
+
+                if (aiEmotions.Count > 0)
+                {
+                    foreach (var seg in Segments)
+                    {
+                        if (
+                            aiEmotions.TryGetValue(seg.Index, out var em)
+                            && !string.IsNullOrWhiteSpace(em)
+                        )
+                        {
+                            seg.Emotion = em;
+                            if (em != ActorEmotionEngine.EmotionNormal)
+                                detectedCount++;
+                        }
+                        else
+                        {
+                            var offlineDetected = ActorEmotionEngine.DetectEmotion(
+                                seg.OriginalText,
+                                seg.KhmerText
+                            );
+                            seg.Emotion = offlineDetected;
+                            if (offlineDetected != ActorEmotionEngine.EmotionNormal)
+                                detectedCount++;
+                        }
+                    }
+
+                    IsProjectDirty = true;
+                    StatusMessage =
+                        $"Gemini AI classified {detectedCount} acting tones across dialogue scenes.";
+                    _snackbarManager.Notify(
+                        $"Gemini AI classified {detectedCount} dramatic acting tones across dialogue scenes."
+                    );
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                StatusMessage =
+                    $"Gemini emotion note ({ex.Message}), using upgraded offline rule engine...";
+            }
+        }
+
+        // 2. High-precision offline rule engine (stage directions, typography, 19 emotion categories, and Khmer cues)
         foreach (var seg in Segments)
         {
             var detected = ActorEmotionEngine.DetectEmotion(seg.OriginalText, seg.KhmerText);
+            seg.Emotion = detected;
             if (detected != ActorEmotionEngine.EmotionNormal)
             {
-                seg.Emotion = detected;
                 detectedCount++;
             }
         }
+
+        IsProjectDirty = true;
 
         if (detectedCount > 0)
         {
             StatusMessage = $"Auto-detected {detectedCount} emotional dialogue tones.";
             _snackbarManager.Notify(
-                $"Auto-detected {detectedCount} emotional dialogue tones (Crying, Laughing, Anger, etc.)."
+                $"Auto-detected {detectedCount} emotional dialogue tones (Action, Scream, Crying, Anger, Sarcasm, etc.)."
             );
         }
         else
         {
-            _snackbarManager.Notify(
-                "No explicit emotion markers found; segments set to Normal tone."
-            );
+            StatusMessage = "Dialogue segments evaluated; set to standard Normal tone.";
+            _snackbarManager.Notify("Evaluated dialogue; neutral lines kept at Normal tone.");
         }
     }
 
@@ -977,6 +1558,122 @@ public partial class DubbingViewModel : ViewModelBase
         }
     }
 
+    public void EnsureStandardCastCharacters()
+    {
+        if (
+            !Characters.Any(c =>
+                string.Equals(
+                    c.Gender,
+                    VoiceGenderDetector.GenderMale,
+                    StringComparison.OrdinalIgnoreCase
+                )
+            )
+        )
+        {
+            Characters.Add(
+                new MovieCharacter
+                {
+                    Name = "Hero (Male)",
+                    Gender = "Male",
+                    BaseVoice = "km-KH-PisethNeural",
+                    ToneArchetype = "Hero",
+                    SpeechRate = "+15%",
+                    ColorTag = "#3B82F6",
+                }
+            );
+        }
+
+        if (
+            !Characters.Any(c =>
+                string.Equals(
+                    c.Gender,
+                    VoiceGenderDetector.GenderFemale,
+                    StringComparison.OrdinalIgnoreCase
+                )
+            )
+        )
+        {
+            Characters.Add(
+                new MovieCharacter
+                {
+                    Name = "Heroine (Female)",
+                    Gender = "Female",
+                    BaseVoice = "km-KH-SreymomNeural",
+                    ToneArchetype = "Hero",
+                    SpeechRate = "+12%",
+                    ColorTag = "#EC4899",
+                }
+            );
+        }
+
+        if (
+            !Characters.Any(c =>
+                string.Equals(
+                    c.Gender,
+                    VoiceGenderDetector.GenderChild,
+                    StringComparison.OrdinalIgnoreCase
+                )
+            )
+        )
+        {
+            var child = new MovieCharacter
+            {
+                Name = "Child / Little Voice (កុមារ)",
+                Gender = "Child",
+                BaseVoice = "km-KH-SreymomNeural",
+                ToneArchetype = "Youth",
+                PitchShift = 4,
+                SpeechRate = "+18%",
+                ColorTag = "#F59E0B",
+            };
+            child.ApplyToneArchetype("Youth");
+            child.BaseVoice = "km-KH-SreymomNeural";
+            Characters.Add(child);
+        }
+
+        if (
+            !Characters.Any(c =>
+                string.Equals(c.ToneArchetype, "Villain", StringComparison.OrdinalIgnoreCase)
+                || c.Name.Contains("Villain", StringComparison.OrdinalIgnoreCase)
+            )
+        )
+        {
+            var villain = new MovieCharacter
+            {
+                Name = "Villain / Deep Voice",
+                Gender = "Male",
+                BaseVoice = "km-KH-PisethNeural",
+                ToneArchetype = "Villain",
+                PitchShift = -3,
+                SpeechRate = "+8%",
+                ColorTag = "#EF4444",
+            };
+            villain.ApplyToneArchetype("Villain");
+            Characters.Add(villain);
+        }
+
+        if (
+            !Characters.Any(c =>
+                string.Equals(c.ToneArchetype, "Narrator", StringComparison.OrdinalIgnoreCase)
+                || c.Name.Contains("Narrator", StringComparison.OrdinalIgnoreCase)
+            )
+        )
+        {
+            var narrator = new MovieCharacter
+            {
+                Name = "Narrator / Extras",
+                Gender = "Male",
+                BaseVoice = "km-KH-PisethNeural",
+                ToneArchetype = "Narrator",
+                PitchShift = -2,
+                SpeechRate = "+15%",
+                ColorTag = "#10B981",
+            };
+            narrator.ApplyToneArchetype("Narrator");
+            Characters.Add(narrator);
+        }
+    }
+
     [RelayCommand]
     public async Task AutoDetectGenderAsync()
     {
@@ -986,10 +1683,14 @@ public partial class DubbingViewModel : ViewModelBase
             return;
         }
 
+        EnsureStandardCastCharacters();
+
         bool hasVideo = !string.IsNullOrWhiteSpace(VideoFilePath) && File.Exists(VideoFilePath);
+        IsProcessing = true;
+        Progress = 5;
         StatusMessage = hasVideo
-            ? "Analyzing voice pitch (F0) & conversational cues for male/female speakers..."
-            : "Analyzing dialogue text & conversational turns for male/female speakers...";
+            ? "Extracting audio for vocal pitch analysis..."
+            : "Analyzing dialogue text & conversational turns...";
 
         try
         {
@@ -998,85 +1699,166 @@ public partial class DubbingViewModel : ViewModelBase
                 ffmpeg,
                 hasVideo ? VideoFilePath : string.Empty,
                 Segments.ToList(),
-                CancellationToken.None
+                progressCallback: (curr, tot, msg) =>
+                {
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        Progress = tot > 0 ? (10.0 + ((double)curr / tot * 85.0)) : 50.0;
+                        StatusMessage = msg;
+                    });
+                },
+                cancellationToken: CancellationToken.None
             );
 
-            var maleChar =
-                Characters.FirstOrDefault(c =>
-                    string.Equals(c.Gender, "Male", StringComparison.OrdinalIgnoreCase)
-                    || c.Name.Contains("male", StringComparison.OrdinalIgnoreCase)
-                ) ?? Characters.FirstOrDefault();
-
-            var femaleChar =
-                Characters.FirstOrDefault(c =>
-                    string.Equals(c.Gender, "Female", StringComparison.OrdinalIgnoreCase)
-                    || c.Name.Contains("female", StringComparison.OrdinalIgnoreCase)
-                    || c.BaseVoice.Contains("Sreymom", StringComparison.OrdinalIgnoreCase)
-                )
-                ?? Characters.Skip(1).FirstOrDefault()
-                ?? maleChar;
-
-            var childChar =
-                Characters.FirstOrDefault(c =>
-                    string.Equals(c.Gender, "Child", StringComparison.OrdinalIgnoreCase)
-                    || c.Name.Contains("child", StringComparison.OrdinalIgnoreCase)
-                    || c.Name.Contains("girl", StringComparison.OrdinalIgnoreCase)
-                    || c.Name.Contains("kid", StringComparison.OrdinalIgnoreCase)
-                    || c.Name.Contains("ក្មេង", StringComparison.OrdinalIgnoreCase)
-                    || c.BaseVoice.Contains("child", StringComparison.OrdinalIgnoreCase)
-                ) ?? femaleChar;
-
-            int maleCount = 0;
-            int femaleCount = 0;
-            int childCount = 0;
-
-            foreach (var seg in Segments)
+            await Dispatcher.UIThread.InvokeAsync(() =>
             {
-                if (detectionResults.TryGetValue(seg.Index, out var res))
+                var maleChar =
+                    Characters.FirstOrDefault(c =>
+                        string.Equals(
+                            c.Gender,
+                            VoiceGenderDetector.GenderMale,
+                            StringComparison.OrdinalIgnoreCase
+                        )
+                        && (
+                            string.Equals(
+                                c.ToneArchetype,
+                                "Hero",
+                                StringComparison.OrdinalIgnoreCase
+                            ) || c.Name.Contains("Hero")
+                        )
+                    )
+                    ?? Characters.FirstOrDefault(c =>
+                        string.Equals(
+                            c.Gender,
+                            VoiceGenderDetector.GenderMale,
+                            StringComparison.OrdinalIgnoreCase
+                        )
+                    )
+                    ?? Characters.FirstOrDefault();
+
+                var femaleChar =
+                    Characters.FirstOrDefault(c =>
+                        string.Equals(
+                            c.Gender,
+                            VoiceGenderDetector.GenderFemale,
+                            StringComparison.OrdinalIgnoreCase
+                        )
+                    )
+                    ?? Characters.FirstOrDefault(c => c != maleChar)
+                    ?? maleChar;
+
+                var childChar =
+                    Characters.FirstOrDefault(c =>
+                        string.Equals(
+                            c.Gender,
+                            VoiceGenderDetector.GenderChild,
+                            StringComparison.OrdinalIgnoreCase
+                        )
+                    ) ?? femaleChar;
+
+                var villainChar =
+                    Characters.FirstOrDefault(c =>
+                        string.Equals(
+                            c.ToneArchetype,
+                            "Villain",
+                            StringComparison.OrdinalIgnoreCase
+                        ) || c.Name.Contains("Villain", StringComparison.OrdinalIgnoreCase)
+                    ) ?? maleChar;
+
+                var narratorChar =
+                    Characters.FirstOrDefault(c =>
+                        string.Equals(
+                            c.ToneArchetype,
+                            "Narrator",
+                            StringComparison.OrdinalIgnoreCase
+                        ) || c.Name.Contains("Narrator", StringComparison.OrdinalIgnoreCase)
+                    ) ?? maleChar;
+
+                int maleCount = 0;
+                int femaleCount = 0;
+                int childCount = 0;
+
+                var prevPropagating = _isPropagatingBatchChange;
+                _isPropagatingBatchChange = true;
+                try
                 {
-                    seg.DetectedGender = res.Gender;
-                    if (res.Gender == VoiceGenderDetector.GenderChild && childChar != null)
+                    for (int i = 0; i < Segments.Count; i++)
                     {
-                        seg.CharacterId = childChar.Id;
-                        seg.SpeakerName = childChar.Name;
-                        seg.SpeakerColor = childChar.ColorTag;
-                        childCount++;
-                    }
-                    else if (res.Gender == VoiceGenderDetector.GenderFemale && femaleChar != null)
-                    {
-                        seg.CharacterId = femaleChar.Id;
-                        seg.SpeakerName = femaleChar.Name;
-                        seg.SpeakerColor = femaleChar.ColorTag;
-                        femaleCount++;
-                    }
-                    else if (maleChar != null)
-                    {
-                        seg.CharacterId = maleChar.Id;
-                        seg.SpeakerName = maleChar.Name;
-                        seg.SpeakerColor = maleChar.ColorTag;
-                        maleCount++;
+                        var seg = Segments[i];
+                        if (
+                            detectionResults.TryGetValue(seg.Index, out var res)
+                            || detectionResults.TryGetValue(i + 1, out res)
+                        )
+                        {
+                            seg.DetectedGender = res.Gender;
+                            if (res.Gender == VoiceGenderDetector.GenderChild && childChar != null)
+                            {
+                                seg.AssignedCharacter = childChar;
+                                childCount++;
+                            }
+                            else if (
+                                res.Gender == VoiceGenderDetector.GenderFemale
+                                && femaleChar != null
+                            )
+                            {
+                                seg.AssignedCharacter = femaleChar;
+                                femaleCount++;
+                            }
+                            else
+                            {
+                                var targetMale = maleChar;
+                                if (
+                                    seg.Emotion == ActorEmotionEngine.EmotionVillain
+                                    && villainChar != null
+                                )
+                                    targetMale = villainChar;
+                                else if (
+                                    seg.Emotion == ActorEmotionEngine.EmotionNarrator
+                                    && narratorChar != null
+                                )
+                                    targetMale = narratorChar;
+
+                                if (targetMale != null)
+                                {
+                                    seg.AssignedCharacter = targetMale;
+                                    maleCount++;
+                                }
+                            }
+                            seg.AudioClipPath = null;
+                        }
                     }
                 }
-            }
+                finally
+                {
+                    _isPropagatingBatchChange = prevPropagating;
+                }
 
-            StatusMessage =
-                childCount > 0
-                    ? $"Voice Actor Detection Complete: {maleCount} Male, {femaleCount} Female, {childCount} Child scenes assigned."
-                    : $"Voice Gender Detection Complete: {maleCount} Male, {femaleCount} Female scenes assigned.";
-            _snackbarManager.Notify(
-                childCount > 0
-                    ? $"Auto-assigned {maleCount} Male, {femaleCount} Female & {childCount} Child dialogue scenes!"
-                    : $"Auto-assigned {maleCount} Male & {femaleCount} Female dialogue scenes!"
-            );
+                SyncAllSegmentCharacters();
+
+                StatusMessage =
+                    childCount > 0
+                        ? $"Voice Actor Detection Complete: {maleCount} Male, {femaleCount} Female, {childCount} Child scenes assigned."
+                        : $"Voice Gender Detection Complete: {maleCount} Male, {femaleCount} Female scenes assigned.";
+                _snackbarManager.Notify(
+                    childCount > 0
+                        ? $"Auto-assigned {maleCount} Male, {femaleCount} Female & {childCount} Child dialogue scenes!"
+                        : $"Auto-assigned {maleCount} Male & {femaleCount} Female dialogue scenes!"
+                );
+            });
         }
         catch (Exception ex)
         {
             _snackbarManager.Notify($"Voice detection note: {ex.Message}");
         }
+        finally
+        {
+            IsProcessing = false;
+            Progress = 100;
+        }
     }
 
     [RelayCommand]
-    public void AutoDetectSpeakers()
+    public async Task AutoDetectSpeakersAsync()
     {
         if (Segments.Count == 0)
         {
@@ -1084,14 +1866,165 @@ public partial class DubbingViewModel : ViewModelBase
             return;
         }
 
-        // Regex patterns matching speaker prefixes:
-        // "Actor A: Hello", "[Actor B] Hello", "(Actor A) Hello", "John - Hello"
-        var prefixRegex = new System.Text.RegularExpressions.Regex(
-            @"^(?:\[(?<name>[^\]]+)\]|\((?<name>[^\)]+)\)|(?<name>[A-Za-z0-9_\u1780-\u17FF\s]{2,20})\s*[:\-])\s*(?<text>.*)$",
-            System.Text.RegularExpressions.RegexOptions.Compiled
-        );
+        IsProcessing = true;
+        Progress = 10;
+        StatusMessage = "Analyzing cast, characters & speaker dialogue turns...";
 
-        int matchedCount = 0;
+        try
+        {
+            // Step 1: Check if Gemini is configured. If so, perform studio-grade AI Scene Diarization!
+            if (IsGeminiConfigured && !string.IsNullOrWhiteSpace(_settingsService.GeminiApiKey))
+            {
+                StatusMessage = "Running Gemini AI Scene Diarization & Cast Assignment...";
+                var diarizedItems = await _geminiService.DiarizeAndAssignSpeakersBatchAsync(
+                    _settingsService.GeminiApiKey,
+                    Segments.ToList(),
+                    _settingsService.GeminiModel,
+                    CancellationToken.None
+                );
+
+                if (diarizedItems.Count > 0)
+                {
+                    ApplyGeminiDiarization(diarizedItems);
+                    return;
+                }
+            }
+
+            // Step 2: Offline High-Precision Speaker Prefix & Cast Extraction
+            int matchedCount = 0;
+            var colors = new[]
+            {
+                "#3B82F6",
+                "#EC4899",
+                "#10B981",
+                "#F59E0B",
+                "#8B5CF6",
+                "#EF4444",
+                "#06B6D4",
+                "#E11D48",
+                "#14B8A6",
+            };
+
+            var prevPropagating = _isPropagatingBatchChange;
+            _isPropagatingBatchChange = true;
+            try
+            {
+                foreach (var seg in Segments)
+                {
+                    string? extractedSpeaker = null;
+
+                    // Check original text first
+                    if (
+                        VoiceGenderDetector.TryExtractSpeakerPrefix(
+                            seg.OriginalText,
+                            out var spName,
+                            out var dialText
+                        )
+                    )
+                    {
+                        extractedSpeaker = spName;
+                        seg.OriginalText = dialText;
+                    }
+
+                    // Check Khmer text as well
+                    if (
+                        VoiceGenderDetector.TryExtractSpeakerPrefix(
+                            seg.KhmerText,
+                            out var kmSpName,
+                            out var kmDialText
+                        )
+                    )
+                    {
+                        extractedSpeaker ??= kmSpName;
+                        seg.KhmerText = kmDialText;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(extractedSpeaker))
+                    {
+                        var character = Characters.FirstOrDefault(c =>
+                            string.Equals(
+                                c.Name,
+                                extractedSpeaker,
+                                StringComparison.OrdinalIgnoreCase
+                            )
+                        );
+
+                        if (character == null)
+                        {
+                            var detectedGender =
+                                VoiceGenderDetector.DetectGenderFromName(extractedSpeaker)
+                                ?? VoiceGenderDetector.GenderMale;
+                            var toneArchetype = VoiceGenderDetector.DetectToneArchetypeFromName(
+                                extractedSpeaker,
+                                detectedGender
+                            );
+                            var color = colors[Characters.Count % colors.Length];
+
+                            bool isFemaleOrChild =
+                                detectedGender == VoiceGenderDetector.GenderFemale
+                                || detectedGender == VoiceGenderDetector.GenderChild;
+                            var baseVoice = isFemaleOrChild
+                                ? "km-KH-SreymomNeural"
+                                : "km-KH-PisethNeural";
+
+                            character = new MovieCharacter
+                            {
+                                Name = extractedSpeaker,
+                                Gender = detectedGender,
+                                BaseVoice = baseVoice,
+                                ToneArchetype = toneArchetype,
+                                ColorTag = color,
+                                EnableRvc = false,
+                            };
+                            character.ApplyToneArchetype(toneArchetype);
+                            if (isFemaleOrChild)
+                                character.BaseVoice = "km-KH-SreymomNeural";
+
+                            Characters.Add(character);
+                        }
+
+                        seg.AssignedCharacter = character;
+                        seg.DetectedGender = character.Gender;
+                        seg.AudioClipPath = null;
+                        matchedCount++;
+                    }
+                }
+            }
+            finally
+            {
+                _isPropagatingBatchChange = prevPropagating;
+            }
+
+            SyncAllSegmentCharacters();
+
+            if (matchedCount > 0)
+            {
+                _snackbarManager.Notify(
+                    $"Auto-assigned {matchedCount} scenes to {Characters.Count} distinct voice actors!"
+                );
+                StatusMessage =
+                    $"Auto-detected {matchedCount} dialogue lines across {Characters.Count} cast members.";
+                return;
+            }
+
+            // Step 3: No explicit speaker prefixes found in text -> Run intelligent conversational acoustic & turn diarization
+            StatusMessage =
+                "No explicit prefixes found. Analyzing conversational turns & vocal pitch...";
+            await AutoDetectGenderAsync();
+        }
+        catch (Exception ex)
+        {
+            _snackbarManager.Notify($"Auto-assign note: {ex.Message}");
+        }
+        finally
+        {
+            IsProcessing = false;
+            Progress = 100;
+        }
+    }
+
+    private void ApplyGeminiDiarization(List<GeminiDiarizationItem> items)
+    {
         var colors = new[]
         {
             "#3B82F6",
@@ -1101,79 +2034,96 @@ public partial class DubbingViewModel : ViewModelBase
             "#8B5CF6",
             "#EF4444",
             "#06B6D4",
+            "#E11D48",
+            "#14B8A6",
         };
 
-        foreach (var seg in Segments)
+        var dict = items.ToDictionary(i => i.Index);
+        int assignedCount = 0;
+
+        var prevPropagating = _isPropagatingBatchChange;
+        _isPropagatingBatchChange = true;
+        try
         {
-            var textToCheck = !string.IsNullOrWhiteSpace(seg.OriginalText)
-                ? seg.OriginalText
-                : seg.KhmerText;
-            if (string.IsNullOrWhiteSpace(textToCheck))
-                continue;
-
-            var match = prefixRegex.Match(textToCheck.Trim());
-            if (match.Success)
+            foreach (var seg in Segments)
             {
-                var speakerName = match.Groups["name"].Value.Trim();
-                var dialogueText = match.Groups["text"].Value.Trim();
-
-                if (speakerName.Length >= 2 && speakerName.Length <= 25)
+                if (dict.TryGetValue(seg.Index, out var item))
                 {
-                    // Find or create MovieCharacter
                     var character = Characters.FirstOrDefault(c =>
-                        string.Equals(c.Name, speakerName, StringComparison.OrdinalIgnoreCase)
+                        string.Equals(c.Name, item.SpeakerName, StringComparison.OrdinalIgnoreCase)
                     );
+
                     if (character == null)
                     {
-                        var isFemaleGuess =
-                            speakerName.Contains("female", StringComparison.OrdinalIgnoreCase)
-                            || speakerName.Contains("girl", StringComparison.OrdinalIgnoreCase)
-                            || speakerName.Contains("woman", StringComparison.OrdinalIgnoreCase)
-                            || speakerName.Contains("mom", StringComparison.OrdinalIgnoreCase)
-                            || speakerName.Contains("her", StringComparison.OrdinalIgnoreCase);
-
                         var color = colors[Characters.Count % colors.Length];
+                        bool isFemaleOrChild =
+                            item.Gender == VoiceGenderDetector.GenderFemale
+                            || item.Gender == VoiceGenderDetector.GenderChild;
+                        var baseVoice = isFemaleOrChild
+                            ? "km-KH-SreymomNeural"
+                            : "km-KH-PisethNeural";
+
                         character = new MovieCharacter
                         {
-                            Name = speakerName,
-                            BaseVoice = isFemaleGuess
-                                ? "km-KH-SreymomNeural"
-                                : "km-KH-PisethNeural",
-                            SpeechRate = "+12%",
+                            Name = item.SpeakerName,
+                            Gender = item.Gender,
+                            BaseVoice = baseVoice,
+                            ToneArchetype = item.ToneArchetype,
                             ColorTag = color,
                             EnableRvc = false,
                         };
+                        character.ApplyToneArchetype(item.ToneArchetype);
+                        if (isFemaleOrChild)
+                            character.BaseVoice = "km-KH-SreymomNeural";
+
                         Characters.Add(character);
                     }
 
-                    seg.CharacterId = character.Id;
-                    seg.SpeakerName = character.Name;
-                    seg.SpeakerColor = character.ColorTag;
+                    seg.AssignedCharacter = character;
+                    seg.DetectedGender = item.Gender;
+                    if (
+                        !string.IsNullOrWhiteSpace(item.Emotion)
+                        && item.Emotion != ActorEmotionEngine.EmotionNormal
+                    )
+                    {
+                        seg.Emotion = item.Emotion;
+                    }
                     seg.AudioClipPath = null;
 
-                    // Clean original text so TTS does not read the character prefix
-                    if (!string.IsNullOrWhiteSpace(dialogueText))
-                    {
-                        seg.OriginalText = dialogueText;
-                    }
+                    // Also clean any prefix from text if present
+                    if (
+                        VoiceGenderDetector.TryExtractSpeakerPrefix(
+                            seg.OriginalText,
+                            out _,
+                            out var cleanOrig
+                        )
+                    )
+                        seg.OriginalText = cleanOrig;
+                    if (
+                        VoiceGenderDetector.TryExtractSpeakerPrefix(
+                            seg.KhmerText,
+                            out _,
+                            out var cleanKm
+                        )
+                    )
+                        seg.KhmerText = cleanKm;
 
-                    matchedCount++;
+                    assignedCount++;
                 }
             }
         }
+        finally
+        {
+            _isPropagatingBatchChange = prevPropagating;
+        }
 
-        if (matchedCount > 0)
-        {
-            _snackbarManager.Notify(
-                $"Auto-assigned {matchedCount} scenes to their respective voice actors!"
-            );
-            StatusMessage =
-                $"Auto-detected {matchedCount} dialogue lines across {Characters.Count} characters.";
-        }
-        else
-        {
-            _snackbarManager.Notify("No speaker prefixes (e.g. 'Actor A: ...') found in script.");
-        }
+        SyncAllSegmentCharacters();
+
+        StatusMessage =
+            $"Gemini AI Cast Assignment Complete: {assignedCount} lines assigned across {Characters.Count} characters.";
+        _snackbarManager.Notify(
+            $"AI Cast Diarization: Assigned {assignedCount} dialogue lines across {Characters.Count} characters!"
+        );
     }
 
     [RelayCommand]
@@ -1190,14 +2140,23 @@ public partial class DubbingViewModel : ViewModelBase
         var charA = Characters[0];
         var charB = Characters[1];
 
-        for (int i = 0; i < Segments.Count; i++)
+        var prevPropagating = _isPropagatingBatchChange;
+        _isPropagatingBatchChange = true;
+        try
         {
-            var charToAssign = (i % 2 == 0) ? charA : charB;
-            Segments[i].CharacterId = charToAssign.Id;
-            Segments[i].SpeakerName = charToAssign.Name;
-            Segments[i].SpeakerColor = charToAssign.ColorTag;
-            Segments[i].AudioClipPath = null;
+            for (int i = 0; i < Segments.Count; i++)
+            {
+                var charToAssign = (i % 2 == 0) ? charA : charB;
+                Segments[i].AssignedCharacter = charToAssign;
+                Segments[i].AudioClipPath = null;
+            }
         }
+        finally
+        {
+            _isPropagatingBatchChange = prevPropagating;
+        }
+
+        SyncAllSegmentCharacters();
 
         _snackbarManager.Notify(
             $"Alternated dialogue turns: {charA.Name} (A) ⇄ {charB.Name} (B) across {Segments.Count} scenes."
@@ -1306,23 +2265,35 @@ public partial class DubbingViewModel : ViewModelBase
             ),
         };
 
-        for (int i = 0; i < demoLines.Length; i++)
+        var prevPropagating = _isPropagatingBatchChange;
+        _isPropagatingBatchChange = true;
+        try
         {
-            var item = demoLines[i];
-            Segments.Add(
-                new SubtitleSegment
-                {
-                    Index = i + 1,
-                    StartTime = item.Start,
-                    EndTime = item.End,
-                    OriginalText = item.Original,
-                    KhmerText = item.Khmer,
-                    CharacterId = item.Speaker?.Id,
-                    SpeakerName = item.Speaker?.Name ?? "Hero (Male)",
-                    SpeakerColor = item.Speaker?.ColorTag ?? "#3B82F6",
-                }
-            );
+            for (int i = 0; i < demoLines.Length; i++)
+            {
+                var item = demoLines[i];
+                Segments.Add(
+                    new SubtitleSegment
+                    {
+                        Index = i + 1,
+                        StartTime = item.Start,
+                        EndTime = item.End,
+                        OriginalText = item.Original,
+                        KhmerText = item.Khmer,
+                        CharacterId = item.Speaker?.Id,
+                        SpeakerName = item.Speaker?.Name ?? "Hero (Male)",
+                        SpeakerColor = item.Speaker?.ColorTag ?? "#3B82F6",
+                        AssignedCharacter = item.Speaker,
+                    }
+                );
+            }
         }
+        finally
+        {
+            _isPropagatingBatchChange = prevPropagating;
+        }
+
+        SyncAllSegmentCharacters();
 
         SelectedSegment = Segments.FirstOrDefault();
         _snackbarManager.Notify(
@@ -1464,18 +2435,18 @@ public partial class DubbingViewModel : ViewModelBase
             if (Segments.Count > 0)
             {
                 StatusMessage =
-                    $"Loaded {Segments.Count} dialogue lines from {Path.GetFileName(VideoFilePath)}";
+                    $"Loaded {Segments.Count} dialogue lines from {Path.GetFileName(VideoFilePath)}. Click '⚡ Auto-Prep Studio' to setup cast & translate in 1 click.";
                 _snackbarManager.Notify(
-                    $"Loaded {Segments.Count} dialogue lines from {Path.GetFileName(VideoFilePath)}."
+                    $"Loaded {Segments.Count} dialogue lines. Click '⚡ Auto-Prep Studio' to setup cast & translate in 1 click."
                 );
                 _ = ExtractSceneThumbnailsAsync();
             }
             else
             {
                 StatusMessage =
-                    $"Loaded video: {Path.GetFileName(VideoFilePath)}. Ready to scan speech or import subtitles.";
+                    $"Loaded video: {Path.GetFileName(VideoFilePath)}. Click '⚡ Auto-Prep Studio' to transcribe speech and setup cast in 1 click.";
                 _snackbarManager.Notify(
-                    $"Video loaded: {Path.GetFileName(VideoFilePath)}. Click 'Scan Audio' or import subtitles."
+                    $"Video loaded: {Path.GetFileName(VideoFilePath)}. Click '⚡ Auto-Prep Studio' to auto-transcribe & setup cast."
                 );
             }
         }
@@ -1774,14 +2745,19 @@ public partial class DubbingViewModel : ViewModelBase
                 new ParallelOptions { MaxDegreeOfParallelism = degreeOfParallelism },
                 async (seg, ct) =>
                 {
-                    var thumbPath = Path.Combine(cacheDir, $"scene_{seg.Index:D4}.jpg");
+                    long startMs = (long)seg.StartTime.TotalMilliseconds;
+                    long endMs = (long)seg.EndTime.TotalMilliseconds;
+                    var thumbPath = Path.Combine(
+                        cacheDir,
+                        $"scene_{seg.Index:D4}_{startMs}_{endMs}.jpg"
+                    );
                     if (!File.Exists(thumbPath) || new FileInfo(thumbPath).Length == 0)
                     {
                         try
                         {
                             var ssSec = Math.Max(0, seg.StartTime.TotalSeconds)
                                 .ToString(
-                                    "0.00",
+                                    "0.000",
                                     System.Globalization.CultureInfo.InvariantCulture
                                 );
                             using var proc = new Process();
@@ -1795,7 +2771,7 @@ public partial class DubbingViewModel : ViewModelBase
                             proc.StartInfo.ArgumentList.Add("1");
                             proc.StartInfo.ArgumentList.Add("-vf");
                             proc.StartInfo.ArgumentList.Add(
-                                "scale=192:108:force_original_aspect_ratio=decrease,pad=192:108:(ow-iw)/2:(oh-ih)/2"
+                                "scale=240:135:force_original_aspect_ratio=decrease,pad=240:135:(ow-iw)/2:(oh-ih)/2"
                             );
                             proc.StartInfo.ArgumentList.Add("-q:v");
                             proc.StartInfo.ArgumentList.Add("2");
@@ -1862,61 +2838,42 @@ public partial class DubbingViewModel : ViewModelBase
         if (string.IsNullOrEmpty(ext) || ext == ".webm")
             ext = ".mp4";
 
-        var clipPath = Path.Combine(cacheDir, $"clip_{target.Index:D4}{ext}");
+        long startMs = (long)target.StartTime.TotalMilliseconds;
+        long endMs = (long)target.EndTime.TotalMilliseconds;
+        var clipPath = Path.Combine(cacheDir, $"clip_{target.Index:D4}_{startMs}_{endMs}{ext}");
         if (!File.Exists(clipPath) || new FileInfo(clipPath).Length < 100)
         {
             var ssSec = Math.Max(0, target.StartTime.TotalSeconds)
-                .ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
-            var toSec = Math.Max(target.StartTime.TotalSeconds + 0.5, target.EndTime.TotalSeconds)
-                .ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+                .ToString("0.000", System.Globalization.CultureInfo.InvariantCulture);
+            var durSec = Math.Max(0.5, (target.EndTime - target.StartTime).TotalSeconds)
+                .ToString("0.000", System.Globalization.CultureInfo.InvariantCulture);
 
             try
             {
-                using (var proc = new Process())
-                {
-                    proc.StartInfo.FileName = ffmpeg;
-                    proc.StartInfo.ArgumentList.Add("-y");
-                    proc.StartInfo.ArgumentList.Add("-ss");
-                    proc.StartInfo.ArgumentList.Add(ssSec);
-                    proc.StartInfo.ArgumentList.Add("-to");
-                    proc.StartInfo.ArgumentList.Add(toSec);
-                    proc.StartInfo.ArgumentList.Add("-i");
-                    proc.StartInfo.ArgumentList.Add(VideoFilePath);
-                    proc.StartInfo.ArgumentList.Add("-c");
-                    proc.StartInfo.ArgumentList.Add("copy");
-                    proc.StartInfo.ArgumentList.Add("-avoid_negative_ts");
-                    proc.StartInfo.ArgumentList.Add("make_zero");
-                    proc.StartInfo.ArgumentList.Add(clipPath);
-                    proc.StartInfo.UseShellExecute = false;
-                    proc.StartInfo.CreateNoWindow = true;
-                    proc.Start();
-                    await proc.WaitForExitAsync();
-                }
-
-                if (!File.Exists(clipPath) || new FileInfo(clipPath).Length < 100)
-                {
-                    // Fallback to ultrafast transcode if stream copy wasn't accepted by container
-                    using var proc2 = new Process();
-                    proc2.StartInfo.FileName = ffmpeg;
-                    proc2.StartInfo.ArgumentList.Add("-y");
-                    proc2.StartInfo.ArgumentList.Add("-ss");
-                    proc2.StartInfo.ArgumentList.Add(ssSec);
-                    proc2.StartInfo.ArgumentList.Add("-to");
-                    proc2.StartInfo.ArgumentList.Add(toSec);
-                    proc2.StartInfo.ArgumentList.Add("-i");
-                    proc2.StartInfo.ArgumentList.Add(VideoFilePath);
-                    proc2.StartInfo.ArgumentList.Add("-c:v");
-                    proc2.StartInfo.ArgumentList.Add("libx264");
-                    proc2.StartInfo.ArgumentList.Add("-preset");
-                    proc2.StartInfo.ArgumentList.Add("ultrafast");
-                    proc2.StartInfo.ArgumentList.Add("-c:a");
-                    proc2.StartInfo.ArgumentList.Add("aac");
-                    proc2.StartInfo.ArgumentList.Add(clipPath);
-                    proc2.StartInfo.UseShellExecute = false;
-                    proc2.StartInfo.CreateNoWindow = true;
-                    proc2.Start();
-                    await proc2.WaitForExitAsync();
-                }
+                using var proc = new Process();
+                proc.StartInfo.FileName = ffmpeg;
+                proc.StartInfo.ArgumentList.Add("-y");
+                proc.StartInfo.ArgumentList.Add("-ss");
+                proc.StartInfo.ArgumentList.Add(ssSec);
+                proc.StartInfo.ArgumentList.Add("-i");
+                proc.StartInfo.ArgumentList.Add(VideoFilePath);
+                proc.StartInfo.ArgumentList.Add("-t");
+                proc.StartInfo.ArgumentList.Add(durSec);
+                proc.StartInfo.ArgumentList.Add("-c:v");
+                proc.StartInfo.ArgumentList.Add("libx264");
+                proc.StartInfo.ArgumentList.Add("-preset");
+                proc.StartInfo.ArgumentList.Add("ultrafast");
+                proc.StartInfo.ArgumentList.Add("-crf");
+                proc.StartInfo.ArgumentList.Add("23");
+                proc.StartInfo.ArgumentList.Add("-c:a");
+                proc.StartInfo.ArgumentList.Add("aac");
+                proc.StartInfo.ArgumentList.Add("-avoid_negative_ts");
+                proc.StartInfo.ArgumentList.Add("make_zero");
+                proc.StartInfo.ArgumentList.Add(clipPath);
+                proc.StartInfo.UseShellExecute = false;
+                proc.StartInfo.CreateNoWindow = true;
+                proc.Start();
+                await proc.WaitForExitAsync();
             }
             catch { }
         }
@@ -2176,6 +3133,54 @@ public partial class DubbingViewModel : ViewModelBase
     }
 
     [RelayCommand]
+    public async Task AutoAlignSpeechStart(SubtitleSegment? seg = null)
+    {
+        var target = seg ?? SelectedSegment;
+        if (target == null)
+        {
+            _snackbarManager.Notify("Please select a dialogue segment to align speech start.");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(VideoFilePath) || !File.Exists(VideoFilePath))
+        {
+            _snackbarManager.Notify("Please load a video file first to analyze speech timing.");
+            return;
+        }
+
+        var ffmpeg = _855Media.Core.Downloading.FFmpeg.TryGetCliFilePath() ?? "ffmpeg";
+        StatusMessage = $"Analyzing audio speech onset for line #{target.Index}...";
+
+        var detectedStart = await AudioTranscriptionService.DetectActualSpeechStartAsync(
+            ffmpeg,
+            VideoFilePath,
+            target.StartTime,
+            target.EndTime
+        );
+
+        if (
+            detectedStart.HasValue
+            && detectedStart.Value > target.StartTime + TimeSpan.FromMilliseconds(150)
+        )
+        {
+            var oldStart = target.StartTime;
+            target.StartTime = detectedStart.Value;
+            IsProjectDirty = true;
+            StatusMessage =
+                $"Aligned line #{target.Index} speech start: {oldStart:mm\\:ss\\.ff} ➔ {target.StartTime:mm\\:ss\\.ff} (trimmed opening silence/music).";
+            _snackbarManager.Notify(
+                $"Aligned line #{target.Index} start to {target.StartTime:mm\\:ss\\.ff} (trimmed opening silence)."
+            );
+        }
+        else
+        {
+            _snackbarManager.Notify(
+                $"Line #{target.Index} is already aligned to the speaker's audio onset."
+            );
+        }
+    }
+
+    [RelayCommand]
     public async Task TestCharacterVoiceAsync(MovieCharacter? character)
     {
         var target = character ?? SelectedCharacter ?? Characters.FirstOrDefault();
@@ -2342,6 +3347,24 @@ public partial class DubbingViewModel : ViewModelBase
         if (IsPreSynthesizing || IsProcessing)
             return;
 
+        // Auto-translation guard: ensure no empty Khmer lines try to be spoken
+        if (
+            Segments.Any(s =>
+                string.IsNullOrWhiteSpace(s.KhmerText) && !string.IsNullOrWhiteSpace(s.OriginalText)
+            )
+        )
+        {
+            StatusMessage = "Translating dialogue lines to Khmer before speech synthesis...";
+            await AutoTranslateAllAsync();
+        }
+
+        // Auto-cast guard: ensure characters are assigned
+        if (Characters.Count == 0 || Segments.All(s => s.AssignedCharacter == null))
+        {
+            StatusMessage = "Assigning character voice cast before speech synthesis...";
+            await AutoDetectSpeakersAsync();
+        }
+
         IsPreSynthesizing = true;
         StatusMessage = "Batch synthesizing dubbed speech for all scenes...";
         var tempDir = Path.Combine(Path.GetTempPath(), "855Media_Dubbing_StudioAudio");
@@ -2507,49 +3530,32 @@ public partial class DubbingViewModel : ViewModelBase
 
             if (Segments.Count > 0)
             {
-                var segmentsToTranslate = Segments
-                    .Where(s => !string.IsNullOrWhiteSpace(s.OriginalText))
-                    .ToList();
-                int totalToTranslate = segmentsToTranslate.Count;
-                int translatedCount = 0;
-
-                StatusMessage =
-                    $"Scanned {Segments.Count} dialogue lines. Parallel translating to Khmer (ភាសាខ្មែរ)...";
-
-                if (totalToTranslate > 0)
+                // If first segment starts near 00:00 but video has opening silence/music, auto-align start
+                if (
+                    Segments[0].StartTime < TimeSpan.FromSeconds(0.4)
+                    && !string.IsNullOrWhiteSpace(VideoFilePath)
+                    && File.Exists(VideoFilePath)
+                )
                 {
-                    await Parallel.ForEachAsync(
-                        segmentsToTranslate,
-                        new ParallelOptions { MaxDegreeOfParallelism = 5 },
-                        async (seg, ct) =>
-                        {
-                            try
-                            {
-                                seg.KhmerText = await _subService.TranslateToKhmerAsync(
-                                    seg.OriginalText,
-                                    SourceLanguage
-                                );
-                            }
-                            catch
-                            {
-                                // Fallback: preserve original text if API error
-                            }
-
-                            int current = Interlocked.Increment(ref translatedCount);
-                            if (current % 5 == 0 || current == totalToTranslate)
-                            {
-                                StatusMessage =
-                                    $"Translated {current}/{totalToTranslate} lines to Khmer (ភាសាខ្មែរ)...";
-                            }
-                        }
+                    var actualStart = await AudioTranscriptionService.DetectActualSpeechStartAsync(
+                        ffmpeg,
+                        VideoFilePath,
+                        Segments[0].StartTime,
+                        Segments[0].EndTime
                     );
+                    if (
+                        actualStart.HasValue
+                        && actualStart.Value
+                            > Segments[0].StartTime + TimeSpan.FromMilliseconds(150)
+                    )
+                    {
+                        Segments[0].StartTime = actualStart.Value;
+                    }
                 }
 
-                StatusMessage = $"Scanned {Segments.Count} dialogue lines and translated to Khmer.";
-                _snackbarManager.Notify(
-                    $"Scanned {Segments.Count} dialogue lines and translated to Khmer!"
-                );
-                await AutoDetectGenderAsync();
+                StatusMessage = $"Scanned {Segments.Count} dialogue lines. Translating to Khmer...";
+                await AutoTranslateAllAsync();
+                await AutoDetectSpeakersAsync();
                 _ = ExtractSceneThumbnailsAsync();
             }
             else
@@ -2922,6 +3928,30 @@ public partial class DubbingViewModel : ViewModelBase
                 Segments.Add(seg);
             }
 
+            // Auto-align first segment if video is loaded and first segment is at 00:00
+            if (
+                Segments.Count > 0
+                && Segments[0].StartTime < TimeSpan.FromSeconds(0.4)
+                && !string.IsNullOrWhiteSpace(VideoFilePath)
+                && File.Exists(VideoFilePath)
+            )
+            {
+                var ffmpeg = _855Media.Core.Downloading.FFmpeg.TryGetCliFilePath() ?? "ffmpeg";
+                var actualStart = await AudioTranscriptionService.DetectActualSpeechStartAsync(
+                    ffmpeg,
+                    VideoFilePath,
+                    Segments[0].StartTime,
+                    Segments[0].EndTime
+                );
+                if (
+                    actualStart.HasValue
+                    && actualStart.Value > Segments[0].StartTime + TimeSpan.FromMilliseconds(150)
+                )
+                {
+                    Segments[0].StartTime = actualStart.Value;
+                }
+            }
+
             StatusMessage =
                 $"Imported {Segments.Count} dialogue lines from {Path.GetFileName(filePath)}";
             _snackbarManager.Notify($"Imported {Segments.Count} lines of dialogue.");
@@ -3052,6 +4082,118 @@ public partial class DubbingViewModel : ViewModelBase
     }
 
     [RelayCommand]
+    public async Task AutoPrepareAllAsync()
+    {
+        if (IsAutoPreparing || IsProcessing)
+            return;
+
+        IsAutoPreparing = true;
+        try
+        {
+            // Stage 1: Transcription / Subtitle Detection
+            if (Segments.Count == 0)
+            {
+                if (string.IsNullOrWhiteSpace(VideoFilePath) || !File.Exists(VideoFilePath))
+                {
+                    _snackbarManager.Notify(
+                        "Please load a video file or import subtitles first to auto-prepare."
+                    );
+                    return;
+                }
+
+                StatusMessage = "⚡ [1/5] Transcribing video speech with Whisper AI...";
+                await ScanAudioToTextAsync();
+
+                if (Segments.Count == 0)
+                {
+                    _snackbarManager.Notify("No speech dialogue detected in video.");
+                    return;
+                }
+            }
+            else
+            {
+                StatusMessage = "⚡ [1/5] Dialogue segments ready.";
+            }
+
+            // Stage 2: Clean dialogue text & polish formatting (preserving segment timestamps)
+            if (Segments.Count > 0)
+            {
+                StatusMessage = "⚡ [2/5] Cleaning dialogue text, stutters, and formatting...";
+                ImproveOriginalDialogue();
+                PolishKhmerDialogue();
+
+                // If first segment starts near 00:00 but video has opening silence/music, auto-align start
+                if (
+                    Segments[0].StartTime < TimeSpan.FromSeconds(0.4)
+                    && !string.IsNullOrWhiteSpace(VideoFilePath)
+                    && File.Exists(VideoFilePath)
+                )
+                {
+                    var ffmpeg = _855Media.Core.Downloading.FFmpeg.TryGetCliFilePath() ?? "ffmpeg";
+                    var actualStart = await AudioTranscriptionService.DetectActualSpeechStartAsync(
+                        ffmpeg,
+                        VideoFilePath,
+                        Segments[0].StartTime,
+                        Segments[0].EndTime
+                    );
+                    if (
+                        actualStart.HasValue
+                        && actualStart.Value
+                            > Segments[0].StartTime + TimeSpan.FromMilliseconds(150)
+                    )
+                    {
+                        Segments[0].StartTime = actualStart.Value;
+                    }
+                }
+            }
+
+            // Stage 3: Contextual Khmer Translation
+            var untranslated = Segments.Any(s =>
+                string.IsNullOrWhiteSpace(s.KhmerText) && !string.IsNullOrWhiteSpace(s.OriginalText)
+            );
+            if (untranslated)
+            {
+                StatusMessage = "⚡ [3/5] Contextually translating dialogue lines into Khmer...";
+                await AutoTranslateAllAsync();
+            }
+            else
+            {
+                StatusMessage = "⚡ [3/5] Dialogue translation already up-to-date.";
+            }
+
+            // Stage 4: Cast Diarization & Voice Actor Assignment
+            StatusMessage = "⚡ [4/5] Auto-detecting cast members, voices & dialogue turns...";
+            await AutoDetectSpeakersAsync();
+
+            // Stage 5: Emotion Tone Detection
+            StatusMessage = "⚡ [5/5] Detecting dramatic acting tones & nuances...";
+            await AutoDetectEmotionsAsync();
+
+            // Stage 6: Video Scene Snapshots
+            if (!string.IsNullOrWhiteSpace(VideoFilePath) && File.Exists(VideoFilePath))
+            {
+                _ = ExtractSceneThumbnailsAsync();
+            }
+
+            IsProjectDirty = true;
+            StatusMessage =
+                $"⚡ Studio Auto-Prep Complete! {Segments.Count} scenes prepared across {Characters.Count} voice actors and acting tones.";
+            _snackbarManager.Notify(
+                $"⚡ Studio Auto-Prep Complete! {Segments.Count} scenes ready to audition or dub."
+            );
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Auto-Prep Note: {ex.Message}";
+            _snackbarManager.Notify($"Auto-Prep Note: {ex.Message}");
+        }
+        finally
+        {
+            IsAutoPreparing = false;
+        }
+    }
+
+    [RelayCommand]
     public async Task AutoTranslateAllAsync()
     {
         if (Segments.Count == 0)
@@ -3064,7 +4206,6 @@ public partial class DubbingViewModel : ViewModelBase
             return;
 
         IsTranslating = true;
-        StatusMessage = "Translating dialogue lines to Khmer (ភាសាខ្មែរ)...";
 
         try
         {
@@ -3080,35 +4221,63 @@ public partial class DubbingViewModel : ViewModelBase
                 return;
             }
 
-            StatusMessage = $"Translating {total} dialogue lines to Khmer (ភាសាខ្មែរ)...";
+            bool useGemini = !string.IsNullOrWhiteSpace(_settingsService.GeminiApiKey);
+            StatusMessage = useGemini
+                ? $"Translating {total} dialogue lines with Gemini AI ({_settingsService.GeminiModel})..."
+                : $"Translating {total} dialogue lines to Khmer (ភាសាខ្មែរ)...";
 
-            await Parallel.ForEachAsync(
-                segmentsToTranslate,
-                new ParallelOptions { MaxDegreeOfParallelism = 5 },
-                async (seg, ct) =>
-                {
-                    try
+            if (useGemini)
+            {
+                await _subService.TranslateSegmentsWithGeminiAsync(
+                    _settingsService.GeminiApiKey!,
+                    segmentsToTranslate,
+                    SourceLanguage,
+                    _settingsService.GeminiModel,
+                    (curr, tot) =>
                     {
-                        seg.KhmerText = await _subService.TranslateToKhmerAsync(
-                            seg.OriginalText,
-                            SourceLanguage
-                        );
+                        StatusMessage = $"Translated {curr}/{tot} lines with Gemini AI...";
                     }
-                    catch
+                );
+            }
+            else
+            {
+                await Parallel.ForEachAsync(
+                    segmentsToTranslate,
+                    new ParallelOptions { MaxDegreeOfParallelism = 5 },
+                    async (seg, ct) =>
                     {
-                        // Fallback: preserve original text if API error
-                    }
+                        try
+                        {
+                            seg.KhmerText = await _subService.TranslateToKhmerAsync(
+                                seg.OriginalText,
+                                SourceLanguage,
+                                cancellationToken: ct
+                            );
+                        }
+                        catch
+                        {
+                            // Fallback: preserve original text if API error
+                        }
 
-                    int current = Interlocked.Increment(ref translatedCount);
-                    if (current % 5 == 0 || current == total)
-                    {
-                        StatusMessage = $"Translated {current}/{total} lines into Khmer...";
+                        int current = Interlocked.Increment(ref translatedCount);
+                        if (current % 5 == 0 || current == total)
+                        {
+                            StatusMessage = $"Translated {current}/{total} lines into Khmer...";
+                        }
                     }
-                }
+                );
+            }
+
+            StatusMessage = useGemini
+                ? $"Gemini AI translation completed ({total} lines with cinema naturalization)."
+                : $"Auto translation completed ({total} lines).";
+            _snackbarManager.Notify(
+                useGemini
+                    ? $"Successfully translated {total} dialogue lines using Gemini AI!"
+                    : $"Successfully translated {total} dialogue lines to Khmer!"
             );
 
-            StatusMessage = $"Auto translation completed ({total} lines).";
-            _snackbarManager.Notify($"Successfully translated {total} dialogue lines to Khmer!");
+            await AutoDetectEmotionsAsync();
         }
         catch (Exception ex)
         {
@@ -3130,9 +4299,17 @@ public partial class DubbingViewModel : ViewModelBase
         {
             SelectedSegment.KhmerText = await _subService.TranslateToKhmerAsync(
                 SelectedSegment.OriginalText,
-                SourceLanguage
+                SourceLanguage,
+                _settingsService.GeminiApiKey,
+                SelectedSegment.SpeakerName,
+                SelectedSegment.DetectedGender,
+                _settingsService.GeminiModel
             );
-            _snackbarManager.Notify("Line translated to Khmer.");
+            _snackbarManager.Notify(
+                !string.IsNullOrWhiteSpace(_settingsService.GeminiApiKey)
+                    ? "Line translated to Khmer via Gemini AI."
+                    : "Line translated to Khmer."
+            );
         }
         catch (Exception ex)
         {
@@ -3174,6 +4351,8 @@ public partial class DubbingViewModel : ViewModelBase
             EnableDynamicDucking = EnableDynamicDucking,
             EnableLoudnessNormalization = EnableLoudnessNormalization,
             EnableSmartTimeStretch = EnableSmartTimeStretch,
+            GeminiApiKey = _settingsService.GeminiApiKey,
+            GeminiModel = _settingsService.GeminiModel,
         };
 
         foreach (var c in Characters)
@@ -3325,6 +4504,8 @@ public partial class DubbingViewModel : ViewModelBase
                 EnableDynamicDucking = EnableDynamicDucking,
                 EnableLoudnessNormalization = EnableLoudnessNormalization,
                 EnableSmartTimeStretch = EnableSmartTimeStretch,
+                GeminiApiKey = _settingsService.GeminiApiKey,
+                GeminiModel = _settingsService.GeminiModel,
                 Status = DubbingJobStatus.Queued,
                 StatusMessage = "Queued in batch list",
             };
@@ -3343,6 +4524,59 @@ public partial class DubbingViewModel : ViewModelBase
             _snackbarManager.Notify($"Added {added} video(s) to Batch Dubbing Queue.");
             StatusMessage = $"Batch queue: {BatchQueue.Count} video(s) ready.";
         }
+    }
+
+    [RelayCommand]
+    public void AddCurrentProjectToBatch()
+    {
+        if (string.IsNullOrWhiteSpace(VideoFilePath) || !File.Exists(VideoFilePath))
+        {
+            _snackbarManager.Notify("Please open a video file first to add to the batch queue.");
+            return;
+        }
+
+        var dir = Path.GetDirectoryName(VideoFilePath) ?? string.Empty;
+        var nameWithoutExt = Path.GetFileNameWithoutExtension(VideoFilePath);
+        var outPath = !string.IsNullOrWhiteSpace(OutputFilePath)
+            ? OutputFilePath
+            : Path.Combine(dir, $"{nameWithoutExt}_khmer_dubbed.mp4");
+
+        var job = new DubbingJob
+        {
+            VideoFilePath = VideoFilePath,
+            OutputFilePath = outPath,
+            SourceLanguage = SourceLanguage,
+            SelectedVoice = SelectedVoice.Id,
+            EnableVoiceCloning = EnableVoiceCloning,
+            RvcModelPath = SelectedRvcModel?.PthPath,
+            RvcIndexPath = SelectedRvcModel?.IndexPath,
+            PitchShift = PitchShift,
+            RvcConcurrency = RvcConcurrency,
+            BgmVolume = BgmVolume,
+            VoiceVolume = VoiceVolume,
+            EnableAiStemSeparation = EnableAiStemSeparation,
+            EnableDynamicDucking = EnableDynamicDucking,
+            EnableLoudnessNormalization = EnableLoudnessNormalization,
+            EnableSmartTimeStretch = EnableSmartTimeStretch,
+            GeminiApiKey = _settingsService.GeminiApiKey,
+            GeminiModel = _settingsService.GeminiModel,
+            Status = DubbingJobStatus.Queued,
+            StatusMessage = "Queued from current project",
+        };
+
+        foreach (var c in Characters)
+        {
+            job.Characters.Add(c);
+        }
+
+        foreach (var seg in Segments)
+        {
+            job.Segments.Add(seg);
+        }
+
+        BatchQueue.Add(job);
+        _snackbarManager.Notify($"Added current project ({job.FileName}) to Batch Dubbing Queue.");
+        StatusMessage = $"Added {job.FileName} to Batch Dubbing Queue.";
     }
 
     [RelayCommand]

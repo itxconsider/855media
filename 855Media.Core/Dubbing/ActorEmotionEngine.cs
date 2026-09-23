@@ -593,133 +593,308 @@ public static class ActorEmotionEngine
     }
 
     /// <summary>
+    /// Checks if a string contains acting stage directions or audio descriptors (e.g. "whispering", "screams", "sobbing softly").
+    /// </summary>
+    public static bool IsStageDirection(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return false;
+
+        var clean = text.Trim().ToLowerInvariant();
+        return Regex.IsMatch(
+            clean,
+            @"\b(scream|screams|screaming|cry|crying|sob|sobbing|laugh|laughs|laughing|chuckle|chuckles|giggle|whisper|whispers|whispering|gasp|gasps|sigh|sighs|groan|groans|grunt|snicker|cackle|whimper|cheering|applause|music|pant|panting|shout|shouting|yell|yelling|silence|pause)\b|ស្រែក|យំ|សើច|ខ្សឹប|ដកដង្ហើមធំ"
+        );
+    }
+
+    /// <summary>
     /// Scans dialogue cues (in both original and Khmer text) to automatically detect the acting emotion.
+    /// Incorporates stage directions (brackets/parentheses), typography (casing/punctuation),
+    /// and comprehensive cinematic emotional cues across all 19 distinct acting tone categories.
     /// </summary>
     public static string DetectEmotion(string? originalText, string? khmerText)
     {
-        var combined =
-            $"{originalText ?? string.Empty} {khmerText ?? string.Empty}".ToLowerInvariant();
+        var rawOriginal = originalText?.Trim() ?? string.Empty;
+        var rawKhmer = khmerText?.Trim() ?? string.Empty;
+        var combined = $"{rawOriginal} {rawKhmer}".Trim();
         if (string.IsNullOrWhiteSpace(combined))
             return EmotionNormal;
 
-        // 1. Scream & Agony cues (Visceral terror screams, battle cries, shrieks, peak agony)
-        if (
-            Regex.IsMatch(
-                combined,
-                @"\b(screaming|screams|scream|screeched|screeching|screech|shrieking|shriek|yelling|yell|roaring|roar|agony|nooo+|argh+|aah+|waaa+|arrgh)\b|\[scream|\[screaming|\(scream|\(screaming|ស្រែកខ្លាំង|ស្រែកយំ|ឈឺចាប់ខ្លាំង|ស្រែករក|សម្រែក"
+        var lowerCombined = combined.ToLowerInvariant();
+
+        // -------------------------------------------------------------
+        // Phase 1: Explicit Subtitle Stage Directions & Audio Descriptors
+        // e.g. [screams], (whispering quietly), [sobbing], (gasps in terror)
+        // -------------------------------------------------------------
+        var bracketMatches = Regex.Matches(combined, @"[\[\(\{]([^\]\)\}]+)[\]\)\}]");
+        foreach (Match match in bracketMatches)
+        {
+            var stageDir = match.Groups[1].Value.ToLowerInvariant();
+
+            if (
+                Regex.IsMatch(
+                    stageDir,
+                    @"\b(scream|screams|screaming|screeched|shriek|shrieking|roar|roaring|agony|yell|yelling)\b|ស្រែក"
+                )
             )
-            || combined.Contains("!!!")
-            || combined.Contains("!?!")
+                return EmotionScream;
+
+            if (
+                Regex.IsMatch(
+                    stageDir,
+                    @"\b(cry|crying|cries|sob|sobbing|weep|weeping|whimper|whimpering|tears|sniffle|sniffling)\b|យំ|ខ្សឹក"
+                )
+            )
+                return EmotionCrying;
+
+            if (
+                Regex.IsMatch(
+                    stageDir,
+                    @"\b(laugh|laughs|laughing|chuckle|chuckles|chuckling|giggle|giggles|snicker|snickers|cackle|cackling|lol|lmao)\b|សើច"
+                )
+            )
+                return EmotionLaughing;
+
+            if (
+                Regex.IsMatch(
+                    stageDir,
+                    @"\b(whisper|whispers|whispering|hushed|murmur|murmuring|quietly|softly)\b|ខ្សឹប"
+                )
+            )
+                return EmotionWhisper;
+
+            if (
+                Regex.IsMatch(
+                    stageDir,
+                    @"\b(gasp|gasps|gasping|pant|panting|shiver|shivering|tremble|trembling|terrified|panic|frightened)\b|ភ័យ|ញ័រ"
+                )
+            )
+                return EmotionFear;
+
+            if (
+                Regex.IsMatch(
+                    stageDir,
+                    @"\b(groan|groans|groaning|sigh|sighs|sighing|grunt|grunting|scoff|scoffing|exasperated)\b|ធុញ|ថ្ងូរ"
+                )
+            )
+                return EmotionFrustrated;
+
+            if (
+                Regex.IsMatch(
+                    stageDir,
+                    @"\b(angry|furious|growl|growling|snarl|snarling|rage|spits)\b|ខឹង|គំហក"
+                )
+            )
+                return EmotionAngry;
+
+            if (
+                Regex.IsMatch(
+                    stageDir,
+                    @"\b(gunshot|gunfire|explosion|punches|stabs|combat|charging|battle cry|fight)\b|ប្រយុទ្ធ|បាញ់"
+                )
+            )
+                return EmotionAction;
+
+            if (
+                Regex.IsMatch(
+                    stageDir,
+                    @"\b(sarcastic|sarcastically|mocking|mockingly|smirks|smirking|rolls eyes)\b|ចំអក"
+                )
+            )
+                return EmotionSarcastic;
+        }
+
+        // -------------------------------------------------------------
+        // Phase 2: High-Punctuation & Typography Energy Signals
+        // -------------------------------------------------------------
+        bool hasTripleExclamation =
+            combined.Contains("!!!") || combined.Contains("!?!") || combined.Contains("! ! !");
+        bool hasInterrobang = combined.Contains("!?") || combined.Contains("?!");
+        int letterCount = rawOriginal.Count(char.IsLetter);
+        int upperCount = rawOriginal.Count(char.IsUpper);
+        bool isAllCapsShouting =
+            letterCount >= 5
+            && ((double)upperCount / letterCount) >= 0.75
+            && rawOriginal.Contains('!');
+
+        // Visceral Scream / Agony (Battle cries, shrieks, peak anguish)
+        if (
+            hasTripleExclamation
+            || Regex.IsMatch(
+                lowerCombined,
+                @"\b(screaming|screams|scream|screeched|screeching|screech|shrieking|shriek|yelling|roaring|roar|agony|nooo+|argh+|aah+|waaa+|arrgh|aaargh|noooo)\b|ស្រែកខ្លាំង|ស្រែកយំ|ឈឺចាប់ខ្លាំង|ស្រែករក|សម្រែក|ជួយខ្ញុំផង\b"
+            )
         )
             return EmotionScream;
 
-        // 2. Frustrated & Exasperated cues (Groans, sighs, exasperation, teeth-gritting)
-        if (
-            Regex.IsMatch(
-                combined,
-                @"\b(frustrated|frustrating|frustration|exasperated|annoyed|irritated|groan|groaning|fed up|cant take it|can't take it|sick of|give up|damn it|dammit|ugh)\b|\[groan|\[sigh|\(groan|\(sigh|មួម៉ៅ|ធុញថប់|ធុញ|អស់សង្ឃឹម|មិនអាចទ្រាំបាន|ទ្រាំមិនបាន|ពិបាកចិត្ត|ហត់ចិត្ត"
-            )
-        )
-            return EmotionFrustrated;
-
-        // 3. Crying cues
-        if (
-            Regex.IsMatch(
-                combined,
-                @"\b(crying|cries|cry|sobbing|sob|weeping|weep|tears|huhu|sniffles?|wailing)\b|\[cry|\[sob|\(cry|\(sob|យំ|ខ្សឹក|អួលដើមក|ស្រក់ទឹកភ្នែក"
-            )
-        )
-            return EmotionCrying;
-
-        // 4. Laughing cues
-        if (
-            Regex.IsMatch(
-                combined,
-                @"\b(laughing|laughs|laugh|chuckles?|giggles?|haha|hehe|5555|lmao|lol)\b|\[laugh|\[chuckle|\(laugh|\(chuckle|សើច|កំប្លែង|ក្អាកក្អាយ"
-            )
-        )
-            return EmotionLaughing;
-
-        // 5. Whisper cues
-        if (
-            Regex.IsMatch(
-                combined,
-                @"\b(whispering|whispers|whisper|psst|shh|quietly|secret)\b|\[whisper|\(whisper|ខ្សឹប|តិចៗ"
-            )
-        )
-            return EmotionWhisper;
-
-        // 6. Angry & Shouting cues
-        if (
-            Regex.IsMatch(
-                combined,
-                @"\b(angry|shouting|shouts|furious|damn|shut up|hate|rage|bastard|idiot)\b|\[angry|\(angry|ខឹង|គំហក|ឈ្លោះ|ស្អប់"
-            )
-            || combined.Contains("!?")
-            || combined.Contains("?!")
-            || combined.Count(c => c == '!') >= 2
-        )
+        // ALL CAPS aggressive shouting -> Angry
+        if (isAllCapsShouting)
             return EmotionAngry;
 
-        // 7. Strong & Powerful cues
+        // -------------------------------------------------------------
+        // Phase 3: Semantic Emotion & Acting Tone Patterns
+        // -------------------------------------------------------------
+
+        // 1. Action & Combat Urgency (Military orders, rapid combat commands, battle calls)
         if (
             Regex.IsMatch(
-                combined,
-                @"\b(strong|strongly|powerful|power|commanding|command|authoritative|firm|firmly|decisive|intense|general|warrior|unyielding|force)\b|\[strong|\(strong|រឹងមាំ|អំណាច|បញ្ជា|ខ្លាំង|ម៉ឺងម៉ាត់|ដាច់ខាត|មេដឹកនាំ|មេបញ្ជាការ|កម្លាំង"
+                lowerCombined,
+                @"\b(fire!|open fire|attack!|charge!|take cover|incoming|move move|go go go|behind you!|shoot him|shoot them|hold the line|run for your life|ambush|fall back|keep moving)\b|ប្រយុទ្ធ|បាញ់!|វាយវា!|ប្រយ័ត្ន!|គេចចេញ!|រត់លឿនឡើង|តាមចាប់វា|កុំឱ្យវារួចខ្លួន|លឿនឡើង!|ការពារ!"
             )
         )
-            return EmotionStrong;
+            return EmotionAction;
 
-        // 8. Soft & Gentle cues
+        // 2. Villain & Menacing (Dark overlords, megalomaniacal threats, sinister tyranny)
         if (
             Regex.IsMatch(
-                combined,
-                @"\b(soft|softly|gentle|gently|tender|tenderly|calm|calmly|soothing|peaceful|comforting|sweet|lullaby|delicate)\b|\[soft|\(soft|\[gentle|\(gentle|ស្រទន់|ស្រាល|ទន់ភ្លន់|ថ្នមៗ|ថ្នម|រម្យទម|លួងលោម|ស្ងប់ស្ងាត់|សុភាព"
-            )
-        )
-            return EmotionSoft;
-
-        // 9. Fear cues
-        if (
-            Regex.IsMatch(
-                combined,
-                @"\b(scared|terrified|fear|afraid|horror|monster|run away|help me|trembling)\b|\[fear|\[scared|\(fear|ភ័យ|ខ្លាច|រត់ទៅ|ជួយផង|ញ័រ"
-            )
-        )
-            return EmotionFear;
-
-        // 6. Sad cues
-        if (
-            Regex.IsMatch(
-                combined,
-                @"\b(sad|sorrow|depressed|grief|heartbroken|lonely|painful|regret|sigh)\b|\[sad|\(sad|កំសត់|ស្រងូត|ឈឺចាប់|ឯកោ|សោកសៅ|ស្តាយក្រោយ"
-            )
-        )
-            return EmotionSad;
-
-        // 7. Happy cues
-        if (
-            Regex.IsMatch(
-                combined,
-                @"\b(happy|yay|hurray|awesome|excited|wonderful|delighted|love you|celebrate)\b|\[happy|\(happy|សប្បាយ|រំភើប|អស្ចារ្យ|ស្រឡាញ់|អបអរ"
-            )
-        )
-            return EmotionHappy;
-
-        // 8. Villain cues
-        if (
-            Regex.IsMatch(
-                combined,
-                @"\b(destroy|die|kill|fool|kneel|obey|punish|darkness|evil)\b|កម្ទេច|សម្លាប់|លុតជង្គង់|អាក្រក់"
+                lowerCombined,
+                @"\b(destroy you|destroy them|destroy|kneel before|kneel|obey|punish|darkness|evil|pathetic mortal|bow down|you cannot defeat me|suffer|perish|your end has come)\b|កម្ទេច|លុតជង្គង់|សម្លាប់ចោល|ភាពងងឹត|គ្មានអ្នកណាជួយឯងបានទេ"
             )
         )
             return EmotionVillain;
 
-        // 9. Romantic cues
+        // 3. Romantic & Intimate (Passion, lovers' declarations, tender devotion)
         if (
             Regex.IsMatch(
-                combined,
-                @"\b(darling|honey|sweetheart|forever|kiss|my love)\b|បងសម្លាញ់|អូនសម្លាញ់|ថើប|ស្រឡាញ់"
+                lowerCombined,
+                @"\b(darling|honey|sweetheart|forever with you|forever|kiss me|kiss|my love|marry me|i love you so much|i love you|you are my everything)\b|បងសម្លាញ់|អូនសម្លាញ់|ថើប|ស្រឡាញ់|បងស្រឡាញ់អូន|អូនស្រឡាញ់បង|រៀបការជាមួយបង|បេះដូង"
+            )
+        )
+            return EmotionRomantic;
+
+        // 4. Soft & Gentle Reassurance (Tender comforting, gentle lullabies, soothing)
+        if (
+            Regex.IsMatch(
+                lowerCombined,
+                @"\b(soft|softly|gentle|gently|tender|tenderly|calm|calmly|soothing|peaceful|comforting|sweet|lullaby|delicate|it's okay|don't worry|rest easy|breathe)\b|ស្រទន់|ស្រាល|ទន់ភ្លន់|ថ្នមៗ|ថ្នម|រម្យទម|លួងលោម|ស្ងប់ស្ងាត់|សុភាព|មិនអីទេ|កុំបារម្ភ|គេងទៅ|សម្រាកទៅ"
+            )
+        )
+            return EmotionSoft;
+
+        // 5. Crying & Heartbreak (Tears, weeping, sorrowful breakdowns)
+        if (
+            Regex.IsMatch(
+                lowerCombined,
+                @"\b(crying|cries|cry|sobbing|sob|weeping|weep|tears|huhu|sniffles?|wailing|heartbroken|bawling|sobbed)\b|យំ|យំសោក|ខ្សឹកខ្សួល|អួលដើមក|ស្រក់ទឹកភ្នែក|ហូរទឹកភ្នែក|ទឹកភ្នែក|អាណិតខ្លួនឯង"
+            )
+        )
+            return EmotionCrying;
+
+        // 6. Laughing & Merriment (Chortles, chuckles, giggles, comedy)
+        if (
+            Regex.IsMatch(
+                lowerCombined,
+                @"\b(laughing|laughs|laugh|chuckles?|chuckling|giggles?|giggling|haha+|hehe+|5555+|lmao|lol|rofl|hilarious|so funny|cracking up)\b|សើច|កំប្លែង|ក្អាកក្អាយ|ហាហា|ហិហិ|អស់សំណើច"
+            )
+        )
+            return EmotionLaughing;
+
+        // 7. Whisper & Secretive (Stealth, hushed intimacy, covert orders)
+        if (
+            Regex.IsMatch(
+                lowerCombined,
+                @"\b(whispering|whispers|whisper|psst|shh+|quietly|secret|don't make a sound|keep your voice down|stay low|hush|silent)\b|ខ្សឹប|ខ្សឹបៗ|តិចៗ|កុំមាត់|កុំឱ្យគេដឹង|ការសម្ងាត់|ស្ងាត់ៗ|ស្ងាត់មាត់"
+            )
+        )
+            return EmotionWhisper;
+
+        // 8. Frustrated & Exasperated (Sighs, teeth-gritting annoyance, exasperation)
+        if (
+            Regex.IsMatch(
+                lowerCombined,
+                @"\b(frustrated|frustrating|frustration|exasperated|annoyed|irritated|groan|groaning|fed up|cant take it|can't take it|sick of|give up|damn it|dammit|ugh|give me a break|what a mess|nonsense|ridiculous|god damn)\b|មួម៉ៅ|ធុញថប់|ធុញណាស់|អស់សង្ឃឹម|មិនអាចទ្រាំបាន|ទ្រាំមិនបាន|ពិបាកចិត្ត|ហត់ចិត្ត|រំខាន"
+            )
+        )
+            return EmotionFrustrated;
+
+        // 9. Angry & Hostile (Fury, hostile commands, confrontation, interrobangs)
+        if (
+            hasInterrobang
+            || combined.Count(c => c == '!') >= 2
+            || Regex.IsMatch(
+                lowerCombined,
+                @"\b(angry|shouting|shouts|furious|damn|shut up|shut your mouth|how dare you|hate you|hate|rage|bastard|idiot|moron|fool|get out|go to hell|piss off|scum)\b|ខឹង|ខឹងខ្លាំង|គំហក|ឈ្លោះ|ស្អប់|អាឆ្កែ|អាគម្រក់|អាតិរច្ឆាន|ទៅឱ្យផុត|បិទមាត់"
+            )
+        )
+            return EmotionAngry;
+
+        // 10. Sarcastic & Mocking (Snarky drawl, sarcastic mockery, cynicism)
+        if (
+            Regex.IsMatch(
+                lowerCombined,
+                @"\b(oh really|yeah right|how touching|congratulations genius|you think you're smart|whatever you say|what a surprise|in your dreams|as if|brilliant idea|bravo genius)\b|ពូកែណាស់តើ|សមមុខហើយ|អូហូ|គិតថាអស្ចារ្យមែន|យល់សប្តិទៅ|អួតណាស់|សមហើយ|ឆ្លាតណាស់តើ"
+            )
+        )
+            return EmotionSarcastic;
+
+        // 11. Fear & Horror (Panic, dread, trembling helpless dread)
+        if (
+            Regex.IsMatch(
+                lowerCombined,
+                @"\b(scared|terrified|fear|afraid|horror|monster|nightmare|run away|help me|trembling|what is that thing|it's coming|don't hurt me|please spare me)\b|ភ័យ|ខ្លាច|ខ្លាចណាស់|ភ័យស្លន់ស្លោ|រត់ទៅ|ជួយផង|ញ័រ|ព្រឺសម្បុរ|ខ្មោច|បិសាច|កុំធ្វើបាបខ្ញុំ"
+            )
+        )
+            return EmotionFear;
+
+        // 12. Youth & Child (Childlike innocence, playful whining, young family calls)
+        if (
+            Regex.IsMatch(
+                lowerCombined,
+                @"\b(mommy|daddy|mama|papa|teacher|my toy|play with me|i want candy|are we there yet|boo hoo)\b|ម៉ាក់|ប៉ា|អ្នកគ្រូ|លោកគ្រូ|តុក្កតា|ចង់ញ៉ាំ|កូនចង់|កូនខ្លាច"
+            )
+        )
+            return EmotionYouth;
+
+        // 13. Elder & Mentor (Paternal guidance, weathered wisdom, ancient advice)
+        if (
+            Regex.IsMatch(
+                lowerCombined,
+                @"\b(my child|young one|listen closely|in my long years|patience my friend|wisdom|remember who you are|ancient times)\b|ចៅ|កូនអើយ|ចៅអើយ|កាលពីដើម|បទពិសោធន៍|អត់ធ្មត់|តាំងចិត្ត|ចាំសម្តីតា"
+            )
+        )
+            return EmotionElder;
+
+        // 14. Movie Trailer Narrator (Epic cinematic exposition, documentary prologue)
+        if (
+            Regex.IsMatch(
+                lowerCombined,
+                @"\b(long ago|once upon a time|in a world where|legend has it|centuries have passed|it all began|the story continues)\b|កាលពីរាប់ពាន់ឆ្នាំមុន|កាលពីព្រេងនាយ|រឿងព្រេងនិទាន|នៅក្នុងពិភពលោក|រឿងរ៉ាវបានចាប់ផ្តើម"
+            )
+        )
+            return EmotionNarrator;
+
+        // 15. Strong & Commanding (Martial authority, resolute determination)
+        if (
+            Regex.IsMatch(
+                lowerCombined,
+                @"\b(strong|strongly|powerful|power|commanding|command|authoritative|firm|firmly|decisive|intense|general|warrior|unyielding|force|stand firm|hold your ground)\b|រឹងមាំ|អំណាច|បញ្ជា|ខ្លាំង|ម៉ឺងម៉ាត់|ដាច់ខាត|មេដឹកនាំ|មេបញ្ជាការ|កម្លាំង|ស្តាប់បញ្ជា"
+            )
+        )
+            return EmotionStrong;
+
+        // 16. Sad & Melancholic (Grief, sorrow, regretful sighs)
+        if (
+            Regex.IsMatch(
+                lowerCombined,
+                @"\b(sad|sorrow|depressed|grief|heartbroken|lonely|painful|regret|miss you|too late|farewell|goodbye forever|hopeless|lost everything)\b|កំសត់|ស្រងូត|ឈឺចាប់|ឯកោ|សោកសៅ|ស្តាយក្រោយ|លាហើយ|ព្រាត់ប្រាស|ខូចចិត្ត"
+            ) || combined.EndsWith("...")
+        )
+            return EmotionSad;
+
+        // 17. Happy & Joyful (Triumph, celebration, exuberant cheer)
+        if (
+            Regex.IsMatch(
+                lowerCombined,
+                @"\b(happy|yay|hurray|awesome|excited|wonderful|delighted|celebrate|we won|victory|fantastic|cheers)\b|សប្បាយ|រំភើប|អស្ចារ្យ|អបអរ|ជោគជ័យហើយ|ឈ្នះហើយ|ត្រេកអរ|រីករាយ"
+            )
+        )
+            return EmotionHappy;
+
+        // 17. Romantic & Intimate (Passion, lovers' declarations)
+        if (
+            Regex.IsMatch(
+                lowerCombined,
+                @"\b(darling|honey|sweetheart|forever|kiss|my love|marry me|i love you so much|you are my everything)\b|បងសម្លាញ់|អូនសម្លាញ់|ថើប|ស្រឡាញ់|បងស្រឡាញ់អូន|អូនស្រឡាញ់បង|រៀបការជាមួយបង|បេះដូង"
             )
         )
             return EmotionRomantic;
@@ -741,6 +916,8 @@ public static class ActorEmotionEngine
         CancellationToken cancellationToken = default
     )
     {
+        cancellationToken.ThrowIfCancellationRequested();
+
         if (!File.Exists(inputAudioPath) || !File.Exists(ffmpegPath))
             return false;
 
@@ -784,7 +961,30 @@ public static class ActorEmotionEngine
                 return false;
 
             ChildProcessTracker.Track(proc);
-            await proc.WaitForExitWithCancellationAsync(cancellationToken);
+
+            using var filterCts = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken
+            );
+            filterCts.CancelAfter(TimeSpan.FromSeconds(45));
+
+            var errTask = proc.StandardError.ReadToEndAsync(filterCts.Token);
+            var outTask = proc.StandardOutput.ReadToEndAsync(filterCts.Token);
+
+            try
+            {
+                await proc.WaitForExitWithCancellationAsync(filterCts.Token);
+                await Task.WhenAll(errTask, outTask);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                try
+                {
+                    if (!proc.HasExited)
+                        proc.Kill(entireProcessTree: true);
+                }
+                catch { }
+                return false;
+            }
 
             if (
                 proc.ExitCode == 0
@@ -801,6 +1001,10 @@ public static class ActorEmotionEngine
 
             if (File.Exists(tempOutput))
                 File.Delete(tempOutput);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         catch
         {

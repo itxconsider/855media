@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using _855Media.Core.Downloading;
+using _855Media.Core.Dubbing;
 using _855Media.Core.Resolving;
 using _855Media.Framework;
 using _855Media.Localization;
@@ -32,6 +33,18 @@ public partial class DownloadMultipleSetupViewModel(
     public LocalizationManager LocalizationManager { get; } = localizationManager;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasProfilePicture))]
+    public partial string? ProfilePictureUrl { get; set; }
+
+    [ObservableProperty]
+    public partial string? AuthorName { get; set; }
+
+    [ObservableProperty]
+    public partial bool ShouldDownloadProfilePicture { get; set; } = true;
+
+    public bool HasProfilePicture => !string.IsNullOrWhiteSpace(ProfilePictureUrl);
+
+    [ObservableProperty]
     public partial string? Title { get; set; }
 
     [ObservableProperty]
@@ -43,6 +56,12 @@ public partial class DownloadMultipleSetupViewModel(
     [ObservableProperty]
     public partial VideoQualityPreference SelectedVideoQualityPreference { get; set; } =
         VideoQualityPreference.Highest;
+
+    [ObservableProperty]
+    public partial bool ShouldTranslateCaptionsToEnglish { get; set; }
+
+    [ObservableProperty]
+    public partial bool ShouldTranslateTitleToEnglish { get; set; }
 
     [ObservableProperty]
     public partial DownloadVideoTypeFilter SelectedVideoTypeFilter { get; set; }
@@ -130,6 +149,9 @@ public partial class DownloadMultipleSetupViewModel(
     {
         SelectedContainer = settingsService.LastContainer;
         SelectedVideoQualityPreference = settingsService.LastVideoQualityPreference;
+        ShouldTranslateCaptionsToEnglish = settingsService.ShouldTranslateCaptionsToEnglish;
+        ShouldTranslateTitleToEnglish = settingsService.ShouldTranslateTitleToEnglish;
+        ShouldDownloadProfilePicture = settingsService.ShouldDownloadProfilePicture;
         SelectedVideos.CollectionChanged += (_, _) => ConfirmCommand.NotifyCanExecuteChanged();
 
         return Task.CompletedTask;
@@ -175,16 +197,58 @@ public partial class DownloadMultipleSetupViewModel(
         if (string.IsNullOrWhiteSpace(dirPath))
             return;
 
-        var downloads = new List<DownloadViewModel>();
-        foreach (var (i, video) in SelectedVideos.Index())
+        var selected = SelectedVideos.ToList();
+        var translationMap = new Dictionary<string, string>();
+
+        if (ShouldTranslateTitleToEnglish && selected.Count > 0)
         {
+            var subService = new SubtitleTranslationService();
+            await Parallel.ForEachAsync(
+                selected,
+                new ParallelOptions { MaxDegreeOfParallelism = 4 },
+                async (v, ct) =>
+                {
+                    if (!string.IsNullOrWhiteSpace(v.Title))
+                    {
+                        try
+                        {
+                            var translated = await subService.TranslateToEnglishAsync(
+                                v.Title,
+                                cancellationToken: ct
+                            );
+                            if (!string.IsNullOrWhiteSpace(translated))
+                            {
+                                lock (translationMap)
+                                {
+                                    translationMap[v.Id] = translated;
+                                }
+                            }
+                        }
+                        catch
+                        {
+                            // Keep original title if translation fails
+                        }
+                    }
+                }
+            );
+        }
+
+        var downloads = new List<DownloadViewModel>();
+        foreach (var (i, video) in selected.Index())
+        {
+            var currentVideo = video;
+            if (translationMap.TryGetValue(video.Id, out var translatedTitle))
+            {
+                currentVideo = video with { Title = translatedTitle };
+            }
+
             var baseFilePath = Path.Combine(
                 dirPath,
                 FileNameTemplate.Apply(
                     settingsService.FileNameTemplate,
-                    video,
+                    currentVideo,
                     SelectedContainer,
-                    (i + 1).ToString().PadLeft(SelectedVideos.Count.ToString().Length, '0')
+                    (i + 1).ToString().PadLeft(selected.Count.ToString().Length, '0')
                 )
             );
 
@@ -199,8 +263,13 @@ public partial class DownloadMultipleSetupViewModel(
 
             downloads.Add(
                 viewModelManager.GetDownloadViewModel(
-                    video,
-                    new VideoDownloadPreference(SelectedContainer, SelectedVideoQualityPreference),
+                    currentVideo,
+                    new VideoDownloadPreference(
+                        SelectedContainer,
+                        SelectedVideoQualityPreference,
+                        ShouldTranslateCaptionsToEnglish,
+                        ShouldTranslateTitleToEnglish
+                    ),
                     filePath
                 )
             );
@@ -208,6 +277,39 @@ public partial class DownloadMultipleSetupViewModel(
 
         settingsService.LastContainer = SelectedContainer;
         settingsService.LastVideoQualityPreference = SelectedVideoQualityPreference;
+        settingsService.ShouldTranslateCaptionsToEnglish = ShouldTranslateCaptionsToEnglish;
+        settingsService.ShouldTranslateTitleToEnglish = ShouldTranslateTitleToEnglish;
+        settingsService.ShouldDownloadProfilePicture = ShouldDownloadProfilePicture;
+
+        if (ShouldDownloadProfilePicture && !string.IsNullOrWhiteSpace(ProfilePictureUrl))
+        {
+            try
+            {
+                var ext = ".jpg";
+                if (ProfilePictureUrl.Contains(".png", StringComparison.OrdinalIgnoreCase))
+                    ext = ".png";
+                else if (ProfilePictureUrl.Contains(".webp", StringComparison.OrdinalIgnoreCase))
+                    ext = ".webp";
+
+                var safeName = !string.IsNullOrWhiteSpace(AuthorName)
+                    ? Path.GetInvalidFileNameChars()
+                        .Aggregate(AuthorName, (current, c) => current.Replace(c, '_'))
+                    : "profile";
+
+                var avatarFileName = $"{safeName}_profile{ext}";
+                var avatarFilePath = Path.Combine(dirPath, avatarFileName);
+                avatarFilePath = Path.EnsureUniqueFilePath(avatarFilePath);
+
+                var imageBytes = await _855Media.Core.Utils.Http.Client.GetByteArrayAsync(
+                    ProfilePictureUrl
+                );
+                await File.WriteAllBytesAsync(avatarFilePath, imageBytes);
+            }
+            catch
+            {
+                // Profile picture download should not fail the batch
+            }
+        }
 
         Close(downloads);
     }

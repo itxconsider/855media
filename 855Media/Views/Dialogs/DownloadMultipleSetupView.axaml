@@ -1,4 +1,4 @@
-﻿<UserControl
+<UserControl
     x:Class="_855Media.Views.Dialogs.DownloadMultipleSetupView"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -13,19 +13,58 @@
     MaxWidth="1080"
     x:DataType="dialogs:DownloadMultipleSetupViewModel">
     <Grid RowDefinitions="Auto,Auto,Auto,*,Auto,Auto">
-        <!--  Title  -->
-        <TextBlock
-            Grid.Row="0"
-            Margin="16"
-            FontSize="19"
-            Text="{Binding Title}"
-            TextTrimming="CharacterEllipsis">
-            <TextBlock.ContextMenu>
-                <ContextMenu>
-                    <MenuItem Command="{Binding CopyTitleCommand}" Header="{Binding LocalizationManager.CopyMenuItem}" />
-                </ContextMenu>
-            </TextBlock.ContextMenu>
-        </TextBlock>
+        <!--  Title & Profile Header  -->
+        <StackPanel Grid.Row="0" Margin="16,16,16,8" Spacing="10">
+            <TextBlock
+                FontSize="19"
+                Text="{Binding Title}"
+                TextTrimming="CharacterEllipsis">
+                <TextBlock.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Command="{Binding CopyTitleCommand}" Header="{Binding LocalizationManager.CopyMenuItem}" />
+                    </ContextMenu>
+                </TextBlock.ContextMenu>
+            </TextBlock>
+
+            <!-- Creator / Channel Profile Header -->
+            <Border
+                IsVisible="{Binding HasProfilePicture}"
+                Padding="12,8"
+                Background="{DynamicResource AntigravityElevatedBrush}"
+                BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                BorderThickness="1"
+                CornerRadius="10">
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                    <Border
+                        Grid.Column="0"
+                        Width="36"
+                        Height="36"
+                        CornerRadius="18"
+                        ClipToBounds="True"
+                        Background="#2A2A32"
+                        Margin="0,0,12,0">
+                        <Image asyncImageLoader:ImageLoader.Source="{Binding ProfilePictureUrl}" Stretch="UniformToFill" />
+                    </Border>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding AuthorName, FallbackValue='Creator Profile'}" FontWeight="Bold" FontSize="13" Foreground="{DynamicResource AntigravityTextBrush}" />
+                        <TextBlock Text="Creator / Channel Profile Detected" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                    </StackPanel>
+                    <Border
+                        Grid.Column="2"
+                        Background="#1E10B981"
+                        BorderBrush="#4010B981"
+                        BorderThickness="1"
+                        CornerRadius="6"
+                        Padding="8,3"
+                        VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <materialIcons:MaterialIcon Kind="AccountCheck" Width="14" Height="14" Foreground="#10B981" />
+                            <TextBlock Text="Avatar Ready" FontSize="11" FontWeight="SemiBold" Foreground="#10B981" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
+        </StackPanel>
 
         <!--  Selection filter  -->
         <Grid
@@ -297,33 +336,57 @@
         </Border>
 
         <!--  Preferences  -->
-        <UniformGrid
+        <StackPanel
             Grid.Row="4"
-            Margin="8"
-            Columns="2">
-            <!--  Container preference  -->
-            <ComboBox
-                Margin="8"
-                materialAssists:ComboBoxAssist.Label="{Binding LocalizationManager.ContainerLabel}"
-                ItemsSource="{Binding AvailableContainers}"
-                SelectedItem="{Binding SelectedContainer}"
-                Theme="{DynamicResource MaterialFilledComboBox}" />
+            Margin="8,4">
+            <UniformGrid Columns="2">
+                <!--  Container preference  -->
+                <ComboBox
+                    Margin="8"
+                    materialAssists:ComboBoxAssist.Label="{Binding LocalizationManager.ContainerLabel}"
+                    ItemsSource="{Binding AvailableContainers}"
+                    SelectedItem="{Binding SelectedContainer}"
+                    Theme="{DynamicResource MaterialFilledComboBox}" />
 
-            <!--  Video quality preference  -->
-            <ComboBox
-                Margin="8"
-                materialAssists:ComboBoxAssist.Label="{Binding LocalizationManager.VideoQualityLabel}"
+                <!--  Video quality preference  -->
+                <ComboBox
+                    Margin="8"
+                    materialAssists:ComboBoxAssist.Label="{Binding LocalizationManager.VideoQualityLabel}"
+                    IsEnabled="{Binding !SelectedContainer.IsAudioOnly}"
+                    ItemsSource="{Binding AvailableVideoQualityPreferences}"
+                    SelectedItem="{Binding SelectedVideoQualityPreference}"
+                    Theme="{DynamicResource MaterialFilledComboBox}">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Converter={x:Static converters:VideoQualityPreferenceToStringConverter.Instance}}" />
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+            </UniformGrid>
+
+            <!--  Translate captions to English  -->
+            <CheckBox
+                Margin="8,4,8,4"
+                Content="{Binding LocalizationManager.TranslateCaptionsToEnglishLabel}"
+                IsChecked="{Binding ShouldTranslateCaptionsToEnglish}"
                 IsEnabled="{Binding !SelectedContainer.IsAudioOnly}"
-                ItemsSource="{Binding AvailableVideoQualityPreferences}"
-                SelectedItem="{Binding SelectedVideoQualityPreference}"
-                Theme="{DynamicResource MaterialFilledComboBox}">
-                <ComboBox.ItemTemplate>
-                    <DataTemplate>
-                        <TextBlock Text="{Binding Converter={x:Static converters:VideoQualityPreferenceToStringConverter.Instance}}" />
-                    </DataTemplate>
-                </ComboBox.ItemTemplate>
-            </ComboBox>
-        </UniformGrid>
+                ToolTip.Tip="{Binding LocalizationManager.TranslateCaptionsToEnglishTooltip}" />
+
+            <!--  Translate title & caption to English  -->
+            <CheckBox
+                Margin="8,0,8,8"
+                Content="{Binding LocalizationManager.TranslateTitleToEnglishLabel}"
+                IsChecked="{Binding ShouldTranslateTitleToEnglish}"
+                ToolTip.Tip="{Binding LocalizationManager.TranslateTitleToEnglishTooltip}" />
+
+            <!--  Download profile picture (Avatar)  -->
+            <CheckBox
+                Margin="8,0,8,8"
+                Content="Download Creator / Channel Profile Picture (Avatar)"
+                IsVisible="{Binding HasProfilePicture}"
+                IsChecked="{Binding ShouldDownloadProfilePicture}"
+                ToolTip.Tip="Saves the channel or creator's high-resolution profile picture (avatar.jpg) to the destination folder." />
+        </StackPanel>
 
         <!--  Buttons  -->
         <UniformGrid

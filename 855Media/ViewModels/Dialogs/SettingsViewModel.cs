@@ -111,6 +111,38 @@ public partial class SettingsViewModel : DialogViewModelBase
         set => _settingsService.FFmpegFilePath = !string.IsNullOrWhiteSpace(value) ? value : null;
     }
 
+    public string? GeminiApiKey
+    {
+        get => _settingsService.GeminiApiKey;
+        set =>
+            _settingsService.GeminiApiKey = !string.IsNullOrWhiteSpace(value) ? value.Trim() : null;
+    }
+
+    public string GeminiModel
+    {
+        get => _settingsService.GeminiModel;
+        set => _settingsService.GeminiModel = value;
+    }
+
+    public IReadOnlyList<string> AvailableGeminiModels { get; } =
+    ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash", "gemini-1.5-pro"];
+
+    [RelayCommand]
+    private void OpenAiStudioApiKeyUrl()
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(
+                new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "https://aistudio.google.com/app/apikey",
+                    UseShellExecute = true,
+                }
+            );
+        }
+        catch { }
+    }
+
     public bool ShouldInjectLanguageSpecificAudioStreams
     {
         get => _settingsService.ShouldInjectLanguageSpecificAudioStreams;
@@ -123,6 +155,12 @@ public partial class SettingsViewModel : DialogViewModelBase
         set => _settingsService.ShouldInjectSubtitles = value;
     }
 
+    public bool ShouldTranslateCaptionsToEnglish
+    {
+        get => _settingsService.ShouldTranslateCaptionsToEnglish;
+        set => _settingsService.ShouldTranslateCaptionsToEnglish = value;
+    }
+
     public bool ShouldInjectTags
     {
         get => _settingsService.ShouldInjectTags;
@@ -133,6 +171,12 @@ public partial class SettingsViewModel : DialogViewModelBase
     {
         get => _settingsService.ShouldSaveTitleToTextFile;
         set => _settingsService.ShouldSaveTitleToTextFile = value;
+    }
+
+    public bool ShouldTranslateTitleToEnglish
+    {
+        get => _settingsService.ShouldTranslateTitleToEnglish;
+        set => _settingsService.ShouldTranslateTitleToEnglish = value;
     }
 
     public bool IsolateSpeechAudio

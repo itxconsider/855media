@@ -315,6 +315,11 @@ public class AudioTranscriptionService
         proc.StartInfo.ArgumentList.Add("-l");
         proc.StartInfo.ArgumentList.Add(string.IsNullOrWhiteSpace(langCode) ? "auto" : langCode);
 
+        // Suppress non-speech tokens (music, applause, laughter) and avoid inventing text on opening silence
+        proc.StartInfo.ArgumentList.Add("-sns");
+        proc.StartInfo.ArgumentList.Add("-nth");
+        proc.StartInfo.ArgumentList.Add("0.65");
+
         // Allow Whisper to output natural, complete sentences based on speech pauses
         // rather than artificially chopping sentences into 50-character chunks
 
@@ -353,7 +358,7 @@ public class AudioTranscriptionService
             var content = await File.ReadAllTextAsync(outputSrt, Encoding.UTF8, cancellationToken);
             var parsed = new SubtitleTranslationService().ParseSrt(content);
             if (parsed.Count > 0)
-                return DialogueSenseEngine.ReconstructSentences(parsed);
+                return parsed;
         }
         else
         {
@@ -438,11 +443,10 @@ public class AudioTranscriptionService
                 )
             )
             {
-                if (hasStart)
-                {
-                    silenceRanges.Add((currentStart, sEnd));
-                    hasStart = false;
-                }
+                // If audio starts in silence, FFmpeg outputs silence_end without silence_start
+                var rangeStart = hasStart ? currentStart : 0.0;
+                silenceRanges.Add((rangeStart, sEnd));
+                hasStart = false;
             }
         }
 
@@ -674,5 +678,115 @@ public class AudioTranscriptionService
             "khmer" => "km",
             _ => language.Length <= 3 ? language.ToLowerInvariant() : "auto",
         };
+    }
+
+    /// <summary>
+    /// Analyzes the media audio within a time window to detect the actual onset of spoken speech,
+    /// trimming leading silence, opening music, or noise so dialogue lines align with the actor's mouth.
+    /// Returns the adjusted speech start TimeSpan if leading silence exceeds 150ms.
+    /// </summary>
+    public static async Task<TimeSpan?> DetectActualSpeechStartAsync(
+        string ffmpegPath,
+        string mediaPath,
+        TimeSpan windowStart,
+        TimeSpan windowEnd,
+        CancellationToken cancellationToken = default
+    )
+    {
+        if (string.IsNullOrWhiteSpace(mediaPath) || !File.Exists(mediaPath))
+            return null;
+
+        var startSec = Math.Max(0, windowStart.TotalSeconds)
+            .ToString("0.000", CultureInfo.InvariantCulture);
+        var durSec = Math.Max(0.5, (windowEnd - windowStart).TotalSeconds)
+            .ToString("0.000", CultureInfo.InvariantCulture);
+
+        try
+        {
+            using var proc = new Process();
+            proc.StartInfo.FileName = ffmpegPath;
+            proc.StartInfo.ArgumentList.Add("-y");
+            proc.StartInfo.ArgumentList.Add("-ss");
+            proc.StartInfo.ArgumentList.Add(startSec);
+            proc.StartInfo.ArgumentList.Add("-t");
+            proc.StartInfo.ArgumentList.Add(durSec);
+            proc.StartInfo.ArgumentList.Add("-i");
+            proc.StartInfo.ArgumentList.Add(mediaPath);
+            proc.StartInfo.ArgumentList.Add("-af");
+            proc.StartInfo.ArgumentList.Add(
+                "highpass=f=150,lowpass=f=4000,silencedetect=noise=-28dB:d=0.20"
+            );
+            proc.StartInfo.ArgumentList.Add("-f");
+            proc.StartInfo.ArgumentList.Add("null");
+            proc.StartInfo.ArgumentList.Add("-");
+            proc.StartInfo.UseShellExecute = false;
+            proc.StartInfo.CreateNoWindow = true;
+            proc.StartInfo.RedirectStandardError = true;
+
+            var errLog = new StringBuilder();
+            proc.ErrorDataReceived += (_, e) =>
+            {
+                if (!string.IsNullOrWhiteSpace(e.Data))
+                    errLog.AppendLine(e.Data);
+            };
+
+            proc.Start();
+            ChildProcessTracker.Track(proc);
+            proc.BeginErrorReadLine();
+            await proc.WaitForExitWithCancellationAsync(cancellationToken);
+
+            var silenceEndRegex = new Regex(@"silence_end:\s*([0-9\.]+)", RegexOptions.Compiled);
+            var silenceStartRegex = new Regex(
+                @"silence_start:\s*([0-9\.]+)",
+                RegexOptions.Compiled
+            );
+
+            double? firstSilenceStart = null;
+            foreach (
+                var line in errLog
+                    .ToString()
+                    .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+            )
+            {
+                var mStart = silenceStartRegex.Match(line);
+                if (
+                    mStart.Success
+                    && double.TryParse(
+                        mStart.Groups[1].Value,
+                        NumberStyles.Float,
+                        CultureInfo.InvariantCulture,
+                        out var startVal
+                    )
+                )
+                {
+                    firstSilenceStart ??= startVal;
+                }
+
+                var mEnd = silenceEndRegex.Match(line);
+                if (
+                    mEnd.Success
+                    && double.TryParse(
+                        mEnd.Groups[1].Value,
+                        NumberStyles.Float,
+                        CultureInfo.InvariantCulture,
+                        out var sEnd
+                    )
+                )
+                {
+                    // If silence began at the start of the window (start <= 0.08s or no prior silence_start emitted)
+                    if (
+                        (firstSilenceStart == null || firstSilenceStart.Value <= 0.08)
+                        && sEnd > 0.15
+                    )
+                    {
+                        return windowStart + TimeSpan.FromSeconds(sEnd);
+                    }
+                    break;
+                }
+            }
+        }
+        catch { }
+
+        return null;
     }
 }

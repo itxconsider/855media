@@ -14,6 +14,7 @@ public partial class LocalizationManager
             [nameof(ProcessQueryTooltip)] = "开始查询 (Enter)",
             [nameof(AuthTooltip)] = "身份验证",
             [nameof(SettingsTooltip)] = "设置",
+            [nameof(DownloaderTabTitle)] = "下载器",
             [nameof(DashboardPlaceholder)] = """
                 复制并粘贴 **网页链接** 或 **搜索** 以开始下载
                 使用 **Shift+Enter** 可添加多个项目
@@ -54,11 +55,17 @@ public partial class LocalizationManager
                 "将替代语言的音频轨道（如果可用）注入到下载的文件中",
             [nameof(InjectSubtitlesLabel)] = "注入字幕",
             [nameof(InjectSubtitlesTooltip)] = "将字幕（如果可用）注入到下载的文件中",
+            [nameof(TranslateCaptionsToEnglishLabel)] = "将字幕翻译为英文",
+            [nameof(TranslateCaptionsToEnglishTooltip)] =
+                "自动将字幕翻译为英文并随下载的视频一同保存",
             [nameof(InjectTagsLabel)] = "注入媒体标签",
             [nameof(InjectTagsTooltip)] = "将媒体标签（如果可用）注入到下载的文件中",
             [nameof(SaveTitleToTextFileLabel)] = "保存标题到文本文件",
             [nameof(SaveTitleToTextFileTooltip)] =
                 "在下载的媒体文件同目录下保存包含完整标题的 .txt 文件",
+            [nameof(TranslateTitleToEnglishLabel)] = "将标题和说明翻译为英文",
+            [nameof(TranslateTitleToEnglishTooltip)] =
+                "自动将外语视频标题和帖子说明翻译为英文，用于文件名和文本文件",
             [nameof(SkipExistingFilesLabel)] = "跳过已存在的文件",
             [nameof(SkipExistingFilesTooltip)] =
                 "下载多个视频时，跳过输出目录中已存在匹配文件的视频",

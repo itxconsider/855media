@@ -134,4 +134,49 @@ public class VideoTimelineExtensionTests
         Assert.Equal(TimeSpan.FromSeconds(19), segments[3].EndTime);
         Assert.Equal(4, segments[3].Index);
     }
+
+    [Fact]
+    public async Task ScaleAudioClipDurationAsync_NonExistentFile_ReturnsFalse()
+    {
+        var result = await DubbingPipeline.ScaleAudioClipDurationAsync(
+            "ffmpeg",
+            "non_existent.wav",
+            "non_existent_out.wav",
+            2.5
+        );
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task AssembleVocalTrackAsync_WhenCancelled_ThrowsPromptly()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        var job = new DubbingJob
+        {
+            VideoFilePath = "dummy.mp4",
+            OutputFilePath = "dummy_vocal.wav",
+        };
+        job.Segments.Add(
+            new SubtitleSegment
+            {
+                Index = 1,
+                StartTime = TimeSpan.FromSeconds(0),
+                EndTime = TimeSpan.FromSeconds(2),
+                OriginalText = "Hello",
+                AudioClipPath = "dummy.wav",
+            }
+        );
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+        {
+            await DubbingPipeline.AssembleVocalTrackAsync(
+                "ffmpeg",
+                job,
+                "dummy_vocal.wav",
+                cts.Token
+            );
+        });
+    }
 }

@@ -233,11 +233,54 @@ public class ActorEmotionEngineTests
     [InlineData("", "កំប្លែងណាស់ ហាហា សើចសប្បាយ", ActorEmotionEngine.EmotionLaughing)]
     [InlineData("Get out of my way right now!!", "", ActorEmotionEngine.EmotionAngry)]
     [InlineData("What are you doing?!", "", ActorEmotionEngine.EmotionAngry)]
+    [InlineData("GET OUT OF HERE NOW!", "", ActorEmotionEngine.EmotionAngry)]
     [InlineData("", "ឈប់ភ្លាម! ខ្ញុំខឹងខ្លាំងណាស់!", ActorEmotionEngine.EmotionAngry)]
     [InlineData("Psst, keep your voice down, whisper", "", ActorEmotionEngine.EmotionWhisper)]
+    [InlineData(
+        "[whispering quietly] Don't let them hear you",
+        "",
+        ActorEmotionEngine.EmotionWhisper
+    )]
     [InlineData("", "ខ្សឹបតិចៗ កុំឱ្យគេឮ", ActorEmotionEngine.EmotionWhisper)]
     [InlineData("There's a monster outside, I'm terrified!", "", ActorEmotionEngine.EmotionFear)]
+    [InlineData("(gasps in terror) What is that creature?!", "", ActorEmotionEngine.EmotionFear)]
     [InlineData("", "ខ្លាចណាស់ ជួយផង!", ActorEmotionEngine.EmotionFear)]
+    [InlineData("Open fire! Take cover and move move!", "", ActorEmotionEngine.EmotionAction)]
+    [InlineData("", "ប្រយុទ្ធ! បាញ់! គេចចេញ!", ActorEmotionEngine.EmotionAction)]
+    [InlineData("Oh really? What a surprise, genius.", "", ActorEmotionEngine.EmotionSarcastic)]
+    [InlineData("", "ពូកែណាស់តើ សមមុខហើយ!", ActorEmotionEngine.EmotionSarcastic)]
+    [InlineData("Mommy, I want to play with my toy!", "", ActorEmotionEngine.EmotionYouth)]
+    [InlineData("", "ម៉ាក់ កូនចង់ញ៉ាំនំ", ActorEmotionEngine.EmotionYouth)]
+    [InlineData(
+        "Listen closely, my child, patience is a virtue.",
+        "",
+        ActorEmotionEngine.EmotionElder
+    )]
+    [InlineData("", "កូនអើយ ចាំសម្តីតា", ActorEmotionEngine.EmotionElder)]
+    [InlineData(
+        "Once upon a time, in a world long forgotten...",
+        "",
+        ActorEmotionEngine.EmotionNarrator
+    )]
+    [InlineData("", "កាលពីរាប់ពាន់ឆ្នាំមុន នៅក្នុងពិភពលោក...", ActorEmotionEngine.EmotionNarrator)]
+    [InlineData("NOOO! AAARGH!!!", "", ActorEmotionEngine.EmotionScream)]
+    [InlineData("(screams in agony) Stop it please!", "", ActorEmotionEngine.EmotionScream)]
+    [InlineData(
+        "Ugh, damn it, I can't take this anymore!",
+        "",
+        ActorEmotionEngine.EmotionFrustrated
+    )]
+    [InlineData("", "មួម៉ៅ ធុញណាស់ អស់សង្ឃឹម", ActorEmotionEngine.EmotionFrustrated)]
+    [InlineData(
+        "Kneel before me, you pathetic mortal! Destroy them all!",
+        "",
+        ActorEmotionEngine.EmotionVillain
+    )]
+    [InlineData("", "កម្ទេចពួកវា លុតជង្គង់ចុះ!", ActorEmotionEngine.EmotionVillain)]
+    [InlineData("My love, I want to be with you forever.", "", ActorEmotionEngine.EmotionRomantic)]
+    [InlineData("", "បងស្រឡាញ់អូន បងសម្លាញ់", ActorEmotionEngine.EmotionRomantic)]
+    [InlineData("By my command, stand firm soldiers!", "", ActorEmotionEngine.EmotionStrong)]
+    [InlineData("Shh, it's okay, don't worry, rest easy.", "", ActorEmotionEngine.EmotionSoft)]
     public void DetectEmotion_IdentifiesEnglishAndKhmerCues(string en, string km, string expected)
     {
         var emotion = ActorEmotionEngine.DetectEmotion(en, km);
@@ -312,5 +355,37 @@ public class ActorEmotionEngineTests
         Assert.Equal(0.45, loaded.ToneWarmth, 2);
         Assert.Equal(0.55, loaded.ToneClarity, 2);
         Assert.Equal(1, loaded.PitchShift);
+    }
+
+    [Fact]
+    public async Task ApplyActorAcousticFilterAsync_NonExistentFile_ReturnsFalseSafely()
+    {
+        var result = await ActorEmotionEngine.ApplyActorAcousticFilterAsync(
+            "ffmpeg",
+            "non_existent_audio_file.wav",
+            "non_existent_output.wav",
+            ActorEmotionEngine.EmotionAngry
+        );
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public async Task ApplyActorAcousticFilterAsync_WhenCancelled_ThrowsOrReturnsPromptly()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        // Cancellation should be respected immediately without hanging
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+        {
+            await ActorEmotionEngine.ApplyActorAcousticFilterAsync(
+                "ffmpeg",
+                "dummy.wav",
+                "dummy_out.wav",
+                ActorEmotionEngine.EmotionNormal,
+                cancellationToken: cts.Token
+            );
+        });
     }
 }

@@ -22,6 +22,8 @@ public class KhmerTtsService
         "wss://speech.platform.bing.com/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken="
         + TrustedClientToken;
 
+    private static readonly SemaphoreSlim GoogleTtsSemaphore = new(1, 1);
+
     public async Task SynthesizeKhmerSpeechAsync(
         string text,
         string outputMp3Path,
@@ -50,7 +52,7 @@ public class KhmerTtsService
             }
             catch
             {
-                // Fall back to Microsoft Edge-TTS
+                // Fall back to Microsoft Edge-TTS on Google rate-limit or network failure
                 voiceName = "km-KH-SreymomNeural";
             }
         }
@@ -82,6 +84,8 @@ public class KhmerTtsService
         // 2. Try native C# Microsoft Edge-TTS WebSocket
         try
         {
+            using var wsCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            wsCts.CancelAfter(TimeSpan.FromSeconds(30));
             await SynthesizeViaEdgeTtsAsync(
                 text,
                 outputMp3Path,
@@ -89,7 +93,7 @@ public class KhmerTtsService
                 rate,
                 pitch,
                 volume,
-                cancellationToken
+                wsCts.Token
             );
             if (File.Exists(outputMp3Path) && new FileInfo(outputMp3Path).Length > 100)
                 return;
@@ -100,7 +104,29 @@ public class KhmerTtsService
         }
 
         // 3. Fallback: Google Translate Khmer TTS (Note: Google Khmer only has a female voice)
-        await SynthesizeViaGoogleTtsAsync(text, outputMp3Path, cancellationToken);
+        try
+        {
+            await SynthesizeViaGoogleTtsAsync(text, outputMp3Path, cancellationToken);
+            if (File.Exists(outputMp3Path) && new FileInfo(outputMp3Path).Length > 100)
+                return;
+        }
+        catch
+        {
+            // If Google TTS returned 429 or failed, retry Edge-TTS with female voice as ultimate fallback
+            var fallbackVoice = voiceName.Contains("female", StringComparison.OrdinalIgnoreCase)
+                ? "km-KH-SreymomNeural"
+                : "km-KH-PisethNeural";
+
+            await TrySynthesizeViaEdgeTtsCliAsync(
+                text,
+                outputMp3Path,
+                fallbackVoice,
+                rate,
+                pitch,
+                volume,
+                cancellationToken
+            );
+        }
     }
 
     private static string? FindEdgeTtsExecutable()
@@ -164,6 +190,15 @@ public class KhmerTtsService
             StandardErrorEncoding = Encoding.UTF8,
         };
 
+        var edgeVoice = voiceName.StartsWith("km-", StringComparison.OrdinalIgnoreCase)
+            ? voiceName
+            : (
+                voiceName.Contains("female", StringComparison.OrdinalIgnoreCase)
+                || voiceName.Contains("sreymom", StringComparison.OrdinalIgnoreCase)
+                    ? "km-KH-SreymomNeural"
+                    : "km-KH-PisethNeural"
+            );
+
         var rateArg = string.IsNullOrWhiteSpace(rate) ? "+15%" : rate;
         var pitchArg = string.IsNullOrWhiteSpace(pitch) ? "+0Hz" : pitch;
         var volArg = string.IsNullOrWhiteSpace(volume) ? "+0%" : volume;
@@ -171,7 +206,7 @@ public class KhmerTtsService
         if (exe != null)
         {
             psi.ArgumentList.Add("--voice");
-            psi.ArgumentList.Add(voiceName);
+            psi.ArgumentList.Add(edgeVoice);
             psi.ArgumentList.Add("--rate");
             psi.ArgumentList.Add(rateArg);
             if (pitchArg != "+0Hz")
@@ -194,7 +229,7 @@ public class KhmerTtsService
             psi.ArgumentList.Add("-m");
             psi.ArgumentList.Add("edge_tts");
             psi.ArgumentList.Add("--voice");
-            psi.ArgumentList.Add(voiceName);
+            psi.ArgumentList.Add(edgeVoice);
             psi.ArgumentList.Add("--rate");
             psi.ArgumentList.Add(rateArg);
             if (pitchArg != "+0Hz")
@@ -218,7 +253,29 @@ public class KhmerTtsService
             return false;
 
         ChildProcessTracker.Track(proc);
-        await proc.WaitForExitWithCancellationAsync(cancellationToken);
+
+        using var ttsCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        ttsCts.CancelAfter(TimeSpan.FromSeconds(45));
+
+        var outTask = proc.StandardOutput.ReadToEndAsync(ttsCts.Token);
+        var errTask = proc.StandardError.ReadToEndAsync(ttsCts.Token);
+
+        try
+        {
+            await proc.WaitForExitWithCancellationAsync(ttsCts.Token);
+            await Task.WhenAll(outTask, errTask);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                if (!proc.HasExited)
+                    proc.Kill(entireProcessTree: true);
+            }
+            catch { }
+            return false;
+        }
+
         return proc.ExitCode == 0
             && File.Exists(outputMp3Path)
             && new FileInfo(outputMp3Path).Length > 100;
@@ -275,6 +332,15 @@ public class KhmerTtsService
         );
 
         // Send SSML Request
+        var edgeVoice = voiceName.StartsWith("km-", StringComparison.OrdinalIgnoreCase)
+            ? voiceName
+            : (
+                voiceName.Contains("female", StringComparison.OrdinalIgnoreCase)
+                || voiceName.Contains("sreymom", StringComparison.OrdinalIgnoreCase)
+                    ? "km-KH-SreymomNeural"
+                    : "km-KH-PisethNeural"
+            );
+
         var requestId = Guid.NewGuid().ToString("N");
         var escapedText = System.Security.SecurityElement.Escape(text);
         var rateStr = string.IsNullOrWhiteSpace(rate) ? "+15%" : rate;
@@ -282,7 +348,7 @@ public class KhmerTtsService
         var volStr = string.IsNullOrWhiteSpace(volume) ? "+0%" : volume;
         var ssml =
             $"<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='km-KH'>"
-            + $"<voice name='{voiceName}'><prosody pitch='{pitchStr}' rate='{rateStr}' volume='{volStr}'>{escapedText}</prosody></voice></speak>";
+            + $"<voice name='{edgeVoice}'><prosody pitch='{pitchStr}' rate='{rateStr}' volume='{volStr}'>{escapedText}</prosody></voice></speak>";
 
         var ssmlMessage =
             $"X-RequestId:{requestId}\r\nContent-Type:application/ssml+xml\r\nPath:ssml\r\n\r\n{ssml}";
@@ -341,18 +407,48 @@ public class KhmerTtsService
         CancellationToken cancellationToken
     )
     {
-        var encodedText = Uri.EscapeDataString(text);
-        var url =
-            $"https://translate.google.com/translate_tts?ie=UTF-8&tl=km&client=tw-ob&q={encodedText}";
+        await GoogleTtsSemaphore.WaitAsync(cancellationToken);
+        try
+        {
+            // Courtesy delay to avoid triggering Google Translate bot heuristics
+            await Task.Delay(250, cancellationToken);
 
-        using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        request.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+            var encodedText = Uri.EscapeDataString(text);
+            var url =
+                $"https://translate.google.com/translate_tts?ie=UTF-8&tl=km&client=tw-ob&q={encodedText}";
 
-        using var response = await HttpClient.SendAsync(request, cancellationToken);
-        response.EnsureSuccessStatusCode();
+            const int maxRetries = 3;
+            for (int attempt = 1; attempt <= maxRetries; attempt++)
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, url);
+                request.Headers.Add(
+                    "User-Agent",
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
+                );
 
-        await using var contentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        await using var fileStream = File.Create(outputMp3Path);
-        await contentStream.CopyToAsync(fileStream, cancellationToken);
+                using var response = await HttpClient.SendAsync(request, cancellationToken);
+                if (response.StatusCode == System.Net.HttpStatusCode.TooManyRequests)
+                {
+                    if (attempt < maxRetries)
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(attempt * 2), cancellationToken);
+                        continue;
+                    }
+                }
+
+                response.EnsureSuccessStatusCode();
+
+                await using var contentStream = await response.Content.ReadAsStreamAsync(
+                    cancellationToken
+                );
+                await using var fileStream = File.Create(outputMp3Path);
+                await contentStream.CopyToAsync(fileStream, cancellationToken);
+                return;
+            }
+        }
+        finally
+        {
+            GoogleTtsSemaphore.Release();
+        }
     }
 }

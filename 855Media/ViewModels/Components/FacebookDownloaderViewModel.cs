@@ -78,7 +78,9 @@ public partial class FacebookDownloaderViewModel : ViewModelBase
 
     public event Action<bool>? ActiveTabChanged;
 
-    public bool IsActiveTab => _dashboardViewModel?.IsFacebookTab ?? false;
+    public bool IsActiveTab =>
+        (_dashboardViewModel?.IsFacebookTab ?? false)
+        || (_dashboardViewModel?.IsDownloaderTab ?? false);
 
     public void NotifyTabChanged()
     {

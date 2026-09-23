@@ -57,6 +57,7 @@ public class App : Application, IDisposable
         // View models
         services.AddTransient<MainViewModel>();
         services.AddTransient<DashboardViewModel>();
+        services.AddTransient<UnifiedDownloaderViewModel>();
         services.AddTransient<YouTubeDownloaderViewModel>();
         services.AddTransient<TikTokDownloaderViewModel>();
         services.AddTransient<FacebookDownloaderViewModel>();

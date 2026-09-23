@@ -7,7 +7,9 @@ namespace _855Media.Core.Downloading;
 
 public record VideoDownloadPreference(
     Container PreferredContainer,
-    VideoQualityPreference PreferredVideoQuality
+    VideoQualityPreference PreferredVideoQuality,
+    bool TranslateCaptionsToEnglish = false,
+    bool TranslateTitleToEnglish = false
 )
 {
     public VideoDownloadOption? TryGetBestOption(IReadOnlyList<VideoDownloadOption> options)
@@ -23,6 +25,14 @@ public record VideoDownloadPreference(
             VideoQualityPreference.Highest => orderedOptions.LastOrDefault(o =>
                 o.Container == PreferredContainer
             ),
+
+            VideoQualityPreference.UpTo2160p => orderedOptions
+                .Where(o => o.VideoQuality?.MaxHeight <= 2160)
+                .LastOrDefault(o => o.Container == PreferredContainer),
+
+            VideoQualityPreference.UpTo1440p => orderedOptions
+                .Where(o => o.VideoQuality?.MaxHeight <= 1440)
+                .LastOrDefault(o => o.Container == PreferredContainer),
 
             VideoQualityPreference.UpTo1080p => orderedOptions
                 .Where(o => o.VideoQuality?.MaxHeight <= 1080)

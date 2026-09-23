@@ -2,6 +2,7 @@ using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
+using System.Text.Json.Serialization;
 
 namespace _855Media.Core.Dubbing;
 
@@ -20,7 +21,7 @@ public enum DubbingJobStatus
     Canceled,
 }
 
-public class MovieCharacter : INotifyPropertyChanged
+public class MovieCharacter : INotifyPropertyChanged, IEquatable<MovieCharacter>
 {
     private string _name = "Character";
     private string _baseVoice = "km-KH-PisethNeural";
@@ -181,7 +182,7 @@ public class MovieCharacter : INotifyPropertyChanged
         }
     }
 
-    private double _toneWarmth = 0.25;
+    private double _toneWarmth = 0.0;
     public double ToneWarmth
     {
         get => _toneWarmth;
@@ -195,7 +196,7 @@ public class MovieCharacter : INotifyPropertyChanged
         }
     }
 
-    private double _toneClarity = 0.35;
+    private double _toneClarity = 0.0;
     public double ToneClarity
     {
         get => _toneClarity;
@@ -242,6 +243,26 @@ public class MovieCharacter : INotifyPropertyChanged
         SpeechRate = ActorEmotionEngine.ComputeEffectiveRate(BaseSpeechRate, cfg.TtsRateOffset);
     }
 
+    public bool Equals(MovieCharacter? other)
+    {
+        if (other is null)
+            return false;
+        if (ReferenceEquals(this, other))
+            return true;
+        if (Id != Guid.Empty && other.Id != Guid.Empty && Id == other.Id)
+            return true;
+        return string.Equals(Name, other.Name, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public override bool Equals(object? obj) => Equals(obj as MovieCharacter);
+
+    public override int GetHashCode()
+    {
+        return !string.IsNullOrWhiteSpace(Name)
+            ? StringComparer.OrdinalIgnoreCase.GetHashCode(Name)
+            : Id.GetHashCode();
+    }
+
     public event PropertyChangedEventHandler? PropertyChanged;
 
     protected virtual void OnPropertyChanged(string propertyName) =>
@@ -252,11 +273,91 @@ public class SubtitleSegment : INotifyPropertyChanged
 {
     private string _originalText = string.Empty;
     private string _khmerText = string.Empty;
+    private string _englishText = string.Empty;
     private TimeSpan _startTime;
     private TimeSpan _endTime;
     private Guid? _characterId;
-    private string _speakerName = "Hero / Male";
+    private string _speakerName = "Hero (Male)";
     private string _speakerColor = "#3B82F6";
+    private bool _isSelected;
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set
+        {
+            if (_isSelected != value)
+            {
+                _isSelected = value;
+                OnPropertyChanged(nameof(IsSelected));
+            }
+        }
+    }
+
+    [JsonIgnore]
+    public static Func<Guid?, string?, MovieCharacter?>? CharacterResolver { get; set; }
+
+    [JsonIgnore]
+    private MovieCharacter? _assignedCharacter;
+
+    [JsonIgnore]
+    public MovieCharacter? AssignedCharacter
+    {
+        get
+        {
+            if (CharacterResolver != null)
+            {
+                if (
+                    _assignedCharacter == null
+                    || (_characterId.HasValue && _assignedCharacter.Id != _characterId.Value)
+                    || (
+                        !_characterId.HasValue
+                        && !string.IsNullOrWhiteSpace(_speakerName)
+                        && !string.Equals(
+                            _assignedCharacter.Name,
+                            _speakerName,
+                            StringComparison.OrdinalIgnoreCase
+                        )
+                    )
+                )
+                {
+                    _assignedCharacter = CharacterResolver(_characterId, _speakerName);
+                }
+            }
+            return _assignedCharacter;
+        }
+        set
+        {
+            if (!ReferenceEquals(_assignedCharacter, value) && !Equals(_assignedCharacter, value))
+            {
+                _assignedCharacter = value;
+                if (value != null)
+                {
+                    _characterId = value.Id;
+                    _speakerName = value.Name;
+                    _speakerColor = value.ColorTag;
+                    OnPropertyChanged(nameof(CharacterId));
+                    OnPropertyChanged(nameof(SpeakerName));
+                    OnPropertyChanged(nameof(SpeakerColor));
+                }
+                else
+                {
+                    _characterId = null;
+                    OnPropertyChanged(nameof(CharacterId));
+                }
+                OnPropertyChanged(nameof(AssignedCharacter));
+            }
+            else if (
+                _assignedCharacter != null
+                && value != null
+                && !ReferenceEquals(_assignedCharacter, value)
+            )
+            {
+                // Align exact instance reference from ItemsSource for Avalonia ComboBox
+                _assignedCharacter = value;
+                OnPropertyChanged(nameof(AssignedCharacter));
+            }
+        }
+    }
 
     public int Index { get; set; }
 
@@ -365,6 +466,19 @@ public class SubtitleSegment : INotifyPropertyChanged
         }
     }
 
+    public string EnglishText
+    {
+        get => _englishText;
+        set
+        {
+            if (_englishText != value)
+            {
+                _englishText = value;
+                OnPropertyChanged(nameof(EnglishText));
+            }
+        }
+    }
+
     public Guid? CharacterId
     {
         get => _characterId;
@@ -373,7 +487,13 @@ public class SubtitleSegment : INotifyPropertyChanged
             if (_characterId != value)
             {
                 _characterId = value;
+                _assignedCharacter = null;
                 OnPropertyChanged(nameof(CharacterId));
+                if (CharacterResolver != null)
+                {
+                    _assignedCharacter = CharacterResolver(value, _speakerName);
+                }
+                OnPropertyChanged(nameof(AssignedCharacter));
             }
         }
     }
@@ -386,7 +506,13 @@ public class SubtitleSegment : INotifyPropertyChanged
             if (_speakerName != value)
             {
                 _speakerName = value;
+                _assignedCharacter = null;
                 OnPropertyChanged(nameof(SpeakerName));
+                if (CharacterResolver != null)
+                {
+                    _assignedCharacter = CharacterResolver(_characterId, value);
+                }
+                OnPropertyChanged(nameof(AssignedCharacter));
             }
         }
     }
@@ -445,6 +571,20 @@ public class SubtitleSegment : INotifyPropertyChanged
                 OnPropertyChanged(nameof(EmotionColor));
                 OnPropertyChanged(nameof(EmotionIcon));
                 OnPropertyChanged(nameof(EmotionDisplayName));
+                OnPropertyChanged(nameof(AssignedEmotionConfig));
+            }
+        }
+    }
+
+    [JsonIgnore]
+    public ActorEmotionConfig? AssignedEmotionConfig
+    {
+        get => ActorEmotionEngine.GetConfig(Emotion);
+        set
+        {
+            if (value != null && value.Name != _emotion)
+            {
+                Emotion = value.Name;
             }
         }
     }
@@ -513,6 +653,8 @@ public class DubbingJob : INotifyPropertyChanged
     public bool EnableLoudnessNormalization { get; set; } = true; // EBU R128 (-16 LUFS) broadcast loudness mastering
 
     public bool EnableSmartTimeStretch { get; set; } = true; // Auto-fit translated speech to visual scene duration
+    public string? GeminiApiKey { get; set; } // Google Gemini API Key for context-aware cinema translation
+    public string GeminiModel { get; set; } = "gemini-2.0-flash";
 
     public ObservableCollection<MovieCharacter> Characters { get; } = [];
 

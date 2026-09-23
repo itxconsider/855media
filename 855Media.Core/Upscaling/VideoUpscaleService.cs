@@ -254,6 +254,19 @@ public partial class VideoUpscaleService
                     ? AiEngineExecutablePath
                     : TryGetAiEngineExecutablePath();
 
+            // Separate audio stems using neural AI Demucs if speech isolation or vocal removal is selected
+            string? isolatedAudioPath = null;
+            if (job.AudioMode is UpscaleAudioMode.IsolateSpeech or UpscaleAudioMode.RemoveVocals)
+            {
+                isolatedAudioPath = await PrepareProcessedAudioStemAsync(
+                    job,
+                    ffmpegPath,
+                    tempDir,
+                    Log,
+                    cancellationToken
+                );
+            }
+
             if (
                 job.ModelType == UpscaleModelType.FastNative
                 || job.ModelType == UpscaleModelType.NvidiaRtx
@@ -276,6 +289,7 @@ public partial class VideoUpscaleService
                     job,
                     ffmpegPath,
                     tempDir,
+                    isolatedAudioPath,
                     Log,
                     cancellationToken
                 );
@@ -287,6 +301,7 @@ public partial class VideoUpscaleService
                     ffmpegPath,
                     aiEnginePath,
                     tempDir,
+                    isolatedAudioPath,
                     Log,
                     cancellationToken
                 );
@@ -298,6 +313,7 @@ public partial class VideoUpscaleService
                     job,
                     ffmpegPath,
                     tempDir,
+                    isolatedAudioPath,
                     Log,
                     cancellationToken
                 );
@@ -461,6 +477,7 @@ public partial class VideoUpscaleService
         UpscaleJob job,
         string ffmpegPath,
         string tempDir,
+        string? isolatedAudioPath,
         Action<string> log,
         CancellationToken cancellationToken
     )
@@ -641,32 +658,85 @@ public partial class VideoUpscaleService
             _ => Math.Min(totalLogicalCores - 4, 24), // 20-32+ core (Ultra 7, Ryzen 9): up to 24 threads
         };
 
+        bool hasIsolatedAudio =
+            !string.IsNullOrWhiteSpace(isolatedAudioPath) && File.Exists(isolatedAudioPath);
+
         var arguments = new List<string> { "-y" };
         arguments.AddRange(hwArgs);
         arguments.AddRange(["-threads", safeThreads.ToString(CultureInfo.InvariantCulture)]);
-        arguments.AddRange(["-i", job.FilePath, "-vf", videoFilter]);
+        arguments.AddRange(["-i", job.FilePath]);
+        if (hasIsolatedAudio)
+        {
+            arguments.AddRange(["-i", isolatedAudioPath!]);
+        }
+        arguments.AddRange(["-vf", videoFilter]);
         arguments.AddRange(encoderArgs);
 
-        string audioSpeedFilter = BuildAudioSpeedFilter(job.PlaybackSpeed);
-        if (!string.IsNullOrWhiteSpace(audioSpeedFilter))
+        var (audioFilter, reencodeAac, isMuted) = BuildAudioPipeline(
+            job.AudioMode,
+            job.PlaybackSpeed
+        );
+
+        if (isMuted)
         {
-            log($"[Audio Tempo] Applied pitch-preserving speed filter: {audioSpeedFilter}");
-            arguments.AddRange([
-                "-map",
-                "0:v:0",
-                "-map",
-                "0:a?",
-                "-filter:a",
-                audioSpeedFilter,
-                "-c:a",
-                "aac",
-                "-b:a",
-                "320k",
-                "-map",
-                "0:s?",
-                "-c:s",
-                "copy",
-            ]);
+            log("[Audio Pipeline] Audio stream muted (silent video output).");
+            arguments.AddRange(["-map", "0:v:0", "-an", "-map", "0:s?", "-c:s", "copy"]);
+        }
+        else if (hasIsolatedAudio)
+        {
+            string speedFilter = BuildAudioSpeedFilter(job.PlaybackSpeed);
+            arguments.AddRange(["-map", "0:v:0", "-map", "1:a:0"]);
+            if (!string.IsNullOrWhiteSpace(speedFilter))
+            {
+                log(
+                    $"[Audio Pipeline] Applied tempo adjustment ({job.PlaybackSpeed:0.##}x) to isolated stem: {speedFilter}"
+                );
+                arguments.AddRange(["-filter:a", speedFilter]);
+            }
+            log(
+                $"[Audio Pipeline] Muxing neural isolated stem ({job.AudioMode}) as primary audio."
+            );
+            arguments.AddRange(["-c:a", "aac", "-b:a", "320k", "-map", "0:s?", "-c:s", "copy"]);
+        }
+        else if (reencodeAac)
+        {
+            if (!string.IsNullOrWhiteSpace(audioFilter))
+            {
+                log($"[Audio Pipeline] Applied filter ({job.AudioMode}): {audioFilter}");
+                arguments.AddRange([
+                    "-map",
+                    "0:v:0",
+                    "-map",
+                    "0:a?",
+                    "-filter:a",
+                    audioFilter,
+                    "-c:a",
+                    "aac",
+                    "-b:a",
+                    "320k",
+                    "-map",
+                    "0:s?",
+                    "-c:s",
+                    "copy",
+                ]);
+            }
+            else
+            {
+                arguments.AddRange([
+                    "-map",
+                    "0:v:0",
+                    "-map",
+                    "0:a?",
+                    "-c:a",
+                    "aac",
+                    "-b:a",
+                    "320k",
+                    "-map",
+                    "0:s?",
+                    "-c:s",
+                    "copy",
+                ]);
+            }
         }
         else
         {
@@ -720,22 +790,73 @@ public partial class VideoUpscaleService
                 ffmpegPath,
                 job.SpeedMode
             );
-            var fallbackArgs = new List<string> { "-y", "-i", job.FilePath, "-vf", videoFilter };
+            var fallbackArgs = new List<string> { "-y", "-i", job.FilePath };
+            if (hasIsolatedAudio)
+            {
+                fallbackArgs.AddRange(["-i", isolatedAudioPath!]);
+            }
+            fallbackArgs.AddRange(["-vf", videoFilter]);
             fallbackArgs.AddRange(cpuArgs);
-            fallbackArgs.AddRange([
-                "-map",
-                "0:v:0",
-                "-map",
-                "0:a?",
-                "-c:a",
-                "aac",
-                "-b:a",
-                "320k",
-                "-map",
-                "0:s?",
-                "-c:s",
-                "copy",
-            ]);
+
+            if (isMuted)
+            {
+                fallbackArgs.AddRange(["-map", "0:v:0", "-an", "-map", "0:s?", "-c:s", "copy"]);
+            }
+            else if (hasIsolatedAudio)
+            {
+                string speedFilter = BuildAudioSpeedFilter(job.PlaybackSpeed);
+                fallbackArgs.AddRange(["-map", "0:v:0", "-map", "1:a:0"]);
+                if (!string.IsNullOrWhiteSpace(speedFilter))
+                {
+                    fallbackArgs.AddRange(["-filter:a", speedFilter]);
+                }
+                fallbackArgs.AddRange([
+                    "-c:a",
+                    "aac",
+                    "-b:a",
+                    "320k",
+                    "-map",
+                    "0:s?",
+                    "-c:s",
+                    "copy",
+                ]);
+            }
+            else if (!string.IsNullOrWhiteSpace(audioFilter))
+            {
+                fallbackArgs.AddRange([
+                    "-map",
+                    "0:v:0",
+                    "-map",
+                    "0:a?",
+                    "-filter:a",
+                    audioFilter,
+                    "-c:a",
+                    "aac",
+                    "-b:a",
+                    "320k",
+                    "-map",
+                    "0:s?",
+                    "-c:s",
+                    "copy",
+                ]);
+            }
+            else
+            {
+                fallbackArgs.AddRange([
+                    "-map",
+                    "0:v:0",
+                    "-map",
+                    "0:a?",
+                    "-c:a",
+                    "aac",
+                    "-b:a",
+                    "320k",
+                    "-map",
+                    "0:s?",
+                    "-c:s",
+                    "copy",
+                ]);
+            }
             fallbackArgs.AddRange(metaArgs);
             fallbackArgs.Add(job.OutputFilePath);
 
@@ -754,6 +875,7 @@ public partial class VideoUpscaleService
         string ffmpegPath,
         string aiToolPath,
         string tempDir,
+        string? isolatedAudioPath,
         Action<string> log,
         CancellationToken cancellationToken
     )
@@ -1080,6 +1202,9 @@ public partial class VideoUpscaleService
             _ => Math.Min(Environment.ProcessorCount, 6),
         };
 
+        bool hasIsolatedAudio =
+            !string.IsNullOrWhiteSpace(isolatedAudioPath) && File.Exists(isolatedAudioPath);
+
         var muxArgs = new List<string>
         {
             "-y",
@@ -1091,21 +1216,58 @@ public partial class VideoUpscaleService
             Path.Combine(finalFramesDir, "frame_%08d.jpg"),
             "-i",
             job.FilePath,
-            "-map",
-            "0:v:0",
-            "-map",
-            "1:a?",
         };
-
-        string muxAudioSpeedFilter = BuildAudioSpeedFilter(job.PlaybackSpeed);
-        if (!string.IsNullOrWhiteSpace(muxAudioSpeedFilter))
+        if (hasIsolatedAudio)
         {
-            log($"[Audio Tempo] Applied pitch-preserving speed filter: {muxAudioSpeedFilter}");
-            muxArgs.AddRange(["-filter:a", muxAudioSpeedFilter, "-c:a", "aac", "-b:a", "320k"]);
+            muxArgs.AddRange(["-i", isolatedAudioPath!]);
+        }
+        muxArgs.AddRange(["-map", "0:v:0"]);
+
+        var (muxAudioFilter, muxReencodeAac, muxIsMuted) = BuildAudioPipeline(
+            job.AudioMode,
+            job.PlaybackSpeed
+        );
+
+        if (muxIsMuted)
+        {
+            log("[Audio Pipeline] Audio stream muted (silent video output).");
+            muxArgs.Add("-an");
+        }
+        else if (hasIsolatedAudio)
+        {
+            string speedFilter = BuildAudioSpeedFilter(job.PlaybackSpeed);
+            muxArgs.AddRange(["-map", "2:a:0"]);
+            if (!string.IsNullOrWhiteSpace(speedFilter))
+            {
+                log(
+                    $"[Audio Pipeline] Applied tempo adjustment ({job.PlaybackSpeed:0.##}x) to isolated stem: {speedFilter}"
+                );
+                muxArgs.AddRange(["-filter:a", speedFilter]);
+            }
+            log(
+                $"[Audio Pipeline] Muxing neural isolated stem ({job.AudioMode}) as primary audio."
+            );
+            muxArgs.AddRange(["-c:a", "aac", "-b:a", "320k"]);
         }
         else
         {
-            muxArgs.AddRange(["-c:a", "copy"]);
+            muxArgs.AddRange(["-map", "1:a?"]);
+            if (muxReencodeAac)
+            {
+                if (!string.IsNullOrWhiteSpace(muxAudioFilter))
+                {
+                    log($"[Audio Pipeline] Applied filter ({job.AudioMode}): {muxAudioFilter}");
+                    muxArgs.AddRange(["-filter:a", muxAudioFilter, "-c:a", "aac", "-b:a", "320k"]);
+                }
+                else
+                {
+                    muxArgs.AddRange(["-c:a", "aac", "-b:a", "320k"]);
+                }
+            }
+            else
+            {
+                muxArgs.AddRange(["-c:a", "copy"]);
+            }
         }
 
         muxArgs.AddRange(["-map", "1:s?", "-c:s", "copy"]);
@@ -1196,18 +1358,38 @@ public partial class VideoUpscaleService
                 Path.Combine(finalFramesDir, "frame_%08d.jpg"),
                 "-i",
                 job.FilePath,
-                "-map",
-                "0:v:0",
-                "-map",
-                "1:a?",
             };
-
-            if (!string.IsNullOrWhiteSpace(muxAudioSpeedFilter))
+            if (hasIsolatedAudio)
             {
-                fallbackMux.AddRange(["-filter:a", muxAudioSpeedFilter]);
+                fallbackMux.AddRange(["-i", isolatedAudioPath!]);
+            }
+            fallbackMux.AddRange(["-map", "0:v:0"]);
+
+            if (muxIsMuted)
+            {
+                fallbackMux.Add("-an");
+            }
+            else if (hasIsolatedAudio)
+            {
+                string speedFilter = BuildAudioSpeedFilter(job.PlaybackSpeed);
+                fallbackMux.AddRange(["-map", "2:a:0"]);
+                if (!string.IsNullOrWhiteSpace(speedFilter))
+                {
+                    fallbackMux.AddRange(["-filter:a", speedFilter]);
+                }
+                fallbackMux.AddRange(["-c:a", "aac", "-b:a", "320k"]);
+            }
+            else
+            {
+                fallbackMux.AddRange(["-map", "1:a?"]);
+                if (!string.IsNullOrWhiteSpace(muxAudioFilter))
+                {
+                    fallbackMux.AddRange(["-filter:a", muxAudioFilter]);
+                }
+                fallbackMux.AddRange(["-c:a", "aac", "-b:a", "320k"]);
             }
 
-            fallbackMux.AddRange(["-c:a", "aac", "-b:a", "320k", "-map", "1:s?", "-c:s", "copy"]);
+            fallbackMux.AddRange(["-map", "1:s?", "-c:s", "copy"]);
             fallbackMux.AddRange(metaArgs);
             if (!string.IsNullOrWhiteSpace(finalVf))
             {
@@ -1773,6 +1955,59 @@ public partial class VideoUpscaleService
         return string.Join(",", filters);
     }
 
+    /// <summary>
+    /// Builds the audio filter and codec pipeline for FFmpeg based on the selected UpscaleAudioMode and playback speed.
+    /// </summary>
+    public static (string? Filter, bool ReencodeAac, bool Mute) BuildAudioPipeline(
+        UpscaleAudioMode mode,
+        double playbackSpeed
+    )
+    {
+        if (mode == UpscaleAudioMode.Mute)
+        {
+            return (null, false, true);
+        }
+
+        string speedFilter = BuildAudioSpeedFilter(playbackSpeed);
+
+        switch (mode)
+        {
+            case UpscaleAudioMode.IsolateSpeech:
+                string speechFilter =
+                    _855Media.Core.Audio.AudioProcessor.GetSpeechIsolationFilter();
+                string combinedSpeech = string.IsNullOrWhiteSpace(speedFilter)
+                    ? speechFilter
+                    : $"{speechFilter},{speedFilter}";
+                return (combinedSpeech, true, false);
+
+            case UpscaleAudioMode.RemoveVocals:
+                string karaokeFilter = _855Media.Core.Audio.AudioProcessor.GetKaraokeFilter();
+                string combinedKaraoke = string.IsNullOrWhiteSpace(speedFilter)
+                    ? karaokeFilter
+                    : $"{karaokeFilter},{speedFilter}";
+                return (combinedKaraoke, true, false);
+
+            case UpscaleAudioMode.AntiCopyrightPitch:
+                // Shifts sample rate up by +4% (shifts harmonics to disrupt acoustic fingerprinting / Content ID),
+                // then compensates duration with atempo so audio remains in sync with the video,
+                // and resamples back to pristine 48kHz.
+                double effectiveTempo = playbackSpeed / 1.04;
+                string tempoFilter = BuildAudioSpeedFilter(effectiveTempo);
+                string pitchFilter = string.IsNullOrWhiteSpace(tempoFilter)
+                    ? "aformat=sample_rates=48000,asetrate=49920,aresample=48000"
+                    : $"aformat=sample_rates=48000,asetrate=49920,{tempoFilter},aresample=48000";
+                return (pitchFilter, true, false);
+
+            case UpscaleAudioMode.CopyOriginal:
+            default:
+                if (!string.IsNullOrWhiteSpace(speedFilter))
+                {
+                    return (speedFilter, true, false);
+                }
+                return (null, false, false);
+        }
+    }
+
     private async Task ExecuteProcessWithProgressAsync(
         string fileName,
         IReadOnlyList<string> arguments,
@@ -2082,4 +2317,87 @@ public partial class VideoUpscaleService
         || message.Contains("hardware acceleration failed", StringComparison.OrdinalIgnoreCase)
         || message.Contains("vkQueueSubmit failed", StringComparison.OrdinalIgnoreCase)
         || message.Contains("VK_ERROR_DEVICE_LOST", StringComparison.OrdinalIgnoreCase);
+
+    private static async Task<string?> PrepareProcessedAudioStemAsync(
+        UpscaleJob job,
+        string ffmpegPath,
+        string tempDir,
+        Action<string> log,
+        CancellationToken cancellationToken
+    )
+    {
+        var extractedAudioPath = Path.Combine(tempDir, "source_audio.wav");
+        var vocalsPath = Path.Combine(tempDir, "isolated_speech.wav");
+        var bgmPath = Path.Combine(tempDir, "isolated_bgm.wav");
+
+        string targetStemPath =
+            job.AudioMode == UpscaleAudioMode.RemoveVocals ? bgmPath : vocalsPath;
+        if (File.Exists(targetStemPath) && new FileInfo(targetStemPath).Length > 1024)
+        {
+            log(
+                $"[Audio Stem Separation] Found pre-separated stem: {Path.GetFileName(targetStemPath)}"
+            );
+            return targetStemPath;
+        }
+
+        try
+        {
+            var stemService = new _855Media.Core.Dubbing.AudioStemSeparationService();
+
+            log(
+                $"[Audio Stem Separation] Extracting audio track from {Path.GetFileName(job.FilePath)} for neural stem separation ({job.AudioMode})..."
+            );
+            await stemService.ExtractFullAudioAsync(
+                ffmpegPath,
+                job.FilePath,
+                extractedAudioPath,
+                cancellationToken
+            );
+
+            if (!File.Exists(extractedAudioPath) || new FileInfo(extractedAudioPath).Length == 0)
+            {
+                log(
+                    "[Audio Stem Separation] Source video contains no audio stream. Skipping stem separation."
+                );
+                return null;
+            }
+
+            log(
+                "[Audio Stem Separation] Executing Meta HDEMUCS neural model on GPU to separate stems..."
+            );
+            await stemService.SeparateStemsAsync(
+                ffmpegPath,
+                extractedAudioPath,
+                vocalsPath,
+                bgmPath,
+                useAiDemucs: true,
+                progressLogger: log,
+                cancellationToken: cancellationToken
+            );
+
+            if (File.Exists(targetStemPath) && new FileInfo(targetStemPath).Length > 1024)
+            {
+                log(
+                    $"[Audio Stem Separation] Successfully extracted neural {(job.AudioMode == UpscaleAudioMode.RemoveVocals ? "BGM/Karaoke" : "Speech/Dialogue")} stem ({new FileInfo(targetStemPath).Length / 1024} KB)."
+                );
+                return targetStemPath;
+            }
+
+            log(
+                "[Audio Stem Separation] Notice: Stem output was empty. Falling back to real-time audio filter."
+            );
+            return null;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            log(
+                $"[Audio Stem Separation] Stem separation failed ({ex.Message}). Falling back to real-time audio filter."
+            );
+            return null;
+        }
+    }
 }

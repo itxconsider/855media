@@ -404,6 +404,8 @@ public static partial class YtDlp
 
     public static IReadOnlyList<VideoDownloadOption> GetDefaultOptions() =>
         [
+            new VideoDownloadOption(Container.Mp4, false, [], new VideoQuality(2160, 60)),
+            new VideoDownloadOption(Container.Mp4, false, [], new VideoQuality(1440, 60)),
             new VideoDownloadOption(Container.Mp4, false, [], new VideoQuality(1080, 30)),
             new VideoDownloadOption(Container.Mp4, false, [], new VideoQuality(720, 30)),
             new VideoDownloadOption(Container.Mp4, false, [], new VideoQuality(480, 30)),

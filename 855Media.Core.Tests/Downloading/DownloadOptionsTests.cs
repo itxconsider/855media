@@ -37,6 +37,7 @@ public class DownloadOptionsTests
         var videoOptions = options.Where(o => !o.IsAudioOnly).ToArray();
         Assert.True(videoOptions.Length >= 4);
         Assert.All(videoOptions, v => Assert.NotNull(v.VideoQuality));
+        Assert.Contains(videoOptions, v => v.VideoQuality?.MaxHeight == 2160);
         Assert.Contains(videoOptions, v => v.VideoQuality?.MaxHeight == 1080);
         Assert.Contains(videoOptions, v => v.VideoQuality?.MaxHeight == 720);
 
@@ -62,11 +63,23 @@ public class DownloadOptionsTests
     {
         var options = new[]
         {
+            new VideoDownloadOption(Container.Mp4, false, [], new VideoQuality(2160, 60)),
+            new VideoDownloadOption(Container.Mp4, false, [], new VideoQuality(1440, 60)),
             new VideoDownloadOption(Container.Mp4, false, [], new VideoQuality(1080, 30)),
             new VideoDownloadOption(Container.Mp4, false, [], new VideoQuality(720, 30)),
             new VideoDownloadOption(Container.Mp4, false, [], new VideoQuality(480, 30)),
             new VideoDownloadOption(Container.Mp3, true, []),
         };
+
+        var pref2160 = new VideoDownloadPreference(Container.Mp4, VideoQualityPreference.UpTo2160p);
+        var best2160 = pref2160.TryGetBestOption(options);
+        Assert.NotNull(best2160);
+        Assert.Equal(2160, best2160.VideoQuality?.MaxHeight);
+
+        var pref1440 = new VideoDownloadPreference(Container.Mp4, VideoQualityPreference.UpTo1440p);
+        var best1440 = pref1440.TryGetBestOption(options);
+        Assert.NotNull(best1440);
+        Assert.Equal(1440, best1440.VideoQuality?.MaxHeight);
 
         var pref1080 = new VideoDownloadPreference(Container.Mp4, VideoQualityPreference.UpTo1080p);
         var best1080 = pref1080.TryGetBestOption(options);
@@ -85,11 +98,18 @@ public class DownloadOptionsTests
         Assert.Equal(Container.Mp3, bestAudio.Container);
     }
 
+    private readonly Xunit.Abstractions.ITestOutputHelper _output;
+
+    public DownloadOptionsTests(Xunit.Abstractions.ITestOutputHelper output)
+    {
+        _output = output;
+    }
+
     [Fact]
     public async Task GetDownloadOptionsAsync_ReturnsQualitiesForYouTubeVideo()
     {
         using var downloader = new VideoDownloader();
-        var options = await downloader.GetDownloadOptionsAsync("eNhtfE2xMDI");
+        var options = await downloader.GetDownloadOptionsAsync("jNQXAC9IVRw");
 
         Assert.NotEmpty(options);
         // Ensure every video option has a valid video quality
@@ -107,5 +127,157 @@ public class DownloadOptionsTests
 
         // Ensure we have choices (not just a single empty mp4)
         Assert.True(options.Count > 1, $"Expected multiple quality options, got {options.Count}");
+    }
+
+    [Fact]
+    public void BuildYtDlpArguments_4K_DoesNotRestrictToAvcAndSortsBy2160p()
+    {
+        var option = new VideoDownloadOption(Container.Mp4, false, [], new VideoQuality(2160, 60));
+
+        var args = VideoDownloader.BuildYtDlpArguments(
+            "C:\\output.mp4",
+            "jNQXAC9IVRw",
+            option,
+            null
+        );
+
+        var formatIndex = args.ToList().IndexOf("--format");
+        Assert.True(formatIndex >= 0);
+        var formatArg = args[formatIndex + 1];
+        Assert.Contains("bestvideo[aspect_ratio<1][width<=2160]", formatArg);
+        Assert.Contains("bestvideo[aspect_ratio>=1][height<=2160]", formatArg);
+        Assert.DoesNotContain("vcodec^=avc", formatArg);
+
+        var sortIndex = args.ToList().IndexOf("--format-sort");
+        Assert.True(sortIndex >= 0);
+        var sortArg = args[sortIndex + 1];
+        Assert.Equal("res:2160,fps,quality", sortArg);
+    }
+
+    [Fact]
+    public void BuildYtDlpArguments_2K_DoesNotRestrictToAvcAndSortsBy1440p()
+    {
+        var option = new VideoDownloadOption(Container.Mp4, false, [], new VideoQuality(1440, 60));
+
+        var args = VideoDownloader.BuildYtDlpArguments(
+            "C:\\output.mp4",
+            "jNQXAC9IVRw",
+            option,
+            null
+        );
+
+        var formatIndex = args.ToList().IndexOf("--format");
+        Assert.True(formatIndex >= 0);
+        var formatArg = args[formatIndex + 1];
+        Assert.Contains("bestvideo[aspect_ratio<1][width<=1440]", formatArg);
+        Assert.Contains("bestvideo[aspect_ratio>=1][height<=1440]", formatArg);
+        Assert.DoesNotContain("vcodec^=avc", formatArg);
+
+        var sortIndex = args.ToList().IndexOf("--format-sort");
+        Assert.True(sortIndex >= 0);
+        var sortArg = args[sortIndex + 1];
+        Assert.Equal("res:1440,fps,quality", sortArg);
+    }
+
+    [Fact]
+    public void BuildYtDlpArguments_1080p_SortsByTargetResThenPrefersAvc()
+    {
+        var option = new VideoDownloadOption(Container.Mp4, false, [], new VideoQuality(1080, 30));
+
+        var args = VideoDownloader.BuildYtDlpArguments(
+            "C:\\output.mp4",
+            "jNQXAC9IVRw",
+            option,
+            null
+        );
+
+        var formatIndex = args.ToList().IndexOf("--format");
+        Assert.True(formatIndex >= 0);
+        var formatArg = args[formatIndex + 1];
+        Assert.Contains("bestvideo[aspect_ratio<1][width<=1080]", formatArg);
+        Assert.Contains("bestvideo[aspect_ratio>=1][height<=1080]", formatArg);
+
+        var sortIndex = args.ToList().IndexOf("--format-sort");
+        Assert.True(sortIndex >= 0);
+        var sortArg = args[sortIndex + 1];
+        Assert.Equal("res:1080,fps,vcodec:avc,acodec:m4a", sortArg);
+    }
+
+    [Fact]
+    public void VideoDownloadPreference_SupportsTranslateCaptionsToEnglish()
+    {
+        var prefDefault = new VideoDownloadPreference(
+            Container.Mp4,
+            VideoQualityPreference.Highest
+        );
+        Assert.False(prefDefault.TranslateCaptionsToEnglish);
+
+        var prefWithTranslation = new VideoDownloadPreference(
+            Container.Mp4,
+            VideoQualityPreference.UpTo1080p,
+            TranslateCaptionsToEnglish: true
+        );
+        Assert.True(prefWithTranslation.TranslateCaptionsToEnglish);
+    }
+
+    [Fact]
+    public void VideoDownloadPreference_SupportsTranslateTitleToEnglish()
+    {
+        var prefDefault = new VideoDownloadPreference(
+            Container.Mp4,
+            VideoQualityPreference.Highest
+        );
+        Assert.False(prefDefault.TranslateTitleToEnglish);
+
+        var prefWithTranslation = new VideoDownloadPreference(
+            Container.Mp4,
+            VideoQualityPreference.UpTo1080p,
+            TranslateCaptionsToEnglish: false,
+            TranslateTitleToEnglish: true
+        );
+        Assert.True(prefWithTranslation.TranslateTitleToEnglish);
+    }
+
+    [Fact]
+    public void BuildYtDlpArguments_WithTranslateCaptionsToEnglish_IncludesAutoSubsAndSubLangs()
+    {
+        var option = new VideoDownloadOption(Container.Mp4, false, [], new VideoQuality(1080, 30));
+
+        var args = VideoDownloader.BuildYtDlpArguments(
+            "C:\\video.mp4",
+            "jNQXAC9IVRw",
+            option,
+            null,
+            includeSubtitles: true,
+            translateCaptionsToEnglish: true
+        );
+
+        Assert.Contains("--write-subs", args);
+        Assert.Contains("--write-auto-subs", args);
+        Assert.Contains("--sub-langs", args);
+        var subLangsIndex = args.ToList().IndexOf("--sub-langs");
+        Assert.Equal("en.*,en", args[subLangsIndex + 1]);
+        Assert.Contains("--embed-subs", args);
+        Assert.Contains("--sub-format", args);
+    }
+
+    [Fact]
+    public void BuildYtDlpArguments_WithStandardSubtitles_DoesNotForceEnglishAutoSubs()
+    {
+        var option = new VideoDownloadOption(Container.Mp4, false, [], new VideoQuality(1080, 30));
+
+        var args = VideoDownloader.BuildYtDlpArguments(
+            "C:\\video.mp4",
+            "jNQXAC9IVRw",
+            option,
+            null,
+            includeSubtitles: true,
+            translateCaptionsToEnglish: false
+        );
+
+        Assert.Contains("--write-subs", args);
+        Assert.DoesNotContain("--write-auto-subs", args);
+        Assert.DoesNotContain("--sub-langs", args);
+        Assert.Contains("--embed-subs", args);
     }
 }

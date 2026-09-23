@@ -9,13 +9,13 @@ public enum AspectRatioMode
     [Display(Name = "Original (Match Source)")]
     Original,
 
-    [Display(Name = "Vertical 9:16 (Shorts / Reels / TikTok) - Crop Fill")]
+    [Display(Name = "Vertical 9:16 (Crop Fill)")]
     Vertical916Crop,
 
-    [Display(Name = "Vertical 9:16 (Shorts / Reels / TikTok) - Blurred Canvas")]
+    [Display(Name = "Vertical 9:16 (Blurred Canvas)")]
     Vertical916BlurredCanvas,
 
-    [Display(Name = "Square 1:1 (Instagram Feed)")]
+    [Display(Name = "Square 1:1 (Instagram / Square)")]
     Square11,
 
     [Display(Name = "Cinematic 21:9 (Widescreen)")]

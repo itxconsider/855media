@@ -16,6 +16,7 @@ namespace _855Media.Core.Dubbing;
 public class SubtitleTranslationService
 {
     private static readonly HttpClient HttpClient = new();
+    private readonly GeminiTranslationService _geminiService = new();
 
     public async Task<List<SubtitleSegment>> ExtractOrGenerateSubtitlesAsync(
         string ffmpegPath,
@@ -92,20 +93,53 @@ public class SubtitleTranslationService
         return segments;
     }
 
-    public async Task<string> TranslateToKhmerAsync(
+    public async Task<string> TranslateTextAsync(
         string text,
+        string targetLang = "en",
         string sourceLang = "auto",
+        string? geminiApiKey = null,
+        string? speakerName = null,
+        string? characterGender = null,
+        string geminiModel = GeminiTranslationService.DefaultModel,
         CancellationToken cancellationToken = default
     )
     {
         if (string.IsNullOrWhiteSpace(text))
             return string.Empty;
 
+        var tl = string.IsNullOrWhiteSpace(targetLang) ? "en" : targetLang.ToLowerInvariant();
         var sl =
             string.IsNullOrWhiteSpace(sourceLang)
             || sourceLang.Equals("Auto", StringComparison.OrdinalIgnoreCase)
                 ? "auto"
                 : sourceLang.ToLowerInvariant();
+
+        if (sl == tl && sl != "auto")
+            return text;
+
+        // Tier 0: Google Gemini AI (Context-aware cinema dialogue translation)
+        if (!string.IsNullOrWhiteSpace(geminiApiKey))
+        {
+            try
+            {
+                var aiTranslated = await _geminiService.TranslateLineAsync(
+                    geminiApiKey,
+                    text,
+                    sourceLang,
+                    speakerName,
+                    characterGender,
+                    geminiModel,
+                    cancellationToken
+                );
+
+                if (!string.IsNullOrWhiteSpace(aiTranslated))
+                    return aiTranslated;
+            }
+            catch
+            {
+                // Smooth failover to web translation tiers if Gemini key is invalid or rate limited
+            }
+        }
 
         var encoded = Uri.EscapeDataString(text);
 
@@ -113,7 +147,7 @@ public class SubtitleTranslationService
         try
         {
             var url1 =
-                $"https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl={sl}&tl=km&q={encoded}";
+                $"https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl={sl}&tl={tl}&q={encoded}";
 
             using var req1 = new HttpRequestMessage(HttpMethod.Get, url1);
             req1.Headers.Add(
@@ -162,7 +196,7 @@ public class SubtitleTranslationService
         try
         {
             var url2 =
-                $"https://translate.googleapis.com/translate_a/single?client=gtx&sl={sl}&tl=km&dt=t&q={encoded}";
+                $"https://translate.googleapis.com/translate_a/single?client=gtx&sl={sl}&tl={tl}&dt=t&q={encoded}";
 
             using var req2 = new HttpRequestMessage(HttpMethod.Get, url2);
             req2.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
@@ -208,9 +242,9 @@ public class SubtitleTranslationService
         // Tier 3: MyMemory Translation API
         try
         {
-            var srcLangPair = sl == "auto" ? "en" : sl;
+            var srcLangPair = sl == "auto" ? (tl == "en" ? "es" : "en") : sl;
             var url3 =
-                $"https://api.mymemory.translated.net/get?q={encoded}&langpair={srcLangPair}|km";
+                $"https://api.mymemory.translated.net/get?q={encoded}&langpair={srcLangPair}|{tl}";
 
             using var req3 = new HttpRequestMessage(HttpMethod.Get, url3);
             req3.Headers.Add("User-Agent", "855Media/1.0");
@@ -243,6 +277,156 @@ public class SubtitleTranslationService
         }
 
         return text;
+    }
+
+    public async Task<string> TranslateToKhmerAsync(
+        string text,
+        string sourceLang = "auto",
+        string? geminiApiKey = null,
+        string? speakerName = null,
+        string? characterGender = null,
+        string geminiModel = GeminiTranslationService.DefaultModel,
+        CancellationToken cancellationToken = default
+    )
+    {
+        var raw = await TranslateTextAsync(
+            text,
+            "km",
+            sourceLang,
+            geminiApiKey,
+            speakerName,
+            characterGender,
+            geminiModel,
+            cancellationToken
+        );
+        return PolishKhmerDialogue(raw);
+    }
+
+    public async Task<string> TranslateToEnglishAsync(
+        string text,
+        string sourceLang = "auto",
+        string? geminiApiKey = null,
+        CancellationToken cancellationToken = default
+    ) =>
+        await TranslateTextAsync(
+            text,
+            "en",
+            sourceLang,
+            geminiApiKey,
+            cancellationToken: cancellationToken
+        );
+
+    public async Task TranslateSegmentsToEnglishAsync(
+        IEnumerable<SubtitleSegment> segments,
+        string sourceLang = "auto",
+        string? geminiApiKey = null,
+        IProgress<double>? progress = null,
+        CancellationToken cancellationToken = default
+    )
+    {
+        var list = segments.ToList();
+        if (list.Count == 0)
+            return;
+
+        for (int i = 0; i < list.Count; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var seg = list[i];
+            if (string.IsNullOrWhiteSpace(seg.OriginalText))
+                continue;
+
+            if (sourceLang.StartsWith("en", StringComparison.OrdinalIgnoreCase))
+            {
+                seg.EnglishText = seg.OriginalText;
+            }
+            else
+            {
+                seg.EnglishText = await TranslateToEnglishAsync(
+                    seg.OriginalText,
+                    sourceLang,
+                    geminiApiKey,
+                    cancellationToken
+                );
+            }
+            progress?.Report((double)(i + 1) / list.Count);
+        }
+    }
+
+    /// <summary>
+    /// Translates subtitle segments in batches using Google Gemini AI, maintaining scene context and character consistency.
+    /// Automatically falls back to multi-tier web translation for any segments that Gemini could not process.
+    /// </summary>
+    public async Task TranslateSegmentsWithGeminiAsync(
+        string geminiApiKey,
+        IReadOnlyList<SubtitleSegment> segments,
+        string sourceLang = "auto",
+        string geminiModel = GeminiTranslationService.DefaultModel,
+        Action<int, int>? progressCallback = null,
+        CancellationToken cancellationToken = default
+    )
+    {
+        if (segments.Count == 0)
+            return;
+
+        int total = segments.Count;
+        int completed = 0;
+        const int batchSize = 40;
+
+        var batches = segments
+            .Where(s => !string.IsNullOrWhiteSpace(s.OriginalText))
+            .Chunk(batchSize)
+            .ToList();
+
+        await Parallel.ForEachAsync(
+            batches,
+            new ParallelOptions
+            {
+                MaxDegreeOfParallelism = 2,
+                CancellationToken = cancellationToken,
+            },
+            async (batch, ct) =>
+            {
+                Dictionary<int, string>? geminiMap = null;
+                try
+                {
+                    geminiMap = await _geminiService.TranslateBatchAsync(
+                        geminiApiKey,
+                        batch,
+                        sourceLang,
+                        geminiModel,
+                        ct
+                    );
+                }
+                catch
+                {
+                    // Failover to web translation if Gemini batch has an error
+                }
+
+                foreach (var seg in batch)
+                {
+                    if (
+                        geminiMap != null
+                        && geminiMap.TryGetValue(seg.Index, out var translated)
+                        && !string.IsNullOrWhiteSpace(translated)
+                    )
+                    {
+                        seg.KhmerText = translated;
+                    }
+                    else
+                    {
+                        // Fallback to web translation tiers
+                        seg.KhmerText = await TranslateToKhmerAsync(
+                            seg.OriginalText,
+                            sourceLang,
+                            cancellationToken: ct
+                        );
+                    }
+
+                    int current = Interlocked.Increment(ref completed);
+                    progressCallback?.Invoke(current, total);
+                }
+            }
+        );
     }
 
     public List<SubtitleSegment> ParseSrt(string srtContent)
@@ -304,7 +488,17 @@ public class SubtitleTranslationService
             // Strip HTML/formatting tags like <i></i>
             rawText = Regex.Replace(rawText, @"<[^>]+>", string.Empty);
 
-            if (!string.IsNullOrWhiteSpace(rawText))
+            var cleanedText = DialogueSenseEngine.ImproveOriginalDialogue(rawText);
+
+            // Filter out pure non-speech markers (e.g. [Music], ♪, ..., empty/punctuation after cleanup)
+            if (
+                !string.IsNullOrWhiteSpace(cleanedText)
+                && cleanedText != "."
+                && cleanedText != "。"
+                && cleanedText != "។"
+                && !cleanedText.Equals("[music]", StringComparison.OrdinalIgnoreCase)
+                && !cleanedText.Equals("(music)", StringComparison.OrdinalIgnoreCase)
+            )
             {
                 segments.Add(
                     new SubtitleSegment
@@ -312,7 +506,7 @@ public class SubtitleTranslationService
                         Index = index++,
                         StartTime = startTime,
                         EndTime = endTime,
-                        OriginalText = DialogueSenseEngine.ImproveOriginalDialogue(rawText),
+                        OriginalText = cleanedText,
                         KhmerText = string.Empty,
                     }
                 );
@@ -440,7 +634,8 @@ public class SubtitleTranslationService
     public static string GenerateSrt(
         IEnumerable<SubtitleSegment> segments,
         bool includeOriginal = false,
-        bool includeSpeakerTag = true
+        bool includeSpeakerTag = true,
+        bool useEnglishText = false
     )
     {
         var sb = new StringBuilder();
@@ -460,22 +655,22 @@ public class SubtitleTranslationService
                     ? $"[{seg.SpeakerName}] "
                     : string.Empty;
 
-            var khmer = !string.IsNullOrWhiteSpace(seg.KhmerText)
-                ? seg.KhmerText
-                : seg.OriginalText;
+            var targetText = useEnglishText
+                ? (!string.IsNullOrWhiteSpace(seg.EnglishText) ? seg.EnglishText : seg.OriginalText)
+                : (!string.IsNullOrWhiteSpace(seg.KhmerText) ? seg.KhmerText : seg.OriginalText);
 
             if (
                 includeOriginal
                 && !string.IsNullOrWhiteSpace(seg.OriginalText)
-                && seg.OriginalText != khmer
+                && seg.OriginalText != targetText
             )
             {
-                sb.AppendLine($"{speakerPrefix}{khmer}");
+                sb.AppendLine($"{speakerPrefix}{targetText}");
                 sb.AppendLine(seg.OriginalText);
             }
             else
             {
-                sb.AppendLine($"{speakerPrefix}{khmer}");
+                sb.AppendLine($"{speakerPrefix}{targetText}");
             }
 
             sb.AppendLine();

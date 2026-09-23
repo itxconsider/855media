@@ -72,6 +72,60 @@
                         </StackPanel>
                     </Border>
 
+                    <!--  Google Gemini AI Translation  -->
+                    <Border
+                        Margin="16,8"
+                        Padding="12"
+                        Background="{DynamicResource MaterialCardBackgroundBrush}"
+                        BorderBrush="{DynamicResource MaterialDividerBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8">
+                        <StackPanel Spacing="8">
+                            <DockPanel>
+                                <materialIcons:MaterialIcon
+                                    Width="18"
+                                    Height="18"
+                                    Margin="0,0,8,0"
+                                    Foreground="#8E24AA"
+                                    Kind="AutoAwesome" />
+                                <TextBlock
+                                    FontWeight="SemiBold"
+                                    Text="Google Gemini AI Translation"
+                                    VerticalAlignment="Center" />
+                            </DockPanel>
+                            <TextBlock
+                                FontSize="11"
+                                Opacity="0.75"
+                                Text="Enables context-aware, cinema-grade movie dubbing into natural spoken Khmer (ភាសាខ្មែរ)." />
+
+                            <TextBlock FontSize="12" Text="Gemini API Key" Margin="0,4,0,0" />
+                            <TextBox
+                                Text="{Binding GeminiApiKey}"
+                                Watermark="Paste your Gemini API key (AIzaSy...)"
+                                PasswordChar="•"
+                                Classes="dense">
+                                <TextBox.InnerRightContent>
+                                    <Button
+                                        Padding="4"
+                                        Command="{Binding OpenAiStudioApiKeyUrlCommand}"
+                                        Theme="{DynamicResource MaterialFlatButton}"
+                                        ToolTip.Tip="Get a free Gemini API key from Google AI Studio">
+                                        <materialIcons:MaterialIcon Width="14" Height="14" Kind="OpenInNew" />
+                                    </Button>
+                                </TextBox.InnerRightContent>
+                            </TextBox>
+
+                            <DockPanel LastChildFill="False">
+                                <TextBlock DockPanel.Dock="Left" Text="Model" VerticalAlignment="Center" FontSize="12" />
+                                <ComboBox
+                                    DockPanel.Dock="Right"
+                                    Width="160"
+                                    ItemsSource="{Binding AvailableGeminiModels}"
+                                    SelectedItem="{Binding GeminiModel}" />
+                            </DockPanel>
+                        </StackPanel>
+                    </Border>
+
                     <!--  Theme  -->
                     <DockPanel
                         Margin="16,8"
@@ -191,6 +245,15 @@
                         <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding ShouldInjectSubtitles}" />
                     </DockPanel>
 
+                    <!--  Translate caption to english  -->
+                    <DockPanel
+                        Margin="16,8"
+                        LastChildFill="False"
+                        ToolTip.Tip="{Binding LocalizationManager.TranslateCaptionsToEnglishTooltip}">
+                        <TextBlock DockPanel.Dock="Left" Text="{Binding LocalizationManager.TranslateCaptionsToEnglishLabel}" />
+                        <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding ShouldTranslateCaptionsToEnglish}" />
+                    </DockPanel>
+
                     <!--  Inject tags  -->
                     <DockPanel
                         Margin="16,8"
@@ -207,6 +270,15 @@
                         ToolTip.Tip="{Binding LocalizationManager.SaveTitleToTextFileTooltip}">
                         <TextBlock DockPanel.Dock="Left" Text="{Binding LocalizationManager.SaveTitleToTextFileLabel}" />
                         <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding ShouldSaveTitleToTextFile}" />
+                    </DockPanel>
+
+                    <!--  Translate title & caption to English  -->
+                    <DockPanel
+                        Margin="16,8"
+                        LastChildFill="False"
+                        ToolTip.Tip="{Binding LocalizationManager.TranslateTitleToEnglishTooltip}">
+                        <TextBlock DockPanel.Dock="Left" Text="{Binding LocalizationManager.TranslateTitleToEnglishLabel}" />
+                        <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding ShouldTranslateTitleToEnglish}" />
                     </DockPanel>
 
                     <!--  Audio Processing Mode (None / Isolate Speech / Remove Vocals Karaoke)  -->

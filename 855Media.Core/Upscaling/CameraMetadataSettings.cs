@@ -68,7 +68,15 @@ public class CameraMetadataSettings
             return ["-map_metadata", "1"]; // Legacy fallback: copy original metadata
         }
 
-        var args = new List<string> { "-map_metadata", "-1" }; // Strip old tracking metadata
+        var args = new List<string>
+        {
+            "-map_metadata",
+            "-1",
+            "-map_metadata:s:v",
+            "-1",
+            "-map_metadata:s:a",
+            "-1",
+        }; // Strip old tracking and stream metadata
 
         string make = Make ?? string.Empty;
         string model = Model ?? string.Empty;

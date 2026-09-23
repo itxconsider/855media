@@ -485,6 +485,7 @@ public class SplitAndUpscalePipeline
             ZoomMode = masterJob.ZoomMode,
             SpeedMode = masterJob.SpeedMode,
             PlaybackSpeed = masterJob.PlaybackSpeed,
+            AudioMode = masterJob.AudioMode,
             ActivePresetName = masterJob.ActivePresetName,
             ModelType = masterJob.ModelType,
             EnableFacialClarity = masterJob.EnableFacialClarity,

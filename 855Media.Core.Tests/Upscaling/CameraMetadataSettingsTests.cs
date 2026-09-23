@@ -17,6 +17,8 @@ public class CameraMetadataSettingsTests
 
         Assert.Contains("-map_metadata", args);
         Assert.Contains("-1", args);
+        Assert.Contains("-map_metadata:s:v", args);
+        Assert.Contains("-map_metadata:s:a", args);
         Assert.Contains("title=test_video", args);
         Assert.Contains("comment=", args);
     }

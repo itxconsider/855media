@@ -54,6 +54,12 @@ public partial class DownloadViewModel : ViewModelBase
     public partial VideoDownloadPreference? DownloadPreference { get; set; }
 
     [ObservableProperty]
+    public partial bool TranslateCaptionsToEnglish { get; set; }
+
+    [ObservableProperty]
+    public partial bool TranslateTitleToEnglish { get; set; }
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(FileName))]
     public partial string? FilePath { get; set; }
 

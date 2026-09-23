@@ -16,6 +16,7 @@ public partial class ViewManager
         {
             MainViewModel => new MainView(),
             DashboardViewModel => new DashboardView(),
+            UnifiedDownloaderViewModel => new UnifiedDownloaderView(),
             YouTubeDownloaderViewModel => new YouTubeDownloaderView(),
             TikTokDownloaderViewModel => new TikTokDownloaderView(),
             FacebookDownloaderViewModel => new FacebookDownloaderView(),

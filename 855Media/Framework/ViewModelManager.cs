@@ -17,6 +17,15 @@ public class ViewModelManager(IServiceProvider services)
     public DashboardViewModel GetDashboardViewModel() =>
         services.GetRequiredService<DashboardViewModel>();
 
+    public UnifiedDownloaderViewModel GetUnifiedDownloaderViewModel(
+        DashboardViewModel dashboardViewModel
+    )
+    {
+        var viewModel = services.GetRequiredService<UnifiedDownloaderViewModel>();
+        viewModel.Initialize(dashboardViewModel);
+        return viewModel;
+    }
+
     public YouTubeDownloaderViewModel GetYouTubeDownloaderViewModel(
         DashboardViewModel dashboardViewModel
     )
@@ -72,7 +81,9 @@ public class ViewModelManager(IServiceProvider services)
     public DownloadViewModel GetDownloadViewModel(
         VideoInfo video,
         VideoDownloadOption downloadOption,
-        string filePath
+        string filePath,
+        bool translateCaptionsToEnglish = false,
+        bool translateTitleToEnglish = false
     )
     {
         var viewModel = services.GetRequiredService<DownloadViewModel>();
@@ -80,6 +91,8 @@ public class ViewModelManager(IServiceProvider services)
         viewModel.Video = video;
         viewModel.DownloadOption = downloadOption;
         viewModel.FilePath = filePath;
+        viewModel.TranslateCaptionsToEnglish = translateCaptionsToEnglish;
+        viewModel.TranslateTitleToEnglish = translateTitleToEnglish;
 
         return viewModel;
     }
@@ -95,6 +108,8 @@ public class ViewModelManager(IServiceProvider services)
         viewModel.Video = video;
         viewModel.DownloadPreference = downloadPreference;
         viewModel.FilePath = filePath;
+        viewModel.TranslateCaptionsToEnglish = downloadPreference.TranslateCaptionsToEnglish;
+        viewModel.TranslateTitleToEnglish = downloadPreference.TranslateTitleToEnglish;
 
         return viewModel;
     }
@@ -102,13 +117,17 @@ public class ViewModelManager(IServiceProvider services)
     public DownloadMultipleSetupViewModel GetDownloadMultipleSetupViewModel(
         string title,
         IReadOnlyList<VideoInfo> availableVideos,
-        bool preselectVideos = true
+        bool preselectVideos = true,
+        string? profilePictureUrl = null,
+        string? authorName = null
     )
     {
         var viewModel = services.GetRequiredService<DownloadMultipleSetupViewModel>();
 
         viewModel.Title = title;
         viewModel.AvailableVideos = availableVideos;
+        viewModel.ProfilePictureUrl = profilePictureUrl;
+        viewModel.AuthorName = authorName;
 
         if (preselectVideos)
             viewModel.SelectedVideos.AddRange(availableVideos);
@@ -118,13 +137,17 @@ public class ViewModelManager(IServiceProvider services)
 
     public DownloadSingleSetupViewModel GetDownloadSingleSetupViewModel(
         VideoInfo video,
-        IReadOnlyList<VideoDownloadOption> availableDownloadOptions
+        IReadOnlyList<VideoDownloadOption> availableDownloadOptions,
+        string? profilePictureUrl = null,
+        string? authorName = null
     )
     {
         var viewModel = services.GetRequiredService<DownloadSingleSetupViewModel>();
 
         viewModel.Video = video;
         viewModel.AvailableDownloadOptions = availableDownloadOptions;
+        viewModel.ProfilePictureUrl = profilePictureUrl ?? video.AuthorAvatarUrl;
+        viewModel.AuthorName = authorName ?? video.AuthorTitle;
 
         return viewModel;
     }

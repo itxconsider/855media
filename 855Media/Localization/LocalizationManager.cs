@@ -105,6 +105,7 @@ public partial class LocalizationManager
     public string AutoRetryFailedDownloads => Get();
     public string MaxRetryCount => Get();
     public string RetryDelaySeconds => Get();
+    public string DownloaderTabTitle => Get();
     public string YouTubeTabTitle => Get();
     public string TikTokTabTitle => Get();
     public string FacebookTabTitle => Get();
@@ -157,10 +158,14 @@ public partial class LocalizationManager
     public string InjectAltLanguagesTooltip => Get();
     public string InjectSubtitlesLabel => Get();
     public string InjectSubtitlesTooltip => Get();
+    public string TranslateCaptionsToEnglishLabel => Get();
+    public string TranslateCaptionsToEnglishTooltip => Get();
     public string InjectTagsLabel => Get();
     public string InjectTagsTooltip => Get();
     public string SaveTitleToTextFileLabel => Get();
     public string SaveTitleToTextFileTooltip => Get();
+    public string TranslateTitleToEnglishLabel => Get();
+    public string TranslateTitleToEnglishTooltip => Get();
     public string SkipExistingFilesLabel => Get();
     public string SkipExistingFilesTooltip => Get();
     public string FileNameTemplateLabel => Get();

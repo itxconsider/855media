@@ -58,6 +58,12 @@ public class QueryResolver(IReadOnlyList<Cookie>? initialCookies = null) : IDisp
         return new QueryResult(QueryResultKind.Video, video.Title, [VideoInfo.FromYoutube(video)]);
     }
 
+    private static string? GetChannelAvatarUrl(Channel channel) =>
+        channel
+            .Thumbnails.OrderByDescending(t => t.Resolution.Area)
+            .Select(t => t.Url)
+            .FirstOrDefault();
+
     private async Task<QueryResult?> TryResolveChannelAsync(
         string query,
         CancellationToken cancellationToken = default
@@ -71,7 +77,9 @@ public class QueryResolver(IReadOnlyList<Cookie>? initialCookies = null) : IDisp
             return new QueryResult(
                 QueryResultKind.Channel,
                 $"Channel: {channel.Title}",
-                videos.Select(VideoInfo.FromYoutube).ToArray()
+                videos.Select(VideoInfo.FromYoutube).ToArray(),
+                GetChannelAvatarUrl(channel),
+                channel.Title
             );
         }
 
@@ -87,7 +95,9 @@ public class QueryResolver(IReadOnlyList<Cookie>? initialCookies = null) : IDisp
             return new QueryResult(
                 QueryResultKind.Channel,
                 $"Channel: {channel.Title}",
-                videos.Select(VideoInfo.FromYoutube).ToArray()
+                videos.Select(VideoInfo.FromYoutube).ToArray(),
+                GetChannelAvatarUrl(channel),
+                channel.Title
             );
         }
 
@@ -99,7 +109,9 @@ public class QueryResolver(IReadOnlyList<Cookie>? initialCookies = null) : IDisp
             return new QueryResult(
                 QueryResultKind.Channel,
                 $"Channel: {channel.Title}",
-                videos.Select(VideoInfo.FromYoutube).ToArray()
+                videos.Select(VideoInfo.FromYoutube).ToArray(),
+                GetChannelAvatarUrl(channel),
+                channel.Title
             );
         }
 
@@ -111,7 +123,9 @@ public class QueryResolver(IReadOnlyList<Cookie>? initialCookies = null) : IDisp
             return new QueryResult(
                 QueryResultKind.Channel,
                 $"Channel: {channel.Title}",
-                videos.Select(VideoInfo.FromYoutube).ToArray()
+                videos.Select(VideoInfo.FromYoutube).ToArray(),
+                GetChannelAvatarUrl(channel),
+                channel.Title
             );
         }
 

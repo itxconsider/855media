@@ -30,7 +30,7 @@ public enum UpscaleTargetResolution
     [System.ComponentModel.DataAnnotations.Display(Name = "Scale 4x")]
     Scale4x,
 
-    [System.ComponentModel.DataAnnotations.Display(Name = "Original 1x (Fast Re-Frame & Filter)")]
+    [System.ComponentModel.DataAnnotations.Display(Name = "Original 1x (Re-Frame)")]
     Original1x,
 }
 
@@ -70,23 +70,37 @@ public enum HardwareAccelerationMode
 
 public enum UpscaleModelType
 {
-    [System.ComponentModel.DataAnnotations.Display(Name = "NVIDIA RTX AI (Tensor Cores)")]
+    [System.ComponentModel.DataAnnotations.Display(Name = "NVIDIA RTX AI")]
     NvidiaRtx,
 
-    [System.ComponentModel.DataAnnotations.Display(
-        Name = "Real-World / People (RealESRGAN_x4plus)"
-    )]
+    [System.ComponentModel.DataAnnotations.Display(Name = "Real-World (RealESRGAN)")]
     RealWorld,
 
-    [System.ComponentModel.DataAnnotations.Display(
-        Name = "Animation / Cartoons (realesr-animevideov3)"
-    )]
+    [System.ComponentModel.DataAnnotations.Display(Name = "Animation (AnimeVideo)")]
     Animation,
 
-    [System.ComponentModel.DataAnnotations.Display(
-        Name = "Fast Native / Pass-Through (No AI - GPU Filters & Re-Frame)"
-    )]
+    [System.ComponentModel.DataAnnotations.Display(Name = "Fast Native (No AI)")]
     FastNative,
+}
+
+public enum UpscaleAudioMode
+{
+    [System.ComponentModel.DataAnnotations.Display(Name = "Copy Original (Pass-Through)")]
+    CopyOriginal,
+
+    [System.ComponentModel.DataAnnotations.Display(Name = "Isolate Speech (Anti-Music Copyright)")]
+    IsolateSpeech,
+
+    [System.ComponentModel.DataAnnotations.Display(
+        Name = "Anti-Copyright Pitch Shift (+4% Detune)"
+    )]
+    AntiCopyrightPitch,
+
+    [System.ComponentModel.DataAnnotations.Display(Name = "Remove Lead Vocals (Karaoke Mode)")]
+    RemoveVocals,
+
+    [System.ComponentModel.DataAnnotations.Display(Name = "Remove Audio (Mute / Silent Video)")]
+    Mute,
 }
 
 public class UpscaleJob : INotifyPropertyChanged
@@ -148,7 +162,23 @@ public class UpscaleJob : INotifyPropertyChanged
         return inputExt;
     }
 
-    public CustomSplitOptions? SplitOptions { get; set; }
+    private CustomSplitOptions? _splitOptions;
+    public CustomSplitOptions? SplitOptions
+    {
+        get => _splitOptions;
+        set
+        {
+            if (SetField(ref _splitOptions, value))
+            {
+                OnPropertyChanged(nameof(SplitSummary));
+            }
+        }
+    }
+
+    public void NotifySplitChanged()
+    {
+        OnPropertyChanged(nameof(SplitSummary));
+    }
 
     private bool _enableSplitAndUpscale;
     public bool EnableSplitAndUpscale
@@ -284,6 +314,13 @@ public class UpscaleJob : INotifyPropertyChanged
     {
         get => _targetFramerate;
         set => SetField(ref _targetFramerate, value);
+    }
+
+    private UpscaleAudioMode _audioMode = UpscaleAudioMode.CopyOriginal;
+    public UpscaleAudioMode AudioMode
+    {
+        get => _audioMode;
+        set => SetField(ref _audioMode, value);
     }
 
     public string? ActivePresetName { get; set; }

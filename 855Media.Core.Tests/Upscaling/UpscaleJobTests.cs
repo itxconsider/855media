@@ -82,4 +82,44 @@ public class UpscaleJobTests
 
         Assert.Equal(@"C:\Custom\Output\master.mp4", job.OutputFilePath);
     }
+
+    [Fact]
+    public void SplitOptions_PropertyChangeNotifications_FiresSplitSummaryChanged()
+    {
+        var job = new UpscaleJob
+        {
+            FilePath = "input.mp4",
+            EnableSplitAndUpscale = true,
+            MergeAfterUpscale = false,
+        };
+        var changedProps = new System.Collections.Generic.List<string>();
+        job.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName != null)
+                changedProps.Add(e.PropertyName);
+        };
+
+        job.SplitOptions = new CustomSplitOptions { Mode = SplitMode.ByPartCount, PartCount = 3 };
+        Assert.Contains(nameof(UpscaleJob.SplitSummary), changedProps);
+
+        changedProps.Clear();
+        job.SplitOptions.PartCount = 5;
+        job.NotifySplitChanged();
+        Assert.Contains(nameof(UpscaleJob.SplitSummary), changedProps);
+        Assert.Equal("Split (5 parts)", job.SplitSummary);
+    }
+
+    [Fact]
+    public void AspectRatio_Square11_And_PlaybackSpeed_Properties_SetProperly()
+    {
+        var job = new UpscaleJob
+        {
+            FilePath = "input.mp4",
+            TargetAspectRatio = AspectRatioMode.Square11,
+            PlaybackSpeed = 1.5,
+        };
+
+        Assert.Equal(AspectRatioMode.Square11, job.TargetAspectRatio);
+        Assert.Equal(1.5, job.PlaybackSpeed);
+    }
 }

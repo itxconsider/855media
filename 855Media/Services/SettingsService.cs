@@ -44,10 +44,19 @@ public partial class SettingsService()
     public partial bool ShouldInjectSubtitles { get; set; } = true;
 
     [ObservableProperty]
+    public partial bool ShouldTranslateCaptionsToEnglish { get; set; } = false;
+
+    [ObservableProperty]
     public partial bool ShouldInjectTags { get; set; } = true;
 
     [ObservableProperty]
     public partial bool ShouldSaveTitleToTextFile { get; set; } = false;
+
+    [ObservableProperty]
+    public partial bool ShouldTranslateTitleToEnglish { get; set; } = false;
+
+    [ObservableProperty]
+    public partial bool ShouldDownloadProfilePicture { get; set; } = true;
 
     [ObservableProperty]
     public partial bool ShouldSkipExistingFiles { get; set; }
@@ -100,6 +109,13 @@ public partial class SettingsService()
 
     [ObservableProperty]
     public partial string PurchaseUrl { get; set; } = "https://855media.com/buy";
+
+    // Gemini AI Translation Settings
+    [ObservableProperty]
+    public partial string? GeminiApiKey { get; set; }
+
+    [ObservableProperty]
+    public partial string GeminiModel { get; set; } = "gemini-2.0-flash";
 
     // Work / Upscaler State Persistence
     [ObservableProperty]
@@ -176,6 +192,10 @@ public partial class SettingsService()
 
     [ObservableProperty]
     public partial double UpscalerPlaybackSpeed { get; set; } = 1.0;
+
+    [ObservableProperty]
+    public partial _855Media.Core.Upscaling.UpscaleAudioMode UpscalerAudioMode { get; set; } =
+        _855Media.Core.Upscaling.UpscaleAudioMode.CopyOriginal;
 
     // Split Settings
     [ObservableProperty]

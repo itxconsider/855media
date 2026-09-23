@@ -16,6 +16,7 @@ public partial class LocalizationManager
         [nameof(ProcessQueryTooltip)] = "ដំណើរការពាក្យស្វែងរក (Enter)",
         [nameof(AuthTooltip)] = "ការផ្ទៀងផ្ទាត់",
         [nameof(SettingsTooltip)] = "ការកំណត់",
+        [nameof(DownloaderTabTitle)] = "ទាញយក",
         [nameof(DashboardPromptTitle)] = "តើអ្នកចង់ទាញយកអ្វី?",
         [nameof(DashboardPlaceholder)] = """
             ចម្លងបិទភ្ជាប់ **URL** ឬបញ្ចូល **ពាក្យស្វែងរក** ដើម្បីចាប់ផ្តើមទាញយក
@@ -57,11 +58,17 @@ public partial class LocalizationManager
             "បញ្ចូលបទសំឡេងជាភាសាជំនួស (បើមាន) ទៅក្នុងឯកសារដែលបានទាញយក",
         [nameof(InjectSubtitlesLabel)] = "បញ្ចូលចំណងជើងរង",
         [nameof(InjectSubtitlesTooltip)] = "បញ្ចូលចំណងជើងរង (បើមាន) ទៅក្នុងឯកសារដែលបានទាញយក",
+        [nameof(TranslateCaptionsToEnglishLabel)] = "បកប្រែចំណងជើងរងជាភាសាអង់គ្លេស",
+        [nameof(TranslateCaptionsToEnglishTooltip)] =
+            "បកប្រែចំណងជើងរងទៅជាភាសាអង់គ្លេសដោយស្វ័យប្រវត្តិ និងបញ្ចូលទៅក្នុងវីដេអូ",
         [nameof(InjectTagsLabel)] = "បញ្ចូលស្លាកមេឌៀ",
         [nameof(InjectTagsTooltip)] = "បញ្ចូលស្លាកមេឌៀ (បើមាន) ទៅក្នុងឯកសារដែលបានទាញយក",
         [nameof(SaveTitleToTextFileLabel)] = "រក្សាទុកចំណងជើងទៅជាឯកសារអត្ថបទ",
         [nameof(SaveTitleToTextFileTooltip)] =
             "រក្សាទុកចំណងជើងវីដេអូពេញលេញក្នុងឯកសារ .txt នៅជិតឯកសារដែលបានទាញយក",
+        [nameof(TranslateTitleToEnglishLabel)] = "បកប្រែចំណងជើងនិង Caption ទៅជាភាសាអង់គ្លេស",
+        [nameof(TranslateTitleToEnglishTooltip)] =
+            "បកប្រែចំណងជើងវីដេអូ និង Caption ទៅជាភាសាអង់គ្លេសសម្រាប់ឈ្មោះឯកសារ និងឯកសារអត្ថបទ",
         [nameof(SkipExistingFilesLabel)] = "រំលងឯកសារដែលមានរួច",
         [nameof(SkipExistingFilesTooltip)] =
             "ពេលទាញយកវីដេអូច្រើន រំលងវីដេអូដែលមានឯកសារត្រូវគ្នានៅក្នុងថតលទ្ធផលរួចហើយ",

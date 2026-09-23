@@ -325,4 +325,41 @@ public class DialogueSenseEngineTests
         Assert.DoesNotContain(" ", merged.OriginalText);
         Assert.Contains("លោកម្ចាស់", merged.KhmerText);
     }
+
+    [Fact]
+    public void ReconstructSentences_DoesNotMergeSeparateLines_WhenSpeakersAreNullAndGapsExist()
+    {
+        // Arrange
+        var segments = new List<SubtitleSegment>
+        {
+            new()
+            {
+                Index = 1,
+                StartTime = TimeSpan.FromSeconds(1.0),
+                EndTime = TimeSpan.FromSeconds(2.5),
+                OriginalText = "First scene dialogue.",
+                CharacterId = null,
+                SpeakerName = "",
+            },
+            new()
+            {
+                Index = 2,
+                StartTime = TimeSpan.FromSeconds(4.0),
+                EndTime = TimeSpan.FromSeconds(6.0),
+                OriginalText = "Second scene dialogue.",
+                CharacterId = null,
+                SpeakerName = "",
+            },
+        };
+
+        // Act
+        var reconstructed = DialogueSenseEngine.ReconstructSentences(segments, maxGapSeconds: 2.0);
+
+        // Assert: Distinct segments across camera cuts/pauses are preserved and not merged
+        Assert.Equal(2, reconstructed.Count);
+        Assert.Equal(TimeSpan.FromSeconds(1.0), reconstructed[0].StartTime);
+        Assert.Equal(TimeSpan.FromSeconds(2.5), reconstructed[0].EndTime);
+        Assert.Equal(TimeSpan.FromSeconds(4.0), reconstructed[1].StartTime);
+        Assert.Equal(TimeSpan.FromSeconds(6.0), reconstructed[1].EndTime);
+    }
 }

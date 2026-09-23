@@ -287,7 +287,28 @@ public class RvcInferenceService
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
 
-            await process.WaitForExitWithCancellationAsync(cancellationToken);
+            using var pyRvcTimeout = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken
+            );
+            pyRvcTimeout.CancelAfter(TimeSpan.FromSeconds(90));
+
+            try
+            {
+                await process.WaitForExitWithCancellationAsync(pyRvcTimeout.Token);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                log?.Invoke(
+                    "[RVC Warning] Python voice conversion timed out after 90s. Using base audio."
+                );
+                try
+                {
+                    if (!process.HasExited)
+                        process.Kill(entireProcessTree: true);
+                }
+                catch { }
+                return;
+            }
 
             if (
                 process.ExitCode == 0
@@ -329,7 +350,29 @@ public class RvcInferenceService
             );
             process.Start();
             ChildProcessTracker.Track(process);
-            await process.WaitForExitWithCancellationAsync(cancellationToken);
+
+            using var exeRvcTimeout = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken
+            );
+            exeRvcTimeout.CancelAfter(TimeSpan.FromSeconds(90));
+
+            try
+            {
+                await process.WaitForExitWithCancellationAsync(exeRvcTimeout.Token);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                log?.Invoke(
+                    "[RVC Warning] Standalone RVC CLI timed out after 90s. Using base audio."
+                );
+                try
+                {
+                    if (!process.HasExited)
+                        process.Kill(entireProcessTree: true);
+                }
+                catch { }
+                return;
+            }
 
             if (process.ExitCode == 0 && File.Exists(outputAudioPath))
                 return;

@@ -7,12 +7,12 @@ namespace _855Media.Core.Upscaling;
 /// </summary>
 public enum RenderSpeedMode
 {
-    [Display(Name = "Quality (Pristine Neural - Slower)")]
+    [Display(Name = "Quality (Pristine)")]
     Quality,
 
-    [Display(Name = "Balanced (Standard Speed & Quality)")]
+    [Display(Name = "Balanced")]
     Balanced,
 
-    [Display(Name = "Turbo (Fastest - Ideal for Long Videos)")]
+    [Display(Name = "Turbo (Fastest)")]
     TurboFast,
 }

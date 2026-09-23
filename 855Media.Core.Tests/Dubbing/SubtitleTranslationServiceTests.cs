@@ -230,4 +230,107 @@ public class SubtitleTranslationServiceTests
         Assert.True(job.EnableLoudnessNormalization);
         Assert.True(job.EnableSmartTimeStretch);
     }
+
+    [Fact]
+    public void ParseSrt_FiltersOutOpeningMusicAndNonSpeechAtZero()
+    {
+        var srt =
+            @"1
+00:00:00,000 --> 00:00:03,500
+[Music]
+
+2
+00:00:04,200 --> 00:00:06,800
+Hello, welcome to our presentation.
+";
+        var segments = _service.ParseSrt(srt);
+
+        Assert.Single(segments);
+        Assert.Equal(1, segments[0].Index);
+        Assert.Equal(TimeSpan.FromSeconds(4.2), segments[0].StartTime);
+        Assert.Equal("Hello, welcome to our presentation.", segments[0].OriginalText);
+    }
+
+    [Fact]
+    public void ParseSrt_FiltersOutPunctuationOnlyAndMusicHallucinations()
+    {
+        var srt =
+            @"1
+00:00:00,000 --> 00:00:02,100
+♪ ♪
+
+2
+00:00:02,150 --> 00:00:03,000
+.
+
+3
+00:00:03,500 --> 00:00:05,500
+(music)
+
+4
+00:00:06,000 --> 00:00:09,000
+Real actor dialogue starts here.
+";
+        var segments = _service.ParseSrt(srt);
+
+        Assert.Single(segments);
+        Assert.Equal(TimeSpan.FromSeconds(6.0), segments[0].StartTime);
+        Assert.Equal("Real actor dialogue starts here.", segments[0].OriginalText);
+    }
+
+    [Fact]
+    public void GenerateSrt_WithUseEnglishText_OutputsEnglishSubtitles()
+    {
+        var segments = new List<SubtitleSegment>
+        {
+            new()
+            {
+                Index = 1,
+                StartTime = TimeSpan.FromSeconds(1),
+                EndTime = TimeSpan.FromSeconds(3),
+                OriginalText = "Bonjour le monde",
+                KhmerText = "សួស្តីពិភពលោក",
+                EnglishText = "Hello world",
+            },
+        };
+
+        var srt = SubtitleTranslationService.GenerateSrt(
+            segments,
+            includeOriginal: false,
+            includeSpeakerTag: false,
+            useEnglishText: true
+        );
+
+        Assert.Contains("Hello world", srt);
+        Assert.DoesNotContain("សួស្តីពិភពលោក", srt);
+    }
+
+    [Fact]
+    public async Task TranslateToEnglishAsync_WithEmptyString_ReturnsEmpty()
+    {
+        var result = await _service.TranslateToEnglishAsync("");
+        Assert.Equal(string.Empty, result);
+
+        var resultWhitespace = await _service.TranslateToEnglishAsync("   ");
+        Assert.Equal(string.Empty, resultWhitespace);
+    }
+
+    [Fact]
+    public async Task TranslateSegmentsToEnglishAsync_KeepsEnglishTextWhenAlreadyEnglish()
+    {
+        var segments = new List<SubtitleSegment>
+        {
+            new()
+            {
+                Index = 1,
+                StartTime = TimeSpan.FromSeconds(1),
+                EndTime = TimeSpan.FromSeconds(2),
+                OriginalText = "Good morning everyone.",
+            },
+        };
+
+        await _service.TranslateSegmentsToEnglishAsync(segments, sourceLang: "en");
+
+        Assert.Equal("Good morning everyone.", segments[0].EnglishText);
+    }
 }

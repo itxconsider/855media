@@ -7,6 +7,7 @@ using System.Text;
 using System.Threading.Tasks;
 using _855Media.Core.Audio;
 using _855Media.Core.Downloading;
+using _855Media.Core.Dubbing;
 using _855Media.Core.Licensing;
 using _855Media.Core.Resolving;
 using _855Media.Core.Tagging;
@@ -117,6 +118,7 @@ public partial class DashboardViewModel : ViewModelBase
 
         _progressMuxer = Progress.CreateMuxer().WithAutoReset();
 
+        UnifiedDownloader = _viewModelManager.GetUnifiedDownloaderViewModel(this);
         YouTubeDownloader = _viewModelManager.GetYouTubeDownloaderViewModel(this);
         TikTokDownloader = _viewModelManager.GetTikTokDownloaderViewModel(this);
         FacebookDownloader = _viewModelManager.GetFacebookDownloaderViewModel(this);
@@ -165,7 +167,9 @@ public partial class DashboardViewModel : ViewModelBase
     }
 
     public LocalizationManager LocalizationManager { get; }
+    public SettingsService SettingsService => _settingsService;
 
+    public UnifiedDownloaderViewModel UnifiedDownloader { get; }
     public YouTubeDownloaderViewModel YouTubeDownloader { get; }
     public TikTokDownloaderViewModel TikTokDownloader { get; }
     public FacebookDownloaderViewModel FacebookDownloader { get; }
@@ -186,6 +190,7 @@ public partial class DashboardViewModel : ViewModelBase
 
     partial void OnIsBusyChanged(bool value)
     {
+        UnifiedDownloader?.ProcessQueryCommand.NotifyCanExecuteChanged();
         YouTubeDownloader?.ProcessQueryCommand.NotifyCanExecuteChanged();
         TikTokDownloader?.ProcessQueryCommand.NotifyCanExecuteChanged();
         FacebookDownloader?.ProcessQueryCommand.NotifyCanExecuteChanged();
@@ -197,6 +202,7 @@ public partial class DashboardViewModel : ViewModelBase
     public bool IsProgressIndeterminate => IsBusy && Progress.Current.Fraction is <= 0 or >= 1;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsDownloaderTab))]
     [NotifyPropertyChangedFor(nameof(IsYouTubeTab))]
     [NotifyPropertyChangedFor(nameof(IsTikTokTab))]
     [NotifyPropertyChangedFor(nameof(IsFacebookTab))]
@@ -206,7 +212,7 @@ public partial class DashboardViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsDubbingTab))]
     [NotifyPropertyChangedFor(nameof(IsManagerTab))]
     [NotifyPropertyChangedFor(nameof(IsHistoryTab))]
-    public partial DashboardTab SelectedTab { get; set; } = DashboardTab.YouTube;
+    public partial DashboardTab SelectedTab { get; set; } = DashboardTab.Downloader;
 
     partial void OnSelectedTabChanged(DashboardTab value)
     {
@@ -214,6 +220,15 @@ public partial class DashboardViewModel : ViewModelBase
         _settingsService.LastSelectedDashboardTab = value;
         _settingsService.Save();
     }
+
+    public bool IsDownloaderTab =>
+        SelectedTab
+            is DashboardTab.Downloader
+                or DashboardTab.YouTube
+                or DashboardTab.TikTok
+                or DashboardTab.Facebook
+                or DashboardTab.DramaBox
+                or DashboardTab.Batch;
 
     public bool IsYouTubeTab => SelectedTab == DashboardTab.YouTube;
     public bool IsTikTokTab => SelectedTab == DashboardTab.TikTok;
@@ -224,6 +239,9 @@ public partial class DashboardViewModel : ViewModelBase
     public bool IsDubbingTab => SelectedTab == DashboardTab.Dubbing;
     public bool IsManagerTab => SelectedTab == DashboardTab.Manager;
     public bool IsHistoryTab => SelectedTab == DashboardTab.History;
+
+    [RelayCommand]
+    private void SelectDownloaderTab() => SelectedTab = DashboardTab.Downloader;
 
     [RelayCommand]
     private void SelectYouTubeTab() => SelectedTab = DashboardTab.YouTube;
@@ -489,6 +507,16 @@ public partial class DashboardViewModel : ViewModelBase
 
             download.Status = DownloadStatus.Started;
 
+            var translateCaptions =
+                download.TranslateCaptionsToEnglish
+                || download.DownloadPreference?.TranslateCaptionsToEnglish == true
+                || _settingsService.ShouldTranslateCaptionsToEnglish;
+
+            var translateTitle =
+                download.TranslateTitleToEnglish
+                || download.DownloadPreference?.TranslateTitleToEnglish == true
+                || _settingsService.ShouldTranslateTitleToEnglish;
+
             if (download.Video?.Source == VideoSource.TikTok)
             {
                 var container =
@@ -553,10 +581,60 @@ public partial class DashboardViewModel : ViewModelBase
                     youtubeVideo,
                     downloadOption,
                     _settingsService.ShouldInjectSubtitles,
+                    translateCaptions,
                     _settingsService.FFmpegFilePath,
                     download.Progress.Merge(progress),
                     download.CancellationToken
                 );
+            }
+
+            if (
+                translateCaptions
+                && !string.IsNullOrWhiteSpace(download.FilePath)
+                && File.Exists(download.FilePath)
+            )
+            {
+                var srtPath = Path.ChangeExtension(download.FilePath, ".srt");
+                if (!File.Exists(srtPath))
+                {
+                    try
+                    {
+                        var ffmpegPath =
+                            _settingsService.FFmpegFilePath ?? FFmpeg.TryGetCliFilePath();
+                        if (!string.IsNullOrWhiteSpace(ffmpegPath))
+                        {
+                            var subService = new SubtitleTranslationService();
+                            var discovered = await subService.ExtractOrGenerateSubtitlesAsync(
+                                ffmpegPath,
+                                download.FilePath,
+                                "auto",
+                                download.CancellationToken
+                            );
+                            if (discovered.Count > 0)
+                            {
+                                await subService.TranslateSegmentsToEnglishAsync(
+                                    discovered,
+                                    "auto",
+                                    cancellationToken: download.CancellationToken
+                                );
+                                var translatedSrt = SubtitleTranslationService.GenerateSrt(
+                                    discovered,
+                                    useEnglishText: true
+                                );
+                                await File.WriteAllTextAsync(
+                                    srtPath,
+                                    translatedSrt,
+                                    new UTF8Encoding(false),
+                                    download.CancellationToken
+                                );
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // Caption translation is non-critical
+                    }
+                }
             }
 
             if (_settingsService.ShouldInjectTags)
@@ -612,10 +690,32 @@ public partial class DashboardViewModel : ViewModelBase
             {
                 try
                 {
+                    var titleText = download.Video.Title;
+                    if (translateTitle && !string.IsNullOrWhiteSpace(titleText))
+                    {
+                        try
+                        {
+                            var subService = new SubtitleTranslationService();
+                            var translated = await subService.TranslateToEnglishAsync(
+                                titleText,
+                                cancellationToken: download.CancellationToken
+                            );
+                            if (!string.IsNullOrWhiteSpace(translated))
+                            {
+                                titleText = translated;
+                                download.Video = download.Video with { Title = translated };
+                            }
+                        }
+                        catch
+                        {
+                            // If translation fails, fall back to current title
+                        }
+                    }
+
                     var txtFilePath = Path.ChangeExtension(download.FilePath, ".txt");
                     await File.WriteAllTextAsync(
                         txtFilePath,
-                        download.Video.Title,
+                        titleText,
                         new UTF8Encoding(false),
                         download.CancellationToken
                     );
@@ -773,7 +873,12 @@ public partial class DashboardViewModel : ViewModelBase
                 var downloadOptions = await GetDownloadOptionsAsync(video);
 
                 var download = await _dialogManager.ShowDialogAsync(
-                    _viewModelManager.GetDownloadSingleSetupViewModel(video, downloadOptions)
+                    _viewModelManager.GetDownloadSingleSetupViewModel(
+                        video,
+                        downloadOptions,
+                        queryResult.ProfilePictureUrl,
+                        queryResult.AuthorName
+                    )
                 );
 
                 if (download is null)
@@ -811,7 +916,9 @@ public partial class DashboardViewModel : ViewModelBase
                         // Pre-select videos if they come from a single query and not from search
                         queryResult.Kind
                             is not QueryResultKind.Search
-                                and not QueryResultKind.Aggregate
+                                and not QueryResultKind.Aggregate,
+                        queryResult.ProfilePictureUrl,
+                        queryResult.AuthorName
                     )
                 );
 
@@ -881,13 +988,50 @@ public partial class DashboardViewModel : ViewModelBase
             return;
 
         var photos = queryResult.Videos.Where(v => v.Source == VideoSource.FacebookPhoto).ToArray();
+        var translationMap = new Dictionary<string, string>();
+        if (_settingsService.ShouldTranslateTitleToEnglish && photos.Length > 0)
+        {
+            var subService = new SubtitleTranslationService();
+            await Parallel.ForEachAsync(
+                photos,
+                new ParallelOptions { MaxDegreeOfParallelism = 4 },
+                async (p, ct) =>
+                {
+                    if (!string.IsNullOrWhiteSpace(p.Title))
+                    {
+                        try
+                        {
+                            var translated = await subService.TranslateToEnglishAsync(
+                                p.Title,
+                                cancellationToken: ct
+                            );
+                            if (!string.IsNullOrWhiteSpace(translated))
+                            {
+                                lock (translationMap)
+                                {
+                                    translationMap[p.Id] = translated;
+                                }
+                            }
+                        }
+                        catch { }
+                    }
+                }
+            );
+        }
+
         foreach (var (i, photo) in photos.Index())
         {
+            var currentPhoto = photo;
+            if (translationMap.TryGetValue(photo.Id, out var translatedTitle))
+            {
+                currentPhoto = photo with { Title = translatedTitle };
+            }
+
             var baseFilePath = Path.Combine(
                 dirPath,
                 FileNameTemplate.Apply(
                     _settingsService.FileNameTemplate,
-                    photo,
+                    currentPhoto,
                     new YoutubeExplode.Videos.Streams.Container("jpg"),
                     (i + 1).ToString().PadLeft(photos.Length.ToString().Length, '0')
                 )
@@ -903,13 +1047,15 @@ public partial class DashboardViewModel : ViewModelBase
 
             EnqueueDownload(
                 _viewModelManager.GetDownloadViewModel(
-                    photo,
+                    currentPhoto,
                     new VideoDownloadOption(
                         new YoutubeExplode.Videos.Streams.Container("jpg"),
                         true,
                         []
                     ),
-                    filePath
+                    filePath,
+                    _settingsService.ShouldTranslateCaptionsToEnglish,
+                    _settingsService.ShouldTranslateTitleToEnglish
                 )
             );
         }
@@ -957,7 +1103,9 @@ public partial class DashboardViewModel : ViewModelBase
             ? _viewModelManager.GetDownloadViewModel(
                 download.Video!,
                 download.DownloadOption,
-                download.FilePath!
+                download.FilePath!,
+                download.TranslateCaptionsToEnglish,
+                download.TranslateTitleToEnglish
             )
             : _viewModelManager.GetDownloadViewModel(
                 download.Video!,
@@ -1051,6 +1199,7 @@ public partial class DashboardViewModel : ViewModelBase
 
 public enum DashboardTab
 {
+    Downloader,
     YouTube,
     TikTok,
     Facebook,

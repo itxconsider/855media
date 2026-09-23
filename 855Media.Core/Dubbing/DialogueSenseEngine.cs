@@ -748,17 +748,31 @@ public static class DialogueSenseEngine
         {
             var next = inputList[i];
 
-            bool sameSpeaker =
-                (cur.CharacterId == next.CharacterId)
-                && string.Equals(
+            double gap =
+                (next.StartTime > cur.EndTime) ? (next.StartTime - cur.EndTime).TotalSeconds : 0;
+            double combinedDuration = (next.EndTime - cur.StartTime).TotalSeconds;
+
+            bool sameSpeaker;
+            if (cur.CharacterId.HasValue || next.CharacterId.HasValue)
+            {
+                sameSpeaker = cur.CharacterId == next.CharacterId;
+            }
+            else if (
+                !string.IsNullOrWhiteSpace(cur.SpeakerName)
+                || !string.IsNullOrWhiteSpace(next.SpeakerName)
+            )
+            {
+                sameSpeaker = string.Equals(
                     cur.SpeakerName,
                     next.SpeakerName,
                     StringComparison.OrdinalIgnoreCase
                 );
-
-            double gap =
-                (next.StartTime > cur.EndTime) ? (next.StartTime - cur.EndTime).TotalSeconds : 0;
-            double combinedDuration = (next.EndTime - cur.StartTime).TotalSeconds;
+            }
+            else
+            {
+                // When character IDs are unassigned, only merge if gap is a tight intra-sentence pause (< 0.6s)
+                sameSpeaker = gap <= 0.6;
+            }
 
             bool curComplete = IsCompleteSentence(cur.OriginalText);
 

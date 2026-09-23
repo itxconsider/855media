@@ -133,23 +133,7 @@ public class DubbingPipeline
                 );
             }
 
-            // Improve original dialogue and reconstruct fragmented sentences into complete sense-to-sense dialogue
-            if (job.Segments.Count > 1)
-            {
-                var reconstructed = DialogueSenseEngine.ReconstructSentences(job.Segments);
-                if (reconstructed.Count != job.Segments.Count)
-                {
-                    Log(
-                        $"Reconstructed {job.Segments.Count} speech fragments into {reconstructed.Count} complete sense-to-sense dialogue sentences."
-                    );
-                    job.Segments.Clear();
-                    foreach (var s in reconstructed)
-                    {
-                        job.Segments.Add(s);
-                    }
-                }
-            }
-
+            // Format and improve original dialogue text while preserving exact scene timeline timestamps
             foreach (var s in job.Segments)
             {
                 s.OriginalText = DialogueSenseEngine.ImproveOriginalDialogue(
@@ -168,20 +152,40 @@ public class DubbingPipeline
             if (job.Segments.Count > 0)
             {
                 int segCount = job.Segments.Count;
-                for (int i = 0; i < segCount; i++)
+                if (!string.IsNullOrWhiteSpace(job.GeminiApiKey))
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    var seg = job.Segments[i];
-                    if (string.IsNullOrWhiteSpace(seg.KhmerText))
+                    Log(
+                        $"Using Gemini AI ({job.GeminiModel}) for scene-aware cinema translation..."
+                    );
+                    await _subService.TranslateSegmentsWithGeminiAsync(
+                        job.GeminiApiKey,
+                        job.Segments,
+                        job.SourceLanguage,
+                        job.GeminiModel,
+                        (curr, tot) =>
+                        {
+                            job.Progress = 35 + ((double)curr / tot * 25.0);
+                        },
+                        cancellationToken
+                    );
+                }
+                else
+                {
+                    for (int i = 0; i < segCount; i++)
                     {
-                        seg.KhmerText = await _subService.TranslateToKhmerAsync(
-                            seg.OriginalText,
-                            job.SourceLanguage,
-                            cancellationToken
-                        );
-                    }
+                        cancellationToken.ThrowIfCancellationRequested();
+                        var seg = job.Segments[i];
+                        if (string.IsNullOrWhiteSpace(seg.KhmerText))
+                        {
+                            seg.KhmerText = await _subService.TranslateToKhmerAsync(
+                                seg.OriginalText,
+                                job.SourceLanguage,
+                                cancellationToken: cancellationToken
+                            );
+                        }
 
-                    job.Progress = 35 + ((double)(i + 1) / segCount * 25.0);
+                        job.Progress = 35 + ((double)(i + 1) / segCount * 25.0);
+                    }
                 }
             }
             else
@@ -190,6 +194,10 @@ public class DubbingPipeline
                     "Notice: No subtitle tracks found. You can add or edit subtitle lines in the editor."
                 );
             }
+
+            // Stage 3.5: Auto-Diarize Cast Characters & Emotional Tones if not already assigned
+            job.StatusMessage = "Auto-assigning voice cast characters and emotional tones...";
+            await EnsureAutomatedCastAndEmotionsAsync(job, ffmpeg, Log, cancellationToken);
 
             // Stage 4: Synthesizing Khmer Speech for all Movie Characters
             job.Status = DubbingJobStatus.SynthesizingSpeech;
@@ -208,11 +216,8 @@ public class DubbingPipeline
             {
                 int rvcWorkers = Math.Clamp(job.RvcConcurrency > 0 ? job.RvcConcurrency : 4, 1, 8);
                 using var rvcSemaphore = new SemaphoreSlim(rvcWorkers, rvcWorkers);
-                int ttsWorkers = Math.Clamp(
-                    Math.Max(rvcWorkers * 2, Environment.ProcessorCount),
-                    4,
-                    12
-                );
+                // Throttle concurrent TTS workers (2-4 max) to prevent remote API rate limiting (HTTP 429)
+                int ttsWorkers = Math.Clamp(Environment.ProcessorCount / 2, 2, 4);
                 int completedCount = 0;
 
                 Log(
@@ -233,7 +238,29 @@ public class DubbingPipeline
                             : seg.OriginalText;
 
                         var character = ResolveCharacter(seg, job);
-                        var voiceToUse = character?.BaseVoice ?? job.SelectedVoice;
+                        var voiceToUse = character?.BaseVoice;
+                        if (string.IsNullOrWhiteSpace(voiceToUse))
+                        {
+                            if (
+                                string.Equals(
+                                    seg.DetectedGender,
+                                    VoiceGenderDetector.GenderFemale,
+                                    StringComparison.OrdinalIgnoreCase
+                                )
+                                || string.Equals(
+                                    seg.DetectedGender,
+                                    VoiceGenderDetector.GenderChild,
+                                    StringComparison.OrdinalIgnoreCase
+                                )
+                            )
+                            {
+                                voiceToUse = "km-KH-SreymomNeural";
+                            }
+                            else
+                            {
+                                voiceToUse = job.SelectedVoice;
+                            }
+                        }
 
                         // Resolve acting emotion tone: segment override takes precedence over character preset
                         var emotionName =
@@ -248,23 +275,83 @@ public class DubbingPipeline
                             emotionCfg.TtsRateOffset
                         );
 
-                        // Unified pitch: Combines character's pitch shift (semitones) + emotion pitch offset
+                        // Unified pitch: Combines character's pitch shift (or Child default) + emotion pitch offset
+                        int basePitchShift =
+                            character?.PitchShift
+                            ?? (
+                                string.Equals(
+                                    seg.DetectedGender,
+                                    VoiceGenderDetector.GenderChild,
+                                    StringComparison.OrdinalIgnoreCase
+                                )
+                                    ? 4
+                                    : 0
+                            );
+
                         var effectivePitch = ActorEmotionEngine.ComputeEffectiveTtsPitch(
-                            character?.PitchShift ?? 0,
+                            basePitchShift,
                             emotionCfg.TtsPitch,
                             emotionCfg.PitchShiftOffset
                         );
 
                         var clipPath = Path.Combine(tempDir, $"clip_{seg.Index:D4}.mp3");
-                        await _ttsService.SynthesizeKhmerSpeechAsync(
-                            textToSpeak,
-                            clipPath,
-                            voiceToUse,
-                            rate: effectiveRate,
-                            pitch: effectivePitch,
-                            volume: emotionCfg.TtsVolume,
-                            cancellationToken: ct
-                        );
+                        bool ttsSuccess = false;
+
+                        for (int attempt = 1; attempt <= 3; attempt++)
+                        {
+                            try
+                            {
+                                await _ttsService.SynthesizeKhmerSpeechAsync(
+                                    textToSpeak,
+                                    clipPath,
+                                    voiceToUse,
+                                    rate: effectiveRate,
+                                    pitch: effectivePitch,
+                                    volume: emotionCfg.TtsVolume,
+                                    cancellationToken: ct
+                                );
+
+                                if (File.Exists(clipPath) && new FileInfo(clipPath).Length > 100)
+                                {
+                                    ttsSuccess = true;
+                                    break;
+                                }
+                            }
+                            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                            {
+                                throw;
+                            }
+                            catch (Exception ttsEx)
+                            {
+                                if (attempt < 3)
+                                {
+                                    Log(
+                                        $"Warning: TTS synthesis for line {seg.Index} encountered an error ({ttsEx.Message}), retrying ({attempt}/3)..."
+                                    );
+                                    await Task.Delay(1000 * attempt, ct);
+                                }
+                                else
+                                {
+                                    Log(
+                                        $"Warning: TTS synthesis failed for line {seg.Index} after 3 attempts: {ttsEx.Message}. Using silence placeholder."
+                                    );
+                                }
+                            }
+                        }
+
+                        if (
+                            !ttsSuccess
+                            || !File.Exists(clipPath)
+                            || new FileInfo(clipPath).Length < 100
+                        )
+                        {
+                            var fallbackDuration =
+                                (seg.EndTime > seg.StartTime)
+                                    ? (seg.EndTime - seg.StartTime).TotalSeconds
+                                    : 1.5;
+                            fallbackDuration = Math.Max(0.5, fallbackDuration);
+                            await GenerateSilenceAsync(ffmpeg, fallbackDuration, clipPath, ct);
+                        }
 
                         // Check if this character has a dedicated RVC voice model
                         if (
@@ -272,6 +359,8 @@ public class DubbingPipeline
                             && character.EnableRvc
                             && !string.IsNullOrWhiteSpace(character.RvcModelPath)
                             && File.Exists(character.RvcModelPath)
+                            && File.Exists(clipPath)
+                            && new FileInfo(clipPath).Length > 100
                         )
                         {
                             var clonedClipPath = Path.Combine(
@@ -304,6 +393,10 @@ public class DubbingPipeline
                                     clipPath = clonedClipPath;
                                 }
                             }
+                            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                            {
+                                throw;
+                            }
                             catch (Exception rvcEx)
                             {
                                 Log(
@@ -327,7 +420,11 @@ public class DubbingPipeline
                             archetype
                         );
 
-                        if (!string.IsNullOrWhiteSpace(filterString))
+                        if (
+                            !string.IsNullOrWhiteSpace(filterString)
+                            && File.Exists(clipPath)
+                            && new FileInfo(clipPath).Length > 100
+                        )
                         {
                             var emotionalClipPath = Path.Combine(
                                 tempDir,
@@ -359,6 +456,11 @@ public class DubbingPipeline
                         job.Progress = 40 + ((double)done / segsToSynthesize.Count * 30.0);
                         job.StatusMessage =
                             $"Synthesizing speech: {done}/{segsToSynthesize.Count} lines completed...";
+
+                        if (done == segsToSynthesize.Count)
+                        {
+                            Log($"Speech synthesis completed for all {done} dialogue lines.");
+                        }
                     }
                 );
             }
@@ -366,6 +468,8 @@ public class DubbingPipeline
             job.Progress = 75;
 
             // Stage 5: Assemble Full Khmer Vocal Track
+            job.StatusMessage = "Assembling full Khmer vocal track on timeline...";
+            Log("Assembling full Khmer vocal track on timeline...");
             var assembledVocalPath = Path.Combine(tempDir, "assembled_khmer_vocals.wav");
             await AssembleVocalTrackAsync(ffmpeg, job, assembledVocalPath, cancellationToken);
 
@@ -647,10 +751,26 @@ public class DubbingPipeline
                 errSb.AppendLine(e.Data);
         };
 
+        using var durCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        durCts.CancelAfter(TimeSpan.FromSeconds(15));
+
         proc.Start();
         ChildProcessTracker.Track(proc);
         proc.BeginErrorReadLine();
-        await proc.WaitForExitWithCancellationAsync(cancellationToken);
+        try
+        {
+            await proc.WaitForExitWithCancellationAsync(durCts.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                if (!proc.HasExited)
+                    proc.Kill(entireProcessTree: true);
+            }
+            catch { }
+            return TimeSpan.Zero;
+        }
 
         var match = System.Text.RegularExpressions.Regex.Match(
             errSb.ToString(),
@@ -779,7 +899,23 @@ public class DubbingPipeline
 
                 proc.Start();
                 ChildProcessTracker.Track(proc);
-                await proc.WaitForExitWithCancellationAsync(ct);
+
+                using var normCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                normCts.CancelAfter(TimeSpan.FromSeconds(30));
+
+                try
+                {
+                    await proc.WaitForExitWithCancellationAsync(normCts.Token);
+                }
+                catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                {
+                    try
+                    {
+                        if (!proc.HasExited)
+                            proc.Kill(entireProcessTree: true);
+                    }
+                    catch { }
+                }
 
                 if (File.Exists(normClip) && new FileInfo(normClip).Length > 44)
                 {
@@ -986,7 +1122,8 @@ public class DubbingPipeline
         CancellationToken cancellationToken
     )
     {
-        var dStr = durationSeconds.ToString("0.000", CultureInfo.InvariantCulture);
+        var duration = Math.Max(0.5, durationSeconds);
+        var dStr = duration.ToString("0.000", CultureInfo.InvariantCulture);
         using var proc = new Process();
         proc.StartInfo.FileName = ffmpegPath;
         proc.StartInfo.ArgumentList.Add("-y");
@@ -996,14 +1133,43 @@ public class DubbingPipeline
         proc.StartInfo.ArgumentList.Add("anullsrc=r=44100:cl=stereo");
         proc.StartInfo.ArgumentList.Add("-t");
         proc.StartInfo.ArgumentList.Add(dStr);
-        proc.StartInfo.ArgumentList.Add("-c:a");
-        proc.StartInfo.ArgumentList.Add("pcm_s16le");
+
+        var ext = Path.GetExtension(outputPath).ToLowerInvariant();
+        if (ext == ".mp3")
+        {
+            proc.StartInfo.ArgumentList.Add("-c:a");
+            proc.StartInfo.ArgumentList.Add("libmp3lame");
+            proc.StartInfo.ArgumentList.Add("-b:a");
+            proc.StartInfo.ArgumentList.Add("128k");
+        }
+        else
+        {
+            proc.StartInfo.ArgumentList.Add("-c:a");
+            proc.StartInfo.ArgumentList.Add("pcm_s16le");
+        }
+
         proc.StartInfo.ArgumentList.Add(outputPath);
         proc.StartInfo.UseShellExecute = false;
         proc.StartInfo.CreateNoWindow = true;
+
+        using var silenceCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        silenceCts.CancelAfter(TimeSpan.FromSeconds(15));
+
         proc.Start();
         ChildProcessTracker.Track(proc);
-        await proc.WaitForExitWithCancellationAsync(cancellationToken);
+        try
+        {
+            await proc.WaitForExitWithCancellationAsync(silenceCts.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                if (!proc.HasExited)
+                    proc.Kill(entireProcessTree: true);
+            }
+            catch { }
+        }
     }
 
     private static MovieCharacter? ResolveCharacter(SubtitleSegment seg, DubbingJob job)
@@ -1248,5 +1414,258 @@ public class DubbingPipeline
         return proc.ExitCode == 0
             && File.Exists(outputClipPath)
             && new FileInfo(outputClipPath).Length > 1024;
+    }
+
+    public static async Task EnsureAutomatedCastAndEmotionsAsync(
+        DubbingJob job,
+        string ffmpeg,
+        Action<string>? log = null,
+        CancellationToken ct = default
+    )
+    {
+        if (job.Segments.Count == 0)
+            return;
+
+        // 1. Emotion classification for all segments if not already set or Normal
+        int emotionsDetected = 0;
+        foreach (var seg in job.Segments)
+        {
+            if (
+                string.IsNullOrWhiteSpace(seg.Emotion)
+                || seg.Emotion == ActorEmotionEngine.EmotionNormal
+            )
+            {
+                var detected = ActorEmotionEngine.DetectEmotion(seg.OriginalText, seg.KhmerText);
+                if (detected != ActorEmotionEngine.EmotionNormal)
+                {
+                    seg.Emotion = detected;
+                    emotionsDetected++;
+                }
+            }
+        }
+        if (emotionsDetected > 0)
+        {
+            log?.Invoke(
+                $"Detected {emotionsDetected} acting emotional nuances across dialogue lines."
+            );
+        }
+
+        // 2. Check if characters already exist and at least one segment is assigned
+        bool hasAssigned =
+            job.Characters.Count > 0
+            && job.Segments.Any(s =>
+                s.CharacterId.HasValue || !string.IsNullOrWhiteSpace(s.SpeakerName)
+            );
+        if (hasAssigned)
+            return;
+
+        // 3. Try speaker prefix extraction from text
+        var colors = new[]
+        {
+            "#3B82F6",
+            "#EC4899",
+            "#10B981",
+            "#F59E0B",
+            "#8B5CF6",
+            "#EF4444",
+            "#06B6D4",
+            "#E11D48",
+            "#14B8A6",
+        };
+        int prefixCount = 0;
+        foreach (var seg in job.Segments)
+        {
+            string? speaker = null;
+            if (
+                VoiceGenderDetector.TryExtractSpeakerPrefix(
+                    seg.OriginalText,
+                    out var spName,
+                    out var dialText
+                )
+            )
+            {
+                speaker = spName;
+                seg.OriginalText = dialText;
+            }
+            if (
+                VoiceGenderDetector.TryExtractSpeakerPrefix(
+                    seg.KhmerText,
+                    out var kmSpName,
+                    out var kmDialText
+                )
+            )
+            {
+                speaker ??= kmSpName;
+                seg.KhmerText = kmDialText;
+            }
+
+            if (!string.IsNullOrWhiteSpace(speaker))
+            {
+                var character = job.Characters.FirstOrDefault(c =>
+                    string.Equals(c.Name, speaker, StringComparison.OrdinalIgnoreCase)
+                );
+                if (character == null)
+                {
+                    var detectedGender =
+                        VoiceGenderDetector.DetectGenderFromName(speaker)
+                        ?? VoiceGenderDetector.GenderMale;
+                    var toneArchetype = VoiceGenderDetector.DetectToneArchetypeFromName(
+                        speaker,
+                        detectedGender
+                    );
+                    var color = colors[job.Characters.Count % colors.Length];
+                    bool isFemaleOrChild =
+                        detectedGender == VoiceGenderDetector.GenderFemale
+                        || detectedGender == VoiceGenderDetector.GenderChild;
+                    var baseVoice = isFemaleOrChild ? "km-KH-SreymomNeural" : "km-KH-PisethNeural";
+
+                    character = new MovieCharacter
+                    {
+                        Name = speaker,
+                        Gender = detectedGender,
+                        BaseVoice = baseVoice,
+                        ToneArchetype = toneArchetype,
+                        ColorTag = color,
+                        EnableRvc = false,
+                    };
+                    character.ApplyToneArchetype(toneArchetype);
+                    if (isFemaleOrChild)
+                        character.BaseVoice = "km-KH-SreymomNeural";
+                    job.Characters.Add(character);
+                }
+
+                seg.AssignedCharacter = character;
+                seg.CharacterId = character.Id;
+                seg.SpeakerName = character.Name;
+                seg.SpeakerColor = character.ColorTag;
+                seg.DetectedGender = character.Gender;
+                prefixCount++;
+            }
+        }
+
+        if (prefixCount > 0)
+        {
+            log?.Invoke(
+                $"Auto-assigned {prefixCount} dialogue scenes to {job.Characters.Count} distinct voice characters from speaker prefixes."
+            );
+            return;
+        }
+
+        // 4. Acoustic & conversational turn diarization with standard cast
+        log?.Invoke("Auto-detecting cast voices (Male Hero, Female Lead, Child)...");
+        var hero = new MovieCharacter
+        {
+            Name = "Hero (ប្រុស)",
+            Gender = VoiceGenderDetector.GenderMale,
+            BaseVoice = "km-KH-PisethNeural",
+            ToneArchetype = "Hero",
+            ColorTag = "#3B82F6",
+            EnableRvc = false,
+        };
+        hero.ApplyToneArchetype("Hero");
+
+        var heroine = new MovieCharacter
+        {
+            Name = "Female Lead (ស្រី)",
+            Gender = VoiceGenderDetector.GenderFemale,
+            BaseVoice = "km-KH-SreymomNeural",
+            ToneArchetype = "Heroine",
+            ColorTag = "#EC4899",
+            EnableRvc = false,
+        };
+        heroine.ApplyToneArchetype("Heroine");
+
+        var child = new MovieCharacter
+        {
+            Name = "Child (ក្មេង)",
+            Gender = VoiceGenderDetector.GenderChild,
+            BaseVoice = "km-KH-SreymomNeural",
+            ToneArchetype = "Child",
+            ColorTag = "#10B981",
+            EnableRvc = false,
+        };
+        child.ApplyToneArchetype("Child");
+
+        var villain = new MovieCharacter
+        {
+            Name = "Villain (តួអាក្រក់)",
+            Gender = VoiceGenderDetector.GenderMale,
+            BaseVoice = "km-KH-PisethNeural",
+            ToneArchetype = "Villain",
+            ColorTag = "#EF4444",
+            EnableRvc = false,
+        };
+        villain.ApplyToneArchetype("Villain");
+
+        job.Characters.Add(hero);
+        job.Characters.Add(heroine);
+        job.Characters.Add(child);
+        job.Characters.Add(villain);
+
+        Dictionary<int, GenderDetectionResult>? detectionResults = null;
+        try
+        {
+            detectionResults = await VoiceGenderDetector.DetectGendersForSegmentsAsync(
+                ffmpeg,
+                job.VideoFilePath,
+                job.Segments.ToList(),
+                progressCallback: null,
+                cancellationToken: ct
+            );
+        }
+        catch
+        {
+            // Non-fatal
+        }
+
+        for (int i = 0; i < job.Segments.Count; i++)
+        {
+            var seg = job.Segments[i];
+            string gender = VoiceGenderDetector.GenderMale;
+            if (
+                detectionResults != null
+                && (
+                    detectionResults.TryGetValue(seg.Index, out var res)
+                    || detectionResults.TryGetValue(i + 1, out res)
+                )
+            )
+            {
+                gender = res.Gender;
+            }
+            else
+            {
+                gender =
+                    VoiceGenderDetector.DetectGenderFromText(seg.OriginalText, seg.KhmerText)
+                    ?? VoiceGenderDetector.GenderMale;
+            }
+
+            seg.DetectedGender = gender;
+            MovieCharacter targetChar;
+            if (gender == VoiceGenderDetector.GenderChild)
+            {
+                targetChar = child;
+            }
+            else if (gender == VoiceGenderDetector.GenderFemale)
+            {
+                targetChar = heroine;
+            }
+            else if (seg.Emotion == ActorEmotionEngine.EmotionVillain)
+            {
+                targetChar = villain;
+            }
+            else
+            {
+                targetChar = hero;
+            }
+
+            seg.AssignedCharacter = targetChar;
+            seg.CharacterId = targetChar.Id;
+            seg.SpeakerName = targetChar.Name;
+            seg.SpeakerColor = targetChar.ColorTag;
+        }
+
+        log?.Invoke(
+            $"Cast diarization complete: {job.Segments.Count} scenes assigned across {job.Characters.Count} voice characters."
+        );
     }
 }

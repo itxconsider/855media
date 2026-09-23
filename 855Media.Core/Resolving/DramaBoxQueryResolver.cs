@@ -430,7 +430,13 @@ public class DramaBoxQueryResolver(IReadOnlyList<Cookie>? initialCookies = null)
                                 ? $"{bookName} ({unlockedCount} Full Episodes, {lockedCount} VIP Previews)"
                                 : $"{bookName} ({episodes.Count} Episodes)";
 
-                        return new QueryResult(QueryResultKind.Playlist, playlistTitle, episodes);
+                        return new QueryResult(
+                            QueryResultKind.Playlist,
+                            playlistTitle,
+                            episodes,
+                            bookCover,
+                            bookName
+                        );
                     }
                 }
             }
@@ -548,7 +554,9 @@ public class DramaBoxQueryResolver(IReadOnlyList<Cookie>? initialCookies = null)
             return new QueryResult(
                 QueryResultKind.Playlist,
                 $"{seriesTitle} ({episodes.Count} Episodes)",
-                episodes
+                episodes,
+                episodes.FirstOrDefault()?.ThumbnailUrls.FirstOrDefault(),
+                seriesTitle
             );
         }
 

@@ -49,14 +49,10 @@ public static class MediaCompatibility
         {
             foreach (var encoder in encodersToTry)
             {
-                if (File.Exists(tempOutput))
-                {
-                    try
-                    {
-                        File.Delete(tempOutput);
-                    }
-                    catch { }
-                }
+                await FileUtils.TryDeleteWithRetryAsync(
+                    tempOutput,
+                    cancellationToken: cancellationToken
+                );
 
                 using var process = new Process();
                 process.StartInfo.FileName = actualFFmpegPath;
@@ -116,22 +112,25 @@ public static class MediaCompatibility
                     && new FileInfo(tempOutput).Length > 0
                 )
                 {
-                    File.Delete(filePath);
-                    File.Move(tempOutput, filePath);
+                    await FileUtils.ReplaceFileWithRetryAsync(
+                        tempOutput,
+                        filePath,
+                        cancellationToken
+                    );
                     break;
                 }
             }
         }
         catch
         {
-            if (File.Exists(tempOutput))
-            {
-                try
-                {
-                    File.Delete(tempOutput);
-                }
-                catch { }
-            }
+            // Transcoding failed; preserve original file
+        }
+        finally
+        {
+            await FileUtils.TryDeleteWithRetryAsync(
+                tempOutput,
+                cancellationToken: cancellationToken
+            );
         }
     }
 

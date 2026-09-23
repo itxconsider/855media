@@ -75,50 +75,13 @@
                     <ScrollViewer Grid.Column="0" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
                         <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,16,0">
                             <Button
-                                Command="{Binding SelectYouTubeTabCommand}"
+                                Command="{Binding SelectDownloaderTabCommand}"
                                 Classes="tab-button"
-                                Classes.active="{Binding IsYouTubeTab}">
+                                Classes.active="{Binding IsDownloaderTab}">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <materialIcons:MaterialIcon Kind="Youtube" Width="18" Height="18" />
-                                    <TextBlock Text="{Binding LocalizationManager.YouTubeTabTitle}" VerticalAlignment="Center" />
+                                    <materialIcons:MaterialIcon Kind="CloudDownload" Width="18" Height="18" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                    <TextBlock Text="{Binding LocalizationManager.DownloaderTabTitle}" VerticalAlignment="Center" />
                                 </StackPanel>
-                            </Button>
-
-                            <Button
-                                Command="{Binding SelectTikTokTabCommand}"
-                                Classes="tab-button"
-                                Classes.active="{Binding IsTikTokTab}">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <materialIcons:MaterialIcon Kind="Music" Width="18" Height="18" />
-                                    <TextBlock Text="{Binding LocalizationManager.TikTokTabTitle}" VerticalAlignment="Center" />
-                                </StackPanel>
-                            </Button>
-
-                            <Button
-                                Command="{Binding SelectFacebookTabCommand}"
-                                Classes="tab-button"
-                                Classes.active="{Binding IsFacebookTab}">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <materialIcons:MaterialIcon Kind="Facebook" Width="18" Height="18" />
-                                    <TextBlock Text="{Binding LocalizationManager.FacebookTabTitle}" VerticalAlignment="Center" />
-                                </StackPanel>
-                            </Button>
-
-                            <Button
-                                Command="{Binding SelectDramaBoxTabCommand}"
-                                Classes="tab-button"
-                                Classes.active="{Binding IsDramaBoxTab}">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <materialIcons:MaterialIcon Kind="MoviePlay" Width="18" Height="18" Foreground="#E11D48" />
-                                    <TextBlock Text="{Binding LocalizationManager.DramaBoxTabTitle}" VerticalAlignment="Center" />
-                                </StackPanel>
-                            </Button>
-
-                            <Button
-                                Command="{Binding SelectBatchTabCommand}"
-                                Classes="tab-button"
-                                Classes.active="{Binding IsBatchTab}">
-                                <TextBlock Text="{Binding LocalizationManager.BatchDownloadTabTitle}" VerticalAlignment="Center" />
                             </Button>
 
                             <Button
@@ -417,17 +380,8 @@
 
             <!--  Tab Content Area  -->
             <Grid Grid.Row="1">
-                <!--  YOUTUBE DOWNLOADER VIEW  -->
-                <ContentControl Content="{Binding YouTubeDownloader}" IsVisible="{Binding IsYouTubeTab}" />
-
-                <!--  TIKTOK DOWNLOADER VIEW  -->
-                <ContentControl Content="{Binding TikTokDownloader}" IsVisible="{Binding IsTikTokTab}" />
-
-                <!--  FACEBOOK DOWNLOADER VIEW  -->
-                <ContentControl Content="{Binding FacebookDownloader}" IsVisible="{Binding IsFacebookTab}" />
-
-                <!--  DRAMABOX DOWNLOADER VIEW  -->
-                <ContentControl Content="{Binding DramaBoxDownloader}" IsVisible="{Binding IsDramaBoxTab}" />
+                <!--  UNIFIED DOWNLOADER VIEW  -->
+                <ContentControl Content="{Binding UnifiedDownloader}" IsVisible="{Binding IsDownloaderTab}" />
 
                 <!--  HISTORY VIEW  -->
                 <ContentControl Content="{Binding History}" IsVisible="{Binding IsHistoryTab}" />
@@ -437,81 +391,6 @@
 
                 <!--  KHMER DUBBING & VOICE CLONING VIEW  -->
                 <ContentControl Content="{Binding Dubbing}" IsVisible="{Binding IsDubbingTab}" />
-
-                <!--  BATCH DOWNLOAD TAB  -->
-                <ScrollViewer
-                    HorizontalScrollBarVisibility="Disabled"
-                    IsVisible="{Binding IsBatchTab}"
-                    VerticalScrollBarVisibility="Auto">
-                    <Grid Margin="48,32">
-                        <Grid RowDefinitions="Auto,*,Auto" MaxWidth="880" HorizontalAlignment="Center">
-                            <!-- Title & Guidance -->
-                            <StackPanel Grid.Row="0" Spacing="8" Margin="0,0,0,16">
-                                <TextBlock
-                                    Text="{Binding LocalizationManager.BatchDownloadTabTitle}"
-                                    FontSize="24"
-                                    FontWeight="Bold"
-                                    Foreground="{DynamicResource AntigravityTextBrush}" />
-                                <TextBlock
-                                    Text="Paste multiple media URLs below (one URL per line) to process batch downloads."
-                                    FontSize="14"
-                                    Foreground="{DynamicResource AntigravityMutedBrush}" />
-                            </StackPanel>
-
-                            <!-- Multi-line input -->
-                            <Border
-                                Grid.Row="1"
-                                Width="720"
-                                MinHeight="260"
-                                Background="{DynamicResource AntigravityPanelBrush}"
-                                BorderBrush="{DynamicResource AntigravityBorderBrush}"
-                                BorderThickness="1"
-                                CornerRadius="12"
-                                Padding="4">
-                                <TextBox
-                                    AcceptsReturn="True"
-                                    Background="Transparent"
-                                    BorderThickness="0"
-                                    FontSize="14"
-                                    Foreground="{DynamicResource AntigravityTextBrush}"
-                                    Padding="12"
-                                    Text="{Binding BatchInput}"
-                                    Watermark="{Binding LocalizationManager.BatchInputPlaceholder}"
-                                    Theme="{DynamicResource SoloTextBox}"
-                                    MinHeight="250"
-                                    VerticalAlignment="Stretch"
-                                    HorizontalAlignment="Stretch" />
-                            </Border>
-
-                            <!-- Action Bar -->
-                            <StackPanel
-                                Grid.Row="2"
-                                Orientation="Horizontal"
-                                HorizontalAlignment="Right"
-                                Spacing="16"
-                                Margin="0,16,0,0">
-                                <ProgressBar
-                                    IsIndeterminate="{Binding IsProgressIndeterminate}"
-                                    IsVisible="{Binding IsBusy}"
-                                    Width="120"
-                                    Height="4"
-                                    VerticalAlignment="Center" />
-                                <Button
-                                    Command="{Binding ProcessBatchQueryCommand}"
-                                    Background="{DynamicResource AntigravityAccentBrush}"
-                                    Foreground="{DynamicResource AntigravityAccentForegroundBrush}"
-                                    Theme="{DynamicResource MaterialFlatButton}"
-                                    CornerRadius="20"
-                                    Padding="20,10">
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <materialIcons:MaterialIcon Kind="Download" Width="18" Height="18" />
-                                        <TextBlock Text="{Binding LocalizationManager.ProcessBatchButton}" FontWeight="Bold" VerticalAlignment="Center" />
-                                    </StackPanel>
-                                </Button>
-                            </StackPanel>
-                        </Grid>
-                    </Grid>
-                </ScrollViewer>
 
                 <!--  DOWNLOADS MANAGER TAB  -->
                 <Grid IsVisible="{Binding IsManagerTab}" RowDefinitions="Auto,*">

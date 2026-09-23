@@ -18,10 +18,11 @@ public static class AudioProcessor
 {
     public static string GetSpeechIsolationFilter()
     {
+        // Stereo center extraction (dialogue is typically panned to center: c0=0.5*c0+0.5*c1, c1=0.5*c0+0.5*c1)
         // High-pass filter at 120Hz (cuts deep bass/drums)
         // Low-pass filter at 3400Hz (cuts high synth noise)
         // Speech band boost around 1000Hz with noise reduction
-        return "highpass=f=120, lowpass=f=3400, equalizer=f=1000:width_type=h:width=2000:g=4, afftdn";
+        return "pan=stereo|c0=0.5*c0+0.5*c1|c1=0.5*c0+0.5*c1, highpass=f=120, lowpass=f=3400, equalizer=f=1000:width_type=h:width=2000:g=4, afftdn";
     }
 
     public static string GetKaraokeFilter()
@@ -54,6 +55,11 @@ public static class AudioProcessor
 
         try
         {
+            await FileUtils.TryDeleteWithRetryAsync(
+                tempOutput,
+                cancellationToken: cancellationToken
+            );
+
             using var process = new Process();
             process.StartInfo.FileName = ffmpegPath;
             process.StartInfo.ArgumentList.Add("-y");
@@ -77,20 +83,23 @@ public static class AudioProcessor
                 && new FileInfo(tempOutput).Length > 0
             )
             {
-                File.Delete(inputFilePath);
-                File.Move(tempOutput, inputFilePath);
+                await FileUtils.ReplaceFileWithRetryAsync(
+                    tempOutput,
+                    inputFilePath,
+                    cancellationToken
+                );
             }
         }
         catch
         {
-            if (File.Exists(tempOutput))
-            {
-                try
-                {
-                    File.Delete(tempOutput);
-                }
-                catch { }
-            }
+            // Audio processing failed; preserve original file
+        }
+        finally
+        {
+            await FileUtils.TryDeleteWithRetryAsync(
+                tempOutput,
+                cancellationToken: cancellationToken
+            );
         }
     }
 }

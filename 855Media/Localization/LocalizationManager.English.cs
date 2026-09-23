@@ -32,6 +32,7 @@ public partial class LocalizationManager
             [nameof(AutoRetryFailedDownloads)] = "Auto-retry failed downloads",
             [nameof(MaxRetryCount)] = "Max retry attempts",
             [nameof(RetryDelaySeconds)] = "Retry delay (seconds)",
+            [nameof(DownloaderTabTitle)] = "Downloader",
             [nameof(YouTubeTabTitle)] = "YouTube",
             [nameof(TikTokTabTitle)] = "TikTok",
             [nameof(FacebookTabTitle)] = "Facebook",
@@ -93,11 +94,17 @@ public partial class LocalizationManager
             [nameof(InjectSubtitlesLabel)] = "Inject subtitles",
             [nameof(InjectSubtitlesTooltip)] =
                 "Inject subtitles (if available) into downloaded files",
+            [nameof(TranslateCaptionsToEnglishLabel)] = "Translate captions to English",
+            [nameof(TranslateCaptionsToEnglishTooltip)] =
+                "Automatically translate closed captions or subtitles to English and include with downloaded videos",
             [nameof(InjectTagsLabel)] = "Inject media tags",
             [nameof(InjectTagsTooltip)] = "Inject media tags (if available) into downloaded files",
             [nameof(SaveTitleToTextFileLabel)] = "Save title to text file",
             [nameof(SaveTitleToTextFileTooltip)] =
                 "Save full video title in a .txt file alongside the downloaded media",
+            [nameof(TranslateTitleToEnglishLabel)] = "Translate title & caption to English",
+            [nameof(TranslateTitleToEnglishTooltip)] =
+                "Automatically translate foreign video titles and post captions into English for file names and text files",
             [nameof(SkipExistingFilesLabel)] = "Skip existing files",
             [nameof(SkipExistingFilesTooltip)] =
                 "When downloading multiple videos, skip those that already have matching files in the output directory",

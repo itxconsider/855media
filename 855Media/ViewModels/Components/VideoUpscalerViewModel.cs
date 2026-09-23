@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -113,6 +114,9 @@ public partial class VideoUpscalerViewModel : ViewModelBase
     private bool _isColorGradingPanelOpen;
 
     [ObservableProperty]
+    private int _selectedStudioTab;
+
+    [ObservableProperty]
     private ColorGradingSettings _activeColorGrading;
 
     [ObservableProperty]
@@ -168,8 +172,14 @@ public partial class VideoUpscalerViewModel : ViewModelBase
     [ObservableProperty]
     private double _selectedPlaybackSpeed = 1.0;
 
-    public static double[] AvailablePlaybackSpeeds { get; } =
+    public IReadOnlyList<double> AvailablePlaybackSpeeds { get; } =
     [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0];
+
+    [ObservableProperty]
+    private UpscaleAudioMode _selectedAudioMode = UpscaleAudioMode.CopyOriginal;
+
+    public IReadOnlyList<UpscaleAudioMode> AvailableAudioModes { get; } =
+        Enum.GetValues<UpscaleAudioMode>();
 
     [ObservableProperty]
     private UpscaleModelType _selectedModelType = UpscaleModelType.RealWorld;
@@ -323,6 +333,90 @@ public partial class VideoUpscalerViewModel : ViewModelBase
         IsCustomSplitFlyoutOpen = !IsCustomSplitFlyoutOpen;
     }
 
+    [RelayCommand]
+    public void SetSplitPartCount(object? parameter)
+    {
+        if (parameter is int count)
+        {
+            CustomSplitPartCount = Math.Clamp(count, 2, 50);
+        }
+        else if (
+            parameter is string str
+            && int.TryParse(str, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed)
+        )
+        {
+            CustomSplitPartCount = Math.Clamp(parsed, 2, 50);
+        }
+    }
+
+    [RelayCommand]
+    public void SetSplitDuration(object? parameter)
+    {
+        if (parameter is double sec)
+        {
+            CustomSplitSegmentDurationSeconds = Math.Clamp(sec, 5.0, 7200.0);
+        }
+        else if (parameter is int secInt)
+        {
+            CustomSplitSegmentDurationSeconds = Math.Clamp(secInt, 5.0, 7200.0);
+        }
+        else if (
+            parameter is string str
+            && double.TryParse(
+                str,
+                NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out double parsed
+            )
+        )
+        {
+            CustomSplitSegmentDurationSeconds = Math.Clamp(parsed, 5.0, 7200.0);
+        }
+    }
+
+    [RelayCommand]
+    public void IncrementSplitPartCount()
+    {
+        CustomSplitPartCount = Math.Min(50, CustomSplitPartCount + 1);
+    }
+
+    [RelayCommand]
+    public void DecrementSplitPartCount()
+    {
+        CustomSplitPartCount = Math.Max(2, CustomSplitPartCount - 1);
+    }
+
+    [RelayCommand]
+    public void IncrementSplitDuration()
+    {
+        CustomSplitSegmentDurationSeconds = Math.Min(
+            7200.0,
+            CustomSplitSegmentDurationSeconds + 10.0
+        );
+    }
+
+    [RelayCommand]
+    public void DecrementSplitDuration()
+    {
+        CustomSplitSegmentDurationSeconds = Math.Max(5.0, CustomSplitSegmentDurationSeconds - 10.0);
+    }
+
+    [RelayCommand]
+    public void SetPlaybackSpeed(object? parameter)
+    {
+        if (parameter is double d)
+        {
+            SelectedPlaybackSpeed = d;
+        }
+        else if (
+            parameter is string s
+            && double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
+        )
+        {
+            SelectedPlaybackSpeed = parsed;
+        }
+    }
+
     [ObservableProperty]
     private bool _isSavePresetPopupOpen;
 
@@ -345,6 +439,123 @@ public partial class VideoUpscalerViewModel : ViewModelBase
     public bool IsEditingJobGrading => SelectedJob != null;
 
     public ObservableCollection<UpscaleJob> Jobs => _queueManager.Jobs;
+
+    public int QueuedJobsCount => Jobs.Count(j => j.Status == UpscaleJobStatus.Queued);
+    public int ProcessingJobsCount => Jobs.Count(j => j.Status == UpscaleJobStatus.Processing);
+    public int CompletedJobsCount => Jobs.Count(j => j.Status == UpscaleJobStatus.Complete);
+    public int FailedJobsCount => Jobs.Count(j => j.Status == UpscaleJobStatus.Failed);
+    public bool HasActiveJobs =>
+        Jobs.Any(j =>
+            j.Status == UpscaleJobStatus.Processing || j.Status == UpscaleJobStatus.Queued
+        );
+    public bool HasProcessingJob => Jobs.Any(j => j.Status == UpscaleJobStatus.Processing);
+    public bool HasCompletedJobs => Jobs.Any(j => j.Status == UpscaleJobStatus.Complete);
+
+    public double OverallProgressPercent
+    {
+        get
+        {
+            if (Jobs.Count == 0)
+                return 0;
+            return Math.Round(
+                Jobs.Average(j => j.Status == UpscaleJobStatus.Complete ? 100.0 : j.Progress),
+                1
+            );
+        }
+    }
+
+    public string QueueStatusSummary
+    {
+        get
+        {
+            if (Jobs.Count == 0)
+                return "Queue is empty";
+            var processing = ProcessingJobsCount;
+            var queued = QueuedJobsCount;
+            var complete = CompletedJobsCount;
+            if (processing > 0)
+            {
+                return $"{processing} Processing • {queued} Queued • {complete} Completed";
+            }
+            if (IsPaused && queued > 0)
+            {
+                return $"Paused • {queued} Queued • {complete} Completed";
+            }
+            if (queued > 0)
+            {
+                return $"{queued} Queued • {complete} Completed";
+            }
+            return $"{complete} Completed";
+        }
+    }
+
+    public bool IsShorts9x16Active
+    {
+        get =>
+            SelectedTargetAspectRatio
+                is AspectRatioMode.Vertical916Crop
+                    or AspectRatioMode.Vertical916BlurredCanvas;
+        set =>
+            SelectedTargetAspectRatio = value
+                ? AspectRatioMode.Vertical916Crop
+                : AspectRatioMode.Original;
+    }
+
+    public bool IsSquare1x1Active
+    {
+        get => SelectedTargetAspectRatio == AspectRatioMode.Square11;
+        set =>
+            SelectedTargetAspectRatio = value ? AspectRatioMode.Square11 : AspectRatioMode.Original;
+    }
+
+    public bool IsSmooth60FpsActive
+    {
+        get => SelectedTargetFramerate == TargetFramerate.Fps60;
+        set => SelectedTargetFramerate = value ? TargetFramerate.Fps60 : TargetFramerate.Original;
+    }
+
+    public void NotifyQueueStatsChanged()
+    {
+        OnPropertyChanged(nameof(QueuedJobsCount));
+        OnPropertyChanged(nameof(ProcessingJobsCount));
+        OnPropertyChanged(nameof(CompletedJobsCount));
+        OnPropertyChanged(nameof(FailedJobsCount));
+        OnPropertyChanged(nameof(HasActiveJobs));
+        OnPropertyChanged(nameof(HasProcessingJob));
+        OnPropertyChanged(nameof(HasCompletedJobs));
+        OnPropertyChanged(nameof(OverallProgressPercent));
+        OnPropertyChanged(nameof(QueueStatusSummary));
+    }
+
+    private void OnJobsCollectionChanged(
+        object? sender,
+        System.Collections.Specialized.NotifyCollectionChangedEventArgs e
+    )
+    {
+        if (e.NewItems != null)
+        {
+            foreach (UpscaleJob job in e.NewItems)
+            {
+                job.PropertyChanged += OnJobPropertyChanged;
+            }
+        }
+        if (e.OldItems != null)
+        {
+            foreach (UpscaleJob job in e.OldItems)
+            {
+                job.PropertyChanged -= OnJobPropertyChanged;
+            }
+        }
+        NotifyQueueStatsChanged();
+    }
+
+    private void OnJobPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(UpscaleJob.Status) or nameof(UpscaleJob.Progress))
+        {
+            NotifyQueueStatsChanged();
+        }
+    }
 
     public LocalizationManager LocalizationManager { get; }
 
@@ -406,6 +617,12 @@ public partial class VideoUpscalerViewModel : ViewModelBase
         _activeColorGrading = GlobalColorGrading;
         GlobalColorGrading.PropertyChanged += OnColorGradingSettingsChanged;
         _queueManager.BatchCompleted += OnBatchCompleted;
+
+        _queueManager.Jobs.CollectionChanged += OnJobsCollectionChanged;
+        foreach (var job in _queueManager.Jobs)
+        {
+            job.PropertyChanged += OnJobPropertyChanged;
+        }
 
         if (_hardwareMonitor != null)
         {
@@ -507,6 +724,7 @@ public partial class VideoUpscalerViewModel : ViewModelBase
                 _settingsService.UpscalerPlaybackSpeed > 0
                     ? _settingsService.UpscalerPlaybackSpeed
                     : 1.0;
+            SelectedAudioMode = _settingsService.UpscalerAudioMode;
 
             EnableSplitAndUpscale = _settingsService.UpscalerEnableSplitAndUpscale;
             MergeAfterUpscale = _settingsService.UpscalerMergeAfterUpscale;
@@ -577,6 +795,7 @@ public partial class VideoUpscalerViewModel : ViewModelBase
             {
                 SelectedJob = Jobs.FirstOrDefault();
             }
+            NotifyQueueStatsChanged();
         });
     }
 
@@ -782,11 +1001,20 @@ public partial class VideoUpscalerViewModel : ViewModelBase
         {
             SelectedJob.TargetAspectRatio = value;
         }
+        else
+        {
+            foreach (var job in Jobs.Where(j => j.Status == UpscaleJobStatus.Queued))
+            {
+                job.TargetAspectRatio = value;
+            }
+        }
         if (!_isRestoringSettings)
         {
             _settingsService.UpscalerTargetAspectRatio = value;
             ScheduleDebouncedSaveSettings();
         }
+        OnPropertyChanged(nameof(IsShorts9x16Active));
+        OnPropertyChanged(nameof(IsSquare1x1Active));
         RequestPreviewUpdate(150);
     }
 
@@ -833,6 +1061,27 @@ public partial class VideoUpscalerViewModel : ViewModelBase
             _settingsService.UpscalerTargetFramerate = value;
             ScheduleDebouncedSaveSettings();
         }
+        OnPropertyChanged(nameof(IsSmooth60FpsActive));
+    }
+
+    partial void OnSelectedAudioModeChanged(UpscaleAudioMode value)
+    {
+        if (SelectedJob != null)
+        {
+            SelectedJob.AudioMode = value;
+        }
+        else
+        {
+            foreach (var j in Jobs.Where(j => j.Status == UpscaleJobStatus.Queued))
+            {
+                j.AudioMode = value;
+            }
+        }
+        if (!_isRestoringSettings)
+        {
+            _settingsService.UpscalerAudioMode = value;
+            ScheduleDebouncedSaveSettings();
+        }
     }
 
     partial void OnSelectedPostBatchActionChanged(PostBatchAction value)
@@ -846,6 +1095,22 @@ public partial class VideoUpscalerViewModel : ViewModelBase
 
     partial void OnSelectedSplitModeChanged(SplitMode value)
     {
+        if (SelectedJob != null)
+        {
+            SelectedJob.SplitOptions ??= new CustomSplitOptions();
+            SelectedJob.SplitOptions.Mode = value;
+            SelectedJob.NotifySplitChanged();
+        }
+        else
+        {
+            foreach (var job in Jobs.Where(j => j.Status == UpscaleJobStatus.Queued))
+            {
+                job.SplitOptions ??= new CustomSplitOptions();
+                job.SplitOptions.Mode = value;
+                job.NotifySplitChanged();
+            }
+        }
+
         if (!_isRestoringSettings)
         {
             _settingsService.UpscalerSplitMode = value;
@@ -855,6 +1120,22 @@ public partial class VideoUpscalerViewModel : ViewModelBase
 
     partial void OnCustomSplitPartCountChanged(int value)
     {
+        if (SelectedJob != null)
+        {
+            SelectedJob.SplitOptions ??= new CustomSplitOptions();
+            SelectedJob.SplitOptions.PartCount = value;
+            SelectedJob.NotifySplitChanged();
+        }
+        else
+        {
+            foreach (var job in Jobs.Where(j => j.Status == UpscaleJobStatus.Queued))
+            {
+                job.SplitOptions ??= new CustomSplitOptions();
+                job.SplitOptions.PartCount = value;
+                job.NotifySplitChanged();
+            }
+        }
+
         if (!_isRestoringSettings)
         {
             _settingsService.UpscalerCustomSplitPartCount = value;
@@ -864,6 +1145,22 @@ public partial class VideoUpscalerViewModel : ViewModelBase
 
     partial void OnCustomSplitSegmentDurationSecondsChanged(double value)
     {
+        if (SelectedJob != null)
+        {
+            SelectedJob.SplitOptions ??= new CustomSplitOptions();
+            SelectedJob.SplitOptions.SegmentDurationSeconds = value;
+            SelectedJob.NotifySplitChanged();
+        }
+        else
+        {
+            foreach (var job in Jobs.Where(j => j.Status == UpscaleJobStatus.Queued))
+            {
+                job.SplitOptions ??= new CustomSplitOptions();
+                job.SplitOptions.SegmentDurationSeconds = value;
+                job.NotifySplitChanged();
+            }
+        }
+
         if (!_isRestoringSettings)
         {
             _settingsService.UpscalerCustomSplitSegmentDurationSeconds = value;
@@ -1022,6 +1319,13 @@ public partial class VideoUpscalerViewModel : ViewModelBase
         {
             SelectedJob.PlaybackSpeed = value;
         }
+        else
+        {
+            foreach (var job in Jobs.Where(j => j.Status == UpscaleJobStatus.Queued))
+            {
+                job.PlaybackSpeed = value;
+            }
+        }
         if (!_isRestoringSettings)
         {
             _settingsService.UpscalerPlaybackSpeed = value;
@@ -1035,6 +1339,14 @@ public partial class VideoUpscalerViewModel : ViewModelBase
         {
             SelectedJob.EnableSplitAndUpscale = value;
         }
+        else
+        {
+            foreach (var job in Jobs.Where(j => j.Status == UpscaleJobStatus.Queued))
+            {
+                job.EnableSplitAndUpscale = value;
+            }
+        }
+
         if (!_isRestoringSettings)
         {
             _settingsService.UpscalerEnableSplitAndUpscale = value;
@@ -1048,6 +1360,14 @@ public partial class VideoUpscalerViewModel : ViewModelBase
         {
             SelectedJob.MergeAfterUpscale = value;
         }
+        else
+        {
+            foreach (var job in Jobs.Where(j => j.Status == UpscaleJobStatus.Queued))
+            {
+                job.MergeAfterUpscale = value;
+            }
+        }
+
         if (!_isRestoringSettings)
         {
             _settingsService.UpscalerMergeAfterUpscale = value;
@@ -1319,10 +1639,21 @@ public partial class VideoUpscalerViewModel : ViewModelBase
             SelectedZoomMode = value.ZoomMode;
             SelectedSpeedMode = value.SpeedMode;
             SelectedPlaybackSpeed = value.PlaybackSpeed > 0 ? value.PlaybackSpeed : 1.0;
+            SelectedAudioMode = value.AudioMode;
             EnableDenoise = value.EnableDenoise;
             EnableDeinterlace = value.EnableDeinterlace;
             EnableSplitAndUpscale = value.EnableSplitAndUpscale;
             MergeAfterUpscale = value.MergeAfterUpscale;
+            if (value.SplitOptions != null)
+            {
+                SelectedSplitMode = value.SplitOptions.Mode;
+                CustomSplitPartCount =
+                    value.SplitOptions.PartCount > 0 ? value.SplitOptions.PartCount : 2;
+                CustomSplitSegmentDurationSeconds =
+                    value.SplitOptions.SegmentDurationSeconds > 0
+                        ? value.SplitOptions.SegmentDurationSeconds
+                        : 60.0;
+            }
             SelectedModelType = value.ModelType;
             EnableFacialClarity = value.EnableFacialClarity;
             EnableFaceRestoration = value.EnableFaceRestoration;
@@ -1456,6 +1787,7 @@ public partial class VideoUpscalerViewModel : ViewModelBase
             ZoomMode = SelectedZoomMode,
             SpeedMode = SelectedSpeedMode,
             PlaybackSpeed = SelectedPlaybackSpeed,
+            AudioMode = SelectedAudioMode,
             ActivePresetName = SelectedPresetName,
             ModelType = SelectedModelType,
             EnableFacialClarity = EnableFacialClarity,
@@ -1527,7 +1859,7 @@ public partial class VideoUpscalerViewModel : ViewModelBase
                             : AppContext.BaseDirectory
                     );
 
-            var splitOptions = GetCurrentSplitOptions();
+            var splitOptions = job.SplitOptions ?? GetCurrentSplitOptions();
             _snackbarManager.Notify($"Slicing '{job.FileName}' into parts...");
             var splitResult = await SplitAndUpscalePipeline.SplitVideoCustomAsync(
                 job.FilePath,
@@ -1561,6 +1893,12 @@ public partial class VideoUpscalerViewModel : ViewModelBase
                     EnableMicroZoom = job.EnableMicroZoom,
                     MicroZoomPercent = job.MicroZoomPercent,
                     ZoomMode = job.ZoomMode,
+                    SpeedMode = job.SpeedMode,
+                    PlaybackSpeed = job.PlaybackSpeed,
+                    AudioMode = job.AudioMode,
+                    InputWidth = job.InputWidth,
+                    InputHeight = job.InputHeight,
+                    VideoFps = job.VideoFps,
                     ActivePresetName = job.ActivePresetName,
                     ModelType = job.ModelType,
                     EnableFacialClarity = job.EnableFacialClarity,
@@ -1759,11 +2097,138 @@ public partial class VideoUpscalerViewModel : ViewModelBase
     }
 
     [RelayCommand]
+    public void OpenOutputFolder()
+    {
+        var target =
+            !string.IsNullOrWhiteSpace(OutputDirectory) && Directory.Exists(OutputDirectory)
+                ? OutputDirectory
+                : Environment.GetFolderPath(Environment.SpecialFolder.MyVideos);
+
+        if (Directory.Exists(target))
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo { FileName = target, UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                _snackbarManager.Notify($"Unable to open folder: {ex.Message}");
+            }
+        }
+    }
+
+    [RelayCommand]
+    public void OpenJobFile(UpscaleJob? job)
+    {
+        if (job is null)
+            return;
+        var path = job.OutputFilePath;
+        if (!File.Exists(path))
+        {
+            path = job.FilePath;
+        }
+        if (File.Exists(path))
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo { FileName = path, UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                _snackbarManager.Notify($"Unable to open video: {ex.Message}");
+            }
+        }
+        else
+        {
+            _snackbarManager.Notify("Output file does not exist yet.");
+        }
+    }
+
+    [RelayCommand]
+    public void OpenJobFolder(UpscaleJob? job)
+    {
+        if (job is null)
+            return;
+        var path = job.OutputFilePath;
+        if (File.Exists(path) && RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            try
+            {
+                Process.Start(
+                    new ProcessStartInfo
+                    {
+                        FileName = "explorer.exe",
+                        Arguments = $"/select,\"{path}\"",
+                        UseShellExecute = true,
+                    }
+                );
+                return;
+            }
+            catch { }
+        }
+
+        var dir =
+            !string.IsNullOrWhiteSpace(job.OutputDirectory) && Directory.Exists(job.OutputDirectory)
+                ? job.OutputDirectory
+                : Path.GetDirectoryName(path);
+
+        if (!string.IsNullOrWhiteSpace(dir) && Directory.Exists(dir))
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo { FileName = dir, UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                _snackbarManager.Notify($"Unable to open folder: {ex.Message}");
+            }
+        }
+    }
+
+    [RelayCommand]
+    public void SelectStudioTab(object? tab)
+    {
+        if (tab is int intVal)
+        {
+            SelectedStudioTab = intVal;
+        }
+        else if (tab is string strVal && int.TryParse(strVal, out var parsed))
+        {
+            SelectedStudioTab = parsed;
+        }
+        IsColorGradingPanelOpen = true;
+    }
+
+    [RelayCommand]
+    public void CloseStudio()
+    {
+        IsColorGradingPanelOpen = false;
+    }
+
+    [RelayCommand]
+    public async Task CopyJobLogAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(LogViewerContent))
+        {
+            if (
+                Avalonia.Application.Current?.ApplicationLifetime
+                    is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop
+                && desktop.MainWindow?.Clipboard != null
+            )
+            {
+                await desktop.MainWindow.Clipboard.SetTextAsync(LogViewerContent);
+                _snackbarManager.Notify("Log copied to clipboard.");
+            }
+        }
+    }
+
+    [RelayCommand]
     public void SelectJobForGrading(UpscaleJob? job)
     {
         if (job is null)
             return;
         SelectedJob = job;
+        SelectedStudioTab = 0;
         IsColorGradingPanelOpen = true;
     }
 

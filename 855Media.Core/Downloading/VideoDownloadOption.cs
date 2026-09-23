@@ -48,6 +48,15 @@ public partial record VideoDownloadOption
                         false,
                         [videoStreamInfo]
                     );
+
+                    if (videoStreamInfo.Container != Container.Mp4)
+                    {
+                        yield return new VideoDownloadOption(
+                            Container.Mp4,
+                            false,
+                            [videoStreamInfo]
+                        );
+                    }
                 }
                 // Separate audio + video stream
                 else
@@ -78,6 +87,15 @@ public partial record VideoDownloadOption
                             false,
                             [videoStreamInfo, .. languageSpecificAudioStreamInfos]
                         );
+
+                        if (videoStreamInfo.Container != Container.Mp4)
+                        {
+                            yield return new VideoDownloadOption(
+                                Container.Mp4,
+                                false,
+                                [videoStreamInfo, .. languageSpecificAudioStreamInfos]
+                            );
+                        }
                     }
                     // If there are no language-specific streams, download the single best quality audio stream
                     else
@@ -94,6 +112,15 @@ public partial record VideoDownloadOption
                                 false,
                                 [videoStreamInfo, audioStreamInfo]
                             );
+
+                            if (videoStreamInfo.Container != Container.Mp4)
+                            {
+                                yield return new VideoDownloadOption(
+                                    Container.Mp4,
+                                    false,
+                                    [videoStreamInfo, audioStreamInfo]
+                                );
+                            }
                         }
                     }
                 }

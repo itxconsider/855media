@@ -130,11 +130,15 @@ public partial class FacebookQueryResolver()
         }
 
         title ??= "Facebook";
+        var avatarUrl = videos.FirstOrDefault()?.ThumbnailUrls.FirstOrDefault();
+        var authorName = videos.FirstOrDefault()?.AuthorTitle ?? title;
 
         return new QueryResult(
             videos.Length == 1 ? QueryResultKind.Video : QueryResultKind.Channel,
             videos.Length == 1 ? videos.Single().Title : $"Facebook: {title}",
-            videos
+            videos,
+            avatarUrl,
+            authorName
         );
     }
 

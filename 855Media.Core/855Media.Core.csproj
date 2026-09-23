@@ -13,4 +13,8 @@
     <PackageReference Include="YoutubeExplode" />
     <PackageReference Include="YoutubeExplode.Converter" />
   </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="855Media.Core.Tests" />
+  </ItemGroup>
 </Project>

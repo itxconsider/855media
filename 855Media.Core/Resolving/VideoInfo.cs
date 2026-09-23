@@ -15,7 +15,8 @@ public record VideoInfo(
     long? ViewCount,
     TimeSpan? Duration,
     IReadOnlyList<string> ThumbnailUrls,
-    IVideo? YoutubeVideo = null
+    IVideo? YoutubeVideo = null,
+    string? AuthorAvatarUrl = null
 )
 {
     public static VideoInfo FromYoutube(IVideo video) =>

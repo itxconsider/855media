@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Reflection;
+using _855Media.Core.Dubbing;
 using _855Media.ViewModels.Components;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -28,6 +29,14 @@ public partial class DubbingView : UserControl
         AttachedToVisualTree += (_, _) => UpdatePlayerVisibility(true);
         AddHandler(DragDrop.DragOverEvent, DragOver);
         AddHandler(DragDrop.DropEvent, Drop);
+    }
+
+    private void OnSegmentsSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (sender is DataGrid dg && DataContext is DubbingViewModel vm)
+        {
+            vm.UpdateDataGridSelection(dg.SelectedItems.OfType<SubtitleSegment>());
+        }
     }
 
 #pragma warning disable CS0618

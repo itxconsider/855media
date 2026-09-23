@@ -4,11 +4,14 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using _855Media.Core.Downloading;
+using _855Media.Core.Utils;
 
 namespace _855Media.Core.Resolving;
 
@@ -106,11 +109,78 @@ public class TikTokQueryResolver(IReadOnlyList<Cookie>? initialCookies = null)
             );
         }
 
+        var avatarUrl =
+            TryGetString(root, "thumbnail")
+            ?? GetThumbnailUrls(root).LastOrDefault()
+            ?? TryGetString(root, "avatar")
+            ?? TryGetString(root, "uploader_avatar");
+
+        var authorName =
+            TryGetString(root, "uploader")
+            ?? TryGetString(root, "channel")
+            ?? TryGetString(root, "creator")
+            ?? videos.FirstOrDefault()?.AuthorTitle
+            ?? title;
+
+        if (string.IsNullOrWhiteSpace(avatarUrl) && (query.Contains('@') || videos.Length > 1))
+        {
+            avatarUrl = await TryFetchTikTokAvatarAsync(query, cancellationToken);
+        }
+
         return new QueryResult(
             videos.Length == 1 ? QueryResultKind.Video : QueryResultKind.Channel,
             videos.Length == 1 ? videos.Single().Title : $"TikTok: {title}",
-            videos
+            videos,
+            avatarUrl,
+            authorName
         );
+    }
+
+    public static async Task<string?> TryFetchTikTokAvatarAsync(
+        string query,
+        CancellationToken cancellationToken = default
+    )
+    {
+        try
+        {
+            var match = Regex.Match(query, @"@([A-Za-z0-9._]+)");
+            if (!match.Success)
+                return null;
+
+            var username = match.Groups[1].Value;
+            var profileUrl = $"https://www.tiktok.com/@{username}";
+            using var request = new HttpRequestMessage(HttpMethod.Get, profileUrl);
+            request.Headers.UserAgent.ParseAdd(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            );
+            using var response = await Http.Client.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+                return null;
+
+            var html = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            var ogMatch = Regex.Match(
+                html,
+                @"<meta\s+property=[""']og:image[""']\s+content=[""']([^""']+)[""']",
+                RegexOptions.IgnoreCase
+            );
+            if (ogMatch.Success)
+                return WebUtility.HtmlDecode(ogMatch.Groups[1].Value);
+
+            var avatarMatch = Regex.Match(
+                html,
+                @"""avatarLarger""\s*:\s*""([^""]+)""",
+                RegexOptions.IgnoreCase
+            );
+            if (avatarMatch.Success)
+                return Regex.Unescape(avatarMatch.Groups[1].Value);
+        }
+        catch
+        {
+            // Ignore errors
+        }
+
+        return null;
     }
 
     private static VideoInfo? TryCreateVideoInfo(JsonElement element)
