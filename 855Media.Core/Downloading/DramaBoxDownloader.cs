@@ -24,7 +24,8 @@ public class DramaBoxDownloader(IReadOnlyList<Cookie>? initialCookies = null)
         VideoDownloadOption? downloadOption = null,
         string? ffmpegPath = null,
         IProgress<Percentage>? progress = null,
-        CancellationToken cancellationToken = default
+        CancellationToken cancellationToken = default,
+        VideoDownloadPreference? downloadPreference = null
     )
     {
         var dirPath = Path.GetDirectoryName(filePath);
@@ -101,6 +102,9 @@ public class DramaBoxDownloader(IReadOnlyList<Cookie>? initialCookies = null)
         var isAudio = container.IsAudioOnly || downloadOption?.IsAudioOnly == true;
         if (isAudio)
         {
+            arguments.Add("--format");
+            arguments.Add("bestaudio/best");
+
             if (!string.IsNullOrWhiteSpace(actualFFmpegPath))
             {
                 arguments.Add("--extract-audio");
@@ -110,21 +114,38 @@ public class DramaBoxDownloader(IReadOnlyList<Cookie>? initialCookies = null)
         }
         else
         {
-            var heightFilter = downloadOption?.VideoQuality?.MaxHeight is { } mh and > 0
-                ? $"[height<={mh}]"
-                : "";
+            var targetHeight =
+                downloadOption?.VideoQuality?.MaxHeight
+                ?? downloadPreference?.PreferredVideoQuality.GetMaxHeight();
 
             arguments.Add("--format-sort");
             arguments.Add(
-                downloadOption?.VideoQuality?.MaxHeight is { } sortHeight and > 0
-                    ? $"res:{sortHeight},fps"
-                    : "res,fps"
+                targetHeight is { } sortHeight and > 0
+                    ? $"res:{sortHeight},fps,vcodec:h264,quality"
+                    : "res,fps,vcodec:h264,quality"
             );
 
-            if (!string.IsNullOrWhiteSpace(heightFilter))
+            arguments.Add("--format");
+            if (targetHeight is { } mh and > 0)
             {
-                arguments.Add("--format");
-                arguments.Add($"bestvideo{heightFilter}+bestaudio/best{heightFilter}/best");
+                // Support both portrait (aspect_ratio < 1, bounded by width)
+                // and landscape (aspect_ratio >= 1, bounded by height),
+                // handling both pre-muxed streams and separate audio/video streams
+                arguments.Add(
+                    $"bestvideo[aspect_ratio<1][width<={mh}]+bestaudio/"
+                        + $"bestvideo[aspect_ratio>=1][height<={mh}]+bestaudio/"
+                        + $"best[aspect_ratio<1][width<={mh}]/"
+                        + $"best[aspect_ratio>=1][height<={mh}]/"
+                        + $"bestvideo[height<={mh}]+bestaudio/"
+                        + $"bestvideo[width<={mh}]+bestaudio/"
+                        + $"best[height<={mh}]/"
+                        + $"best[width<={mh}]/"
+                        + $"bestvideo+bestaudio/best"
+                );
+            }
+            else
+            {
+                arguments.Add("bestvideo+bestaudio/best");
             }
         }
 

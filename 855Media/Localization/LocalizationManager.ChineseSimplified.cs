@@ -15,6 +15,7 @@ public partial class LocalizationManager
             [nameof(AuthTooltip)] = "身份验证",
             [nameof(SettingsTooltip)] = "设置",
             [nameof(DownloaderTabTitle)] = "下载器",
+            [nameof(UpscalerTabTitle)] = "编辑器",
             [nameof(DashboardPlaceholder)] = """
                 复制并粘贴 **网页链接** 或 **搜索** 以开始下载
                 使用 **Shift+Enter** 可添加多个项目

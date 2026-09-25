@@ -31,18 +31,36 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Foreground" Value="{DynamicResource AntigravityMutedBrush}" />
             <Setter Property="Padding" Value="14,8" />
-            <Setter Property="CornerRadius" Value="20" />
-            <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="FontSize" Value="14" />
+            <Setter Property="CornerRadius" Value="3" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="FontSize" Value="13" />
             <Setter Property="Focusable" Value="False" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="BorderBrush" Value="Transparent" />
             <Style Selector="^:pointerover">
                 <Setter Property="Background" Value="#14FFFFFF" />
                 <Setter Property="Foreground" Value="{DynamicResource AntigravityTextBrush}" />
             </Style>
             <Style Selector="^.active">
-                <Setter Property="Background" Value="{DynamicResource AntigravityAccentBrush}" />
-                <Setter Property="Foreground" Value="{DynamicResource AntigravityAccentForegroundBrush}" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="Foreground" Value="{DynamicResource AntigravityAccentBrush}" />
             </Style>
+            <Style Selector="^.active:pointerover">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="Foreground" Value="{DynamicResource AntigravityAccentBrush}" />
+            </Style>
+            <Style Selector="^:pressed">
+                <Setter Property="Background" Value="Transparent" />
+            </Style>
+            <Style Selector="^.active:pressed">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="Foreground" Value="{DynamicResource AntigravityAccentBrush}" />
+            </Style>
+        </Style>
+
+        <Style Selector="Button.tab-button TextBlock">
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="LetterSpacing" Value="0.6" />
         </Style>
 
         <Style Selector="Button.filter-chip">
@@ -77,33 +95,34 @@
                             <Button
                                 Command="{Binding SelectDownloaderTabCommand}"
                                 Classes="tab-button"
-                                Classes.active="{Binding IsDownloaderTab}">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <materialIcons:MaterialIcon Kind="CloudDownload" Width="18" Height="18" Foreground="{DynamicResource AntigravityAccentBrush}" />
-                                    <TextBlock Text="{Binding LocalizationManager.DownloaderTabTitle}" VerticalAlignment="Center" />
-                                </StackPanel>
+                                Classes.active="{Binding IsDownloaderTab}"
+                                Theme="{DynamicResource MaterialFlatButton}">
+                                <TextBlock Text="{Binding LocalizationManager.DownloaderTabTitle}" FontWeight="Bold" VerticalAlignment="Center" />
                             </Button>
 
                             <Button
                                 Command="{Binding SelectUpscalerTabCommand}"
                                 Classes="tab-button"
-                                Classes.active="{Binding IsUpscalerTab}">
-                                <TextBlock Text="{Binding LocalizationManager.UpscalerTabTitle}" VerticalAlignment="Center" />
+                                Classes.active="{Binding IsUpscalerTab}"
+                                Theme="{DynamicResource MaterialFlatButton}">
+                                <TextBlock Text="{Binding LocalizationManager.UpscalerTabTitle}" FontWeight="Bold" VerticalAlignment="Center" />
                             </Button>
 
                             <Button
                                 Command="{Binding SelectDubbingTabCommand}"
                                 Classes="tab-button"
-                                Classes.active="{Binding IsDubbingTab}">
-                                <TextBlock Text="Khmer Dubbing &amp; Voice" VerticalAlignment="Center" />
+                                Classes.active="{Binding IsDubbingTab}"
+                                Theme="{DynamicResource MaterialFlatButton}">
+                                <TextBlock Text="DUB PRO" FontWeight="Bold" VerticalAlignment="Center" />
                             </Button>
 
                             <Button
                                 Command="{Binding SelectManagerTabCommand}"
                                 Classes="tab-button"
-                                Classes.active="{Binding IsManagerTab}">
+                                Classes.active="{Binding IsManagerTab}"
+                                Theme="{DynamicResource MaterialFlatButton}">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <TextBlock Text="{Binding LocalizationManager.DownloadsManagerTabTitle}" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding LocalizationManager.DownloadsManagerTabTitle}" FontWeight="Bold" VerticalAlignment="Center" />
                                     <Border
                                         IsVisible="{Binding !!ActiveDownloadsCount}"
                                         Background="{DynamicResource AntigravityAccentBrush}"
@@ -122,11 +141,9 @@
                             <Button
                                 Command="{Binding SelectHistoryTabCommand}"
                                 Classes="tab-button"
-                                Classes.active="{Binding IsHistoryTab}">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <materialIcons:MaterialIcon Kind="History" Width="18" Height="18" />
-                                    <TextBlock Text="{Binding LocalizationManager.HistoryTabTitle}" VerticalAlignment="Center" />
-                                </StackPanel>
+                                Classes.active="{Binding IsHistoryTab}"
+                                Theme="{DynamicResource MaterialFlatButton}">
+                                <TextBlock Text="{Binding LocalizationManager.HistoryTabTitle}" FontWeight="Bold" VerticalAlignment="Center" />
                             </Button>
                         </StackPanel>
                     </ScrollViewer>
@@ -250,12 +267,12 @@
                                                     </Grid>
                                                 </Border>
 
-                                                <!-- Module 2: Video Upscaler -->
+                                                <!-- Module 2: Video Editor -->
                                                 <Border Background="{DynamicResource AntigravityCardBrush}" BorderBrush="#2C2C34" BorderThickness="1" CornerRadius="10" Padding="12">
                                                     <Grid ColumnDefinitions="Auto,*,Auto">
                                                         <materialIcons:MaterialIcon Grid.Column="0" Kind="AutoFix" Width="24" Height="24" Foreground="#A855F7" VerticalAlignment="Center" Margin="0,0,12,0" />
                                                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                                                            <TextBlock Text="Video Upscaler" FontSize="13" FontWeight="Bold" Foreground="#FFFFFF" />
+                                                            <TextBlock Text="Video Editor" FontSize="13" FontWeight="Bold" Foreground="#FFFFFF" />
                                                             <TextBlock Text="{Binding GlobalHardware.Upscaler.Summary}" FontSize="12" Foreground="#D1D5DB" />
                                                             <TextBlock Text="{Binding GlobalHardware.Upscaler.Details}" FontSize="11" Foreground="#9CA3AF" TextWrapping="Wrap" />
                                                         </StackPanel>
@@ -265,12 +282,12 @@
                                                     </Grid>
                                                 </Border>
 
-                                                <!-- Module 3: Khmer Dubbing & Voice -->
+                                                <!-- Module 3: Dub Pro -->
                                                 <Border Background="{DynamicResource AntigravityCardBrush}" BorderBrush="#2C2C34" BorderThickness="1" CornerRadius="10" Padding="12">
                                                     <Grid ColumnDefinitions="Auto,*,Auto">
                                                         <materialIcons:MaterialIcon Grid.Column="0" Kind="AccountVoice" Width="24" Height="24" Foreground="#3B82F6" VerticalAlignment="Center" Margin="0,0,12,0" />
                                                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                                                            <TextBlock Text="Khmer Dubbing &amp; Voice" FontSize="13" FontWeight="Bold" Foreground="#FFFFFF" />
+                                                            <TextBlock Text="Dub Pro" FontSize="13" FontWeight="Bold" Foreground="#FFFFFF" />
                                                             <TextBlock Text="{Binding GlobalHardware.Dubbing.Summary}" FontSize="12" Foreground="#D1D5DB" />
                                                             <TextBlock Text="{Binding GlobalHardware.Dubbing.Details}" FontSize="11" Foreground="#9CA3AF" TextWrapping="Wrap" />
                                                         </StackPanel>

@@ -69,10 +69,21 @@ public static class MediaCompatibility
                 process.StartInfo.ArgumentList.Add("-c:v");
                 process.StartInfo.ArgumentList.Add(encoder);
 
-                if (encoder == "libx264")
+                if (encoder == "h264_nvenc")
+                {
+                    process.StartInfo.ArgumentList.Add("-preset");
+                    process.StartInfo.ArgumentList.Add("p4");
+                    process.StartInfo.ArgumentList.Add("-profile:v");
+                    process.StartInfo.ArgumentList.Add("high");
+                    process.StartInfo.ArgumentList.Add("-cq");
+                    process.StartInfo.ArgumentList.Add("23");
+                }
+                else if (encoder == "libx264")
                 {
                     process.StartInfo.ArgumentList.Add("-preset");
                     process.StartInfo.ArgumentList.Add("ultrafast");
+                    process.StartInfo.ArgumentList.Add("-crf");
+                    process.StartInfo.ArgumentList.Add("22");
                 }
 
                 if (encoder != "copy")

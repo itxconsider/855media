@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Net;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -337,6 +338,42 @@ public partial class SettingsService()
     // Selected Dashboard Tab
     [ObservableProperty]
     public partial DashboardTab LastSelectedDashboardTab { get; set; } = DashboardTab.Upscaler;
+
+    public override bool Load()
+    {
+        try
+        {
+            var path = StartOptions.Current.SettingsPath;
+            if (File.Exists(path))
+            {
+                var fileInfo = new FileInfo(path);
+                // If the file is 0 bytes or essentially empty, purge it so base.Load() initializes defaults cleanly
+                if (fileInfo.Length < 2)
+                {
+                    File.Delete(path);
+                    return false;
+                }
+            }
+
+            return base.Load();
+        }
+        catch (Exception)
+        {
+            // If the settings file is corrupted or contains invalid JSON tokens,
+            // delete the corrupted file so the application gracefully falls back to default settings.
+            try
+            {
+                var path = StartOptions.Current.SettingsPath;
+                if (File.Exists(path))
+                {
+                    File.Delete(path);
+                }
+            }
+            catch { }
+
+            return false;
+        }
+    }
 
     public override void Save()
     {

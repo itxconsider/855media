@@ -218,6 +218,8 @@ public partial class VideoUpscaleService
                 !string.IsNullOrWhiteSpace(ScratchDirectory) ? ScratchDirectory : Path.GetTempPath()
             );
 
+        CleanupStaleTempDirectories(scratchBase, "855Media_Upscale");
+
         var tempDir = Path.Combine(scratchBase, "855Media_Upscale", job.Id.ToString("N"));
         Directory.CreateDirectory(tempDir);
 
@@ -1377,7 +1379,7 @@ public partial class VideoUpscaleService
                 {
                     fallbackMux.AddRange(["-filter:a", speedFilter]);
                 }
-                fallbackMux.AddRange(["-c:a", "aac", "-b:a", "320k"]);
+                fallbackMux.AddRange(["-c:a", "aac", "-b:a", "192k"]);
             }
             else
             {
@@ -1386,7 +1388,7 @@ public partial class VideoUpscaleService
                 {
                     fallbackMux.AddRange(["-filter:a", muxAudioFilter]);
                 }
-                fallbackMux.AddRange(["-c:a", "aac", "-b:a", "320k"]);
+                fallbackMux.AddRange(["-c:a", "aac", "-b:a", "192k"]);
             }
 
             fallbackMux.AddRange(["-map", "1:s?", "-c:s", "copy"]);
@@ -1611,8 +1613,9 @@ public partial class VideoUpscaleService
 
         string cq = codec switch
         {
-            UpscaleVideoCodec.Av1 => "21",
-            _ => "19",
+            UpscaleVideoCodec.H265 => "22",
+            UpscaleVideoCodec.Av1 => "24",
+            _ => "23",
         };
 
         string encoder = codec switch
@@ -1622,12 +1625,14 @@ public partial class VideoUpscaleService
             _ => "h264_nvenc",
         };
 
-        var encArgs = new[]
+        var encArgsList = new List<string> { "-c:v", encoder, "-preset", nvencPreset };
+
+        if (codec == UpscaleVideoCodec.H264)
         {
-            "-c:v",
-            encoder,
-            "-preset",
-            nvencPreset,
+            encArgsList.AddRange(["-profile:v", "high"]);
+        }
+
+        encArgsList.AddRange([
             "-cq",
             cq,
             "-spatial-aq",
@@ -1636,9 +1641,15 @@ public partial class VideoUpscaleService
             "1",
             "-rc-lookahead",
             lookahead,
-            "-pix_fmt",
-            "yuv420p",
-        };
+        ]);
+
+        if (codec == UpscaleVideoCodec.H264)
+        {
+            encArgsList.AddRange(["-b_ref_mode", "middle", "-multipass", "qres"]);
+        }
+
+        encArgsList.AddRange(["-pix_fmt", "yuv420p"]);
+        var encArgs = encArgsList.ToArray();
 
         return (hwArgs, encArgs, true);
     }
@@ -1680,6 +1691,12 @@ public partial class VideoUpscaleService
                 RenderSpeedMode.Quality => "p6",
                 _ => "p4",
             };
+            string lookahead = speedMode switch
+            {
+                RenderSpeedMode.TurboFast => "10",
+                RenderSpeedMode.Quality => "32",
+                _ => "20",
+            };
             var encArgs = codec switch
             {
                 UpscaleVideoCodec.H264 => new[]
@@ -1688,8 +1705,20 @@ public partial class VideoUpscaleService
                     "h264_nvenc",
                     "-preset",
                     nvencPreset,
+                    "-profile:v",
+                    "high",
                     "-cq",
-                    "19",
+                    "23",
+                    "-spatial-aq",
+                    "1",
+                    "-temporal-aq",
+                    "1",
+                    "-rc-lookahead",
+                    lookahead,
+                    "-b_ref_mode",
+                    "middle",
+                    "-multipass",
+                    "qres",
                     "-pix_fmt",
                     "yuv420p",
                 },
@@ -1700,7 +1729,11 @@ public partial class VideoUpscaleService
                     "-preset",
                     nvencPreset,
                     "-cq",
-                    "19",
+                    "22",
+                    "-spatial-aq",
+                    "1",
+                    "-temporal-aq",
+                    "1",
                     "-pix_fmt",
                     "yuv420p",
                 },
@@ -1711,7 +1744,11 @@ public partial class VideoUpscaleService
                     "-preset",
                     nvencPreset,
                     "-cq",
-                    "21",
+                    "24",
+                    "-spatial-aq",
+                    "1",
+                    "-temporal-aq",
+                    "1",
                     "-pix_fmt",
                     "yuv420p",
                 },
@@ -1721,8 +1758,20 @@ public partial class VideoUpscaleService
                     "h264_nvenc",
                     "-preset",
                     nvencPreset,
+                    "-profile:v",
+                    "high",
                     "-cq",
-                    "19",
+                    "23",
+                    "-spatial-aq",
+                    "1",
+                    "-temporal-aq",
+                    "1",
+                    "-rc-lookahead",
+                    lookahead,
+                    "-b_ref_mode",
+                    "middle",
+                    "-multipass",
+                    "qres",
                     "-pix_fmt",
                     "yuv420p",
                 },
@@ -1885,8 +1934,10 @@ public partial class VideoUpscaleService
                 "libx264",
                 "-preset",
                 cpuPreset,
+                "-profile:v",
+                "high",
                 "-crf",
-                "18",
+                "22",
                 "-pix_fmt",
                 "yuv420p",
             ],
@@ -1912,7 +1963,19 @@ public partial class VideoUpscaleService
                 "-pix_fmt",
                 "yuv420p10le",
             ],
-            _ => ["-c:v", "libx264", "-preset", cpuPreset, "-crf", "18", "-pix_fmt", "yuv420p"],
+            _ =>
+            [
+                "-c:v",
+                "libx264",
+                "-preset",
+                cpuPreset,
+                "-profile:v",
+                "high",
+                "-crf",
+                "22",
+                "-pix_fmt",
+                "yuv420p",
+            ],
         };
 
         return (Array.Empty<string>(), cpuArgs, false);
@@ -2399,5 +2462,30 @@ public partial class VideoUpscaleService
             );
             return null;
         }
+    }
+
+    private static void CleanupStaleTempDirectories(string scratchBase, string subFolder)
+    {
+        try
+        {
+            var root = Path.Combine(scratchBase, subFolder);
+            if (Directory.Exists(root))
+            {
+                var cutoff = DateTime.Now.AddHours(-12);
+                foreach (var dir in Directory.GetDirectories(root))
+                {
+                    try
+                    {
+                        var dirInfo = new DirectoryInfo(dir);
+                        if (dirInfo.LastWriteTime < cutoff)
+                        {
+                            Directory.Delete(dir, recursive: true);
+                        }
+                    }
+                    catch { }
+                }
+            }
+        }
+        catch { }
     }
 }

@@ -51,6 +51,9 @@ public partial class DownloadMultipleSetupViewModel(
     public partial IReadOnlyList<VideoInfo>? AvailableVideos { get; set; }
 
     [ObservableProperty]
+    public partial IReadOnlyList<VideoInfo> DisplayedVideos { get; set; } = [];
+
+    [ObservableProperty]
     public partial Container SelectedContainer { get; set; } = Container.Mp4;
 
     [ObservableProperty]
@@ -113,37 +116,59 @@ public partial class DownloadMultipleSetupViewModel(
         {
             DownloadVideoPopularityFilter.MostViewed => videos
                 .OrderByDescending(v => v.ViewCount ?? -1)
+                .ThenByDescending(v => v.LikeCount ?? -1)
                 .ThenBy(v => v.Title),
             DownloadVideoPopularityFilter.MostPopular => videos
-                .OrderByDescending(v => v.ViewCount ?? -1)
+                .OrderByDescending(v => v.LikeCount ?? -1)
+                .ThenByDescending(v => v.ViewCount ?? -1)
                 .ThenByDescending(v => v.Duration ?? TimeSpan.Zero)
                 .ThenBy(v => v.Title),
             _ => videos,
         };
 
-    private void RefreshSelectedVideos()
+    private void RefreshSelectedVideos(bool retainExistingSelection = false)
     {
         if (AvailableVideos is null)
+        {
+            DisplayedVideos = [];
+            _filteredVideos = [];
+            SelectedVideos.Clear();
             return;
+        }
 
-        _filteredVideos = ApplyPopularitySort(
+        var previousSelectedIds = retainExistingSelection
+            ? SelectedVideos.Select(v => v.Id).ToHashSet()
+            : null;
+
+        var filtered = ApplyPopularitySort(
                 AvailableVideos.Where(v => MatchesVideoTypeFilter(v, SelectedVideoTypeFilter)),
                 SelectedVideoPopularityFilter
             )
             .ToArray();
 
+        _filteredVideos = filtered;
+        DisplayedVideos = filtered;
+
         SelectedVideos.Clear();
-        SelectedVideos.AddRange(_filteredVideos);
+        if (previousSelectedIds is not null && previousSelectedIds.Count > 0)
+        {
+            var matching = filtered.Where(v => previousSelectedIds.Contains(v.Id));
+            SelectedVideos.AddRange(matching);
+        }
+        else
+        {
+            SelectedVideos.AddRange(filtered);
+        }
     }
 
     partial void OnSelectedVideoTypeFilterChanged(DownloadVideoTypeFilter value) =>
-        RefreshSelectedVideos();
+        RefreshSelectedVideos(retainExistingSelection: true);
 
     partial void OnSelectedVideoPopularityFilterChanged(DownloadVideoPopularityFilter value) =>
-        RefreshSelectedVideos();
+        RefreshSelectedVideos(retainExistingSelection: true);
 
     partial void OnAvailableVideosChanged(IReadOnlyList<VideoInfo>? value) =>
-        RefreshSelectedVideos();
+        RefreshSelectedVideos(retainExistingSelection: false);
 
     public override Task InitializeAsync()
     {
@@ -172,11 +197,11 @@ public partial class DownloadMultipleSetupViewModel(
 
     private void SelectTopVideos(int count)
     {
-        if (_filteredVideos.Count == 0)
+        if (DisplayedVideos.Count == 0)
             return;
 
         SelectedVideos.Clear();
-        SelectedVideos.AddRange(_filteredVideos.Take(count));
+        SelectedVideos.AddRange(DisplayedVideos.Take(count));
     }
 
     [RelayCommand]
@@ -197,7 +222,12 @@ public partial class DownloadMultipleSetupViewModel(
         if (string.IsNullOrWhiteSpace(dirPath))
             return;
 
-        var selected = SelectedVideos.ToList();
+        var selectedIds = SelectedVideos.Select(v => v.Id).ToHashSet();
+        var selected = DisplayedVideos.Where(v => selectedIds.Contains(v.Id)).ToList();
+        if (selected.Count == 0)
+        {
+            selected = SelectedVideos.ToList();
+        }
         var translationMap = new Dictionary<string, string>();
 
         if (ShouldTranslateTitleToEnglish && selected.Count > 0)

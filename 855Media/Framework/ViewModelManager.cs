@@ -129,8 +129,8 @@ public class ViewModelManager(IServiceProvider services)
         viewModel.ProfilePictureUrl = profilePictureUrl;
         viewModel.AuthorName = authorName;
 
-        if (preselectVideos)
-            viewModel.SelectedVideos.AddRange(availableVideos);
+        if (!preselectVideos)
+            viewModel.SelectedVideos.Clear();
 
         return viewModel;
     }

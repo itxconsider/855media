@@ -22,68 +22,24 @@ public class TikTokDownloader(IReadOnlyList<Cookie>? initialCookies = null)
         VideoDownloadOption? downloadOption = null,
         string? ffmpegPath = null,
         IProgress<Percentage>? progress = null,
-        CancellationToken cancellationToken = default
+        CancellationToken cancellationToken = default,
+        VideoDownloadPreference? downloadPreference = null
     )
     {
         var (cookieFilePath, isTemp) = await YtDlp.TryCreateCookieFileAsync(
             initialCookies,
             cancellationToken
         );
-        var arguments = new List<string>
-        {
-            "--newline",
-            "--force-overwrites",
-            "--no-playlist",
-            "--paths",
-            "temp:.tmp",
-        };
-
-        if (!string.IsNullOrWhiteSpace(cookieFilePath))
-        {
-            arguments.Add("--cookies");
-            arguments.Add(cookieFilePath);
-        }
-
-        arguments.Add("--output");
-        arguments.Add(filePath);
-
         var actualFFmpegPath = ffmpegPath ?? FFmpeg.TryGetCliFilePath();
-        if (!string.IsNullOrWhiteSpace(actualFFmpegPath))
-        {
-            arguments.Add("--ffmpeg-location");
-            arguments.Add(actualFFmpegPath);
-        }
-
-        var isAudio = container.IsAudioOnly || downloadOption?.IsAudioOnly == true;
-        if (isAudio)
-        {
-            if (!string.IsNullOrWhiteSpace(actualFFmpegPath))
-            {
-                arguments.Add("--extract-audio");
-                arguments.Add("--audio-format");
-                arguments.Add(container == Container.Mp3 ? "mp3" : "m4a");
-            }
-        }
-        else
-        {
-            var heightFilter = downloadOption?.VideoQuality?.MaxHeight is { } mh and > 0
-                ? $"[height<={mh}]"
-                : "";
-
-            arguments.Add("--format-sort");
-            arguments.Add(
-                downloadOption?.VideoQuality?.MaxHeight is { } sortHeight and > 0
-                    ? $"res:{sortHeight},vcodec:h264,fps"
-                    : "vcodec:h264,res,fps"
-            );
-
-            arguments.Add("--format");
-            arguments.Add(
-                $"bestvideo{heightFilter}[vcodec^=avc1]+bestaudio/bestvideo{heightFilter}[vcodec^=avc]+bestaudio/best{heightFilter}[vcodec^=avc1]/best{heightFilter}[vcodec^=avc]/bestvideo*{heightFilter}+bestaudio/best{heightFilter}/best"
-            );
-        }
-
-        arguments.Add(video.Url);
+        var arguments = BuildArguments(
+            filePath,
+            video,
+            container,
+            downloadOption,
+            actualFFmpegPath,
+            cookieFilePath,
+            downloadPreference
+        );
 
         try
         {
@@ -129,6 +85,94 @@ public class TikTokDownloader(IReadOnlyList<Cookie>? initialCookies = null)
                 cancellationToken
             );
         }
+    }
+
+    internal static List<string> BuildArguments(
+        string filePath,
+        VideoInfo video,
+        Container container,
+        VideoDownloadOption? downloadOption = null,
+        string? ffmpegPath = null,
+        string? cookieFilePath = null,
+        VideoDownloadPreference? downloadPreference = null
+    )
+    {
+        var arguments = new List<string>
+        {
+            "--newline",
+            "--force-overwrites",
+            "--no-playlist",
+            "--paths",
+            "temp:.tmp",
+        };
+
+        if (!string.IsNullOrWhiteSpace(cookieFilePath))
+        {
+            arguments.Add("--cookies");
+            arguments.Add(cookieFilePath);
+        }
+
+        arguments.Add("--output");
+        arguments.Add(filePath);
+
+        if (!string.IsNullOrWhiteSpace(ffmpegPath))
+        {
+            arguments.Add("--ffmpeg-location");
+            arguments.Add(ffmpegPath);
+        }
+
+        var isAudio = container.IsAudioOnly || downloadOption?.IsAudioOnly == true;
+        if (isAudio)
+        {
+            arguments.Add("--format");
+            arguments.Add("bestaudio/best");
+
+            if (!string.IsNullOrWhiteSpace(ffmpegPath))
+            {
+                arguments.Add("--extract-audio");
+                arguments.Add("--audio-format");
+                arguments.Add(container == Container.Mp3 ? "mp3" : "m4a");
+            }
+        }
+        else
+        {
+            var targetHeight =
+                downloadOption?.VideoQuality?.MaxHeight
+                ?? downloadPreference?.PreferredVideoQuality.GetMaxHeight();
+
+            arguments.Add("--format-sort");
+            arguments.Add(
+                targetHeight is { } sortHeight and > 0
+                    ? $"res:{sortHeight},fps,vcodec:h264,quality"
+                    : "res,fps,vcodec:h264,quality"
+            );
+
+            arguments.Add("--format");
+            if (targetHeight is { } mh and > 0)
+            {
+                // Support both portrait (aspect_ratio < 1, bounded by width)
+                // and landscape (aspect_ratio >= 1, bounded by height),
+                // handling both pre-muxed streams and separate audio/video streams
+                arguments.Add(
+                    $"bestvideo[aspect_ratio<1][width<={mh}]+bestaudio/"
+                        + $"bestvideo[aspect_ratio>=1][height<={mh}]+bestaudio/"
+                        + $"best[aspect_ratio<1][width<={mh}]/"
+                        + $"best[aspect_ratio>=1][height<={mh}]/"
+                        + $"bestvideo[height<={mh}]+bestaudio/"
+                        + $"bestvideo[width<={mh}]+bestaudio/"
+                        + $"best[height<={mh}]/"
+                        + $"best[width<={mh}]/"
+                        + $"bestvideo+bestaudio/best"
+                );
+            }
+            else
+            {
+                arguments.Add("bestvideo+bestaudio/best");
+            }
+        }
+
+        arguments.Add(video.Url);
+        return arguments;
     }
 
     private static async Task<(string? Path, bool IsTemp)> TryCreateCookieFileAsync(

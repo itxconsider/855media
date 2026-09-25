@@ -16,7 +16,8 @@ public record VideoInfo(
     TimeSpan? Duration,
     IReadOnlyList<string> ThumbnailUrls,
     IVideo? YoutubeVideo = null,
-    string? AuthorAvatarUrl = null
+    string? AuthorAvatarUrl = null,
+    long? LikeCount = null
 )
 {
     public static VideoInfo FromYoutube(IVideo video) =>
@@ -27,9 +28,21 @@ public record VideoInfo(
             video.Title,
             video.Author.ChannelTitle,
             video.Author.ChannelUrl,
-            null,
+            video is Video fullVideo ? fullVideo.Engagement.ViewCount : null,
             video.Duration,
             video.Thumbnails.OrderByDescending(t => t.Resolution.Area).Select(t => t.Url).ToArray(),
             video
         );
+
+    public string? FormattedViewCount =>
+        ViewCount switch
+        {
+            >= 1_000_000_000 => $"{(ViewCount.Value / 1_000_000_000.0):0.#}B views",
+            >= 1_000_000 => $"{(ViewCount.Value / 1_000_000.0):0.#}M views",
+            >= 1_000 => $"{(ViewCount.Value / 1_000.0):0.#}K views",
+            >= 0 => $"{ViewCount.Value:N0} views",
+            _ => null,
+        };
+
+    public bool HasViewCount => ViewCount is >= 0;
 }

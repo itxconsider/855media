@@ -156,7 +156,7 @@
             BorderThickness="0,1">
             <ListBox
                 Classes.grid="{Binding IsGridView}"
-                ItemsSource="{Binding AvailableVideos}"
+                ItemsSource="{Binding DisplayedVideos}"
                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                 SelectedItems="{Binding SelectedVideos}"
                 SelectionMode="Multiple,Toggle">
@@ -231,6 +231,22 @@
                                             <TextBlock
                                                 FontWeight="Light"
                                                 Text="{Binding Duration, TargetNullValue=Live}"
+                                                TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+
+                                        <!--  View count  -->
+                                        <StackPanel
+                                            Orientation="Horizontal"
+                                            Spacing="3"
+                                            IsVisible="{Binding HasViewCount}">
+                                            <materialIcons:MaterialIcon
+                                                Width="16"
+                                                Height="16"
+                                                BorderThickness="1"
+                                                Kind="EyeOutline" />
+                                            <TextBlock
+                                                FontWeight="Light"
+                                                Text="{Binding FormattedViewCount}"
                                                 TextTrimming="CharacterEllipsis" />
                                         </StackPanel>
                                     </StackPanel>
@@ -325,6 +341,23 @@
                                             FontSize="12"
                                             FontWeight="Light"
                                             Text="{Binding Duration, TargetNullValue=Live}"
+                                            TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+
+                                    <!--  View count  -->
+                                    <StackPanel
+                                        Orientation="Horizontal"
+                                        Spacing="3"
+                                        IsVisible="{Binding HasViewCount}">
+                                        <materialIcons:MaterialIcon
+                                            Width="16"
+                                            Height="16"
+                                            BorderThickness="1"
+                                            Kind="EyeOutline" />
+                                        <TextBlock
+                                            FontSize="12"
+                                            FontWeight="Light"
+                                            Text="{Binding FormattedViewCount}"
                                             TextTrimming="CharacterEllipsis" />
                                     </StackPanel>
                                 </StackPanel>

@@ -208,6 +208,9 @@ public class TikTokQueryResolver(IReadOnlyList<Cookie>? initialCookies = null)
 
         var thumbnailUrls = GetThumbnailUrls(element).ToArray();
 
+        var viewCount = TryGetLong(element, "view_count") ?? TryGetLong(element, "play_count");
+        var likeCount = TryGetLong(element, "like_count") ?? TryGetLong(element, "digg_count");
+
         return new VideoInfo(
             VideoSource.TikTok,
             id,
@@ -215,9 +218,12 @@ public class TikTokQueryResolver(IReadOnlyList<Cookie>? initialCookies = null)
             title,
             authorTitle,
             TryGetString(element, "uploader_url") ?? TryGetString(element, "channel_url"),
-            TryGetLong(element, "view_count"),
+            viewCount,
             TryGetDuration(element),
-            thumbnailUrls
+            thumbnailUrls,
+            null,
+            null,
+            likeCount
         );
     }
 

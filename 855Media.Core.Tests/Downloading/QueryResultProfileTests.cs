@@ -78,4 +78,28 @@ public class QueryResultProfileTests
         Assert.Equal("https://example.com/author1_avatar.jpg", aggregated.ProfilePictureUrl);
         Assert.Equal("Author1", aggregated.AuthorName);
     }
+
+    [Theory]
+    [InlineData(1_500_000_000L, "1.5B views")]
+    [InlineData(12_400_000L, "12.4M views")]
+    [InlineData(9_263L, "9.3K views")]
+    [InlineData(850L, "850 views")]
+    [InlineData(null, null)]
+    public void VideoInfo_FormattedViewCount_WorksCorrectly(long? viewCount, string? expected)
+    {
+        var video = new VideoInfo(
+            VideoSource.TikTok,
+            "1",
+            "url",
+            "title",
+            "author",
+            null,
+            viewCount,
+            null,
+            []
+        );
+
+        Assert.Equal(expected, video.FormattedViewCount);
+        Assert.Equal(viewCount is >= 0, video.HasViewCount);
+    }
 }

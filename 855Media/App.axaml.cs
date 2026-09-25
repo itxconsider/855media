@@ -125,8 +125,15 @@ public class App : Application, IDisposable
 
     public override void OnFrameworkInitializationCompleted()
     {
-        // Load settings
-        _settingsService.Load();
+        // Load settings safely
+        try
+        {
+            _settingsService.Load();
+        }
+        catch
+        {
+            // SettingsService handles corruption fallback internally
+        }
 
         // Initialize licensing
         _settingsService.FirstRunDate ??= DateTime.UtcNow;

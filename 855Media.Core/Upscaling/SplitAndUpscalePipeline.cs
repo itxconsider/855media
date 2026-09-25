@@ -95,6 +95,8 @@ public class SplitAndUpscalePipeline
                     : Path.GetTempPath()
             );
 
+        CleanupStaleTempDirectories(scratchBase);
+
         var tempDir = Path.Combine(scratchBase, "855Media_Split", masterJob.Id.ToString("N"));
         Directory.CreateDirectory(tempDir);
 
@@ -1053,5 +1055,30 @@ public class SplitAndUpscalePipeline
         {
             // Non-fatal
         }
+    }
+
+    private static void CleanupStaleTempDirectories(string scratchBase)
+    {
+        try
+        {
+            var splitRoot = Path.Combine(scratchBase, "855Media_Split");
+            if (Directory.Exists(splitRoot))
+            {
+                var cutoff = DateTime.Now.AddHours(-12);
+                foreach (var dir in Directory.GetDirectories(splitRoot))
+                {
+                    try
+                    {
+                        var dirInfo = new DirectoryInfo(dir);
+                        if (dirInfo.LastWriteTime < cutoff)
+                        {
+                            Directory.Delete(dir, recursive: true);
+                        }
+                    }
+                    catch { }
+                }
+            }
+        }
+        catch { }
     }
 }

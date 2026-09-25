@@ -17,6 +17,7 @@ public partial class LocalizationManager
         [nameof(AuthTooltip)] = "ការផ្ទៀងផ្ទាត់",
         [nameof(SettingsTooltip)] = "ការកំណត់",
         [nameof(DownloaderTabTitle)] = "ទាញយក",
+        [nameof(UpscalerTabTitle)] = "កែសម្រួល",
         [nameof(DashboardPromptTitle)] = "តើអ្នកចង់ទាញយកអ្វី?",
         [nameof(DashboardPlaceholder)] = """
             ចម្លងបិទភ្ជាប់ **URL** ឬបញ្ចូល **ពាក្យស្វែងរក** ដើម្បីចាប់ផ្តើមទាញយក

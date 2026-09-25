@@ -33,5 +33,19 @@ public static class VideoQualityPreferenceExtensions
                 VideoQualityPreference.Highest => "Highest quality",
                 _ => throw new ArgumentOutOfRangeException(nameof(preference)),
             };
+
+        public int? GetMaxHeight() =>
+            preference switch
+            {
+                VideoQualityPreference.Lowest => 360,
+                VideoQualityPreference.UpTo360p => 360,
+                VideoQualityPreference.UpTo480p => 480,
+                VideoQualityPreference.UpTo720p => 720,
+                VideoQualityPreference.UpTo1080p => 1080,
+                VideoQualityPreference.UpTo1440p => 1440,
+                VideoQualityPreference.UpTo2160p => 2160,
+                VideoQualityPreference.Highest => null,
+                _ => null,
+            };
     }
 }

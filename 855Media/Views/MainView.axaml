@@ -1,4 +1,4 @@
-﻿<Window
+<Window
     x:Class="_855Media.Views.MainView"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -8,7 +8,7 @@
     Title="{Binding Title}"
     Width="1180"
     Height="760"
-    MinWidth="1088"
+    MinWidth="960"
     MinHeight="560"
     x:DataType="viewModels:MainViewModel"
     Icon="/favicon.ico"

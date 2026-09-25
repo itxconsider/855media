@@ -30,7 +30,7 @@
                         VerticalAlignment="Center" />
 
                     <TextBlock
-                        Text="DUB STUDIO"
+                        Text="DUB PRO"
                         FontWeight="Bold"
                         FontSize="13"
                         Foreground="{DynamicResource AntigravityTextBrush}"

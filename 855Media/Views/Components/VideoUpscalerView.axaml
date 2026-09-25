@@ -8,32 +8,37 @@
     xmlns:converters="clr-namespace:_855Media.Converters"
     x:Name="RootControl"
     x:DataType="components:VideoUpscalerViewModel"
-    DragDrop.AllowDrop="True">
+    DragDrop.AllowDrop="True"
+    FontFamily="Segoe UI Variable Text, Segoe UI, -apple-system, Roboto, Ubuntu, Cantarell, sans-serif">
 
     <UserControl.Styles>
         <!-- Studio Tab Button Style -->
         <Style Selector="Button.studio-tab">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Foreground" Value="{DynamicResource AntigravityMutedBrush}" />
-            <Setter Property="Padding" Value="14,8" />
+            <Setter Property="Padding" Value="14,7" />
             <Setter Property="CornerRadius" Value="8" />
             <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontSize" Value="13" />
             <Setter Property="Focusable" Value="False" />
             <Style Selector="^:pointerover">
                 <Setter Property="Background" Value="#14FFFFFF" />
                 <Setter Property="Foreground" Value="{DynamicResource AntigravityTextBrush}" />
             </Style>
             <Style Selector="^.active">
-                <Setter Property="Background" Value="#22FFFFFF" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="Foreground" Value="{DynamicResource AntigravityAccentBrush}" />
+            </Style>
+            <Style Selector="^.active:pointerover">
+                <Setter Property="Background" Value="Transparent" />
                 <Setter Property="Foreground" Value="{DynamicResource AntigravityAccentBrush}" />
             </Style>
         </Style>
 
         <!-- Quick Toggle Pill / Chip Style -->
         <Style Selector="CheckBox.quick-chip">
-            <Setter Property="Padding" Value="10,6" />
-            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="10,4" />
+            <Setter Property="CornerRadius" Value="6" />
             <Setter Property="FontSize" Value="12" />
             <Setter Property="FontWeight" Value="Medium" />
         </Style>
@@ -46,7 +51,7 @@
         <Style Selector="DataGridColumnHeader">
             <Setter Property="Foreground" Value="{DynamicResource AntigravityMutedBrush}" />
             <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontSize" Value="13" />
             <Setter Property="Padding" Value="12,8" />
         </Style>
     </UserControl.Styles>
@@ -58,342 +63,286 @@
         <!-- ========================================================================= -->
         <Border
             Grid.Row="0"
-            Padding="20,10"
+            Padding="16,8"
             Background="{DynamicResource AntigravityPanelBrush}"
             BorderBrush="{DynamicResource AntigravityBorderBrush}"
             BorderThickness="0,0,0,1">
-            <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
-                <!-- Left: Identity & Quick Queue Badge -->
-                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-                    <Border
-                        Width="36"
-                        Height="36"
-                        CornerRadius="10"
-                        Background="#20FFFFFF"
-                        BorderBrush="#40FFFFFF"
-                        BorderThickness="1">
-                        <materialIcons:MaterialIcon
-                            Kind="AutoFix"
-                            Width="20"
-                            Height="20"
-                            Foreground="{DynamicResource AntigravityAccentBrush}"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Center" />
-                    </Border>
-
-                    <StackPanel VerticalAlignment="Center" Spacing="1">
-                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                            <TextBlock
-                                Text="AI VIDEO UPSCALE"
-                                FontWeight="Bold"
-                                FontSize="14"
-                                Foreground="{DynamicResource AntigravityTextBrush}"
-                                LetterSpacing="0.5" />
-                            <Border
-                                IsVisible="{Binding !!Jobs.Count}"
-                                Background="#1AFFFFFF"
-                                BorderBrush="{DynamicResource AntigravityBorderBrush}"
-                                BorderThickness="1"
-                                CornerRadius="12"
-                                Padding="8,2"
-                                VerticalAlignment="Center">
-                                <TextBlock
-                                    Text="{Binding Jobs.Count, StringFormat='{}{0} Videos'}"
-                                    FontSize="11"
-                                    FontWeight="SemiBold"
-                                    Foreground="{DynamicResource AntigravityAccentBrush}" />
-                            </Border>
-                        </StackPanel>
+            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center" MinWidth="800">
+                    <!-- Left: Identity & Quick Queue Badge -->
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="0,0,12,0">
+                        <materialIcons:MaterialIcon Kind="MovieEdit" Width="18" Height="18" Foreground="{DynamicResource AntigravityAccentBrush}" VerticalAlignment="Center" />
                         <TextBlock
-                            Text="Super-Resolution • 4K AI Upscaling • HDR Color &amp; Audio Studio"
-                            FontSize="11"
-                            Foreground="{DynamicResource AntigravityMutedBrush}" />
+                            Text="EDITOR"
+                            FontWeight="Bold"
+                            FontSize="15"
+                            Foreground="{DynamicResource AntigravityTextBrush}"
+                            LetterSpacing="1.2"
+                            VerticalAlignment="Center" />
+                        <Border
+                            IsVisible="{Binding !!Jobs.Count}"
+                            Background="#1838BDF8"
+                            BorderBrush="#3038BDF8"
+                            BorderThickness="1"
+                            CornerRadius="10"
+                            Padding="7,2"
+                            VerticalAlignment="Center">
+                            <TextBlock
+                                Text="{Binding Jobs.Count, StringFormat='{}{0} in queue'}"
+                                FontSize="11"
+                                FontWeight="SemiBold"
+                                Foreground="{DynamicResource AntigravityAccentBrush}" />
+                        </Border>
                     </StackPanel>
-                </StackPanel>
 
-                <!-- Center: Real-Time Hardware Performance Capsule -->
-                <Border
-                    Grid.Column="1"
-                    HorizontalAlignment="Center"
-                    VerticalAlignment="Center"
-                    Background="#0DFFFFFF"
-                    BorderBrush="{DynamicResource AntigravityBorderBrush}"
-                    BorderThickness="1"
-                    CornerRadius="20"
-                    Padding="14,5"
-                    ToolTip.Tip="Real-time GPU, VRAM, and CPU telemetry">
-                    <StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
-                        <!-- GPU Meter -->
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <materialIcons:MaterialIcon Kind="ExpansionCardVariant" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentBrush}" />
-                            <TextBlock Text="GPU" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
-                            <ProgressBar
-                                Value="{Binding HardwareGpuPercent}"
-                                Minimum="0"
-                                Maximum="100"
-                                Width="44"
-                                Height="5"
-                                CornerRadius="2.5"
-                                VerticalAlignment="Center" />
-                            <TextBlock Text="{Binding HardwareGpuPercent, StringFormat='{}{0:0}%'}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
-                        </StackPanel>
-
-                        <Separator Width="1" Height="14" Background="{DynamicResource AntigravityBorderBrush}" />
-
-                        <!-- VRAM Meter -->
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <materialIcons:MaterialIcon Kind="Memory" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentBrush}" />
-                            <TextBlock Text="VRAM" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
-                            <TextBlock Text="{Binding HardwareVramText, FallbackValue='0/0 GB'}" FontSize="11" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
-                        </StackPanel>
-
-                        <Separator Width="1" Height="14" Background="{DynamicResource AntigravityBorderBrush}" />
-
-                        <!-- CPU Meter -->
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <materialIcons:MaterialIcon Kind="Cpu64Bit" Width="15" Height="15" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                            <TextBlock Text="CPU" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
-                            <TextBlock Text="{Binding HardwareCpuPercent, StringFormat='{}{0:0}%'}" FontSize="11" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
-                        </StackPanel>
-
-                        <!-- Optional GPU Temp -->
-                        <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" IsVisible="{Binding HasHardwareGpuTemp}">
-                            <Separator Width="1" Height="14" Background="{DynamicResource AntigravityBorderBrush}" Margin="0,0,6,0" />
-                            <materialIcons:MaterialIcon Kind="Thermometer" Width="14" Height="14" Foreground="#FF9800" />
-                            <TextBlock Text="{Binding HardwareGpuTemp, StringFormat='{}{0}°C'}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </StackPanel>
-                </Border>
-
-                <!-- Right: Output Folder & Post-Batch Actions -->
-                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                    <!-- Output Folder Capsule -->
+                    <!-- Center: Real-Time Hardware Performance Capsule (Icon-free, clean typography) -->
                     <Border
+                        Grid.Column="1"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
                         Background="#0DFFFFFF"
                         BorderBrush="{DynamicResource AntigravityBorderBrush}"
                         BorderThickness="1"
-                        CornerRadius="8"
-                        Padding="8,3"
-                        VerticalAlignment="Center">
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <materialIcons:MaterialIcon Kind="FolderOutline" Width="16" Height="16" Foreground="{DynamicResource AntigravityAccentBrush}" VerticalAlignment="Center" />
-                            <TextBlock
-                                Text="{Binding OutputDirectory}"
-                                FontSize="11"
-                                MaxWidth="160"
-                                TextTrimming="CharacterEllipsis"
-                                Foreground="{DynamicResource AntigravityTextBrush}"
-                                VerticalAlignment="Center"
-                                ToolTip.Tip="{Binding OutputDirectory, StringFormat='Output Folder: {0}'}" />
+                        CornerRadius="20"
+                        Padding="12,5"
+                        Margin="8,0"
+                        ToolTip.Tip="Real-time GPU, VRAM, and CPU telemetry">
+                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                            <!-- GPU Meter -->
+                            <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                                <TextBlock Text="GPU" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                                <ProgressBar
+                                    Value="{Binding HardwareGpuPercent}"
+                                    Minimum="0"
+                                    Maximum="100"
+                                    Width="36"
+                                    Height="4"
+                                    CornerRadius="2"
+                                    VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding HardwareGpuPercent, StringFormat='{}{0:0}%'}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
+                            </StackPanel>
 
-                            <!-- Open Output in Explorer -->
-                            <Button
-                                Command="{Binding OpenOutputFolderCommand}"
-                                Theme="{DynamicResource MaterialFlatButton}"
-                                Padding="4,2"
-                                CornerRadius="4"
-                                ToolTip.Tip="Open Output Folder in File Explorer">
-                                <materialIcons:MaterialIcon Kind="FolderOpenOutline" Width="14" Height="14" Foreground="{DynamicResource AntigravityAccentBrush}" />
-                            </Button>
+                            <Separator Width="1" Height="12" Background="{DynamicResource AntigravityBorderBrush}" />
 
-                            <!-- Change Directory -->
-                            <Button
-                                Command="{Binding SelectOutputDirectoryCommand}"
-                                Theme="{DynamicResource MaterialFlatButton}"
-                                Padding="4,2"
-                                CornerRadius="4"
-                                ToolTip.Tip="Change Output Folder">
-                                <materialIcons:MaterialIcon Kind="PencilOutline" Width="14" Height="14" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                            </Button>
+                            <!-- VRAM Meter -->
+                            <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                                <TextBlock Text="VRAM" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding HardwareVramText, FallbackValue='0/0 GB'}" FontSize="11" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
+                            </StackPanel>
+
+                            <Separator Width="1" Height="12" Background="{DynamicResource AntigravityBorderBrush}" />
+
+                            <!-- CPU Meter -->
+                            <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                                <TextBlock Text="CPU" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding HardwareCpuPercent, StringFormat='{}{0:0}%'}" FontSize="11" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
+                            </StackPanel>
+
+                            <!-- Optional GPU Temp -->
+                            <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center" IsVisible="{Binding HasHardwareGpuTemp}">
+                                <Separator Width="1" Height="12" Background="{DynamicResource AntigravityBorderBrush}" Margin="0,0,4,0" />
+                                <TextBlock Text="TEMP" FontSize="11" FontWeight="Bold" Foreground="#FF9800" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding HardwareGpuTemp, StringFormat='{}{0}°C'}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
+                            </StackPanel>
                         </StackPanel>
                     </Border>
 
-                    <!-- Post-Batch Action Dropdown -->
-                    <ComboBox
-                        ItemsSource="{Binding AvailablePostBatchActions}"
-                        SelectedItem="{Binding SelectedPostBatchAction}"
-                        Width="120"
-                        FontSize="11"
-                        Height="32"
-                        ToolTip.Tip="Action to execute when all batch jobs complete" />
-                </StackPanel>
-            </Grid>
+                    <!-- Right: Output Folder & Post-Batch Actions -->
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <!-- Output Folder Capsule -->
+                        <Border
+                            Background="#0DFFFFFF"
+                            BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="8"
+                            Padding="8,4"
+                            VerticalAlignment="Center">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <materialIcons:MaterialIcon Kind="FolderOutline" Width="14" Height="14" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                                <TextBlock
+                                    Text="{Binding OutputDirectory}"
+                                    FontSize="12"
+                                    MaxWidth="120"
+                                    TextTrimming="CharacterEllipsis"
+                                    Foreground="{DynamicResource AntigravityTextBrush}"
+                                    VerticalAlignment="Center"
+                                    ToolTip.Tip="{Binding OutputDirectory, StringFormat='Output Folder: {0}'}" />
+
+                                <!-- Open Output in Explorer -->
+                                <Button
+                                    Command="{Binding OpenOutputFolderCommand}"
+                                    Theme="{DynamicResource MaterialFlatButton}"
+                                    Padding="4,2"
+                                    CornerRadius="4"
+                                    ToolTip.Tip="Open Folder">
+                                    <materialIcons:MaterialIcon Kind="FolderOpenOutline" Width="14" Height="14" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                </Button>
+
+                                <!-- Change Directory -->
+                                <Button
+                                    Command="{Binding SelectOutputDirectoryCommand}"
+                                    Theme="{DynamicResource MaterialFlatButton}"
+                                    Padding="4,2"
+                                    CornerRadius="4"
+                                    ToolTip.Tip="Change Folder">
+                                    <materialIcons:MaterialIcon Kind="FolderEditOutline" Width="14" Height="14" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                </Button>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Post-Batch Action Dropdown -->
+                        <ComboBox
+                            ItemsSource="{Binding AvailablePostBatchActions}"
+                            SelectedItem="{Binding SelectedPostBatchAction}"
+                            Width="110"
+                            FontSize="12"
+                            Height="30"
+                            ToolTip.Tip="On Complete Action" />
+                    </StackPanel>
+                </Grid>
+            </ScrollViewer>
         </Border>
 
         <!-- ========================================================================= -->
-        <!-- ROW 1: SMART QUICK-SETTINGS BAR (Simple, Intuitive & Easy)                 -->
+        <!-- ROW 1: STREAMLINED SETTINGS BAR (Minimalist, Clean & Fast)                -->
         <!-- ========================================================================= -->
         <Border
             Grid.Row="1"
-            Padding="20,12"
+            Padding="16,8"
             Background="{DynamicResource AntigravityPanelBrush}"
             BorderBrush="{DynamicResource AntigravityBorderBrush}"
             BorderThickness="0,0,0,1">
-            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto" VerticalAlignment="Center">
+            <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
 
-                <!-- 1. Target Resolution -->
-                <StackPanel Grid.Column="0" Spacing="4" Margin="0,0,18,0" VerticalAlignment="Center">
-                    <TextBlock Text="TARGET QUALITY" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" LetterSpacing="0.5" />
-                    <ComboBox
-                        ItemsSource="{Binding AvailableResolutions}"
-                        SelectedItem="{Binding SelectedTargetResolution}"
-                        Width="160"
-                        Height="34"
-                        ClipToBounds="True"
-                        ToolTip.Tip="Choose target upscale resolution (Full HD, 4K UHD, Scale 2x, Scale 4x, Original 1x)">
-                        <ComboBox.ItemTemplate>
-                            <DataTemplate>
-                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8" ClipToBounds="True">
-                                    <materialIcons:MaterialIcon Kind="VideoHighDefinition" Width="16" Height="16" Foreground="{DynamicResource AntigravityAccentBrush}" VerticalAlignment="Center" />
-                                    <TextBlock Grid.Column="1" Text="{Binding Converter={x:Static converters:EnumDisplayNameConverter.Instance}}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                                </Grid>
-                            </DataTemplate>
-                        </ComboBox.ItemTemplate>
-                    </ComboBox>
-                </StackPanel>
+                    <!-- Resolution -->
+                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <TextBlock Text="Resolution" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                        <ComboBox
+                            ItemsSource="{Binding AvailableResolutions}"
+                            SelectedItem="{Binding SelectedTargetResolution}"
+                            Width="135"
+                            Height="32"
+                            ClipToBounds="True"
+                            ToolTip.Tip="Target Resolution">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Converter={x:Static converters:EnumDisplayNameConverter.Instance}}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                    </StackPanel>
 
-                <!-- 2. AI Model Engine -->
-                <StackPanel Grid.Column="1" Spacing="4" Margin="0,0,18,0" VerticalAlignment="Center">
-                    <TextBlock Text="AI MODEL ENGINE" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" LetterSpacing="0.5" />
-                    <ComboBox
-                        ItemsSource="{Binding AvailableModelTypes}"
-                        SelectedItem="{Binding SelectedModelType}"
-                        Width="200"
-                        Height="34"
-                        ClipToBounds="True"
-                        ToolTip.Tip="AI Engine: NVIDIA RTX AI, Real-World (RealESRGAN), Animation (AnimeVideo), or Fast Native">
-                        <ComboBox.ItemTemplate>
-                            <DataTemplate>
-                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8" ClipToBounds="True">
-                                    <materialIcons:MaterialIcon Kind="AutoFix" Width="16" Height="16" Foreground="{DynamicResource AntigravityAccentBrush}" VerticalAlignment="Center" />
-                                    <TextBlock Grid.Column="1" Text="{Binding Converter={x:Static converters:EnumDisplayNameConverter.Instance}}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                                </Grid>
-                            </DataTemplate>
-                        </ComboBox.ItemTemplate>
-                    </ComboBox>
-                </StackPanel>
+                    <!-- AI Model -->
+                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <TextBlock Text="Model" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                        <ComboBox
+                            ItemsSource="{Binding AvailableModelTypes}"
+                            SelectedItem="{Binding SelectedModelType}"
+                            Width="155"
+                            Height="32"
+                            ClipToBounds="True"
+                            ToolTip.Tip="AI Upscale Model">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding Converter={x:Static converters:EnumDisplayNameConverter.Instance}}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                    </StackPanel>
 
-                <!-- 3. Speed & Codec -->
-                <StackPanel Grid.Column="2" Spacing="4" Margin="0,0,18,0" VerticalAlignment="Center">
-                    <TextBlock Text="SPEED &amp; CODEC" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" LetterSpacing="0.5" />
-                    <StackPanel Orientation="Horizontal" Spacing="6">
+                    <!-- Speed Profile & Codec -->
+                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <TextBlock Text="Profile" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
                         <ComboBox
                             ItemsSource="{Binding AvailableSpeedModes}"
                             SelectedItem="{Binding SelectedSpeedMode}"
-                            Width="110"
-                            Height="34"
+                            Width="95"
+                            Height="32"
                             ClipToBounds="True"
-                            ToolTip.Tip="Render Profile: Balanced, Turbo (Fastest), Quality (Pristine)">
+                            ToolTip.Tip="Speed Profile">
                             <ComboBox.ItemTemplate>
                                 <DataTemplate>
                                     <TextBlock Text="{Binding Converter={x:Static converters:EnumDisplayNameConverter.Instance}}" FontSize="12" TextTrimming="CharacterEllipsis" />
                                 </DataTemplate>
                             </ComboBox.ItemTemplate>
                         </ComboBox>
+
                         <ComboBox
                             ItemsSource="{Binding AvailableCodecs}"
                             SelectedItem="{Binding SelectedCodec}"
-                            Width="85"
-                            Height="34"
+                            Width="75"
+                            Height="32"
+                            FontSize="12"
                             ClipToBounds="True"
-                            ToolTip.Tip="Video Codec (H264, H265, AV1)" />
+                            ToolTip.Tip="Video Codec" />
+
+                        <ComboBox
+                            ItemsSource="{Binding AvailablePlaybackSpeeds}"
+                            SelectedItem="{Binding SelectedPlaybackSpeed}"
+                            Width="75"
+                            Height="32"
+                            ClipToBounds="True"
+                            ToolTip.Tip="Playback Speed">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding StringFormat='{}{0:0.##}x'}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
                     </StackPanel>
-                </StackPanel>
 
-                <!-- 4. Playback Speed -->
-                <StackPanel Grid.Column="3" Spacing="4" Margin="0,0,18,0" VerticalAlignment="Center">
-                    <TextBlock Text="PLAYBACK SPEED" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" LetterSpacing="0.5" />
-                    <ComboBox
-                        ItemsSource="{Binding AvailablePlaybackSpeeds}"
-                        SelectedItem="{Binding SelectedPlaybackSpeed}"
-                        Width="85"
-                        Height="34"
-                        ClipToBounds="True"
-                        ToolTip.Tip="Output Video Playback Speed Factor (0.5x slow motion to 2.0x fast forward with auto audio pitch preservation)">
-                        <ComboBox.ItemTemplate>
-                            <DataTemplate>
-                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
-                                    <materialIcons:MaterialIcon Kind="PlaySpeed" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentBrush}" VerticalAlignment="Center" />
-                                    <TextBlock Grid.Column="1" Text="{Binding StringFormat='{}{0:0.##}x'}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                </Grid>
-                            </DataTemplate>
-                        </ComboBox.ItemTemplate>
-                    </ComboBox>
-                </StackPanel>
+                    <Separator Width="1" Height="18" Background="{DynamicResource AntigravityBorderBrush}" Margin="2,0" />
 
-                <!-- 5. Quick Enhancements Toggles (Face Clarity, 9:16 Shorts, 1:1 Square, 60 FPS) -->
-                <StackPanel Grid.Column="4" Spacing="4" Margin="0,0,16,0" VerticalAlignment="Center">
-                    <TextBlock Text="INSTANT ENHANCEMENTS" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" LetterSpacing="0.5" />
-                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Height="34">
-                        <!-- Face Clarity AI -->
+                    <!-- Quick Toggles -->
+                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Height="32">
                         <CheckBox
                             IsChecked="{Binding EnableFacialClarity}"
                             Classes="quick-chip"
-                            ToolTip.Tip="AI Facial Clarity: Restores crisp facial edges, eyes, and micro-textures">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <materialIcons:MaterialIcon Kind="FaceWomanOutline" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentBrush}" />
-                                <TextBlock Text="Face Clarity" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
-                            </StackPanel>
+                            ToolTip.Tip="AI Facial Clarity Restoration">
+                            <TextBlock Text="Face AI" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
                         </CheckBox>
 
-                        <!-- 9:16 Shorts Toggle -->
                         <CheckBox
                             IsChecked="{Binding IsShorts9x16Active}"
                             Classes="quick-chip"
-                            ToolTip.Tip="Vertical 9:16 Re-Framing: Optimizes video for YouTube Shorts, TikTok, and Instagram Reels">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <materialIcons:MaterialIcon Kind="CropFree" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentBrush}" />
-                                <TextBlock Text="9:16 Shorts" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
-                            </StackPanel>
+                            ToolTip.Tip="Vertical 9:16 Re-Framing">
+                            <TextBlock Text="9:16" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
                         </CheckBox>
 
-                        <!-- 1:1 Square Toggle -->
                         <CheckBox
                             IsChecked="{Binding IsSquare1x1Active}"
                             Classes="quick-chip"
-                            ToolTip.Tip="Square 1:1 Re-Framing: Optimizes video for Instagram Feed, Facebook, and Square Posts">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <materialIcons:MaterialIcon Kind="CropSquare" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentBrush}" />
-                                <TextBlock Text="1:1 Square" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
-                            </StackPanel>
+                            ToolTip.Tip="Square 1:1 Re-Framing">
+                            <TextBlock Text="1:1" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
                         </CheckBox>
 
-                        <!-- 60 FPS Smooth Toggle -->
                         <CheckBox
                             IsChecked="{Binding IsSmooth60FpsActive}"
                             Classes="quick-chip"
-                            ToolTip.Tip="Smooth 60 FPS: Converts video to ultra-fluid 60 frames per second">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <materialIcons:MaterialIcon Kind="Filmstrip" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentBrush}" />
-                                <TextBlock Text="60 FPS" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
-                            </StackPanel>
+                            ToolTip.Tip="Smooth 60 FPS Interpolation">
+                            <TextBlock Text="60 FPS" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
                         </CheckBox>
                     </StackPanel>
-                </StackPanel>
 
-                <!-- 6. Studio & Tuning Drawer Toggle Button -->
-                <StackPanel Grid.Column="5" Spacing="4" VerticalAlignment="Center">
-                    <TextBlock Text="ADVANCED" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" LetterSpacing="0.5" HorizontalAlignment="Right" />
+                    <Separator Width="1" Height="18" Background="{DynamicResource AntigravityBorderBrush}" Margin="2,0" />
+
+                    <!-- Studio Drawer Toggle -->
                     <Button
                         Command="{Binding ToggleColorGradingPanelCommand}"
                         Classes="accent"
                         Theme="{DynamicResource MaterialOutlineButton}"
                         CornerRadius="8"
-                        Height="34"
-                        Padding="14,0"
-                        ToolTip.Tip="Open Studio: Color Grading, Live Split Preview, Splitting, Audio &amp; Camera Shield">
-                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                            <materialIcons:MaterialIcon Kind="TuneVariant" Width="16" Height="16" Foreground="{DynamicResource AntigravityAccentBrush}" />
-                            <TextBlock Text="Studio &amp; Tuning" FontSize="12" FontWeight="Bold" VerticalAlignment="Center" />
-                            <materialIcons:MaterialIcon
-                                Kind="{Binding IsColorGradingPanelOpen, Converter={x:Static converters:EqualityConverter.IsEqual}, ConverterParameter=True, FallbackValue=ChevronDown}"
-                                Width="14"
-                                Height="14"
-                                VerticalAlignment="Center" />
+                        Height="32"
+                        Padding="12,0"
+                        ToolTip.Tip="Color, Audio, Framing &amp; Splitting Studio">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <materialIcons:MaterialIcon Kind="TuneVertical" Width="14" Height="14" VerticalAlignment="Center" />
+                            <TextBlock Text="Studio" FontSize="12" FontWeight="Bold" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
                 </StackPanel>
-            </Grid>
+            </ScrollViewer>
         </Border>
 
         <!-- ========================================================================= -->
@@ -402,133 +351,126 @@
         <Border
             Grid.Row="2"
             IsVisible="{Binding IsColorGradingPanelOpen}"
-            Padding="24,16"
+            Padding="20,12"
+            MaxHeight="360"
             Background="{DynamicResource AntigravityElevatedBrush}"
             BorderBrush="{DynamicResource AntigravityBorderBrush}"
             BorderThickness="0,0,0,1">
-            <StackPanel Spacing="16">
+            <StackPanel Spacing="12">
                 <!-- Studio Header Navigation Bar -->
-                <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
-                    <!-- Left: Studio Tabs -->
-                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                        <!-- Tab 0: Color & Preview -->
-                        <Button
-                            Command="{Binding SelectStudioTabCommand}"
-                            CommandParameter="0"
-                            Classes="studio-tab"
-                            Classes.active="{Binding SelectedStudioTab, Converter={x:Static converters:EqualityConverter.IsEqual}, ConverterParameter=0}">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <materialIcons:MaterialIcon Kind="PaletteOutline" Width="16" Height="16" Foreground="{DynamicResource AntigravityAccentBrush}" />
-                                <TextBlock Text="Color Grading &amp; Live Preview" VerticalAlignment="Center" />
-                            </StackPanel>
-                        </Button>
+                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                    <Grid MinWidth="820" ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+                        <!-- Left: Studio Tabs -->
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <!-- Tab 0: Color & Preview -->
+                            <Button
+                                Command="{Binding SelectStudioTabCommand}"
+                                CommandParameter="0"
+                                Classes="studio-tab"
+                                Classes.active="{Binding SelectedStudioTab, Converter={x:Static converters:EqualityConverter.IsEqual}, ConverterParameter=0}">
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <materialIcons:MaterialIcon Kind="PaletteOutline" Width="15" Height="15" VerticalAlignment="Center" />
+                                    <TextBlock Text="Color &amp; Preview" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
 
-                        <!-- Tab 1: Audio & Shield -->
-                        <Button
-                            Command="{Binding SelectStudioTabCommand}"
-                            CommandParameter="1"
-                            Classes="studio-tab"
-                            Classes.active="{Binding SelectedStudioTab, Converter={x:Static converters:EqualityConverter.IsEqual}, ConverterParameter=1}">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <materialIcons:MaterialIcon Kind="VolumeHigh" Width="16" Height="16" Foreground="{DynamicResource AntigravityAccentBrush}" />
-                                <TextBlock Text="Audio &amp; Copyright Shield" VerticalAlignment="Center" />
-                            </StackPanel>
-                        </Button>
+                            <!-- Tab 1: Audio & Framing -->
+                            <Button
+                                Command="{Binding SelectStudioTabCommand}"
+                                CommandParameter="1"
+                                Classes="studio-tab"
+                                Classes.active="{Binding SelectedStudioTab, Converter={x:Static converters:EqualityConverter.IsEqual}, ConverterParameter=1}">
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <materialIcons:MaterialIcon Kind="VolumeHigh" Width="15" Height="15" VerticalAlignment="Center" />
+                                    <TextBlock Text="Audio &amp; Framing" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
 
-                        <!-- Tab 2: Splitting & Engine -->
-                        <Button
-                            Command="{Binding SelectStudioTabCommand}"
-                            CommandParameter="2"
-                            Classes="studio-tab"
-                            Classes.active="{Binding SelectedStudioTab, Converter={x:Static converters:EqualityConverter.IsEqual}, ConverterParameter=2}">
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <materialIcons:MaterialIcon Kind="CallSplit" Width="16" Height="16" Foreground="{DynamicResource AntigravityAccentBrush}" />
-                                <TextBlock Text="Splitting &amp; Hardware Engine" VerticalAlignment="Center" />
-                            </StackPanel>
-                        </Button>
-                    </StackPanel>
+                            <!-- Tab 2: Split & Hardware -->
+                            <Button
+                                Command="{Binding SelectStudioTabCommand}"
+                                CommandParameter="2"
+                                Classes="studio-tab"
+                                Classes.active="{Binding SelectedStudioTab, Converter={x:Static converters:EqualityConverter.IsEqual}, ConverterParameter=2}">
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <materialIcons:MaterialIcon Kind="CallSplit" Width="15" Height="15" VerticalAlignment="Center" />
+                                    <TextBlock Text="Split &amp; Engine" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
 
-                    <!-- Center: Target Status Badge -->
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Center">
-                        <Border
-                            IsVisible="{Binding IsEditingJobGrading}"
-                            Padding="8,3"
-                            CornerRadius="6"
-                            Background="#1FFFFFFF"
-                            BorderBrush="#44FFFFFF"
-                            BorderThickness="1">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <materialIcons:MaterialIcon Kind="FileVideoOutline" Width="14" Height="14" Foreground="{DynamicResource AntigravityTextBrush}" />
-                                <TextBlock Text="{Binding SelectedJob.FileName, StringFormat='Editing: {0}'}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
-                            </StackPanel>
-                        </Border>
+                        <!-- Center: Target Status Badge -->
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Border
+                                IsVisible="{Binding IsEditingJobGrading}"
+                                Padding="10,4"
+                                CornerRadius="6"
+                                Background="#1FFFFFFF"
+                                BorderBrush="#44FFFFFF"
+                                BorderThickness="1">
+                                <TextBlock Text="{Binding SelectedJob.FileName, StringFormat='Editing: {0}'}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
+                            </Border>
 
-                        <Border
-                            IsVisible="{Binding !IsEditingJobGrading}"
-                            Padding="8,3"
-                            CornerRadius="6"
-                            Background="#14FFFFFF"
-                            BorderBrush="#33FFFFFF"
-                            BorderThickness="1">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <materialIcons:MaterialIcon Kind="Earth" Width="14" Height="14" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                <TextBlock Text="Global Batch Settings (Applied to new videos)" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
-                            </StackPanel>
-                        </Border>
+                            <Border
+                                IsVisible="{Binding !IsEditingJobGrading}"
+                                Padding="10,4"
+                                CornerRadius="6"
+                                Background="#14FFFFFF"
+                                BorderBrush="#33FFFFFF"
+                                BorderThickness="1">
+                                <TextBlock Text="Global Preset" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
+                            </Border>
 
-                        <Button
-                            IsVisible="{Binding IsEditingJobGrading}"
-                            Command="{Binding SwitchToGlobalGradingCommand}"
-                            Theme="{DynamicResource MaterialFlatButton}"
-                            Padding="6,2"
-                            ToolTip.Tip="Switch back to editing Global Batch Settings">
-                            <TextBlock Text="Switch to Global" FontSize="11" Foreground="{DynamicResource AntigravityAccentBrush}" />
-                        </Button>
-                    </StackPanel>
+                            <Button
+                                IsVisible="{Binding IsEditingJobGrading}"
+                                Command="{Binding SwitchToGlobalGradingCommand}"
+                                Theme="{DynamicResource MaterialFlatButton}"
+                                Padding="6,2"
+                                ToolTip.Tip="Switch to Global Preset">
+                                <TextBlock Text="Switch to Global" FontSize="12" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                            </Button>
+                        </StackPanel>
 
-                    <!-- Right: Actions & Close -->
-                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                        <Button
-                            Command="{Binding ApplyColorGradingToAllCommand}"
-                            Theme="{DynamicResource MaterialOutlineButton}"
-                            CornerRadius="6"
-                            Padding="10,4"
-                            ToolTip.Tip="Copy current settings to all queued videos">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <materialIcons:MaterialIcon Kind="ContentCopy" Width="14" Height="14" />
-                                <TextBlock Text="Apply to All Queued" FontSize="11" VerticalAlignment="Center" />
-                            </StackPanel>
-                        </Button>
+                        <!-- Right: Actions & Close -->
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <Button
+                                Command="{Binding ApplyColorGradingToAllCommand}"
+                                Theme="{DynamicResource MaterialOutlineButton}"
+                                CornerRadius="6"
+                                Padding="12,5"
+                                ToolTip.Tip="Copy settings to all queued videos">
+                                <TextBlock Text="Apply to All" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            </Button>
 
-                        <Button
-                            Command="{Binding ResetColorGradingCommand}"
-                            Theme="{DynamicResource MaterialFlatButton}"
-                            CornerRadius="6"
-                            Padding="8,4"
-                            ToolTip.Tip="Reset all sliders to defaults">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <materialIcons:MaterialIcon Kind="Restore" Width="14" Height="14" />
-                                <TextBlock Text="Reset" FontSize="11" VerticalAlignment="Center" />
-                            </StackPanel>
-                        </Button>
+                            <Button
+                                Command="{Binding ResetColorGradingCommand}"
+                                Theme="{DynamicResource MaterialFlatButton}"
+                                CornerRadius="6"
+                                Padding="10,5"
+                                ToolTip.Tip="Reset to defaults">
+                                <TextBlock Text="Reset" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            </Button>
 
-                        <Button
-                            Command="{Binding CloseStudioCommand}"
-                            Theme="{DynamicResource MaterialFlatButton}"
-                            Padding="6"
-                            CornerRadius="6"
-                            ToolTip.Tip="Close Studio Drawer">
-                            <materialIcons:MaterialIcon Kind="Close" Width="18" Height="18" />
-                        </Button>
-                    </StackPanel>
-                </Grid>
+                            <Button
+                                Command="{Binding CloseStudioCommand}"
+                                Theme="{DynamicResource MaterialFlatButton}"
+                                Padding="8,4"
+                                CornerRadius="6"
+                                ToolTip.Tip="Close Studio Drawer">
+                                <TextBlock Text="✕" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                </ScrollViewer>
 
                 <!-- ========================================================================= -->
                 <!-- TAB 0 CONTENT: COLOR GRADING & REAL-TIME SPLIT PREVIEW                     -->
                 <!-- ========================================================================= -->
-                <Grid
+                <ScrollViewer
                     IsVisible="{Binding SelectedStudioTab, Converter={x:Static converters:EqualityConverter.IsEqual}, ConverterParameter=0}"
-                    ColumnDefinitions="1.2*,*">
+                    HorizontalScrollBarVisibility="Auto"
+                    VerticalScrollBarVisibility="Disabled">
+                    <Grid MinWidth="820" ColumnDefinitions="1.2*,*">
                     <!-- Left: Real-Time Split-Screen Comparison Card -->
                     <Border
                         Grid.Column="0"
@@ -538,7 +480,7 @@
                         CornerRadius="10"
                         BorderBrush="{DynamicResource AntigravityBorderBrush}"
                         BorderThickness="1">
-                        <StackPanel Spacing="10">
+                        <StackPanel Spacing="8">
                             <!-- Preview Frame with Interactive Zoom & Pan -->
                             <Border
                                 Background="#0A000000"
@@ -546,7 +488,7 @@
                                 ClipToBounds="True"
                                 BorderBrush="{DynamicResource AntigravityBorderBrush}"
                                 BorderThickness="1"
-                                Height="260">
+                                Height="220">
                                 <Grid>
                                     <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
                                         <LayoutTransformControl>
@@ -568,24 +510,23 @@
                                         HorizontalAlignment="Center"
                                         VerticalAlignment="Center"
                                         Spacing="8">
-                                        <materialIcons:MaterialIcon Kind="Compare" Width="40" Height="40" Foreground="{DynamicResource AntigravityMutedBrush}" HorizontalAlignment="Center" />
                                         <TextBlock
-                                            Text="{Binding PreviewError, FallbackValue='Add a video or select a job to see real-time split-screen preview'}"
-                                            FontSize="12"
+                                            Text="{Binding PreviewError, FallbackValue='Select a video to preview'}"
+                                            FontSize="13"
                                             Foreground="{DynamicResource AntigravityMutedBrush}"
                                             HorizontalAlignment="Center"
                                             TextAlignment="Center"
-                                            MaxWidth="340"
+                                            MaxWidth="360"
                                             TextWrapping="Wrap" />
                                     </StackPanel>
 
                                     <!-- Top Comparison Labels: ORIGINAL vs GRADED -->
                                     <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Top" Margin="10,8" IsVisible="{Binding !!PreviewImage}">
-                                        <Border Grid.Column="0" Background="#B3000000" CornerRadius="6" Padding="6,3" BorderBrush="#40FFFFFF" BorderThickness="1">
-                                            <TextBlock Text="ORIGINAL" FontSize="10" FontWeight="Bold" Foreground="#DDFFFFFF" />
+                                        <Border Grid.Column="0" Background="#B3000000" CornerRadius="6" Padding="8,4" BorderBrush="#40FFFFFF" BorderThickness="1">
+                                            <TextBlock Text="ORIGINAL" FontSize="11" FontWeight="Bold" Foreground="#DDFFFFFF" />
                                         </Border>
-                                        <Border Grid.Column="2" Background="#B3000000" CornerRadius="6" Padding="6,3" BorderBrush="{DynamicResource AntigravityAccentBrush}" BorderThickness="1">
-                                            <TextBlock Text="GRADED" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                        <Border Grid.Column="2" Background="#B3000000" CornerRadius="6" Padding="8,4" BorderBrush="{DynamicResource AntigravityAccentBrush}" BorderThickness="1">
+                                            <TextBlock Text="GRADED" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" />
                                         </Border>
                                     </Grid>
 
@@ -597,18 +538,18 @@
                                         Margin="10,8"
                                         Background="#CC000000"
                                         CornerRadius="6"
-                                        Padding="4,2"
+                                        Padding="6,3"
                                         BorderBrush="#33FFFFFF"
                                         BorderThickness="1">
-                                        <StackPanel Orientation="Horizontal" Spacing="2">
-                                            <Button Command="{Binding ZoomOutCommand}" Theme="{DynamicResource MaterialFlatButton}" Padding="4,2" ToolTip.Tip="Zoom Out">
-                                                <materialIcons:MaterialIcon Kind="MagnifyMinusOutline" Width="14" Height="14" />
+                                        <StackPanel Orientation="Horizontal" Spacing="4">
+                                            <Button Command="{Binding ZoomOutCommand}" Theme="{DynamicResource MaterialFlatButton}" Padding="6,2" ToolTip.Tip="Zoom Out">
+                                                <TextBlock Text="−" FontSize="13" FontWeight="Bold" />
                                             </Button>
                                             <Button Command="{Binding ResetZoomCommand}" Theme="{DynamicResource MaterialFlatButton}" Padding="6,2" ToolTip.Tip="Reset Zoom">
-                                                <TextBlock Text="{Binding ZoomScale, StringFormat='{}{0:0}x'}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                                <TextBlock Text="{Binding ZoomScale, StringFormat='{}{0:0}x'}" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" />
                                             </Button>
-                                            <Button Command="{Binding ZoomInCommand}" Theme="{DynamicResource MaterialFlatButton}" Padding="4,2" ToolTip.Tip="Zoom In">
-                                                <materialIcons:MaterialIcon Kind="MagnifyPlusOutline" Width="14" Height="14" />
+                                            <Button Command="{Binding ZoomInCommand}" Theme="{DynamicResource MaterialFlatButton}" Padding="6,2" ToolTip.Tip="Zoom In">
+                                                <TextBlock Text="+" FontSize="13" FontWeight="Bold" />
                                             </Button>
                                         </StackPanel>
                                     </Border>
@@ -628,23 +569,23 @@
                                 IsVisible="{Binding !!PreviewImage}"
                                 Background="#0AFFFFFF"
                                 CornerRadius="6"
-                                Padding="10,5"
+                                Padding="12,6"
                                 BorderBrush="{DynamicResource AntigravityBorderBrush}"
                                 BorderThickness="1">
                                 <Grid ColumnDefinitions="Auto,*,Auto,Auto">
-                                    <TextBlock Grid.Column="0" Text="Original" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="0" Text="Original" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
                                     <Slider
                                         Grid.Column="1"
-                                        Margin="10,0"
+                                        Margin="12,0"
                                         Minimum="0.05"
                                         Maximum="0.95"
                                         Value="{Binding SplitDividerRatio}"
                                         SmallChange="0.01"
                                         LargeChange="0.05"
                                         VerticalAlignment="Center" />
-                                    <TextBlock Grid.Column="2" Text="Graded" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityAccentBrush}" VerticalAlignment="Center" />
-                                    <Border Grid.Column="3" Margin="8,0,0,0" Padding="5,2" CornerRadius="4" Background="#1FFFFFFF">
-                                        <TextBlock Text="{Binding SplitDividerRatio, StringFormat='{}{0:P0}'}" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                    <TextBlock Grid.Column="2" Text="Graded" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityAccentBrush}" VerticalAlignment="Center" />
+                                    <Border Grid.Column="3" Margin="8,0,0,0" Padding="6,2" CornerRadius="4" Background="#1FFFFFFF">
+                                        <TextBlock Text="{Binding SplitDividerRatio, StringFormat='{}{0:P0}'}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" />
                                     </Border>
                                 </Grid>
                             </Border>
@@ -654,13 +595,13 @@
                                 <TextBlock
                                     Grid.Column="0"
                                     Text="{Binding FormattedPreviewTimestamp}"
-                                    FontSize="11"
+                                    FontSize="12"
                                     FontFamily="Cascadia Code,Consolas,Courier New"
                                     Foreground="{DynamicResource AntigravityTextBrush}"
                                     VerticalAlignment="Center" />
                                 <Slider
                                     Grid.Column="1"
-                                    Margin="10,0"
+                                    Margin="12,0"
                                     Minimum="0"
                                     Maximum="{Binding VideoDurationSeconds}"
                                     Value="{Binding PreviewTimestampSeconds}"
@@ -671,9 +612,9 @@
                                     Grid.Column="2"
                                     Command="{Binding RefreshPreviewCommand}"
                                     Theme="{DynamicResource MaterialFlatButton}"
-                                    Padding="4"
+                                    Padding="8,4"
                                     ToolTip.Tip="Refresh preview frame">
-                                    <materialIcons:MaterialIcon Kind="Refresh" Width="16" Height="16" />
+                                    <TextBlock Text="Refresh" FontSize="12" FontWeight="SemiBold" />
                                 </Button>
                             </Grid>
 
@@ -682,18 +623,15 @@
                                 IsVisible="{Binding !!PreviewImage}"
                                 Background="#10000000"
                                 CornerRadius="6"
-                                Padding="10,6"
+                                Padding="12,8"
                                 BorderBrush="{DynamicResource AntigravityBorderBrush}"
                                 BorderThickness="1">
-                                <StackPanel Spacing="4">
+                                <StackPanel Spacing="6">
                                     <Grid ColumnDefinitions="*,Auto">
-                                        <TextBlock Grid.Column="0" Text="RGB &amp; Luma Color Spectrum" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="0" Text="Color Spectrum" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
                                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
-                                            <Button Command="{Binding ToggleHistogramCommand}" Theme="{DynamicResource MaterialFlatButton}" Padding="4,1" ToolTip.Tip="Toggle Spectrum">
-                                                <Panel>
-                                                    <materialIcons:MaterialIcon Kind="EyeOutline" Width="14" Height="14" Foreground="{DynamicResource AntigravityAccentBrush}" IsVisible="{Binding ShowHistogram}" />
-                                                    <materialIcons:MaterialIcon Kind="EyeOffOutline" Width="14" Height="14" Foreground="{DynamicResource AntigravityMutedBrush}" IsVisible="{Binding !ShowHistogram}" />
-                                                </Panel>
+                                            <Button Command="{Binding ToggleHistogramCommand}" Theme="{DynamicResource MaterialFlatButton}" Padding="6,2" ToolTip.Tip="Toggle Spectrum">
+                                                <TextBlock Text="Spectrum" FontSize="12" Foreground="{DynamicResource AntigravityAccentBrush}" />
                                             </Button>
                                         </StackPanel>
                                     </Grid>
@@ -716,7 +654,7 @@
                                             </Viewbox>
                                             <TextBlock
                                                 Text="Analyzing color spectrum..."
-                                                FontSize="10"
+                                                FontSize="12"
                                                 Foreground="{DynamicResource AntigravityMutedBrush}"
                                                 HorizontalAlignment="Center"
                                                 VerticalAlignment="Center"
@@ -736,45 +674,45 @@
                         CornerRadius="10"
                         BorderBrush="{DynamicResource AntigravityBorderBrush}"
                         BorderThickness="1">
-                        <ScrollViewer MaxHeight="450" VerticalScrollBarVisibility="Auto">
+                        <ScrollViewer MaxHeight="290" VerticalScrollBarVisibility="Auto">
                             <StackPanel Spacing="10" Margin="0,0,6,0">
                                 <!-- Cinematic Presets Dropdown & Bar -->
-                                <Border Padding="8,6" Background="#14FFFFFF" CornerRadius="6" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1">
-                                    <StackPanel Spacing="6">
+                                <Border Padding="10,8" Background="#14FFFFFF" CornerRadius="6" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1">
+                                    <StackPanel Spacing="8">
                                         <Grid ColumnDefinitions="Auto,*,Auto">
-                                            <TextBlock Grid.Column="0" Text="Preset:" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="0" Text="Preset:" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
                                             <ComboBox
                                                 Grid.Column="1"
                                                 Margin="8,0"
                                                 ItemsSource="{Binding AvailableColorPresetNames}"
                                                 SelectedItem="{Binding SelectedColorPresetName}"
                                                 HorizontalAlignment="Stretch"
-                                                FontSize="11" />
-                                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
-                                                <Button Command="{Binding OpenSavePresetPopupCommand}" Theme="{DynamicResource MaterialFlatButton}" Padding="4" ToolTip.Tip="Save current settings as new custom preset">
-                                                    <materialIcons:MaterialIcon Kind="ContentSaveOutline" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                                FontSize="12" />
+                                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                                                <Button Command="{Binding OpenSavePresetPopupCommand}" Theme="{DynamicResource MaterialFlatButton}" Padding="6,3" ToolTip.Tip="Save preset">
+                                                    <TextBlock Text="Save" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityAccentBrush}" />
                                                 </Button>
-                                                <Button Command="{Binding DeleteCurrentPresetCommand}" Theme="{DynamicResource MaterialFlatButton}" Padding="4" ToolTip.Tip="Delete custom preset">
-                                                    <materialIcons:MaterialIcon Kind="TrashCanOutline" Width="15" Height="15" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                                <Button Command="{Binding DeleteCurrentPresetCommand}" Theme="{DynamicResource MaterialFlatButton}" Padding="6,3" ToolTip.Tip="Delete preset">
+                                                    <TextBlock Text="Del" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                                 </Button>
-                                                <Button Command="{Binding ImportPresetsCommand}" Theme="{DynamicResource MaterialFlatButton}" Padding="4" ToolTip.Tip="Import presets from JSON">
-                                                    <materialIcons:MaterialIcon Kind="DownloadOutline" Width="15" Height="15" />
+                                                <Button Command="{Binding ImportPresetsCommand}" Theme="{DynamicResource MaterialFlatButton}" Padding="6,3" ToolTip.Tip="Import JSON">
+                                                    <TextBlock Text="Import" FontSize="11" />
                                                 </Button>
-                                                <Button Command="{Binding ExportPresetsCommand}" Theme="{DynamicResource MaterialFlatButton}" Padding="4" ToolTip.Tip="Export all presets to JSON">
-                                                    <materialIcons:MaterialIcon Kind="UploadOutline" Width="15" Height="15" />
+                                                <Button Command="{Binding ExportPresetsCommand}" Theme="{DynamicResource MaterialFlatButton}" Padding="6,3" ToolTip.Tip="Export JSON">
+                                                    <TextBlock Text="Export" FontSize="11" />
                                                 </Button>
                                             </StackPanel>
                                         </Grid>
 
                                         <!-- Save Preset Inline Form -->
-                                        <Border IsVisible="{Binding IsSavePresetPopupOpen}" Padding="8" Background="{DynamicResource AntigravityPanelBrush}" CornerRadius="6" BorderBrush="{DynamicResource AntigravityAccentBrush}" BorderThickness="1">
-                                            <StackPanel Spacing="6">
-                                                <TextBlock Text="Save Custom Color Preset" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" />
-                                                <TextBox Text="{Binding NewPresetName}" Watermark="Preset Name (e.g. Warm Sunset)" FontSize="11" Padding="6,3" />
-                                                <TextBox Text="{Binding NewPresetDescription}" Watermark="Description (optional)" FontSize="11" Padding="6,3" />
-                                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="6">
-                                                    <Button Command="{Binding CancelSavePresetCommand}" Theme="{DynamicResource MaterialFlatButton}" Padding="6,2"><TextBlock Text="Cancel" FontSize="11" /></Button>
-                                                    <Button Command="{Binding ConfirmSavePresetCommand}" Classes="accent" Theme="{DynamicResource MaterialOutlineButton}" Padding="8,2"><TextBlock Text="Save" FontSize="11" FontWeight="Bold" /></Button>
+                                        <Border IsVisible="{Binding IsSavePresetPopupOpen}" Padding="10" Background="{DynamicResource AntigravityPanelBrush}" CornerRadius="6" BorderBrush="{DynamicResource AntigravityAccentBrush}" BorderThickness="1">
+                                            <StackPanel Spacing="8">
+                                                <TextBlock Text="Save Custom Color Preset" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                                <TextBox Text="{Binding NewPresetName}" Watermark="Preset Name (e.g. Warm Sunset)" FontSize="12" Padding="8,4" />
+                                                <TextBox Text="{Binding NewPresetDescription}" Watermark="Description (optional)" FontSize="12" Padding="8,4" />
+                                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                                                    <Button Command="{Binding CancelSavePresetCommand}" Theme="{DynamicResource MaterialFlatButton}" Padding="8,3"><TextBlock Text="Cancel" FontSize="12" /></Button>
+                                                    <Button Command="{Binding ConfirmSavePresetCommand}" Classes="accent" Theme="{DynamicResource MaterialOutlineButton}" Padding="10,3"><TextBlock Text="Save" FontSize="12" FontWeight="Bold" /></Button>
                                                 </StackPanel>
                                             </StackPanel>
                                         </Border>
@@ -784,48 +722,42 @@
                                 <!-- Basic Exposure & Temperature Section -->
                                 <Border Background="#08FFFFFF" CornerRadius="6" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1">
                                     <StackPanel Spacing="6">
-                                        <Button Command="{Binding ToggleBasicExposureCommand}" Theme="{DynamicResource MaterialFlatButton}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="8,6">
-                                            <Grid ColumnDefinitions="*,Auto">
-                                                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
-                                                    <materialIcons:MaterialIcon Kind="WhiteBalanceSunny" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentBrush}" />
-                                                    <TextBlock Text="Basic Exposure &amp; Temperature" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
-                                                </StackPanel>
-                                                <materialIcons:MaterialIcon Grid.Column="1" Kind="ChevronDown" Width="14" Height="14" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                            </Grid>
+                                        <Button Command="{Binding ToggleBasicExposureCommand}" Theme="{DynamicResource MaterialFlatButton}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="10,8">
+                                            <TextBlock Text="Basic Exposure &amp; Temperature" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
                                         </Button>
 
-                                        <StackPanel IsVisible="{Binding IsBasicExposureExpanded}" Spacing="6" Margin="10,0,10,10">
+                                        <StackPanel IsVisible="{Binding IsBasicExposureExpanded}" Spacing="8" Margin="10,0,10,10">
                                             <!-- Color Temperature -->
                                             <Grid ColumnDefinitions="*,Auto">
-                                                <TextBlock Grid.Column="0" Text="Color Temperature" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                                <TextBlock Grid.Column="1" Text="{Binding ActiveColorGrading.ColorTemperature, StringFormat='{}{0} K'}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                                <TextBlock Grid.Column="0" Text="Color Temperature" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                                <TextBlock Grid.Column="1" Text="{Binding ActiveColorGrading.ColorTemperature, StringFormat='{}{0} K'}" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
                                             </Grid>
                                             <Slider Minimum="3500" Maximum="9500" Value="{Binding ActiveColorGrading.ColorTemperature}" SmallChange="100" LargeChange="500" />
 
                                             <!-- Contrast -->
                                             <Grid ColumnDefinitions="*,Auto">
-                                                <TextBlock Grid.Column="0" Text="Contrast" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                                <TextBlock Grid.Column="1" Text="{Binding ActiveColorGrading.Contrast, StringFormat='{}{0:0.00}x'}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                                <TextBlock Grid.Column="0" Text="Contrast" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                                <TextBlock Grid.Column="1" Text="{Binding ActiveColorGrading.Contrast, StringFormat='{}{0:0.00}x'}" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" />
                                             </Grid>
                                             <Slider Minimum="0.5" Maximum="2.0" Value="{Binding ActiveColorGrading.Contrast}" SmallChange="0.05" />
 
                                             <!-- Saturation -->
                                             <Grid ColumnDefinitions="*,Auto">
-                                                <TextBlock Grid.Column="0" Text="Saturation" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                                <TextBlock Grid.Column="1" Text="{Binding ActiveColorGrading.Saturation, StringFormat='{}{0:0.00}x'}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                                <TextBlock Grid.Column="0" Text="Saturation" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                                <TextBlock Grid.Column="1" Text="{Binding ActiveColorGrading.Saturation, StringFormat='{}{0:0.00}x'}" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" />
                                             </Grid>
                                             <Slider Minimum="0.0" Maximum="2.0" Value="{Binding ActiveColorGrading.Saturation}" SmallChange="0.05" />
 
                                             <!-- Brightness -->
                                             <Grid ColumnDefinitions="*,Auto">
-                                                <TextBlock Grid.Column="0" Text="Brightness" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                                <TextBlock Grid.Column="1" Text="{Binding ActiveColorGrading.Brightness, StringFormat='{}{0:+0.00;-0.00;0.00}'}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                                <TextBlock Grid.Column="0" Text="Brightness" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                                <TextBlock Grid.Column="1" Text="{Binding ActiveColorGrading.Brightness, StringFormat='{}{0:+0.00;-0.00;0.00}'}" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" />
                                             </Grid>
                                             <Slider Minimum="-1.0" Maximum="1.0" Value="{Binding ActiveColorGrading.Brightness}" SmallChange="0.05" />
 
                                             <!-- Auto-Normalize -->
                                             <CheckBox IsChecked="{Binding ActiveColorGrading.AutoNormalize}" ToolTip.Tip="Auto-balances dynamic range and black/white levels">
-                                                <TextBlock Text="Auto-Normalize Dynamic Range" FontSize="11" VerticalAlignment="Center" />
+                                                <TextBlock Text="Auto-Normalize Dynamic Range" FontSize="12" VerticalAlignment="Center" />
                                             </CheckBox>
                                         </StackPanel>
                                     </StackPanel>
@@ -834,24 +766,18 @@
                                 <!-- Color Wheels & Tinting Section -->
                                 <Border Background="#08FFFFFF" CornerRadius="6" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1">
                                     <StackPanel Spacing="6">
-                                        <Button Command="{Binding ToggleColorWheelsCommand}" Theme="{DynamicResource MaterialFlatButton}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="8,6">
-                                            <Grid ColumnDefinitions="*,Auto">
-                                                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
-                                                    <materialIcons:MaterialIcon Kind="PaletteAdvanced" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentBrush}" />
-                                                    <TextBlock Text="Tone Curve &amp; Color Wheels" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
-                                                </StackPanel>
-                                                <materialIcons:MaterialIcon Grid.Column="1" Kind="ChevronDown" Width="14" Height="14" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                            </Grid>
+                                        <Button Command="{Binding ToggleColorWheelsCommand}" Theme="{DynamicResource MaterialFlatButton}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="10,8">
+                                            <TextBlock Text="Tone Curve &amp; Color Wheels" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
                                         </Button>
 
-                                        <StackPanel IsVisible="{Binding IsColorWheelsExpanded}" Spacing="6" Margin="10,0,10,10">
+                                        <StackPanel IsVisible="{Binding IsColorWheelsExpanded}" Spacing="8" Margin="10,0,10,10">
                                             <Grid ColumnDefinitions="*,Auto">
-                                                <TextBlock Grid.Column="0" Text="Tone Curve:" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
-                                                <ComboBox Grid.Column="1" ItemsSource="{Binding AvailableToneCurves}" SelectedItem="{Binding ActiveColorGrading.ToneCurve}" Width="130" FontSize="11" />
+                                                <TextBlock Grid.Column="0" Text="Tone Curve" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                                                <ComboBox Grid.Column="1" ItemsSource="{Binding AvailableToneCurves}" SelectedItem="{Binding ActiveColorGrading.ToneCurve}" Width="130" FontSize="12" />
                                             </Grid>
 
                                             <!-- Shadows Tint -->
-                                            <TextBlock Text="Shadows Tint (R / G / B)" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" Margin="0,4,0,0" />
+                                            <TextBlock Text="Shadows Tint (R / G / B)" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" Margin="0,4,0,0" />
                                             <Grid ColumnDefinitions="*,*,*" ColumnSpacing="6">
                                                 <Slider Grid.Column="0" Minimum="-1.0" Maximum="1.0" Value="{Binding ActiveColorGrading.ShadowRed}" SmallChange="0.05" ToolTip.Tip="Red" />
                                                 <Slider Grid.Column="1" Minimum="-1.0" Maximum="1.0" Value="{Binding ActiveColorGrading.ShadowGreen}" SmallChange="0.05" ToolTip.Tip="Green" />
@@ -859,7 +785,7 @@
                                             </Grid>
 
                                             <!-- Highlights Tint -->
-                                            <TextBlock Text="Highlights Tint (R / G / B)" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" Margin="0,4,0,0" />
+                                            <TextBlock Text="Highlights Tint (R / G / B)" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" Margin="0,4,0,0" />
                                             <Grid ColumnDefinitions="*,*,*" ColumnSpacing="6">
                                                 <Slider Grid.Column="0" Minimum="-1.0" Maximum="1.0" Value="{Binding ActiveColorGrading.HighlightRed}" SmallChange="0.05" ToolTip.Tip="Red" />
                                                 <Slider Grid.Column="1" Minimum="-1.0" Maximum="1.0" Value="{Binding ActiveColorGrading.HighlightGreen}" SmallChange="0.05" ToolTip.Tip="Green" />
@@ -872,39 +798,33 @@
                                 <!-- Film Emulation & 3D LUT Section -->
                                 <Border Background="#08FFFFFF" CornerRadius="6" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1">
                                     <StackPanel Spacing="6">
-                                        <Button Command="{Binding ToggleFilmEmulationCommand}" Theme="{DynamicResource MaterialFlatButton}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="8,6">
-                                            <Grid ColumnDefinitions="*,Auto">
-                                                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
-                                                    <materialIcons:MaterialIcon Kind="FilmstripBox" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentBrush}" />
-                                                    <TextBlock Text="Film Emulation &amp; 3D LUT" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
-                                                </StackPanel>
-                                                <materialIcons:MaterialIcon Grid.Column="1" Kind="ChevronDown" Width="14" Height="14" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                            </Grid>
+                                        <Button Command="{Binding ToggleFilmEmulationCommand}" Theme="{DynamicResource MaterialFlatButton}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="10,8">
+                                            <TextBlock Text="Film Emulation &amp; 3D LUT" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
                                         </Button>
 
-                                        <StackPanel IsVisible="{Binding IsFilmEmulationExpanded}" Spacing="6" Margin="10,0,10,10">
+                                        <StackPanel IsVisible="{Binding IsFilmEmulationExpanded}" Spacing="8" Margin="10,0,10,10">
                                             <!-- Grain & Vignette -->
                                             <Grid ColumnDefinitions="*,Auto">
-                                                <TextBlock Grid.Column="0" Text="35mm Film Grain" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                                <TextBlock Grid.Column="1" Text="{Binding ActiveColorGrading.FilmGrain}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                                <TextBlock Grid.Column="0" Text="35mm Film Grain" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                                <TextBlock Grid.Column="1" Text="{Binding ActiveColorGrading.FilmGrain}" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" />
                                             </Grid>
                                             <Slider Minimum="0" Maximum="20" Value="{Binding ActiveColorGrading.FilmGrain}" SmallChange="1" />
 
                                             <Grid ColumnDefinitions="*,Auto">
-                                                <TextBlock Grid.Column="0" Text="Lens Vignette" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                                <TextBlock Grid.Column="1" Text="{Binding ActiveColorGrading.Vignette, StringFormat='{}{0:P0}'}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                                <TextBlock Grid.Column="0" Text="Lens Vignette" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                                <TextBlock Grid.Column="1" Text="{Binding ActiveColorGrading.Vignette, StringFormat='{}{0:P0}'}" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" />
                                             </Grid>
                                             <Slider Minimum="0.0" Maximum="1.0" Value="{Binding ActiveColorGrading.Vignette}" SmallChange="0.05" />
 
                                             <!-- 3D LUT File -->
                                             <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0">
-                                                <TextBlock Grid.Column="0" Text="{Binding ActiveColorGrading.LutFileName, FallbackValue='Custom 3D LUT (.cube)'}" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                                <TextBlock Grid.Column="0" Text="{Binding ActiveColorGrading.LutFileName, FallbackValue='Custom 3D LUT (.cube)'}" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                                                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
-                                                    <Button Command="{Binding SelectLutFileCommand}" Theme="{DynamicResource MaterialOutlineButton}" Padding="6,2" ToolTip.Tip="Browse .cube LUT file">
-                                                        <materialIcons:MaterialIcon Kind="FolderOpenOutline" Width="13" Height="13" />
+                                                    <Button Command="{Binding SelectLutFileCommand}" Theme="{DynamicResource MaterialOutlineButton}" Padding="8,3" ToolTip.Tip="Browse .cube LUT file">
+                                                        <TextBlock Text="Browse" FontSize="11" />
                                                     </Button>
-                                                    <Button IsVisible="{Binding !!ActiveColorGrading.LutPath}" Command="{Binding ClearLutFileCommand}" Theme="{DynamicResource MaterialFlatButton}" Padding="4,2" ToolTip.Tip="Clear LUT">
-                                                        <materialIcons:MaterialIcon Kind="Close" Width="13" Height="13" />
+                                                    <Button IsVisible="{Binding !!ActiveColorGrading.LutPath}" Command="{Binding ClearLutFileCommand}" Theme="{DynamicResource MaterialFlatButton}" Padding="6,3" ToolTip.Tip="Clear LUT">
+                                                        <TextBlock Text="✕" FontSize="11" />
                                                     </Button>
                                                 </StackPanel>
                                             </Grid>
@@ -915,31 +835,34 @@
                         </ScrollViewer>
                     </Border>
                 </Grid>
+            </ScrollViewer>
 
                 <!-- ========================================================================= -->
-                <!-- TAB 1 CONTENT: AUDIO & COPYRIGHT SHIELD                                   -->
+                <!-- TAB 1 CONTENT: AUDIO & FRAMING                                            -->
                 <!-- ========================================================================= -->
-                <Grid
+                <ScrollViewer
                     IsVisible="{Binding SelectedStudioTab, Converter={x:Static converters:EqualityConverter.IsEqual}, ConverterParameter=1}"
-                    ColumnDefinitions="*,*,*"
-                    ColumnSpacing="14">
+                    HorizontalScrollBarVisibility="Auto"
+                    VerticalScrollBarVisibility="Auto"
+                    MaxHeight="290">
+                    <Grid
+                        MinWidth="800"
+                        ColumnDefinitions="*,*,*"
+                        ColumnSpacing="14">
 
                     <!-- Card 1: Audio Processing Mode & Playback Speed -->
                     <Border Grid.Column="0" Background="#0DFFFFFF" CornerRadius="10" Padding="14" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1">
                         <StackPanel Spacing="10">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <materialIcons:MaterialIcon Kind="VolumeHigh" Width="18" Height="18" Foreground="{DynamicResource AntigravityAccentBrush}" />
-                                <TextBlock Text="AUDIO &amp; PLAYBACK SPEED" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
-                            </StackPanel>
-                            <TextBlock Text="Select audio filter for Content-ID copyright evasion, lead vocal removal, and set video tempo." FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" TextWrapping="Wrap" />
+                            <TextBlock Text="AUDIO &amp; SPEED" FontSize="12" FontWeight="Bold" LetterSpacing="0.5" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
 
                             <ComboBox
                                 ItemsSource="{Binding AvailableAudioModes}"
                                 SelectedItem="{Binding SelectedAudioMode}"
-                                HorizontalAlignment="Stretch">
+                                HorizontalAlignment="Stretch"
+                                FontSize="13">
                                 <ComboBox.ItemTemplate>
                                     <DataTemplate>
-                                        <TextBlock Text="{Binding Converter={x:Static converters:EnumDisplayNameConverter.Instance}}" FontSize="11" />
+                                        <TextBlock Text="{Binding Converter={x:Static converters:EnumDisplayNameConverter.Instance}}" FontSize="13" />
                                     </DataTemplate>
                                 </ComboBox.ItemTemplate>
                             </ComboBox>
@@ -947,86 +870,80 @@
                             <!-- Playback Speed Controls with Quick Presets -->
                             <StackPanel Spacing="6" Margin="0,4,0,0">
                                 <Grid ColumnDefinitions="*,Auto">
-                                    <TextBlock Grid.Column="0" Text="Playback Speed (Video &amp; Audio):" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
-                                    <TextBlock Grid.Column="1" Text="{Binding SelectedPlaybackSpeed, StringFormat='{}{0:0.##}x'}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="0" Text="Playback Speed" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="1" Text="{Binding SelectedPlaybackSpeed, StringFormat='{}{0:0.##}x'}" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" VerticalAlignment="Center" />
                                 </Grid>
-                                <ComboBox ItemsSource="{Binding AvailablePlaybackSpeeds}" SelectedItem="{Binding SelectedPlaybackSpeed}" HorizontalAlignment="Stretch">
+                                <ComboBox ItemsSource="{Binding AvailablePlaybackSpeeds}" SelectedItem="{Binding SelectedPlaybackSpeed}" HorizontalAlignment="Stretch" FontSize="13">
                                     <ComboBox.ItemTemplate>
                                         <DataTemplate>
-                                            <TextBlock Text="{Binding StringFormat='{}{0:0.##}x Speed'}" FontSize="11" />
+                                            <TextBlock Text="{Binding StringFormat='{}{0:0.##}x Speed'}" FontSize="13" />
                                         </DataTemplate>
                                     </ComboBox.ItemTemplate>
                                 </ComboBox>
                                 <Grid ColumnDefinitions="*,*,*,*,*" ColumnSpacing="4">
-                                    <Button Grid.Column="0" Command="{Binding SetPlaybackSpeedCommand}" CommandParameter="0.75" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="24" CornerRadius="4" ToolTip.Tip="0.75x Slow Motion">
-                                        <TextBlock Text="0.75x" FontSize="10" HorizontalAlignment="Center" />
+                                    <Button Grid.Column="0" Command="{Binding SetPlaybackSpeedCommand}" CommandParameter="0.75" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="4" ToolTip.Tip="0.75x Slow Motion">
+                                        <TextBlock Text="0.75x" FontSize="12" HorizontalAlignment="Center" />
                                     </Button>
-                                    <Button Grid.Column="1" Command="{Binding SetPlaybackSpeedCommand}" CommandParameter="1.0" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="24" CornerRadius="4" ToolTip.Tip="1.0x Normal Speed">
-                                        <TextBlock Text="1x" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" HorizontalAlignment="Center" />
+                                    <Button Grid.Column="1" Command="{Binding SetPlaybackSpeedCommand}" CommandParameter="1.0" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="4" ToolTip.Tip="1.0x Normal Speed">
+                                        <TextBlock Text="1x" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" HorizontalAlignment="Center" />
                                     </Button>
-                                    <Button Grid.Column="2" Command="{Binding SetPlaybackSpeedCommand}" CommandParameter="1.25" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="24" CornerRadius="4" ToolTip.Tip="1.25x Speed">
-                                        <TextBlock Text="1.25x" FontSize="10" HorizontalAlignment="Center" />
+                                    <Button Grid.Column="2" Command="{Binding SetPlaybackSpeedCommand}" CommandParameter="1.25" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="4" ToolTip.Tip="1.25x Speed">
+                                        <TextBlock Text="1.25x" FontSize="12" HorizontalAlignment="Center" />
                                     </Button>
-                                    <Button Grid.Column="3" Command="{Binding SetPlaybackSpeedCommand}" CommandParameter="1.5" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="24" CornerRadius="4" ToolTip.Tip="1.5x Speed">
-                                        <TextBlock Text="1.5x" FontSize="10" HorizontalAlignment="Center" />
+                                    <Button Grid.Column="3" Command="{Binding SetPlaybackSpeedCommand}" CommandParameter="1.5" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="4" ToolTip.Tip="1.5x Speed">
+                                        <TextBlock Text="1.5x" FontSize="12" HorizontalAlignment="Center" />
                                     </Button>
-                                    <Button Grid.Column="4" Command="{Binding SetPlaybackSpeedCommand}" CommandParameter="2.0" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="24" CornerRadius="4" ToolTip.Tip="2.0x Double Speed">
-                                        <TextBlock Text="2x" FontSize="10" HorizontalAlignment="Center" />
+                                    <Button Grid.Column="4" Command="{Binding SetPlaybackSpeedCommand}" CommandParameter="2.0" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="4" ToolTip.Tip="2.0x Double Speed">
+                                        <TextBlock Text="2x" FontSize="12" HorizontalAlignment="Center" />
                                     </Button>
                                 </Grid>
                             </StackPanel>
-
-                            <TextBlock Text="• Speech isolation and pitch correction preserve natural vocals at all speeds." FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" TextWrapping="Wrap" />
                         </StackPanel>
                     </Border>
 
-                    <!-- Card 2: Aspect Ratio & Smart Framing Shield -->
+                    <!-- Card 2: Aspect Ratio & Smart Framing -->
                     <Border Grid.Column="1" Background="#0DFFFFFF" CornerRadius="10" Padding="14" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1">
                         <StackPanel Spacing="10">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <materialIcons:MaterialIcon Kind="CropFree" Width="18" Height="18" Foreground="{DynamicResource AntigravityAccentBrush}" />
-                                <TextBlock Text="ASPECT RATIO &amp; SMART FRAMING" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
-                            </StackPanel>
-                            <TextBlock Text="Re-frame to 9:16 Shorts, 1:1 Square, or 21:9 Widescreen with smart subject tracking and micro-zoom." FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" TextWrapping="Wrap" />
+                            <TextBlock Text="ASPECT &amp; FRAMING" FontSize="12" FontWeight="Bold" LetterSpacing="0.5" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
 
                             <StackPanel Spacing="4">
-                                <TextBlock Text="Target Aspect Ratio:" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                <ComboBox ItemsSource="{Binding AvailableAspectRatios}" SelectedItem="{Binding SelectedTargetAspectRatio}" HorizontalAlignment="Stretch">
+                                <TextBlock Text="Aspect Ratio" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                <ComboBox ItemsSource="{Binding AvailableAspectRatios}" SelectedItem="{Binding SelectedTargetAspectRatio}" HorizontalAlignment="Stretch" FontSize="13">
                                     <ComboBox.ItemTemplate>
                                         <DataTemplate>
-                                            <TextBlock Text="{Binding Converter={x:Static converters:EnumDisplayNameConverter.Instance}}" FontSize="11" />
+                                            <TextBlock Text="{Binding Converter={x:Static converters:EnumDisplayNameConverter.Instance}}" FontSize="13" />
                                         </DataTemplate>
                                     </ComboBox.ItemTemplate>
                                 </ComboBox>
                             </StackPanel>
 
                             <StackPanel Spacing="4">
-                                <TextBlock Text="Smart Tracking Mode:" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                <ComboBox ItemsSource="{Binding AvailableTrackingModes}" SelectedItem="{Binding SelectedTrackingMode}" HorizontalAlignment="Stretch">
+                                <TextBlock Text="Tracking Mode" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                <ComboBox ItemsSource="{Binding AvailableTrackingModes}" SelectedItem="{Binding SelectedTrackingMode}" HorizontalAlignment="Stretch" FontSize="13">
                                     <ComboBox.ItemTemplate>
                                         <DataTemplate>
-                                            <TextBlock Text="{Binding Converter={x:Static converters:EnumDisplayNameConverter.Instance}}" FontSize="11" />
+                                            <TextBlock Text="{Binding Converter={x:Static converters:EnumDisplayNameConverter.Instance}}" FontSize="13" />
                                         </DataTemplate>
                                     </ComboBox.ItemTemplate>
                                 </ComboBox>
                             </StackPanel>
 
                             <CheckBox IsChecked="{Binding EnableMicroZoom}">
-                                <TextBlock Text="Enable Micro-Zoom Edge Shift" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                <TextBlock Text="Micro-Zoom Edge Shift" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
                             </CheckBox>
 
                             <StackPanel Spacing="6" IsVisible="{Binding EnableMicroZoom}">
                                 <Grid ColumnDefinitions="*,Auto">
-                                    <TextBlock Grid.Column="0" Text="Zoom Crop:" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                    <TextBlock Grid.Column="1" Text="{Binding MicroZoomPercent, StringFormat='{}{0:0.#}%'}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                    <TextBlock Grid.Column="0" Text="Zoom Crop" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding MicroZoomPercent, StringFormat='{}{0:0.#}%'}" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" />
                                 </Grid>
                                 <Slider Value="{Binding MicroZoomPercent}" Minimum="1.0" Maximum="7.0" TickFrequency="0.5" IsSnapToTickEnabled="True" />
 
-                                <TextBlock Text="Framing Anchor:" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                <ComboBox ItemsSource="{Binding AvailableZoomModes}" SelectedItem="{Binding SelectedZoomMode}" HorizontalAlignment="Stretch">
+                                <TextBlock Text="Framing Anchor" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                <ComboBox ItemsSource="{Binding AvailableZoomModes}" SelectedItem="{Binding SelectedZoomMode}" HorizontalAlignment="Stretch" FontSize="13">
                                     <ComboBox.ItemTemplate>
                                         <DataTemplate>
-                                            <TextBlock Text="{Binding Converter={x:Static converters:EnumDisplayNameConverter.Instance}}" FontSize="11" />
+                                            <TextBlock Text="{Binding Converter={x:Static converters:EnumDisplayNameConverter.Instance}}" FontSize="13" />
                                         </DataTemplate>
                                     </ComboBox.ItemTemplate>
                                 </ComboBox>
@@ -1034,61 +951,57 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- Card 3: Camera EXIF Metadata Normalization -->
+                    <!-- Card 3: Camera EXIF Metadata -->
                     <Border Grid.Column="2" Background="#0DFFFFFF" CornerRadius="10" Padding="14" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1">
                         <StackPanel Spacing="10">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <materialIcons:MaterialIcon Kind="CameraOutline" Width="18" Height="18" Foreground="{DynamicResource AntigravityAccentBrush}" />
-                                <TextBlock Text="CAMERA METADATA (EXIF)" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
-                            </StackPanel>
-                            <TextBlock Text="Normalize camera device tags to mask original upload signatures and simulate original creation." FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" TextWrapping="Wrap" />
+                            <TextBlock Text="METADATA &amp; EXIF" FontSize="12" FontWeight="Bold" LetterSpacing="0.5" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
 
-                            <ComboBox ItemsSource="{Binding AvailableCameraProfileTypes}" SelectedItem="{Binding SelectedCameraProfileType}" HorizontalAlignment="Stretch">
+                            <ComboBox ItemsSource="{Binding AvailableCameraProfileTypes}" SelectedItem="{Binding SelectedCameraProfileType}" HorizontalAlignment="Stretch" FontSize="13">
                                 <ComboBox.ItemTemplate>
                                     <DataTemplate>
-                                        <TextBlock Text="{Binding Converter={x:Static converters:EnumDisplayNameConverter.Instance}}" FontSize="11" />
+                                        <TextBlock Text="{Binding Converter={x:Static converters:EnumDisplayNameConverter.Instance}}" FontSize="13" />
                                     </DataTemplate>
                                 </ComboBox.ItemTemplate>
                             </ComboBox>
 
                             <CheckBox IsChecked="{Binding CameraInjectTimestamp}">
-                                <TextBlock Text="Inject Fresh Creation Timestamp" FontSize="11" VerticalAlignment="Center" />
+                                <TextBlock Text="Inject Creation Timestamp" FontSize="12" VerticalAlignment="Center" />
                             </CheckBox>
                         </StackPanel>
                     </Border>
                 </Grid>
+            </ScrollViewer>
 
                 <!-- ========================================================================= -->
                 <!-- TAB 2 CONTENT: VIDEO SPLITTING & HARDWARE ENGINE                          -->
                 <!-- ========================================================================= -->
-                <Grid
+                <ScrollViewer
                     IsVisible="{Binding SelectedStudioTab, Converter={x:Static converters:EqualityConverter.IsEqual}, ConverterParameter=2}"
-                    ColumnDefinitions="*,*,*"
-                    ColumnSpacing="14">
+                    HorizontalScrollBarVisibility="Auto"
+                    VerticalScrollBarVisibility="Auto"
+                    MaxHeight="290">
+                    <Grid
+                        MinWidth="800"
+                        ColumnDefinitions="*,*,*"
+                        ColumnSpacing="14">
 
                     <!-- Card 1: Video Splitting -->
                     <Border Grid.Column="0" Background="#0DFFFFFF" CornerRadius="10" Padding="14" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1">
                         <StackPanel Spacing="10">
-                            <!-- Header -->
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <materialIcons:MaterialIcon Kind="CallSplit" Width="18" Height="18" Foreground="{DynamicResource AntigravityAccentBrush}" />
-                                <TextBlock Text="VIDEO SPLITTING" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
-                            </StackPanel>
-                            <TextBlock Text="Slice long videos into parts for episodic posting or memory-efficient processing." FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" TextWrapping="Wrap" />
+                            <TextBlock Text="VIDEO SPLITTING" FontSize="12" FontWeight="Bold" LetterSpacing="0.5" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
 
-                            <!-- Enable Switch -->
                             <CheckBox IsChecked="{Binding EnableSplitAndUpscale}">
-                                <TextBlock Text="Enable Auto-Splitting" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                <TextBlock Text="Enable Splitting" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
                             </CheckBox>
 
                             <StackPanel Spacing="10" IsVisible="{Binding EnableSplitAndUpscale}">
                                 <!-- Split Mode Selector -->
                                 <StackPanel Spacing="4">
-                                    <TextBlock Text="Split Mode:" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                    <ComboBox ItemsSource="{Binding AvailableSplitModes}" SelectedItem="{Binding SelectedSplitMode}" HorizontalAlignment="Stretch">
+                                    <TextBlock Text="Split Mode" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                    <ComboBox ItemsSource="{Binding AvailableSplitModes}" SelectedItem="{Binding SelectedSplitMode}" HorizontalAlignment="Stretch" FontSize="13">
                                         <ComboBox.ItemTemplate>
                                             <DataTemplate>
-                                                <TextBlock Text="{Binding Converter={x:Static converters:EnumDisplayNameConverter.Instance}}" FontSize="11" />
+                                                <TextBlock Text="{Binding Converter={x:Static converters:EnumDisplayNameConverter.Instance}}" FontSize="13" />
                                             </DataTemplate>
                                         </ComboBox.ItemTemplate>
                                     </ComboBox>
@@ -1097,34 +1010,34 @@
                                 <!-- Mode 1: Equal Parts (Count) -->
                                 <StackPanel Spacing="6" IsVisible="{Binding SelectedSplitMode, Converter={x:Static converters:EqualityConverter.IsEqual}, ConverterParameter=ByPartCount}">
                                     <Grid ColumnDefinitions="*,Auto">
-                                        <TextBlock Grid.Column="0" Text="Number of Parts:" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
-                                        <TextBlock Grid.Column="1" Text="{Binding CustomSplitPartCount, StringFormat='{}{0} Parts'}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="0" Text="Number of Parts" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" Text="{Binding CustomSplitPartCount, StringFormat='{}{0} Parts'}" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" VerticalAlignment="Center" />
                                     </Grid>
 
                                     <!-- Stepper with decrement / increment -->
                                     <Grid ColumnDefinitions="32,*,32" ColumnSpacing="6">
                                         <Button Grid.Column="0" Command="{Binding DecrementSplitPartCountCommand}" Theme="{DynamicResource MaterialFlatButton}" Padding="0" CornerRadius="4" Height="30" ToolTip.Tip="Decrease parts">
-                                            <materialIcons:MaterialIcon Kind="Minus" Width="14" Height="14" />
+                                            <TextBlock Text="−" FontSize="15" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                         </Button>
-                                        <NumericUpDown Grid.Column="1" Value="{Binding CustomSplitPartCount}" Minimum="2" Maximum="50" Increment="1" FormatString="0" Height="30" FontSize="11" HorizontalAlignment="Stretch" VerticalAlignment="Center" />
+                                        <NumericUpDown Grid.Column="1" Value="{Binding CustomSplitPartCount}" Minimum="2" Maximum="50" Increment="1" FormatString="0" Height="30" FontSize="13" HorizontalAlignment="Stretch" VerticalAlignment="Center" />
                                         <Button Grid.Column="2" Command="{Binding IncrementSplitPartCountCommand}" Theme="{DynamicResource MaterialFlatButton}" Padding="0" CornerRadius="4" Height="30" ToolTip.Tip="Increase parts">
-                                            <materialIcons:MaterialIcon Kind="Plus" Width="14" Height="14" />
+                                            <TextBlock Text="+" FontSize="15" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                         </Button>
                                     </Grid>
 
                                     <!-- Quick Preset Buttons -->
                                     <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="4">
-                                        <Button Grid.Column="0" Command="{Binding SetSplitPartCountCommand}" CommandParameter="2" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="4" ToolTip.Tip="Split into 2 parts">
-                                            <TextBlock Text="2 Pts" FontSize="10" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                                        <Button Grid.Column="0" Command="{Binding SetSplitPartCountCommand}" CommandParameter="2" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="4">
+                                            <TextBlock Text="2 Pts" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" />
                                         </Button>
-                                        <Button Grid.Column="1" Command="{Binding SetSplitPartCountCommand}" CommandParameter="3" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="4" ToolTip.Tip="Split into 3 parts">
-                                            <TextBlock Text="3 Pts" FontSize="10" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                                        <Button Grid.Column="1" Command="{Binding SetSplitPartCountCommand}" CommandParameter="3" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="4">
+                                            <TextBlock Text="3 Pts" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" />
                                         </Button>
-                                        <Button Grid.Column="2" Command="{Binding SetSplitPartCountCommand}" CommandParameter="4" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="4" ToolTip.Tip="Split into 4 parts">
-                                            <TextBlock Text="4 Pts" FontSize="10" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                                        <Button Grid.Column="2" Command="{Binding SetSplitPartCountCommand}" CommandParameter="4" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="4">
+                                            <TextBlock Text="4 Pts" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" />
                                         </Button>
-                                        <Button Grid.Column="3" Command="{Binding SetSplitPartCountCommand}" CommandParameter="5" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="4" ToolTip.Tip="Split into 5 parts">
-                                            <TextBlock Text="5 Pts" FontSize="10" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                                        <Button Grid.Column="3" Command="{Binding SetSplitPartCountCommand}" CommandParameter="5" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="4">
+                                            <TextBlock Text="5 Pts" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" />
                                         </Button>
                                     </Grid>
                                 </StackPanel>
@@ -1132,50 +1045,47 @@
                                 <!-- Mode 2: By Duration (Seconds) -->
                                 <StackPanel Spacing="6" IsVisible="{Binding SelectedSplitMode, Converter={x:Static converters:EqualityConverter.IsEqual}, ConverterParameter=ByDuration}">
                                     <Grid ColumnDefinitions="*,Auto">
-                                        <TextBlock Grid.Column="0" Text="Segment Length (Seconds):" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
-                                        <TextBlock Grid.Column="1" Text="{Binding CustomSplitSegmentDurationSeconds, StringFormat='{}{0:0}s'}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="0" Text="Segment Length" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" Text="{Binding CustomSplitSegmentDurationSeconds, StringFormat='{}{0:0}s'}" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" VerticalAlignment="Center" />
                                     </Grid>
 
                                     <!-- Stepper with decrement / increment -->
                                     <Grid ColumnDefinitions="32,*,32" ColumnSpacing="6">
                                         <Button Grid.Column="0" Command="{Binding DecrementSplitDurationCommand}" Theme="{DynamicResource MaterialFlatButton}" Padding="0" CornerRadius="4" Height="30" ToolTip.Tip="-10 Seconds">
-                                            <materialIcons:MaterialIcon Kind="Minus" Width="14" Height="14" />
+                                            <TextBlock Text="−" FontSize="15" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                         </Button>
-                                        <NumericUpDown Grid.Column="1" Value="{Binding CustomSplitSegmentDurationSeconds}" Minimum="5" Maximum="7200" Increment="10" FormatString="0" Height="30" FontSize="11" HorizontalAlignment="Stretch" VerticalAlignment="Center" />
+                                        <NumericUpDown Grid.Column="1" Value="{Binding CustomSplitSegmentDurationSeconds}" Minimum="5" Maximum="7200" Increment="10" FormatString="0" Height="30" FontSize="13" HorizontalAlignment="Stretch" VerticalAlignment="Center" />
                                         <Button Grid.Column="2" Command="{Binding IncrementSplitDurationCommand}" Theme="{DynamicResource MaterialFlatButton}" Padding="0" CornerRadius="4" Height="30" ToolTip.Tip="+10 Seconds">
-                                            <materialIcons:MaterialIcon Kind="Plus" Width="14" Height="14" />
+                                            <TextBlock Text="+" FontSize="15" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                         </Button>
                                     </Grid>
 
                                     <!-- Quick Preset Buttons for Social Media -->
                                     <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="4">
-                                        <Button Grid.Column="0" Command="{Binding SetSplitDurationCommand}" CommandParameter="60" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="4" ToolTip.Tip="60s (YouTube Shorts / Reels)">
-                                            <TextBlock Text="60s" FontSize="10" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                                        <Button Grid.Column="0" Command="{Binding SetSplitDurationCommand}" CommandParameter="60" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="4">
+                                            <TextBlock Text="60s" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" />
                                         </Button>
-                                        <Button Grid.Column="1" Command="{Binding SetSplitDurationCommand}" CommandParameter="90" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="4" ToolTip.Tip="90s (TikTok Video)">
-                                            <TextBlock Text="90s" FontSize="10" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                                        <Button Grid.Column="1" Command="{Binding SetSplitDurationCommand}" CommandParameter="90" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="4">
+                                            <TextBlock Text="90s" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" />
                                         </Button>
-                                        <Button Grid.Column="2" Command="{Binding SetSplitDurationCommand}" CommandParameter="180" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="4" ToolTip.Tip="180s (3 Minutes)">
-                                            <TextBlock Text="3 min" FontSize="10" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                                        <Button Grid.Column="2" Command="{Binding SetSplitDurationCommand}" CommandParameter="180" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="4">
+                                            <TextBlock Text="3 min" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" />
                                         </Button>
-                                        <Button Grid.Column="3" Command="{Binding SetSplitDurationCommand}" CommandParameter="300" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="4" ToolTip.Tip="300s (5 Minutes)">
-                                            <TextBlock Text="5 min" FontSize="10" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                                        <Button Grid.Column="3" Command="{Binding SetSplitDurationCommand}" CommandParameter="300" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="4">
+                                            <TextBlock Text="5 min" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" />
                                         </Button>
                                     </Grid>
                                 </StackPanel>
 
                                 <!-- Mode 3: In Half (2 Parts) -->
                                 <Border IsVisible="{Binding SelectedSplitMode, Converter={x:Static converters:EqualityConverter.IsEqual}, ConverterParameter=InHalf}"
-                                        Background="#12FFFFFF" CornerRadius="6" Padding="8,6">
-                                    <StackPanel Orientation="Horizontal" Spacing="6">
-                                        <materialIcons:MaterialIcon Kind="InformationOutline" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentBrush}" VerticalAlignment="Center" />
-                                        <TextBlock Text="Splits video into Part 1 and Part 2 (50% midpoint)." FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
-                                    </StackPanel>
+                                        Background="#12FFFFFF" CornerRadius="6" Padding="10,8">
+                                    <TextBlock Text="Splits video into Part 1 and Part 2 (50% midpoint)." FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
                                 </Border>
 
                                 <!-- Merge Checkbox -->
-                                <CheckBox IsChecked="{Binding MergeAfterUpscale}" Margin="0,2,0,0" ToolTip.Tip="When checked, parts are automatically stitched back into one seamless video upon completion. When unchecked, separate Part 1, Part 2... videos are output.">
-                                    <TextBlock Text="Auto-Merge Parts on Completion" FontSize="11" VerticalAlignment="Center" />
+                                <CheckBox IsChecked="{Binding MergeAfterUpscale}" Margin="0,2,0,0">
+                                    <TextBlock Text="Auto-Merge Parts on Completion" FontSize="12" VerticalAlignment="Center" />
                                 </CheckBox>
 
                                 <!-- Instant Slice Action Button -->
@@ -1189,11 +1099,8 @@
                                         Theme="{DynamicResource MaterialFlatButton}"
                                         Background="#18FFFFFF"
                                         CornerRadius="6"
-                                        ToolTip.Tip="Immediately slices the selected video in the queue into separate part jobs">
-                                        <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                            <materialIcons:MaterialIcon Kind="CallSplit" Width="14" Height="14" Foreground="{DynamicResource AntigravityAccentBrush}" />
-                                            <TextBlock Text="Slice Selected Video Now" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" />
-                                        </StackPanel>
+                                        ToolTip.Tip="Immediately slice selected video in queue">
+                                        <TextBlock Text="Slice Video Now" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                     </Button>
                                 </Border>
                             </StackPanel>
@@ -1203,19 +1110,16 @@
                     <!-- Card 2: Hardware Acceleration & Concurrency -->
                     <Border Grid.Column="1" Background="#0DFFFFFF" CornerRadius="10" Padding="14" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1">
                         <StackPanel Spacing="10">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <materialIcons:MaterialIcon Kind="Speedometer" Width="18" Height="18" Foreground="{DynamicResource AntigravityAccentBrush}" />
-                                <TextBlock Text="HARDWARE ACCELERATION" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
+                            <TextBlock Text="HARDWARE ACCELERATION" FontSize="12" FontWeight="Bold" LetterSpacing="0.5" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
+
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Encoder Acceleration" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                <ComboBox ItemsSource="{Binding AvailableHardwareAccelerations}" SelectedItem="{Binding SelectedHardwareAcceleration}" HorizontalAlignment="Stretch" FontSize="13" />
                             </StackPanel>
 
                             <StackPanel Spacing="4">
-                                <TextBlock Text="Encoder Acceleration:" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                <ComboBox ItemsSource="{Binding AvailableHardwareAccelerations}" SelectedItem="{Binding SelectedHardwareAcceleration}" HorizontalAlignment="Stretch" FontSize="11" />
-                            </StackPanel>
-
-                            <StackPanel Spacing="4">
-                                <TextBlock Text="Parallel Workers (Concurrency):" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                <ComboBox ItemsSource="{Binding AvailableConcurrencies}" SelectedItem="{Binding MaxConcurrency}" HorizontalAlignment="Stretch" FontSize="11" />
+                                <TextBlock Text="Parallel Workers" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                <ComboBox ItemsSource="{Binding AvailableConcurrencies}" SelectedItem="{Binding MaxConcurrency}" HorizontalAlignment="Stretch" FontSize="13" />
                             </StackPanel>
                         </StackPanel>
                     </Border>
@@ -1223,35 +1127,33 @@
                     <!-- Card 3: Scratch Drive & Filters -->
                     <Border Grid.Column="2" Background="#0DFFFFFF" CornerRadius="10" Padding="14" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1">
                         <StackPanel Spacing="10">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <materialIcons:MaterialIcon Kind="CogOutline" Width="18" Height="18" Foreground="{DynamicResource AntigravityAccentBrush}" />
-                                <TextBlock Text="SCRATCH DRIVE &amp; FILTERS" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
-                            </StackPanel>
+                            <TextBlock Text="STORAGE &amp; FILTERS" FontSize="12" FontWeight="Bold" LetterSpacing="0.5" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
 
                             <StackPanel Spacing="4">
-                                <TextBlock Text="Fast SSD Scratch Directory:" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                <TextBlock Text="Scratch Directory" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                 <Grid ColumnDefinitions="*,Auto,Auto">
-                                    <TextBox Text="{Binding ScratchDirectory}" Watermark="System Temp" IsReadOnly="True" FontSize="11" VerticalAlignment="Center" />
-                                    <Button Grid.Column="1" Command="{Binding SelectScratchDirectoryCommand}" Theme="{DynamicResource MaterialFlatButton}" Padding="4" Margin="2,0,0,0">
-                                        <materialIcons:MaterialIcon Kind="FolderOpenOutline" Width="15" Height="15" />
+                                    <TextBox Text="{Binding ScratchDirectory}" Watermark="System Temp" IsReadOnly="True" FontSize="12" VerticalAlignment="Center" />
+                                    <Button Grid.Column="1" Command="{Binding SelectScratchDirectoryCommand}" Theme="{DynamicResource MaterialFlatButton}" Padding="8,4" Margin="2,0,0,0" ToolTip.Tip="Browse Scratch Directory">
+                                        <TextBlock Text="Browse" FontSize="12" Foreground="{DynamicResource AntigravityTextBrush}" />
                                     </Button>
-                                    <Button Grid.Column="2" Command="{Binding ResetScratchDirectoryCommand}" Theme="{DynamicResource MaterialFlatButton}" Padding="4" Margin="2,0,0,0">
-                                        <materialIcons:MaterialIcon Kind="Close" Width="15" Height="15" />
+                                    <Button Grid.Column="2" Command="{Binding ResetScratchDirectoryCommand}" Theme="{DynamicResource MaterialFlatButton}" Padding="8,4" Margin="2,0,0,0" ToolTip.Tip="Reset to Default">
+                                        <TextBlock Text="✕" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                     </Button>
                                 </Grid>
                             </StackPanel>
 
                             <StackPanel Orientation="Horizontal" Spacing="16" Margin="0,4,0,0">
                                 <CheckBox IsChecked="{Binding EnableDenoise}">
-                                    <TextBlock Text="3D Denoise" FontSize="11" VerticalAlignment="Center" />
+                                    <TextBlock Text="3D Denoise" FontSize="12" VerticalAlignment="Center" />
                                 </CheckBox>
                                 <CheckBox IsChecked="{Binding EnableDeinterlace}">
-                                    <TextBlock Text="Deinterlace" FontSize="11" VerticalAlignment="Center" />
+                                    <TextBlock Text="Deinterlace" FontSize="12" VerticalAlignment="Center" />
                                 </CheckBox>
                             </StackPanel>
                         </StackPanel>
                     </Border>
                 </Grid>
+            </ScrollViewer>
             </StackPanel>
         </Border>
 
@@ -1261,12 +1163,13 @@
         <Grid Grid.Row="3" RowDefinitions="Auto,*">
 
             <!-- Queue Toolbar Strip -->
-            <Border
-                Grid.Row="0"
-                Padding="20,10"
-                Background="{DynamicResource AntigravityCanvasBrush}"
-                BorderBrush="{DynamicResource AntigravityBorderBrush}"
-                BorderThickness="0,0,0,1">
+            <ScrollViewer Grid.Row="0" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                <Border
+                    Padding="16,8"
+                    MinWidth="720"
+                    Background="{DynamicResource AntigravityCanvasBrush}"
+                    BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                    BorderThickness="0,0,0,1">
                 <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
                     <!-- Left: Ingestion Buttons -->
                     <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
@@ -1275,11 +1178,11 @@
                             Classes="accent"
                             Theme="{DynamicResource MaterialOutlineButton}"
                             CornerRadius="8"
-                            Padding="14,8"
-                            ToolTip.Tip="Select video files to add to the upscale queue">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <materialIcons:MaterialIcon Kind="PlusCircleOutline" Width="18" Height="18" Foreground="{DynamicResource AntigravityAccentBrush}" />
-                                <TextBlock Text="Add Videos" FontWeight="Bold" FontSize="12" VerticalAlignment="Center" />
+                            Padding="14,7"
+                            ToolTip.Tip="Add video files to queue">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <materialIcons:MaterialIcon Kind="VideoPlusOutline" Width="16" Height="16" VerticalAlignment="Center" />
+                                <TextBlock Text="Add Videos" FontWeight="Bold" FontSize="13" VerticalAlignment="Center" />
                             </StackPanel>
                         </Button>
 
@@ -1287,11 +1190,11 @@
                             Command="{Binding AddFolderCommand}"
                             Theme="{DynamicResource MaterialFlatButton}"
                             CornerRadius="8"
-                            Padding="12,8"
-                            ToolTip.Tip="Scan an entire folder for supported video files">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <materialIcons:MaterialIcon Kind="FolderMultipleOutline" Width="16" Height="16" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                <TextBlock Text="Add Folder" FontSize="12" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
+                            Padding="12,7"
+                            ToolTip.Tip="Scan folder for videos">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <materialIcons:MaterialIcon Kind="FolderPlusOutline" Width="16" Height="16" VerticalAlignment="Center" />
+                                <TextBlock Text="Add Folder" FontSize="13" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
                             </StackPanel>
                         </Button>
                     </StackPanel>
@@ -1300,7 +1203,7 @@
                     <StackPanel Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="4">
                         <TextBlock
                             Text="{Binding QueueStatusSummary}"
-                            FontSize="12"
+                            FontSize="13"
                             FontWeight="SemiBold"
                             Foreground="{DynamicResource AntigravityTextBrush}"
                             HorizontalAlignment="Center" />
@@ -1323,34 +1226,26 @@
                             Classes="accent"
                             Theme="{DynamicResource MaterialOutlineButton}"
                             CornerRadius="8"
-                            Padding="14,8"
-                            ToolTip.Tip="Pause or Resume batch queue processing">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <materialIcons:MaterialIcon
-                                    Kind="Pause"
-                                    Width="16"
-                                    Height="16"
-                                    Foreground="{DynamicResource AntigravityAccentBrush}"
-                                    IsVisible="{Binding !IsPaused}" />
-                                <materialIcons:MaterialIcon
-                                    Kind="Play"
-                                    Width="16"
-                                    Height="16"
-                                    Foreground="{DynamicResource AntigravityAccentBrush}"
-                                    IsVisible="{Binding IsPaused}" />
-                                <TextBlock
-                                    Text="Pause Queue"
-                                    FontWeight="Bold"
-                                    FontSize="12"
-                                    VerticalAlignment="Center"
-                                    IsVisible="{Binding !IsPaused}" />
-                                <TextBlock
-                                    Text="Resume Queue"
-                                    FontWeight="Bold"
-                                    FontSize="12"
-                                    VerticalAlignment="Center"
-                                    IsVisible="{Binding IsPaused}" />
-                            </StackPanel>
+                            Padding="12,6"
+                            ToolTip.Tip="Pause or Resume batch queue">
+                            <Panel VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding !IsPaused}">
+                                    <materialIcons:MaterialIcon Kind="Pause" Width="15" Height="15" VerticalAlignment="Center" />
+                                    <TextBlock
+                                        Text="Pause"
+                                        FontWeight="Bold"
+                                        FontSize="12"
+                                        VerticalAlignment="Center" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsPaused}">
+                                    <materialIcons:MaterialIcon Kind="Play" Width="15" Height="15" VerticalAlignment="Center" />
+                                    <TextBlock
+                                        Text="Resume"
+                                        FontWeight="Bold"
+                                        FontSize="12"
+                                        VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Panel>
                         </Button>
 
                         <Separator Width="1" Height="20" Background="{DynamicResource AntigravityBorderBrush}" Margin="2,0" />
@@ -1360,9 +1255,12 @@
                             Command="{Binding ClearCompletedCommand}"
                             Theme="{DynamicResource MaterialFlatButton}"
                             CornerRadius="8"
-                            Padding="8"
-                            ToolTip.Tip="Clear finished &amp; canceled jobs from list">
-                            <materialIcons:MaterialIcon Kind="CheckAll" Width="18" Height="18" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                            Padding="8,6"
+                            ToolTip.Tip="Clear finished jobs">
+                            <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                                <materialIcons:MaterialIcon Kind="Broom" Width="14" Height="14" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                                <TextBlock Text="Clear" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                            </StackPanel>
                         </Button>
 
                         <!-- Cancel All -->
@@ -1370,78 +1268,66 @@
                             Command="{Binding CancelAllCommand}"
                             Theme="{DynamicResource MaterialFlatButton}"
                             CornerRadius="8"
-                            Padding="8"
-                            ToolTip.Tip="Cancel all running and queued jobs">
-                            <materialIcons:MaterialIcon Kind="CloseOctagonOutline" Width="18" Height="18" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                            Padding="8,6"
+                            ToolTip.Tip="Cancel all running &amp; queued jobs">
+                            <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                                <materialIcons:MaterialIcon Kind="CloseOctagonOutline" Width="14" Height="14" Foreground="#FF8888" VerticalAlignment="Center" />
+                                <TextBlock Text="Cancel All" FontSize="12" Foreground="#FF8888" VerticalAlignment="Center" />
+                            </StackPanel>
                         </Button>
                     </StackPanel>
                 </Grid>
             </Border>
+            </ScrollViewer>
 
             <!-- Main Queue View: Clean Dropzone OR DataGrid -->
-            <Grid Grid.Row="1">
+            <Grid Grid.Row="1" MinHeight="160">
                 <!-- Empty State Clean Dropzone -->
                 <Border
                     IsVisible="{Binding !Jobs.Count}"
-                    Margin="40,24"
-                    Padding="48,40"
+                    Margin="32,20"
+                    Padding="40,36"
                     HorizontalAlignment="Stretch"
                     VerticalAlignment="Stretch"
                     Background="{DynamicResource AntigravityPanelBrush}"
                     BorderBrush="{DynamicResource AntigravityBorderBrush}"
                     BorderThickness="1"
-                    CornerRadius="16">
-                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="16">
-                        <Border
-                            Width="72"
-                            Height="72"
-                            HorizontalAlignment="Center"
-                            Background="#18FFFFFF"
-                            BorderBrush="#33FFFFFF"
-                            BorderThickness="1"
-                            CornerRadius="36">
-                            <materialIcons:MaterialIcon
-                                Width="36"
-                                Height="36"
-                                HorizontalAlignment="Center"
-                                VerticalAlignment="Center"
-                                Foreground="{DynamicResource AntigravityAccentBrush}"
-                                Kind="VideoPlusOutline" />
-                        </Border>
-
+                    CornerRadius="14">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="14">
+                        <materialIcons:MaterialIcon Kind="MoviePlusOutline" Width="44" Height="44" Foreground="{DynamicResource AntigravityAccentBrush}" Opacity="0.85" HorizontalAlignment="Center" />
                         <TextBlock
                             HorizontalAlignment="Center"
-                            FontSize="22"
+                            FontSize="20"
                             FontWeight="Bold"
                             Foreground="{DynamicResource AntigravityTextBrush}"
-                            Text="Drag &amp; Drop Videos to Upscale" />
+                            Text="Drop videos here to edit" />
 
                         <TextBlock
                             HorizontalAlignment="Center"
                             FontSize="13"
                             Foreground="{DynamicResource AntigravityMutedBrush}"
-                            Text="Supports MP4, MOV, MKV, AVI, WebM • AI Super-Resolution up to 4K • 60 FPS Interpolation" />
+                            Text="Supports MP4, MOV, MKV, AVI, WebM" />
 
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="12" Margin="0,10,0,0">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="10" Margin="0,8,0,0">
                             <Button
                                 Command="{Binding AddFilesCommand}"
                                 Classes="accent"
                                 CornerRadius="8"
-                                Padding="18,10"
+                                Padding="18,9"
                                 Theme="{DynamicResource MaterialOutlineButton}">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <materialIcons:MaterialIcon Kind="PlusCircleOutline" Width="18" Height="18" />
-                                    <TextBlock Text="Browse Video Files..." FontWeight="Bold" VerticalAlignment="Center" />
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <materialIcons:MaterialIcon Kind="VideoPlusOutline" Width="16" Height="16" VerticalAlignment="Center" />
+                                    <TextBlock Text="Browse Videos" FontSize="13" FontWeight="Bold" VerticalAlignment="Center" />
                                 </StackPanel>
                             </Button>
                             <Button
                                 Command="{Binding AddFolderCommand}"
                                 CornerRadius="8"
-                                Padding="18,10"
+                                Padding="16,9"
                                 Theme="{DynamicResource MaterialFlatButton}">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <materialIcons:MaterialIcon Kind="FolderMultipleOutline" Width="18" Height="18" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                    <TextBlock Text="Add Video Folder..." VerticalAlignment="Center" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <materialIcons:MaterialIcon Kind="FolderPlusOutline" Width="16" Height="16" VerticalAlignment="Center" />
+                                    <TextBlock Text="Add Folder" FontSize="13" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityTextBrush}" />
                                 </StackPanel>
                             </Button>
                         </StackPanel>
@@ -1465,188 +1351,132 @@
                             <MenuItem
                                 Header="Color Grading &amp; Real-Time Preview"
                                 Command="{Binding SelectJobForGradingCommand}"
-                                CommandParameter="{Binding SelectedJob}">
-                                <MenuItem.Icon>
-                                    <materialIcons:MaterialIcon Kind="TuneVariant" Width="16" Height="16" Foreground="{DynamicResource AntigravityAccentBrush}" />
-                                </MenuItem.Icon>
-                            </MenuItem>
+                                CommandParameter="{Binding SelectedJob}" />
                             <MenuItem
                                 Header="Split Video into Parts"
                                 Command="{Binding SplitQueuedJobCommand}"
-                                CommandParameter="{Binding SelectedJob}">
-                                <MenuItem.Icon>
-                                    <materialIcons:MaterialIcon Kind="CallSplit" Width="16" Height="16" Foreground="{DynamicResource AntigravityAccentBrush}" />
-                                </MenuItem.Icon>
-                            </MenuItem>
+                                CommandParameter="{Binding SelectedJob}" />
                             <Separator />
                             <MenuItem
-                                Header="Open Upscaled Video"
+                                Header="Play Output Video"
                                 Command="{Binding OpenJobFileCommand}"
-                                CommandParameter="{Binding SelectedJob}">
-                                <MenuItem.Icon>
-                                    <materialIcons:MaterialIcon Kind="PlayCircleOutline" Width="16" Height="16" Foreground="{DynamicResource AntigravityAccentBrush}" />
-                                </MenuItem.Icon>
-                            </MenuItem>
+                                CommandParameter="{Binding SelectedJob}" />
                             <MenuItem
                                 Header="Show in Explorer Folder"
                                 Command="{Binding OpenJobFolderCommand}"
-                                CommandParameter="{Binding SelectedJob}">
-                                <MenuItem.Icon>
-                                    <materialIcons:MaterialIcon Kind="FolderOpenOutline" Width="16" Height="16" />
-                                </MenuItem.Icon>
-                            </MenuItem>
+                                CommandParameter="{Binding SelectedJob}" />
                             <Separator />
                             <MenuItem
                                 Header="Move Priority Up"
                                 Command="{Binding MoveJobUpCommand}"
-                                CommandParameter="{Binding SelectedJob}">
-                                <MenuItem.Icon>
-                                    <materialIcons:MaterialIcon Kind="ArrowUp" Width="16" Height="16" />
-                                </MenuItem.Icon>
-                            </MenuItem>
+                                CommandParameter="{Binding SelectedJob}" />
                             <MenuItem
                                 Header="Move Priority Down"
                                 Command="{Binding MoveJobDownCommand}"
-                                CommandParameter="{Binding SelectedJob}">
-                                <MenuItem.Icon>
-                                    <materialIcons:MaterialIcon Kind="ArrowDown" Width="16" Height="16" />
-                                </MenuItem.Icon>
-                            </MenuItem>
+                                CommandParameter="{Binding SelectedJob}" />
                             <Separator />
                             <MenuItem
                                 Header="View Processing &amp; Error Log"
                                 Command="{Binding ViewDetailedLogCommand}"
-                                CommandParameter="{Binding SelectedJob}">
-                                <MenuItem.Icon>
-                                    <materialIcons:MaterialIcon Kind="TextBoxOutline" Width="16" Height="16" />
-                                </MenuItem.Icon>
-                            </MenuItem>
+                                CommandParameter="{Binding SelectedJob}" />
                             <MenuItem
                                 Header="Retry Job"
                                 Command="{Binding RetryJobCommand}"
-                                CommandParameter="{Binding SelectedJob}">
-                                <MenuItem.Icon>
-                                    <materialIcons:MaterialIcon Kind="Refresh" Width="16" Height="16" />
-                                </MenuItem.Icon>
-                            </MenuItem>
+                                CommandParameter="{Binding SelectedJob}" />
                             <MenuItem
                                 Header="Cancel / Remove Job"
                                 Command="{Binding CancelJobCommand}"
-                                CommandParameter="{Binding SelectedJob}">
-                                <MenuItem.Icon>
-                                    <materialIcons:MaterialIcon Kind="Close" Width="16" Height="16" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                </MenuItem.Icon>
-                            </MenuItem>
+                                CommandParameter="{Binding SelectedJob}" />
                         </ContextMenu>
                     </DataGrid.ContextMenu>
                     <DataGrid.Columns>
                         <!-- Column 1: Video File & Input Details -->
-                        <DataGridTemplateColumn Header="Video Source" Width="*">
+                        <DataGridTemplateColumn Header="Source" Width="*" MinWidth="180">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate DataType="upscaling:UpscaleJob">
-                                    <Grid ColumnDefinitions="Auto,*" Margin="8,6" VerticalAlignment="Center">
-                                        <Border
-                                            Grid.Column="0"
-                                            Width="38"
-                                            Height="38"
-                                            CornerRadius="8"
-                                            Background="#14FFFFFF"
-                                            BorderBrush="{DynamicResource AntigravityBorderBrush}"
-                                            BorderThickness="1"
-                                            Margin="0,0,10,0"
-                                            VerticalAlignment="Center">
-                                            <materialIcons:MaterialIcon
-                                                Kind="FileVideoOutline"
-                                                Width="20"
-                                                Height="20"
-                                                Foreground="{DynamicResource AntigravityAccentBrush}"
-                                                HorizontalAlignment="Center"
-                                                VerticalAlignment="Center" />
-                                        </Border>
-                                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                                <TextBlock
-                                                    Text="{Binding FileName}"
-                                                    FontWeight="SemiBold"
-                                                    FontSize="13"
-                                                    Foreground="{DynamicResource AntigravityTextBrush}"
-                                                    ToolTip.Tip="{Binding FilePath}" />
-                                                <Border
-                                                    IsVisible="{Binding HasPartBadge}"
-                                                    Background="#20FFFFFF"
-                                                    BorderBrush="#40FFFFFF"
-                                                    BorderThickness="1"
-                                                    CornerRadius="4"
-                                                    Padding="4,1"
-                                                    VerticalAlignment="Center">
-                                                    <TextBlock Text="{Binding PartBadge}" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
-                                                </Border>
-                                            </StackPanel>
-                                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                                <Border Background="#14FFFFFF" CornerRadius="4" Padding="5,1">
-                                                    <TextBlock Text="{Binding InputResolution}" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                                </Border>
-                                                <TextBlock Text="•" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
-                                                <TextBlock
-                                                    Text="{Binding FilePath}"
-                                                    FontSize="11"
-                                                    Foreground="{DynamicResource AntigravityMutedBrush}"
-                                                    MaxWidth="360"
-                                                    TextTrimming="CharacterEllipsis"
-                                                    VerticalAlignment="Center" />
-                                            </StackPanel>
+                                    <StackPanel VerticalAlignment="Center" Spacing="3" Margin="8,6">
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <TextBlock
+                                                Text="{Binding FileName}"
+                                                FontWeight="SemiBold"
+                                                FontSize="14"
+                                                Foreground="{DynamicResource AntigravityTextBrush}"
+                                                ToolTip.Tip="{Binding FilePath}" />
+                                            <Border
+                                                IsVisible="{Binding HasPartBadge}"
+                                                Background="#20FFFFFF"
+                                                BorderBrush="#40FFFFFF"
+                                                BorderThickness="1"
+                                                CornerRadius="4"
+                                                Padding="5,1"
+                                                VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding PartBadge}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                            </Border>
                                         </StackPanel>
-                                    </Grid>
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <Border Background="#14FFFFFF" CornerRadius="4" Padding="6,2">
+                                                <TextBlock Text="{Binding InputResolution}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                            </Border>
+                                            <TextBlock Text="•" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                                            <TextBlock
+                                                Text="{Binding FilePath}"
+                                                FontSize="12"
+                                                Foreground="{DynamicResource AntigravityMutedBrush}"
+                                                MaxWidth="420"
+                                                TextTrimming="CharacterEllipsis"
+                                                VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </StackPanel>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
                         <!-- Column 2: Target & Engine -->
-                        <DataGridTemplateColumn Header="Target &amp; Engine" Width="140">
+                        <DataGridTemplateColumn Header="Output" Width="120">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate DataType="upscaling:UpscaleJob">
-                                    <StackPanel VerticalAlignment="Center" Spacing="2" Margin="6,0">
+                                    <StackPanel VerticalAlignment="Center" Spacing="3" Margin="6,0">
                                         <Border Padding="6,2" CornerRadius="4" HorizontalAlignment="Left" Background="#20FFFFFF" BorderBrush="#30FFFFFF" BorderThickness="1">
-                                            <TextBlock Text="{Binding TargetResolution}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                            <TextBlock Text="{Binding TargetResolution}" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" />
                                         </Border>
-                                        <TextBlock Text="{Binding Codec}" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        <TextBlock Text="{Binding Codec}" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                     </StackPanel>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
                         <!-- Column 3: Features & Enhancements -->
-                        <DataGridTemplateColumn Header="Enhancements" Width="120">
+                        <DataGridTemplateColumn Header="Filters" Width="130">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate DataType="upscaling:UpscaleJob">
                                     <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" Margin="6,0">
                                         <!-- Graded -->
-                                        <Border IsVisible="{Binding ColorGrading.HasActiveGrading}" Padding="4,2" CornerRadius="4" Background="#14FFFFFF" ToolTip.Tip="Color Graded">
-                                            <materialIcons:MaterialIcon Kind="TuneVariant" Width="13" Height="13" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                        <Border IsVisible="{Binding ColorGrading.HasActiveGrading}" Padding="5,2" CornerRadius="4" Background="#2038bdf8" ToolTip.Tip="Color Graded">
+                                            <TextBlock Text="GRADE" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" />
                                         </Border>
                                         <!-- Facial Clarity -->
-                                        <Border IsVisible="{Binding EnableFacialClarity}" Padding="4,2" CornerRadius="4" Background="#14FFFFFF" ToolTip.Tip="Facial Clarity Active">
-                                            <materialIcons:MaterialIcon Kind="FaceWomanOutline" Width="13" Height="13" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                        <Border IsVisible="{Binding EnableFacialClarity}" Padding="5,2" CornerRadius="4" Background="#20a78bfa" ToolTip.Tip="Facial Clarity Active">
+                                            <TextBlock Text="FACE" FontSize="11" FontWeight="Bold" Foreground="#a78bfa" />
                                         </Border>
                                         <!-- Aspect Ratio (9:16, 1:1, 21:9) -->
                                         <Border IsVisible="{Binding TargetAspectRatio, Converter={x:Static converters:EqualityConverter.IsNotEqual}, ConverterParameter=Original}"
-                                                Padding="4,2" CornerRadius="4" Background="#14FFFFFF"
+                                                Padding="5,2" CornerRadius="4" Background="#20f472b6"
                                                 ToolTip.Tip="{Binding TargetAspectRatio, Converter={x:Static converters:EnumDisplayNameConverter.Instance}}">
-                                            <materialIcons:MaterialIcon Kind="AspectRatio" Width="13" Height="13" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                            <TextBlock Text="{Binding TargetAspectRatio, Converter={x:Static converters:EnumDisplayNameConverter.Instance}}" FontSize="11" FontWeight="Bold" Foreground="#f472b6" />
                                         </Border>
                                         <!-- Playback Speed (if != 1.0) -->
                                         <Border IsVisible="{Binding PlaybackSpeed, Converter={x:Static converters:EqualityConverter.IsNotEqual}, ConverterParameter=1}"
-                                                Padding="4,2" CornerRadius="4" Background="#14FFFFFF"
+                                                Padding="5,2" CornerRadius="4" Background="#2034d399"
                                                 ToolTip.Tip="{Binding PlaybackSpeed, StringFormat='{}{0:0.##}x Playback Speed'}">
-                                            <TextBlock Text="{Binding PlaybackSpeed, StringFormat='{}{0:0.#}x'}" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                            <TextBlock Text="{Binding PlaybackSpeed, StringFormat='{}{0:0.#}x'}" FontSize="11" FontWeight="Bold" Foreground="#34d399" />
                                         </Border>
                                         <!-- Split -->
-                                        <Border IsVisible="{Binding HasPartBadge}" Padding="4,2" CornerRadius="4" Background="#14FFFFFF" ToolTip.Tip="{Binding PartBadge}">
-                                            <materialIcons:MaterialIcon Kind="CallSplit" Width="13" Height="13" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                        <Border IsVisible="{Binding HasPartBadge}" Padding="5,2" CornerRadius="4" Background="#20fbbf24" ToolTip.Tip="{Binding PartBadge}">
+                                            <TextBlock Text="{Binding PartBadge}" FontSize="11" FontWeight="Bold" Foreground="#fbbf24" />
                                         </Border>
                                         <!-- Denoise -->
-                                        <Border IsVisible="{Binding EnableDenoise}" Padding="4,2" CornerRadius="4" Background="#14FFFFFF" ToolTip.Tip="Denoise Active">
-                                            <materialIcons:MaterialIcon Kind="ImageFilterDrama" Width="13" Height="13" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                        <Border IsVisible="{Binding EnableDenoise}" Padding="5,2" CornerRadius="4" Background="#2038bdf8" ToolTip.Tip="Denoise Active">
+                                            <TextBlock Text="DENOISE" FontSize="11" FontWeight="Bold" Foreground="#38bdf8" />
                                         </Border>
                                     </StackPanel>
                                 </DataTemplate>
@@ -1654,7 +1484,7 @@
                         </DataGridTemplateColumn>
 
                         <!-- Column 4: Status -->
-                        <DataGridTemplateColumn Header="Status" Width="110">
+                        <DataGridTemplateColumn Header="Status" Width="100">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate DataType="upscaling:UpscaleJob">
                                     <Border Padding="8,3" CornerRadius="12" HorizontalAlignment="Left" VerticalAlignment="Center" Background="#14FFFFFF">
@@ -1665,14 +1495,14 @@
                         </DataGridTemplateColumn>
 
                         <!-- Column 5: Progress & Speed -->
-                        <DataGridTemplateColumn Header="Progress" Width="160">
+                        <DataGridTemplateColumn Header="Progress" Width="130">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate DataType="upscaling:UpscaleJob">
                                     <StackPanel VerticalAlignment="Center" Spacing="4" Margin="4,0">
-                                        <ProgressBar Height="5" CornerRadius="2.5" Minimum="0" Maximum="100" Value="{Binding Progress}" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                        <ProgressBar Height="4" CornerRadius="2" Minimum="0" Maximum="100" Value="{Binding Progress}" Foreground="{DynamicResource AntigravityAccentBrush}" />
                                         <Grid ColumnDefinitions="*,Auto">
-                                            <TextBlock Grid.Column="0" Text="{Binding Progress, StringFormat='{}{0:0.#}%'}" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                            <TextBlock Grid.Column="1" IsVisible="{Binding !!Fps}" Text="{Binding Fps, StringFormat='{}{0:0.#} fps'}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                            <TextBlock Grid.Column="0" Text="{Binding Progress, StringFormat='{}{0:0.#}%'}" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                            <TextBlock Grid.Column="1" IsVisible="{Binding !!Fps}" Text="{Binding Fps, StringFormat='{}{0:0.#} fps'}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityAccentBrush}" />
                                         </Grid>
                                     </StackPanel>
                                 </DataTemplate>
@@ -1680,16 +1510,16 @@
                         </DataGridTemplateColumn>
 
                         <!-- Column 6: Elapsed Time -->
-                        <DataGridTemplateColumn Header="Elapsed" Width="80">
+                        <DataGridTemplateColumn Header="Time" Width="70">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate DataType="upscaling:UpscaleJob">
-                                    <TextBlock Text="{Binding ElapsedTime, StringFormat='{}{0:mm\\:ss}'}" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityMutedBrush}" FontSize="11" FontFamily="Cascadia Code,Consolas,Courier New" />
+                                    <TextBlock Text="{Binding ElapsedTime, StringFormat='{}{0:mm\\:ss}'}" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityMutedBrush}" FontSize="12" FontFamily="Cascadia Code,Consolas,Courier New" />
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
 
                         <!-- Column 7: Actions -->
-                        <DataGridTemplateColumn Header="Actions" Width="160">
+                        <DataGridTemplateColumn Header="Actions" Width="150">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate DataType="upscaling:UpscaleJob">
                                     <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
@@ -1698,11 +1528,11 @@
                                             Command="{Binding #RootControl.((components:VideoUpscalerViewModel)DataContext).OpenJobFileCommand}"
                                             CommandParameter="{Binding}"
                                             IsVisible="{Binding Status, Converter={x:Static converters:EqualityConverter.IsEqual}, ConverterParameter={x:Static upscaling:UpscaleJobStatus.Complete}}"
-                                            Padding="5"
+                                            Width="26" Height="26" Padding="0"
                                             Theme="{DynamicResource MaterialFlatButton}"
                                             CornerRadius="6"
-                                            ToolTip.Tip="Play Upscaled Video">
-                                            <materialIcons:MaterialIcon Kind="PlayCircleOutline" Width="16" Height="16" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                            ToolTip.Tip="Play Output Video">
+                                            <materialIcons:MaterialIcon Kind="Play" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentBrush}" />
                                         </Button>
 
                                         <!-- If Completed: Show in Explorer Folder -->
@@ -1710,68 +1540,67 @@
                                             Command="{Binding #RootControl.((components:VideoUpscalerViewModel)DataContext).OpenJobFolderCommand}"
                                             CommandParameter="{Binding}"
                                             IsVisible="{Binding Status, Converter={x:Static converters:EqualityConverter.IsEqual}, ConverterParameter={x:Static upscaling:UpscaleJobStatus.Complete}}"
-                                            Padding="5"
+                                            Width="26" Height="26" Padding="0"
                                             Theme="{DynamicResource MaterialFlatButton}"
                                             CornerRadius="6"
                                             ToolTip.Tip="Show in Explorer Folder">
-                                            <materialIcons:MaterialIcon Kind="FolderOpenOutline" Width="16" Height="16" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                            <materialIcons:MaterialIcon Kind="FolderOpenOutline" Width="14" Height="14" Foreground="{DynamicResource AntigravityAccentBrush}" />
                                         </Button>
 
                                         <!-- Studio & Color Tuning -->
                                         <Button
                                             Command="{Binding #RootControl.((components:VideoUpscalerViewModel)DataContext).SelectJobForGradingCommand}"
                                             CommandParameter="{Binding}"
-                                            Padding="5"
+                                            Width="26" Height="26" Padding="0"
                                             Theme="{DynamicResource MaterialFlatButton}"
                                             CornerRadius="6"
-                                            ToolTip.Tip="Open Studio &amp; Color Grading for this video">
-                                            <materialIcons:MaterialIcon Kind="TuneVariant" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                            ToolTip.Tip="Color &amp; Studio Tuning">
+                                            <materialIcons:MaterialIcon Kind="TuneVertical" Width="14" Height="14" Foreground="{DynamicResource AntigravityAccentBrush}" />
                                         </Button>
 
                                         <!-- Split Parts -->
                                         <Button
                                             Command="{Binding #RootControl.((components:VideoUpscalerViewModel)DataContext).SplitQueuedJobCommand}"
                                             CommandParameter="{Binding}"
-                                            Padding="5"
+                                            Width="26" Height="26" Padding="0"
                                             Theme="{DynamicResource MaterialFlatButton}"
                                             CornerRadius="6"
                                             IsVisible="{Binding !HasPartBadge}"
-                                            ToolTip.Tip="Split video into parts now">
-                                            <materialIcons:MaterialIcon Kind="CallSplit" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                            ToolTip.Tip="Split Video into Parts">
+                                            <materialIcons:MaterialIcon Kind="CallSplit" Width="14" Height="14" Foreground="{DynamicResource AntigravityAccentBrush}" />
                                         </Button>
 
                                         <!-- Retry -->
                                         <Button
                                             Command="{Binding #RootControl.((components:VideoUpscalerViewModel)DataContext).RetryJobCommand}"
                                             CommandParameter="{Binding}"
-                                            Padding="5"
+                                            Width="26" Height="26" Padding="0"
                                             Theme="{DynamicResource MaterialFlatButton}"
                                             CornerRadius="6"
                                             ToolTip.Tip="Retry Job">
-                                            <materialIcons:MaterialIcon Kind="Refresh" Width="15" Height="15" />
+                                            <materialIcons:MaterialIcon Kind="Refresh" Width="14" Height="14" Foreground="{DynamicResource AntigravityTextBrush}" />
                                         </Button>
 
                                         <!-- Log Details -->
                                         <Button
                                             Command="{Binding #RootControl.((components:VideoUpscalerViewModel)DataContext).ViewDetailedLogCommand}"
                                             CommandParameter="{Binding}"
-                                            Padding="5"
+                                            Width="26" Height="26" Padding="0"
                                             Theme="{DynamicResource MaterialFlatButton}"
                                             CornerRadius="6"
-                                            ToolTip.Tip="View Processing &amp; Error Log">
-                                            <materialIcons:MaterialIcon Kind="TextBoxOutline" Width="15" Height="15" />
+                                            ToolTip.Tip="View Processing Log">
+                                            <materialIcons:MaterialIcon Kind="FileDocumentOutline" Width="14" Height="14" Foreground="{DynamicResource AntigravityTextBrush}" />
                                         </Button>
 
                                         <!-- Cancel / Remove -->
                                         <Button
                                             Command="{Binding #RootControl.((components:VideoUpscalerViewModel)DataContext).CancelJobCommand}"
                                             CommandParameter="{Binding}"
-                                            Padding="5"
+                                            Width="26" Height="26" Padding="0"
                                             Theme="{DynamicResource MaterialFlatButton}"
                                             CornerRadius="6"
-                                            Foreground="{DynamicResource AntigravityMutedBrush}"
-                                            ToolTip.Tip="Cancel / Remove Job">
-                                            <materialIcons:MaterialIcon Kind="Close" Width="15" Height="15" />
+                                            ToolTip.Tip="Cancel / Remove">
+                                            <materialIcons:MaterialIcon Kind="Close" Width="14" Height="14" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                         </Button>
                                     </StackPanel>
                                 </DataTemplate>
@@ -1793,8 +1622,9 @@
             VerticalAlignment="Stretch"
             Background="#99000000">
             <Border
-                Width="700"
-                Height="500"
+                MaxWidth="700"
+                MaxHeight="500"
+                Margin="24"
                 Padding="24"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
@@ -1805,12 +1635,9 @@
                 <Grid RowDefinitions="Auto,*,Auto">
                     <!-- Header -->
                     <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,14">
-                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                            <materialIcons:MaterialIcon Kind="TextBoxOutline" Width="20" Height="20" Foreground="{DynamicResource AntigravityAccentBrush}" />
-                            <TextBlock Text="Job Execution &amp; FFmpeg Diagnostic Log" FontWeight="Bold" FontSize="15" Foreground="{DynamicResource AntigravityTextBrush}" />
-                        </StackPanel>
-                        <Button Grid.Column="1" Command="{Binding CloseLogViewerCommand}" Theme="{DynamicResource MaterialFlatButton}" Padding="4">
-                            <materialIcons:MaterialIcon Kind="Close" Width="18" Height="18" />
+                        <TextBlock Grid.Column="0" Text="Job Diagnostic Log" FontWeight="Bold" FontSize="16" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Command="{Binding CloseLogViewerCommand}" Theme="{DynamicResource MaterialFlatButton}" Padding="8,4">
+                            <TextBlock Text="✕" FontSize="15" FontWeight="Bold" VerticalAlignment="Center" HorizontalAlignment="Center" />
                         </Button>
                     </Grid>
 
@@ -1827,7 +1654,7 @@
                                 Text="{Binding LogViewerContent}"
                                 IsReadOnly="True"
                                 FontFamily="Cascadia Code,Consolas,Courier New"
-                                FontSize="12"
+                                FontSize="13"
                                 Background="Transparent"
                                 BorderThickness="0"
                                 TextWrapping="Wrap" />
@@ -1840,11 +1667,8 @@
                             Grid.Column="0"
                             Command="{Binding CopyJobLogCommand}"
                             Theme="{DynamicResource MaterialFlatButton}"
-                            Padding="12,6">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <materialIcons:MaterialIcon Kind="ContentCopy" Width="15" Height="15" />
-                                <TextBlock Text="Copy to Clipboard" FontSize="12" />
-                            </StackPanel>
+                            Padding="14,8">
+                            <TextBlock Text="Copy to Clipboard" FontSize="13" />
                         </Button>
                         <Button
                             Grid.Column="1"
@@ -1852,8 +1676,8 @@
                             Classes="accent"
                             Theme="{DynamicResource MaterialOutlineButton}"
                             CornerRadius="6"
-                            Padding="16,6">
-                            <TextBlock Text="Close" FontSize="12" FontWeight="Bold" />
+                            Padding="18,8">
+                            <TextBlock Text="Close" FontSize="13" FontWeight="Bold" />
                         </Button>
                     </Grid>
                 </Grid>

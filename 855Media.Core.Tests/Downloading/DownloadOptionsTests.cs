@@ -280,4 +280,112 @@ public class DownloadOptionsTests
         Assert.DoesNotContain("--sub-langs", args);
         Assert.Contains("--embed-subs", args);
     }
+
+    [Theory]
+    [InlineData(VideoQualityPreference.Lowest, 360)]
+    [InlineData(VideoQualityPreference.UpTo360p, 360)]
+    [InlineData(VideoQualityPreference.UpTo480p, 480)]
+    [InlineData(VideoQualityPreference.UpTo720p, 720)]
+    [InlineData(VideoQualityPreference.UpTo1080p, 1080)]
+    [InlineData(VideoQualityPreference.UpTo1440p, 1440)]
+    [InlineData(VideoQualityPreference.UpTo2160p, 2160)]
+    public void VideoQualityPreference_GetMaxHeight_ReturnsExpectedValue(
+        VideoQualityPreference preference,
+        int expected
+    )
+    {
+        Assert.Equal(expected, preference.GetMaxHeight());
+    }
+
+    [Fact]
+    public void VideoQualityPreference_Highest_ReturnsNullMaxHeight()
+    {
+        Assert.Null(VideoQualityPreference.Highest.GetMaxHeight());
+    }
+
+    private static _855Media.Core.Resolving.VideoInfo CreateSampleTikTokVideo() =>
+        new(
+            _855Media.Core.Resolving.VideoSource.TikTok,
+            "123",
+            "https://www.tiktok.com/@user/video/123",
+            "Test Video",
+            "Author",
+            null,
+            1000L,
+            TimeSpan.FromSeconds(60),
+            []
+        );
+
+    [Fact]
+    public void TikTokDownloader_BuildArguments_Portrait1080p_IncludesWidthAndPortraitFilter()
+    {
+        var video = CreateSampleTikTokVideo();
+        var option = new VideoDownloadOption(Container.Mp4, false, [], new VideoQuality(1080, 30));
+
+        var args = TikTokDownloader.BuildArguments("C:\\output.mp4", video, Container.Mp4, option);
+
+        Assert.Contains("--format", args);
+        var formatIdx = args.IndexOf("--format");
+        var formatString = args[formatIdx + 1];
+
+        // Must support portrait bounding by width
+        Assert.Contains("aspect_ratio<1][width<=1080", formatString);
+        // Must support landscape bounding by height
+        Assert.Contains("aspect_ratio>=1][height<=1080", formatString);
+        // Must sort by resolution first so 1080p is selected over lower res H.264
+        Assert.Contains("--format-sort", args);
+        var sortIdx = args.IndexOf("--format-sort");
+        var sortString = args[sortIdx + 1];
+        Assert.StartsWith("res:1080", sortString);
+    }
+
+    [Fact]
+    public void TikTokDownloader_BuildArguments_BatchWithPreference1080p_ResolvesCorrectQuality()
+    {
+        var video = CreateSampleTikTokVideo();
+        var preference = new VideoDownloadPreference(
+            Container.Mp4,
+            VideoQualityPreference.UpTo1080p
+        );
+
+        var args = TikTokDownloader.BuildArguments(
+            "C:\\output.mp4",
+            video,
+            Container.Mp4,
+            downloadOption: null,
+            downloadPreference: preference
+        );
+
+        Assert.Contains("--format", args);
+        var formatIdx = args.IndexOf("--format");
+        var formatString = args[formatIdx + 1];
+
+        Assert.Contains("aspect_ratio<1][width<=1080", formatString);
+        Assert.Contains("bestvideo+bestaudio/best", formatString);
+
+        var sortIdx = args.IndexOf("--format-sort");
+        Assert.StartsWith("res:1080", args[sortIdx + 1]);
+    }
+
+    [Fact]
+    public void TikTokDownloader_BuildArguments_HighestQuality_UsesBestWithoutRestriction()
+    {
+        var video = CreateSampleTikTokVideo();
+        var preference = new VideoDownloadPreference(Container.Mp4, VideoQualityPreference.Highest);
+
+        var args = TikTokDownloader.BuildArguments(
+            "C:\\output.mp4",
+            video,
+            Container.Mp4,
+            downloadOption: null,
+            downloadPreference: preference
+        );
+
+        Assert.Contains("--format", args);
+        var formatIdx = args.IndexOf("--format");
+        Assert.Equal("bestvideo+bestaudio/best", args[formatIdx + 1]);
+
+        var sortIdx = args.IndexOf("--format-sort");
+        Assert.Equal("res,fps,vcodec:h264,quality", args[sortIdx + 1]);
+    }
 }

@@ -26,25 +26,7 @@
             </Style>
         </Style>
 
-        <!-- Platform Filter Chips -->
-        <Style Selector="Button.platform-chip">
-            <Setter Property="Background" Value="#0DFFFFFF" />
-            <Setter Property="Foreground" Value="{DynamicResource AntigravityMutedBrush}" />
-            <Setter Property="Padding" Value="12,6" />
-            <Setter Property="CornerRadius" Value="16" />
-            <Setter Property="FontSize" Value="12" />
-            <Setter Property="FontWeight" Value="Medium" />
-            <Style Selector="^:pointerover">
-                <Setter Property="Background" Value="#1AFFFFFF" />
-                <Setter Property="Foreground" Value="{DynamicResource AntigravityTextBrush}" />
-            </Style>
-            <Style Selector="^.active">
-                <Setter Property="Background" Value="#256366F1" />
-                <Setter Property="BorderBrush" Value="#6366F1" />
-                <Setter Property="BorderThickness" Value="1" />
-                <Setter Property="Foreground" Value="#A5B4FC" />
-            </Style>
-        </Style>
+
 
         <!-- Feature Card Style -->
         <Style Selector="Border.feature-card">
@@ -101,26 +83,7 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Status / Hint in Center -->
-                <StackPanel
-                    Grid.Column="1"
-                    Orientation="Horizontal"
-                    HorizontalAlignment="Center"
-                    VerticalAlignment="Center"
-                    Spacing="8"
-                    IsVisible="{Binding !IsBrowserMode}">
-                    <Border
-                        Background="#1A10B981"
-                        BorderBrush="#4010B981"
-                        BorderThickness="1"
-                        CornerRadius="10"
-                        Padding="8,2">
-                        <StackPanel Orientation="Horizontal" Spacing="5">
-                            <materialIcons:MaterialIcon Kind="ShieldCheck" Width="13" Height="13" Foreground="#10B981" />
-                            <TextBlock Text="Auto Platform Detection Active" FontSize="11" FontWeight="SemiBold" Foreground="#10B981" />
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
+
 
                 <!-- Input Type Switch (Single / Batch) -->
                 <Border
@@ -171,99 +134,6 @@
                 HorizontalAlignment="Center"
                 Spacing="20">
 
-                <!-- Hero Section: Title & Branding -->
-                <StackPanel HorizontalAlignment="Center" Spacing="8">
-                    <Border
-                        Width="56"
-                        Height="56"
-                        HorizontalAlignment="Center"
-                        CornerRadius="18"
-                        Background="#6366F1"
-                        BoxShadow="0 8 28 0 #4D6366F1">
-                        <materialIcons:MaterialIcon
-                            Width="32"
-                            Height="32"
-                            HorizontalAlignment="Center"
-                            VerticalAlignment="Center"
-                            Foreground="#FFFFFF"
-                            Kind="CloudDownload" />
-                    </Border>
-
-                    <TextBlock
-                        HorizontalAlignment="Center"
-                        FontSize="26"
-                        FontWeight="Bold"
-                        Foreground="{DynamicResource AntigravityTextBrush}"
-                        Text="Universal Media Downloader" />
-
-                    <TextBlock
-                        HorizontalAlignment="Center"
-                        FontSize="13"
-                        Foreground="{DynamicResource AntigravityMutedBrush}"
-                        Text="Download videos, series, playlists, and creator profiles from YouTube, TikTok, Facebook &amp; DramaBox" />
-                </StackPanel>
-
-                <!-- Platform Filter Chips & Badges -->
-                <StackPanel
-                    Orientation="Horizontal"
-                    HorizontalAlignment="Center"
-                    Spacing="8"
-                    Margin="0,2,0,4">
-                    <Button
-                        Command="{Binding SelectFilterCommand}"
-                        CommandParameter="{x:Static components:PlatformFilter.All}"
-                        Classes="platform-chip"
-                        Classes.active="{Binding SelectedFilter, Converter={x:Static converters:EqualityConverter.IsEqual}, ConverterParameter={x:Static components:PlatformFilter.All}}">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <materialIcons:MaterialIcon Kind="AllInclusive" Width="15" Height="15" />
-                            <TextBlock Text="All Supported" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </Button>
-
-                    <Button
-                        Command="{Binding SelectFilterCommand}"
-                        CommandParameter="{x:Static components:PlatformFilter.YouTube}"
-                        Classes="platform-chip"
-                        Classes.active="{Binding SelectedFilter, Converter={x:Static converters:EqualityConverter.IsEqual}, ConverterParameter={x:Static components:PlatformFilter.YouTube}}">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <materialIcons:MaterialIcon Kind="Youtube" Width="15" Height="15" Foreground="#FF0000" />
-                            <TextBlock Text="YouTube (4K • Playlists • Channels)" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </Button>
-
-                    <Button
-                        Command="{Binding SelectFilterCommand}"
-                        CommandParameter="{x:Static components:PlatformFilter.TikTok}"
-                        Classes="platform-chip"
-                        Classes.active="{Binding SelectedFilter, Converter={x:Static converters:EqualityConverter.IsEqual}, ConverterParameter={x:Static components:PlatformFilter.TikTok}}">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <materialIcons:MaterialIcon Kind="Music" Width="15" Height="15" Foreground="#00F2FE" />
-                            <TextBlock Text="TikTok (No Watermark • Profiles)" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </Button>
-
-                    <Button
-                        Command="{Binding SelectFilterCommand}"
-                        CommandParameter="{x:Static components:PlatformFilter.Facebook}"
-                        Classes="platform-chip"
-                        Classes.active="{Binding SelectedFilter, Converter={x:Static converters:EqualityConverter.IsEqual}, ConverterParameter={x:Static components:PlatformFilter.Facebook}}">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <materialIcons:MaterialIcon Kind="Facebook" Width="15" Height="15" Foreground="#1877F2" />
-                            <TextBlock Text="Facebook (Reels • Videos • Photos)" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </Button>
-
-                    <Button
-                        Command="{Binding SelectFilterCommand}"
-                        CommandParameter="{x:Static components:PlatformFilter.DramaBox}"
-                        Classes="platform-chip"
-                        Classes.active="{Binding SelectedFilter, Converter={x:Static converters:EqualityConverter.IsEqual}, ConverterParameter={x:Static components:PlatformFilter.DramaBox}}">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <materialIcons:MaterialIcon Kind="MoviePlay" Width="15" Height="15" Foreground="#E11D48" />
-                            <TextBlock Text="DramaBox (Full Series)" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </Button>
-                </StackPanel>
 
                 <!-- Profile Detected Callout (When a creator profile is typed/pasted) -->
                 <Border

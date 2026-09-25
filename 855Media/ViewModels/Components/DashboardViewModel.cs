@@ -531,7 +531,8 @@ public partial class DashboardViewModel : ViewModelBase
                     download.DownloadOption,
                     _settingsService.FFmpegFilePath,
                     download.Progress.Merge(progress),
-                    download.CancellationToken
+                    download.CancellationToken,
+                    download.DownloadPreference
                 );
             }
             else if (download.Video?.Source == VideoSource.DramaBox)
@@ -548,7 +549,8 @@ public partial class DashboardViewModel : ViewModelBase
                     download.DownloadOption,
                     _settingsService.FFmpegFilePath,
                     download.Progress.Merge(progress),
-                    download.CancellationToken
+                    download.CancellationToken,
+                    download.DownloadPreference
                 );
             }
             else if (download.Video?.Source == VideoSource.FacebookPhoto)
