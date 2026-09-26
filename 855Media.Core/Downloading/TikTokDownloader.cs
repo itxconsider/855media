@@ -26,7 +26,12 @@ public class TikTokDownloader(IReadOnlyList<Cookie>? initialCookies = null)
         VideoDownloadPreference? downloadPreference = null
     )
     {
-        var (cookieFilePath, isTemp) = await YtDlp.TryCreateCookieFileAsync(
+        filePath = _855Media.Core.Utils.FileUtils.SanitizeFilePath(filePath);
+        var dirPath = Path.GetDirectoryName(filePath);
+        if (!string.IsNullOrWhiteSpace(dirPath))
+            Directory.CreateDirectory(dirPath);
+
+        var (cookieFilePath, isTemp) = await TryCreateCookieFileAsync(
             initialCookies,
             cancellationToken
         );
@@ -43,24 +48,43 @@ public class TikTokDownloader(IReadOnlyList<Cookie>? initialCookies = null)
 
         try
         {
-            await YtDlp.RunAsync(arguments, progress, cancellationToken);
+            try
+            {
+                await YtDlp.RunAsync(arguments, progress, cancellationToken);
+            }
+            catch (Exception ex)
+                when (!string.IsNullOrWhiteSpace(cookieFilePath)
+                    && (
+                        ex.Message.Contains("cookie", StringComparison.OrdinalIgnoreCase)
+                        || ex.Message.Contains("Netscape", StringComparison.OrdinalIgnoreCase)
+                    )
+                )
+            {
+                var fallbackArguments = new List<string>(arguments);
+                var cookieIdx = fallbackArguments.IndexOf("--cookies");
+                if (cookieIdx >= 0)
+                {
+                    fallbackArguments.RemoveAt(cookieIdx + 1);
+                    fallbackArguments.RemoveAt(cookieIdx);
+                }
+                await YtDlp.RunAsync(fallbackArguments, progress, cancellationToken);
+            }
         }
         catch (Exception ex)
-            when (!string.IsNullOrWhiteSpace(cookieFilePath)
-                && (
-                    ex.Message.Contains("cookie", StringComparison.OrdinalIgnoreCase)
-                    || ex.Message.Contains("Netscape", StringComparison.OrdinalIgnoreCase)
+            when (ex.Message.Contains("paid_collection_age", StringComparison.OrdinalIgnoreCase)
+                || ex.Message.Contains(
+                    "blocked from accessing this post",
+                    StringComparison.OrdinalIgnoreCase
                 )
+                || ex.Message.Contains("status code: 10204", StringComparison.OrdinalIgnoreCase)
+                || ex.Message.Contains("No video formats found", StringComparison.OrdinalIgnoreCase)
             )
         {
-            var fallbackArguments = new List<string>(arguments);
-            var cookieIdx = fallbackArguments.IndexOf("--cookies");
-            if (cookieIdx >= 0)
-            {
-                fallbackArguments.RemoveAt(cookieIdx + 1);
-                fallbackArguments.RemoveAt(cookieIdx);
-            }
-            await YtDlp.RunAsync(fallbackArguments, progress, cancellationToken);
+            throw new InvalidOperationException(
+                "This TikTok video or short drama episode is locked (paid) or requires account authentication. "
+                    + "Please log in to your TikTok account in 855Media Settings (or provide a cookies.txt file) to access locked episodes.",
+                ex
+            );
         }
         finally
         {
@@ -104,6 +128,8 @@ public class TikTokDownloader(IReadOnlyList<Cookie>? initialCookies = null)
             "--no-playlist",
             "--paths",
             "temp:.tmp",
+            "--extractor-args",
+            "tiktok:api_hostname=api22-normal-c-useast2a.tiktokv.com",
         };
 
         if (!string.IsNullOrWhiteSpace(cookieFilePath))
@@ -249,30 +275,13 @@ public class TikTokDownloader(IReadOnlyList<Cookie>? initialCookies = null)
         }
 
         // Fallback to local cookie files if present
-        var candidatePaths = new[]
+        var localCookie = _855Media.Core.Utils.CookieUtils.TryFindCookieFile(
+            "tiktok_cookies.txt",
+            "cookies.txt"
+        );
+        if (!string.IsNullOrWhiteSpace(localCookie))
         {
-            Path.Combine(AppContext.BaseDirectory, "tiktok_cookies.txt"),
-            Path.Combine(AppContext.BaseDirectory, "cookies.txt"),
-            Path.Combine(Directory.GetCurrentDirectory(), "tiktok_cookies.txt"),
-            Path.Combine(Directory.GetCurrentDirectory(), "cookies.txt"),
-            Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "855Media",
-                "tiktok_cookies.txt"
-            ),
-            Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "855Media",
-                "cookies.txt"
-            ),
-        };
-
-        foreach (var candidate in candidatePaths.Distinct())
-        {
-            if (File.Exists(candidate) && new FileInfo(candidate).Length > 0)
-            {
-                return (candidate, false);
-            }
+            return (localCookie, false);
         }
 
         return (null, false);

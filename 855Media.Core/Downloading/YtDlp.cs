@@ -200,8 +200,20 @@ public static partial class YtDlp
         process.StartInfo.CreateNoWindow = true;
         process.StartInfo.RedirectStandardOutput = true;
         process.StartInfo.RedirectStandardError = true;
+        process.StartInfo.StandardOutputEncoding = Encoding.UTF8;
+        process.StartInfo.StandardErrorEncoding = Encoding.UTF8;
 
         process.StartInfo.ArgumentList.Add("--no-update");
+
+        if (!arguments.Any(a => a.Contains("js-runtimes", StringComparison.OrdinalIgnoreCase)))
+        {
+            var jsRuntime = TryFindJsRuntime();
+            if (!string.IsNullOrWhiteSpace(jsRuntime))
+            {
+                process.StartInfo.ArgumentList.Add("--js-runtimes");
+                process.StartInfo.ArgumentList.Add($"node:{jsRuntime}");
+            }
+        }
 
         foreach (var argument in arguments)
             process.StartInfo.ArgumentList.Add(argument);
@@ -310,12 +322,32 @@ public static partial class YtDlp
     )
     {
         if (cookies?.Any() != true)
+        {
+            var fallback = _855Media.Core.Utils.CookieUtils.TryFindCookieFile(
+                "cookies.txt",
+                "tiktok_cookies.txt"
+            );
+            if (!string.IsNullOrWhiteSpace(fallback))
+            {
+                return (fallback, false);
+            }
             return (null, false);
+        }
 
         var validCookies = cookies.Where(c => !string.IsNullOrWhiteSpace(c.Name)).ToArray();
 
         if (validCookies.Length == 0)
+        {
+            var fallback = _855Media.Core.Utils.CookieUtils.TryFindCookieFile(
+                "cookies.txt",
+                "tiktok_cookies.txt"
+            );
+            if (!string.IsNullOrWhiteSpace(fallback))
+            {
+                return (fallback, false);
+            }
             return (null, false);
+        }
 
         var cookieFilePath = Path.Combine(
             Path.GetTempPath(),
@@ -553,5 +585,44 @@ public static partial class YtDlp
                 }
             }
         }
+    }
+
+    public static string? TryFindJsRuntime()
+    {
+        var candidates = new[]
+        {
+            @"C:\Program Files\nodejs\node.exe",
+            @"C:\Program Files (x86)\nodejs\node.exe",
+            Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                "AppData",
+                "Roaming",
+                "npm",
+                "node.exe"
+            ),
+            Path.Combine(AppContext.BaseDirectory, "node", "node.exe"),
+            Path.Combine(AppContext.BaseDirectory, "node.exe"),
+        };
+
+        foreach (var path in candidates)
+        {
+            if (File.Exists(path))
+                return path;
+        }
+
+        var pathEnv = Environment.GetEnvironmentVariable("PATH");
+        if (!string.IsNullOrWhiteSpace(pathEnv))
+        {
+            foreach (
+                var dir in pathEnv.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+            )
+            {
+                var candidate = Path.Combine(dir.Trim(), "node.exe");
+                if (File.Exists(candidate))
+                    return candidate;
+            }
+        }
+
+        return null;
     }
 }

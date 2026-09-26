@@ -505,6 +505,13 @@ public partial class DashboardViewModel : ViewModelBase
 
             using var access = await _downloadSemaphore.AcquireAsync(download.CancellationToken);
 
+            if (!string.IsNullOrWhiteSpace(download.FilePath))
+            {
+                download.FilePath = _855Media.Core.Utils.FileUtils.SanitizeFilePath(
+                    download.FilePath
+                );
+            }
+
             download.Status = DownloadStatus.Started;
 
             var translateCaptions =
@@ -1029,14 +1036,14 @@ public partial class DashboardViewModel : ViewModelBase
                 currentPhoto = photo with { Title = translatedTitle };
             }
 
-            var baseFilePath = Path.Combine(
-                dirPath,
-                FileNameTemplate.Apply(
-                    _settingsService.FileNameTemplate,
-                    currentPhoto,
-                    new YoutubeExplode.Videos.Streams.Container("jpg"),
-                    (i + 1).ToString().PadLeft(photos.Length.ToString().Length, '0')
-                )
+            var rawFileName = FileNameTemplate.Apply(
+                _settingsService.FileNameTemplate,
+                currentPhoto,
+                new YoutubeExplode.Videos.Streams.Container("jpg"),
+                (i + 1).ToString().PadLeft(photos.Length.ToString().Length, '0')
+            );
+            var baseFilePath = _855Media.Core.Utils.FileUtils.SanitizeFilePath(
+                Path.Combine(dirPath, rawFileName)
             );
 
             if (_settingsService.ShouldSkipExistingFiles && File.Exists(baseFilePath))

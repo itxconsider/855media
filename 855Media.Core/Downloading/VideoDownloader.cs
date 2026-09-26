@@ -85,6 +85,7 @@ public class VideoDownloader(IReadOnlyList<Cookie>? initialCookies = null) : IDi
         CancellationToken cancellationToken = default
     )
     {
+        filePath = FileUtils.SanitizeFilePath(filePath);
         var dirPath = Path.GetDirectoryName(filePath);
         if (!string.IsNullOrWhiteSpace(dirPath))
             Directory.CreateDirectory(dirPath);
@@ -662,44 +663,7 @@ public class VideoDownloader(IReadOnlyList<Cookie>? initialCookies = null) : IDi
         return arguments;
     }
 
-    private static string? TryFindJsRuntime()
-    {
-        var candidates = new[]
-        {
-            @"C:\Program Files\nodejs\node.exe",
-            @"C:\Program Files (x86)\nodejs\node.exe",
-            Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-                "AppData",
-                "Roaming",
-                "npm",
-                "node.exe"
-            ),
-            Path.Combine(AppContext.BaseDirectory, "node", "node.exe"),
-            Path.Combine(AppContext.BaseDirectory, "node.exe"),
-        };
-
-        foreach (var path in candidates)
-        {
-            if (File.Exists(path))
-                return path;
-        }
-
-        var pathEnv = Environment.GetEnvironmentVariable("PATH");
-        if (!string.IsNullOrWhiteSpace(pathEnv))
-        {
-            foreach (
-                var dir in pathEnv.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
-            )
-            {
-                var candidate = Path.Combine(dir.Trim(), "node.exe");
-                if (File.Exists(candidate))
-                    return candidate;
-            }
-        }
-
-        return null;
-    }
+    private static string? TryFindJsRuntime() => YtDlp.TryFindJsRuntime();
 
     public void Dispose() => _youtube.Dispose();
 }

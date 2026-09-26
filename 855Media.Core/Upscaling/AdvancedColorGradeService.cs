@@ -124,7 +124,9 @@ public static class AdvancedColorGradeService
         if (settings.Vignette > 0.01)
         {
             double angle = Math.Clamp(settings.Vignette * 0.45, 0.05, 0.45);
-            filters.Add(string.Create(CultureInfo.InvariantCulture, $"vignette=PI*{angle:F3}"));
+            filters.Add(
+                string.Create(CultureInfo.InvariantCulture, $"vignette=PI*{angle:F3}:dither=0")
+            );
         }
 
         // 9. Custom 3D LUT (.cube file) with Opacity Blending
@@ -146,6 +148,11 @@ public static class AdvancedColorGradeService
                     )
                 );
             }
+        }
+
+        if (filters.Count > 0)
+        {
+            filters.Add("format=yuv420p");
         }
 
         return filters.Count > 0 ? string.Join(",", filters) : null;

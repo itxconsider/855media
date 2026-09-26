@@ -1684,7 +1684,7 @@ public partial class VideoUpscaleService
 
         if (useNvenc)
         {
-            var hwArgs = new[] { "-hwaccel", "auto" };
+            var hwArgs = new[] { "-hwaccel", "cuda" };
             string nvencPreset = speedMode switch
             {
                 RenderSpeedMode.TurboFast => "p2",

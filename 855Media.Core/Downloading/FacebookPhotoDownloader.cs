@@ -41,6 +41,7 @@ public class FacebookPhotoDownloader
         if (imageUrls.Count == 0)
             throw new InvalidOperationException("No image URL available for this Facebook photo.");
 
+        filePath = _855Media.Core.Utils.FileUtils.SanitizeFilePath(filePath);
         var dirPath = Path.GetDirectoryName(filePath);
         if (!string.IsNullOrWhiteSpace(dirPath))
             Directory.CreateDirectory(dirPath);

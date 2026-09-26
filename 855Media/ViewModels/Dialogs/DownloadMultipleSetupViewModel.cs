@@ -272,14 +272,14 @@ public partial class DownloadMultipleSetupViewModel(
                 currentVideo = video with { Title = translatedTitle };
             }
 
-            var baseFilePath = Path.Combine(
-                dirPath,
-                FileNameTemplate.Apply(
-                    settingsService.FileNameTemplate,
-                    currentVideo,
-                    SelectedContainer,
-                    (i + 1).ToString().PadLeft(selected.Count.ToString().Length, '0')
-                )
+            var rawFileName = FileNameTemplate.Apply(
+                settingsService.FileNameTemplate,
+                currentVideo,
+                SelectedContainer,
+                (i + 1).ToString().PadLeft(selected.Count.ToString().Length, '0')
+            );
+            var baseFilePath = _855Media.Core.Utils.FileUtils.SanitizeFilePath(
+                Path.Combine(dirPath, rawFileName)
             );
 
             if (settingsService.ShouldSkipExistingFiles && File.Exists(baseFilePath))
@@ -322,8 +322,10 @@ public partial class DownloadMultipleSetupViewModel(
                     ext = ".webp";
 
                 var safeName = !string.IsNullOrWhiteSpace(AuthorName)
-                    ? Path.GetInvalidFileNameChars()
-                        .Aggregate(AuthorName, (current, c) => current.Replace(c, '_'))
+                    ? _855Media.Core.Utils.FileUtils.SanitizeFileName(
+                        AuthorName,
+                        fallback: "profile"
+                    )
                     : "profile";
 
                 var avatarFileName = $"{safeName}_profile{ext}";

@@ -264,8 +264,9 @@ public partial class UnifiedDownloaderViewModel : ViewModelBase
             else if (avatarUrl.Contains(".webp", StringComparison.OrdinalIgnoreCase))
                 ext = ".webp";
 
-            var safeName = Path.GetInvalidFileNameChars()
-                .Aggregate(authorName, (c, ch) => c.Replace(ch, '_'));
+            var safeName = !string.IsNullOrWhiteSpace(authorName)
+                ? _855Media.Core.Utils.FileUtils.SanitizeFileName(authorName, fallback: "profile")
+                : "profile";
             var targetPath = Path.Combine(dirPath, $"{safeName}_avatar{ext}");
             targetPath = Path.EnsureUniqueFilePath(targetPath);
 

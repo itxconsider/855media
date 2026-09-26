@@ -28,6 +28,7 @@ public class DramaBoxDownloader(IReadOnlyList<Cookie>? initialCookies = null)
         VideoDownloadPreference? downloadPreference = null
     )
     {
+        filePath = _855Media.Core.Utils.FileUtils.SanitizeFilePath(filePath);
         var dirPath = Path.GetDirectoryName(filePath);
         if (!string.IsNullOrWhiteSpace(dirPath))
             Directory.CreateDirectory(dirPath);

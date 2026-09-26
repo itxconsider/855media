@@ -64,7 +64,7 @@ public class DialogManager : IDisposable
         );
 
         var file = result.FirstOrDefault();
-        return file?.TryGetLocalPath() ?? file?.Path.ToString();
+        return ResolveLocalPath(file);
     }
 
     public async Task<IReadOnlyList<string>> PromptOpenFilePathsAsync(
@@ -80,8 +80,9 @@ public class DialogManager : IDisposable
         );
 
         return result
-            .Select(f => f.TryGetLocalPath() ?? f.Path.ToString())
+            .Select(ResolveLocalPath)
             .Where(p => !string.IsNullOrWhiteSpace(p))
+            .Select(p => p!)
             .ToArray();
     }
 
@@ -94,16 +95,26 @@ public class DialogManager : IDisposable
             Application.Current?.ApplicationLifetime?.TryGetTopLevel()
             ?? throw new ApplicationException("Could not find the top-level visual element.");
 
+        var dirPart = Path.GetDirectoryName(defaultFilePath);
+        var filePart = Path.GetFileName(defaultFilePath);
+        var safeFileName = _855Media.Core.Utils.FileUtils.SanitizeFileName(
+            filePart,
+            fallback: "video"
+        );
+
         var file = await topLevel.StorageProvider.SaveFilePickerAsync(
             new FilePickerSaveOptions
             {
                 FileTypeChoices = fileTypes,
-                SuggestedFileName = defaultFilePath,
+                SuggestedFileName = safeFileName,
                 DefaultExtension = Path.GetExtension(defaultFilePath).TrimStart('.'),
             }
         );
 
-        return file?.TryGetLocalPath() ?? file?.Path.ToString();
+        var path = ResolveLocalPath(file);
+        return !string.IsNullOrWhiteSpace(path)
+            ? _855Media.Core.Utils.FileUtils.SanitizeFilePath(path)
+            : null;
     }
 
     public async Task<string?> PromptDirectoryPathAsync(string defaultDirPath = "")
@@ -126,7 +137,26 @@ public class DialogManager : IDisposable
         if (directory is null)
             return null;
 
-        return directory.TryGetLocalPath() ?? directory.Path.ToString();
+        return ResolveLocalPath(directory);
+    }
+
+    private static string? ResolveLocalPath(IStorageItem? item)
+    {
+        if (item is null)
+            return null;
+
+        if (item.TryGetLocalPath() is { } localPath && !string.IsNullOrWhiteSpace(localPath))
+            return localPath;
+
+        if (item.Path is { } uri)
+        {
+            if (uri.IsFile)
+                return uri.LocalPath;
+
+            return Uri.UnescapeDataString(uri.AbsolutePath);
+        }
+
+        return null;
     }
 
     public void Dispose() => _dialogLock.Dispose();

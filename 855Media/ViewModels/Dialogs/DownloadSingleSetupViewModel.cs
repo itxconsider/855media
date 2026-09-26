@@ -168,6 +168,8 @@ public partial class DownloadSingleSetupViewModel(
         if (string.IsNullOrWhiteSpace(filePath))
             return;
 
+        filePath = _855Media.Core.Utils.FileUtils.SanitizeFilePath(filePath);
+
         // Download does not start immediately, so lock in the file path to avoid conflicts
         Directory.CreateForFile(filePath);
         await File.WriteAllBytesAsync(filePath, []);
@@ -204,8 +206,10 @@ public partial class DownloadSingleSetupViewModel(
                         ext = ".webp";
 
                     var safeName = !string.IsNullOrWhiteSpace(AuthorName)
-                        ? Path.GetInvalidFileNameChars()
-                            .Aggregate(AuthorName, (current, c) => current.Replace(c, '_'))
+                        ? _855Media.Core.Utils.FileUtils.SanitizeFileName(
+                            AuthorName,
+                            fallback: "profile"
+                        )
                         : "profile";
 
                     var avatarPath = Path.Combine(folder, $"{safeName}_profile{ext}");
