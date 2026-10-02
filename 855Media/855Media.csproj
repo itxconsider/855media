@@ -33,16 +33,6 @@
 
   <ItemGroup>
     <Content
-      Include="../facebook-bulk-downloader-v1/**/*"
-      Link="extensions/facebook-bulk-downloader-v1/%(RecursiveDir)%(Filename)%(Extension)"
-      CopyToOutputDirectory="PreserveNewest"
-    />
-    <Content
-      Include="../facebook-photo-exporter/**/*"
-      Link="extensions/facebook-photo-exporter/%(RecursiveDir)%(Filename)%(Extension)"
-      CopyToOutputDirectory="PreserveNewest"
-    />
-    <Content
       Include="../tools/realesrgan/**/*"
       Link="tools/realesrgan/%(RecursiveDir)%(Filename)%(Extension)"
       CopyToOutputDirectory="PreserveNewest"

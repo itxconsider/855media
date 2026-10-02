@@ -21,6 +21,10 @@ dist/
 # Logs and scratch files
 run_output.txt
 *.log
+scratch/
+__pycache__/
+*.pyc
+*.pyo
 
 # Avalonia
 .avalonia-build-tasks/

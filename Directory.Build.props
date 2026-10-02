@@ -2,8 +2,8 @@
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <Version>999.9.9-dev</Version>
-    <Company>Tyrrrz</Company>
-    <Copyright>Copyright (C) Oleksii Holub</Copyright>
+    <Company>855Media</Company>
+    <Copyright>Copyright (C) 855Media</Copyright>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>

@@ -1,6 +1,6 @@
 @echo off
 title LDPlayer Storage Optimizer
-cd /d "%~dp0tools\ld_optimizer"
+cd /d "%~dp0"
 
 if exist "C:\Applio-3.6.4\env\python.exe" (
     start "" "C:\Applio-3.6.4\env\python.exe" ld_optimizer_app.py
