@@ -16,6 +16,7 @@ namespace _855Media.Core.Resolving;
 public class QueryResolver(IReadOnlyList<Cookie>? initialCookies = null) : IDisposable
 {
     private readonly YoutubeClient _youtube = new(Http.Client, initialCookies ?? []);
+    private readonly YouTubeQueryResolver _youTubeResolver = new(initialCookies);
     private readonly TikTokQueryResolver _tikTok = new(initialCookies);
     private readonly FacebookQueryResolver _facebook = new();
     private readonly DramaBoxQueryResolver _dramaBox = new(initialCookies);
@@ -137,6 +138,20 @@ public class QueryResolver(IReadOnlyList<Cookie>? initialCookies = null) : IDisp
         CancellationToken cancellationToken = default
     )
     {
+        try
+        {
+            var searchResult = await _youTubeResolver.TryResolveSearchAsync(
+                query,
+                cancellationToken
+            );
+            if (searchResult is not null)
+                return searchResult;
+        }
+        catch
+        {
+            // Fall back to YoutubeExplode
+        }
+
         var videos = await _youtube
             .Search.GetVideosAsync(query, cancellationToken)
             .CollectAsync(20);
@@ -171,6 +186,20 @@ public class QueryResolver(IReadOnlyList<Cookie>? initialCookies = null) : IDisp
 
         if (DramaBoxQueryResolver.IsDramaBoxQuery(query))
             return await _dramaBox.ResolveAsync(query, cancellationToken);
+
+        if (YouTubeQueryResolver.IsYouTubeChannelOrPlaylistQuery(query))
+        {
+            try
+            {
+                var ytResult = await _youTubeResolver.TryResolveAsync(query, cancellationToken);
+                if (ytResult is not null)
+                    return ytResult;
+            }
+            catch
+            {
+                // Fall back to YoutubeExplode
+            }
+        }
 
         return await TryResolvePlaylistAsync(query, cancellationToken)
             ?? await TryResolveVideoAsync(query, cancellationToken)

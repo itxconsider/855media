@@ -31,6 +31,7 @@ public class KhmerTtsService
         string rate = "+15%",
         string pitch = "+0Hz",
         string volume = "+0%",
+        string? referenceAudioPath = null,
         CancellationToken cancellationToken = default
     )
     {
@@ -41,7 +42,35 @@ public class KhmerTtsService
         if (!string.IsNullOrWhiteSpace(dir))
             Directory.CreateDirectory(dir);
 
-        // 0. If Google Khmer Voice was selected explicitly, synthesize via Google TTS
+        // 0. If VoxCPM2 Local AI Voice was selected, synthesize via local RTX 5070 Ti VoxCPM2 runner
+        if (voiceName.Contains("voxcpm", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var voxCpm = new VoxCpmService();
+                var success = await voxCpm.SynthesizeSpeechAsync(
+                    text: text,
+                    outputPath: outputMp3Path,
+                    referenceAudioPath: referenceAudioPath,
+                    timesteps: 10,
+                    cfg: 2.0f,
+                    cancellationToken: cancellationToken
+                );
+                if (
+                    success
+                    && File.Exists(outputMp3Path)
+                    && new FileInfo(outputMp3Path).Length > 100
+                )
+                    return;
+            }
+            catch
+            {
+                // Fall back gracefully to Microsoft Edge-TTS if VoxCPM runner encounters an issue
+                voiceName = "km-KH-PisethNeural";
+            }
+        }
+
+        // 0.1 If Google Khmer Voice was selected explicitly, synthesize via Google TTS
         if (voiceName.Contains("google", StringComparison.OrdinalIgnoreCase))
         {
             try

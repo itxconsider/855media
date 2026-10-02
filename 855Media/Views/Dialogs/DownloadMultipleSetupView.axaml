@@ -12,6 +12,37 @@
     MinWidth="552"
     MaxWidth="1080"
     x:DataType="dialogs:DownloadMultipleSetupViewModel">
+    <UserControl.Styles>
+        <Style Selector="Button.toolbar-pill">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource AntigravityMutedBrush}" />
+            <Setter Property="Padding" Value="9,3" />
+            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="MinHeight" Value="24" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Style Selector="^:pointerover">
+                <Setter Property="Background" Value="#1AFFFFFF" />
+                <Setter Property="Foreground" Value="{DynamicResource AntigravityTextBrush}" />
+            </Style>
+            <Style Selector="^.active">
+                <Setter Property="Background" Value="{DynamicResource AntigravityAccentBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource AntigravityAccentForegroundBrush}" />
+            </Style>
+        </Style>
+
+        <Style Selector="Border.pill-group">
+            <Setter Property="Background" Value="#0AFFFFFF" />
+            <Setter Property="BorderBrush" Value="{DynamicResource AntigravityBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="16" />
+            <Setter Property="Padding" Value="2" />
+        </Style>
+    </UserControl.Styles>
+
     <Grid RowDefinitions="Auto,Auto,Auto,*,Auto,Auto">
         <!--  Title & Profile Header  -->
         <StackPanel Grid.Row="0" Margin="16,16,16,8" Spacing="10">
@@ -128,26 +159,155 @@
             </StackPanel>
         </Grid>
 
-        <!--  Quick selection  -->
-        <StackPanel
+        <!--  Modern Selection Toolbar  -->
+        <Border
             Grid.Row="2"
-            Margin="16,0,16,8"
-            Orientation="Horizontal"
-            Spacing="8">
-            <TextBlock VerticalAlignment="Center" Text="Quick select:" />
-            <Button
-                Command="{Binding SelectTop5Command}"
-                Content="Top 5"
-                Theme="{DynamicResource MaterialOutlineButton}" />
-            <Button
-                Command="{Binding SelectTop10Command}"
-                Content="Top 10"
-                Theme="{DynamicResource MaterialOutlineButton}" />
-            <Button
-                Command="{Binding SelectTop20Command}"
-                Content="Top 20"
-                Theme="{DynamicResource MaterialOutlineButton}" />
-        </StackPanel>
+            Margin="16,0,16,10"
+            Padding="10,6"
+            Background="{DynamicResource AntigravityElevatedBrush}"
+            BorderBrush="{DynamicResource AntigravityBorderBrush}"
+            BorderThickness="1"
+            CornerRadius="10">
+            <WrapPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <!-- Group 1: Quick Select (Take Presets) -->
+                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,2,12,2">
+                    <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                        <materialIcons:MaterialIcon Kind="CheckboxMultipleMarkedOutline" Width="14" Height="14" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                        <TextBlock Text="Select:" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <Border Classes="pill-group">
+                        <StackPanel Orientation="Horizontal" Spacing="1">
+                            <Button
+                                Command="{Binding SelectTop5Command}"
+                                Classes="toolbar-pill"
+                                Classes.active="{Binding IsTake5Active}"
+                                Theme="{DynamicResource MaterialFlatButton}"
+                                Content="Top 5" />
+                            <Button
+                                Command="{Binding SelectTop10Command}"
+                                Classes="toolbar-pill"
+                                Classes.active="{Binding IsTake10Active}"
+                                Theme="{DynamicResource MaterialFlatButton}"
+                                Content="Top 10" />
+                            <Button
+                                Command="{Binding SelectTop20Command}"
+                                Classes="toolbar-pill"
+                                Classes.active="{Binding IsTake20Active}"
+                                Theme="{DynamicResource MaterialFlatButton}"
+                                Content="Top 20" />
+                            <Button
+                                Command="{Binding SelectTop50Command}"
+                                Classes="toolbar-pill"
+                                Classes.active="{Binding IsTake50Active}"
+                                Theme="{DynamicResource MaterialFlatButton}"
+                                Content="Top 50" />
+                            <Button
+                                Command="{Binding SelectAllCommand}"
+                                Classes="toolbar-pill"
+                                Classes.active="{Binding IsTakeAllActive}"
+                                Theme="{DynamicResource MaterialFlatButton}"
+                                Content="All" />
+                            <Button
+                                Command="{Binding ClearSelectionCommand}"
+                                Classes="toolbar-pill"
+                                Classes.active="{Binding IsTakeNoneActive}"
+                                Theme="{DynamicResource MaterialFlatButton}"
+                                Content="None" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- Divider -->
+                <Rectangle Width="1" Height="22" Margin="0,0,12,0" VerticalAlignment="Center" Fill="{DynamicResource AntigravityBorderBrush}" />
+
+                <!-- Group 2: Skip Offset -->
+                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,2,12,2">
+                    <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                        <materialIcons:MaterialIcon Kind="FastForwardOutline" Width="14" Height="14" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                        <TextBlock Text="Skip:" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <Border Classes="pill-group">
+                        <StackPanel Orientation="Horizontal" Spacing="1">
+                            <Button
+                                Command="{Binding SkipNoneCommand}"
+                                Classes="toolbar-pill"
+                                Classes.active="{Binding IsSkipNoneActive}"
+                                Theme="{DynamicResource MaterialFlatButton}"
+                                Content="None" />
+                            <Button
+                                Command="{Binding Skip10Command}"
+                                Classes="toolbar-pill"
+                                Classes.active="{Binding IsSkip10Active}"
+                                Theme="{DynamicResource MaterialFlatButton}"
+                                Content="10" />
+                            <Button
+                                Command="{Binding Skip20Command}"
+                                Classes="toolbar-pill"
+                                Classes.active="{Binding IsSkip20Active}"
+                                Theme="{DynamicResource MaterialFlatButton}"
+                                Content="20" />
+                            <Button
+                                Command="{Binding Skip50Command}"
+                                Classes="toolbar-pill"
+                                Classes.active="{Binding IsSkip50Active}"
+                                Theme="{DynamicResource MaterialFlatButton}"
+                                Content="50" />
+
+                            <Rectangle Width="1" Height="16" Margin="4,0" VerticalAlignment="Center" Fill="{DynamicResource AntigravityBorderBrush}" />
+
+                            <NumericUpDown
+                                Width="76"
+                                Height="24"
+                                Margin="2,0,2,0"
+                                VerticalAlignment="Center"
+                                FontSize="12"
+                                FormatString="0"
+                                Increment="5"
+                                Maximum="10000"
+                                Minimum="0"
+                                ToolTip.Tip="Custom skip offset"
+                                Value="{Binding CustomSkipCount}" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- Divider -->
+                <Rectangle Width="1" Height="22" Margin="0,0,12,0" VerticalAlignment="Center" Fill="{DynamicResource AntigravityBorderBrush}" />
+
+                <!-- Group 3: Custom Take -->
+                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,2,0,2">
+                    <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                        <materialIcons:MaterialIcon Kind="Numeric" Width="14" Height="14" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                        <TextBlock Text="Take:" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <Border Classes="pill-group">
+                        <StackPanel Orientation="Horizontal" Spacing="3">
+                            <NumericUpDown
+                                Width="76"
+                                Height="24"
+                                Margin="2,0,0,0"
+                                VerticalAlignment="Center"
+                                FontSize="12"
+                                FormatString="0"
+                                Increment="5"
+                                Maximum="10000"
+                                Minimum="1"
+                                ToolTip.Tip="Custom number of videos to take"
+                                Value="{Binding CustomTakeCount}" />
+                            <Button
+                                Command="{Binding SelectCustomTakeCommand}"
+                                Classes="toolbar-pill"
+                                Classes.active="{Binding IsTakeCustomActive}"
+                                Theme="{DynamicResource MaterialFlatButton}"
+                                Content="Apply" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </WrapPanel>
+        </Border>
 
         <!--  Videos  -->
         <Border

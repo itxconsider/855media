@@ -7,9 +7,12 @@ public enum SmartTrackingMode
     [Display(Name = "Static Center (Classic)")]
     StaticCenter,
 
-    [Display(Name = "Active Motion Centroid")]
-    MotionCentroid,
+    [Display(Name = "Smart Object Focus (Auto Reframe)")]
+    ObjectFocus,
 
     [Display(Name = "Face & Subject Priority")]
     FacePriority,
+
+    [Display(Name = "Active Motion Centroid")]
+    MotionCentroid,
 }

@@ -120,10 +120,10 @@ public static class AdvancedColorGradeService
             filters.Add($"noise=alls={grainIntensity}:allf=t+u");
         }
 
-        // 8. Vignette (0.0 to 1.0)
-        if (settings.Vignette > 0.01)
+        // 8. Vignette (0.0 to 1.0) - Gentle cinema lens edge falloff without blackout clipping
+        if (settings.Vignette > 0.05)
         {
-            double angle = Math.Clamp(settings.Vignette * 0.45, 0.05, 0.45);
+            double angle = 0.12 + (Math.Clamp(settings.Vignette, 0.0, 1.0) * 0.08);
             filters.Add(
                 string.Create(CultureInfo.InvariantCulture, $"vignette=PI*{angle:F3}:dither=0")
             );

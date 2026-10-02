@@ -46,6 +46,7 @@ public class SmartTrackingTests
         0.40,
         "max(0,min(iw-out_w,iw*0.720-out_w/2))"
     )]
+    [InlineData(SmartTrackingMode.ObjectFocus, 0.65, 0.35, "max(0,min(iw-out_w,iw*0.650-out_w/2))")]
     public void AspectRatioFilterBuilder_SmartTracking_ProducesActionAnchoredX(
         SmartTrackingMode mode,
         double centroidX,
@@ -217,5 +218,112 @@ public class SmartTrackingTests
         );
 
         Assert.True(isCut);
+    }
+
+    [Fact]
+    public void AspectRatioFilterBuilder_Vertical916Crop_WithTenPercentZoom_ProducesPointNineCropWith2DTracking()
+    {
+        var filter = AspectRatioFilterBuilder.BuildFilter(
+            AspectRatioMode.Vertical916Crop,
+            UpscaleTargetResolution.Hd1080p,
+            SmartTrackingMode.ObjectFocus,
+            actionCentroidX: 0.65,
+            actionCentroidY: 0.35,
+            zoomPercent: 10.0 // 0.9x factor
+        );
+
+        Assert.NotNull(filter);
+        Assert.Contains("crop=w='min(iw,ih*9/16)*0.9':h='min(ih,iw*16/9)*0.9'", filter);
+        Assert.Contains("x='max(0,min(iw-out_w,iw*0.650-out_w/2))'", filter);
+        Assert.Contains("y='max(0,min(ih-out_h,ih*0.350-out_h/2))'", filter);
+        Assert.Contains("scale=1080:1920:flags=lanczos", filter);
+    }
+
+    [Fact]
+    public void AspectRatioFilterBuilder_BuildMicroZoomFilter_TenPercent_ProducesFactorPointNine()
+    {
+        var filter = AspectRatioFilterBuilder.BuildMicroZoomFilter(
+            zoomPercent: 10.0,
+            zoomMode: SmartZoomMode.ActionAnchored,
+            actionCentroidX: 0.40,
+            actionCentroidY: 0.60
+        );
+
+        Assert.NotNull(filter);
+        Assert.Contains("crop=w='iw*0.9':h='ih*0.9'", filter);
+        Assert.Contains("x='max(0,min(iw-out_w,iw*0.400-out_w/2))'", filter);
+        Assert.Contains("y='max(0,min(ih-out_h,ih*0.600-out_h/2))'", filter);
+    }
+
+    [Fact]
+    public void SmartActionAnalyzer_DetectSalientObjectCentroid_WithSharpHighContrastObject_FindsCentroid()
+    {
+        int width = 100;
+        int height = 100;
+        byte[] frame = new byte[width * height * 3];
+
+        // Background: smooth dark green / uniform foliage (B: 20, G: 60, R: 20)
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int p = (y * width + x) * 3;
+                frame[p] = 20;
+                frame[p + 1] = 60;
+                frame[p + 2] = 20;
+            }
+        }
+
+        // Focused high-contrast, high-gradient object on right (x: 70..85, y: 30..45)
+        // Checkered alternating bright/dark sharp edges to simulate rich detail and contrast
+        for (int y = 30; y <= 45; y++)
+        {
+            for (int x = 70; x <= 85; x++)
+            {
+                int p = (y * width + x) * 3;
+                bool alt = ((x + y) % 2) == 0;
+                frame[p] = alt ? (byte)255 : (byte)10;
+                frame[p + 1] = alt ? (byte)240 : (byte)20;
+                frame[p + 2] = alt ? (byte)255 : (byte)10;
+            }
+        }
+
+        var (cx, cy, isCut) = SmartActionAnalyzer.DetectSalientObjectCentroid(frame, width, height);
+
+        Assert.False(isCut);
+        // Centroid of sharp object should be centered in the object bounds x ~ 0.77, y ~ 0.37
+        Assert.InRange(cx, 0.65, 0.90);
+        Assert.InRange(cy, 0.25, 0.50);
+    }
+
+    [Fact]
+    public void SmartActionAnalyzer_AnalyzeFrame_ObjectFocus_TracksSalientObject()
+    {
+        int width = 100;
+        int height = 100;
+        byte[] frame = new byte[width * height * 3];
+
+        // Sharp colorful object centered at (x: 25, y: 35)
+        for (int y = 25; y <= 45; y++)
+        {
+            for (int x = 15; x <= 35; x++)
+            {
+                int p = (y * width + x) * 3;
+                frame[p] = 255;
+                frame[p + 1] = 10;
+                frame[p + 2] = 230; // Bright magenta
+            }
+        }
+
+        var (cx, cy, isCut) = SmartActionAnalyzer.AnalyzeFrame(
+            frame,
+            width,
+            height,
+            SmartTrackingMode.ObjectFocus
+        );
+
+        Assert.False(isCut);
+        Assert.InRange(cx, 0.15, 0.35);
+        Assert.InRange(cy, 0.25, 0.45);
     }
 }

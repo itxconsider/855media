@@ -52,6 +52,11 @@
       Link="tools/whisper/%(RecursiveDir)%(Filename)%(Extension)"
       CopyToOutputDirectory="PreserveNewest"
     />
+    <Content
+      Include="../tools/voxcpm_tts.py"
+      Link="tools/voxcpm_tts.py"
+      CopyToOutputDirectory="PreserveNewest"
+    />
   </ItemGroup>
 
   <ItemGroup>

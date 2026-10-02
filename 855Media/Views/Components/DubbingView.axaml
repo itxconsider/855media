@@ -333,7 +333,21 @@
                                 </Border>
                             </StackPanel>
 
-                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="3">
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
+                                <Button
+                                    Command="{Binding StartTimelineReviewCommand}"
+                                    Theme="{DynamicResource MaterialOutlineButton}"
+                                    Padding="6,2"
+                                    Height="22"
+                                    CornerRadius="4"
+                                    BorderBrush="#38BDF8"
+                                    Foreground="#38BDF8"
+                                    ToolTip.Tip="Launch Dual-Audio Review Session">
+                                    <StackPanel Orientation="Horizontal" Spacing="3">
+                                        <materialIcons:MaterialIcon Kind="MoviePlayOutline" Width="12" Height="12" Foreground="#38BDF8" />
+                                        <TextBlock Text="Review" FontSize="9" FontWeight="Bold" />
+                                    </StackPanel>
+                                </Button>
                                 <Button
                                     Command="{Binding PlayFullMovieCommand}"
                                     Theme="{DynamicResource MaterialFlatButton}"
@@ -1334,35 +1348,130 @@
                             </TabItem.Header>
 
                             <Grid RowDefinitions="Auto,*" Margin="0,8,0,0">
-                                <!-- Timeline Zoom & Nudge Toolbar -->
+                                <!-- Timeline Review Transport & Dual-Audio Mixer Toolbar -->
                                 <Border
                                     Grid.Row="0"
-                                    Background="#0F172A"
+                                    Background="#0B132B"
                                     BorderBrush="{DynamicResource AntigravityBorderBrush}"
                                     BorderThickness="1"
                                     CornerRadius="6"
                                     Padding="10,6"
                                     Margin="0,0,0,8">
                                     <Grid ColumnDefinitions="Auto,*,Auto">
-                                        <!-- Active Segment Indicator -->
-                                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                        <!-- Left: Review Activation & Transport Controls -->
+                                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                                            <Button
+                                                Command="{Binding StartTimelineReviewCommand}"
+                                                Theme="{DynamicResource MaterialSolidButton}"
+                                                Background="#0284C7"
+                                                Foreground="White"
+                                                CornerRadius="5"
+                                                Height="28"
+                                                Padding="10,0"
+                                                ToolTip.Tip="Launch synchronized Dual-Audio Review Session in monitor">
+                                                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                                                    <materialIcons:MaterialIcon Kind="MoviePlayOutline" Width="14" Height="14" Foreground="White" />
+                                                    <TextBlock Text="Start Review" FontWeight="Bold" FontSize="11" />
+                                                </StackPanel>
+                                            </Button>
+
+                                            <Rectangle Width="1" Height="18" Fill="#1E293B" Margin="2,0" />
+
+                                            <!-- Transport Controls -->
+                                            <Button Command="{Binding ReplayFromStartCommand}" Theme="{DynamicResource MaterialOutlineButton}" Height="28" Width="28" Padding="0" CornerRadius="4" ToolTip.Tip="Replay from start (00:00)">
+                                                <materialIcons:MaterialIcon Kind="Rewind" Width="14" Height="14" />
+                                            </Button>
+                                            <Button Command="{Binding StepBackwardCommand}" Theme="{DynamicResource MaterialOutlineButton}" Height="28" Width="28" Padding="0" CornerRadius="4" ToolTip.Tip="Step backward 5s">
+                                                <materialIcons:MaterialIcon Kind="StepBackward" Width="14" Height="14" />
+                                            </Button>
+                                            <Button Command="{Binding ToggleReviewPlayPauseCommand}" Theme="{DynamicResource MaterialSolidButton}" Background="{DynamicResource AntigravityAccentBrush}" Foreground="{DynamicResource AntigravityAccentForegroundBrush}" Height="28" Width="34" Padding="0" CornerRadius="4" ToolTip.Tip="Play / Pause review playback (Space)">
+                                                <Panel>
+                                                    <materialIcons:MaterialIcon Kind="Pause" Width="16" Height="16" IsVisible="{Binding IsReviewPlaying}" />
+                                                    <materialIcons:MaterialIcon Kind="Play" Width="16" Height="16" IsVisible="{Binding !IsReviewPlaying}" />
+                                                </Panel>
+                                            </Button>
+                                            <Button Command="{Binding StepForwardCommand}" Theme="{DynamicResource MaterialOutlineButton}" Height="28" Width="28" Padding="0" CornerRadius="4" ToolTip.Tip="Step forward 5s">
+                                                <materialIcons:MaterialIcon Kind="StepForward" Width="14" Height="14" />
+                                            </Button>
+
+                                            <Rectangle Width="1" Height="18" Fill="#1E293B" Margin="2,0" />
+
+                                            <Button Command="{Binding JumpToPreviousSegmentCommand}" Theme="{DynamicResource MaterialOutlineButton}" Height="28" Padding="6,0" CornerRadius="4" ToolTip.Tip="Jump to previous line">
+                                                <StackPanel Orientation="Horizontal" Spacing="2">
+                                                    <materialIcons:MaterialIcon Kind="ChevronLeft" Width="14" Height="14" />
+                                                    <TextBlock Text="Prev" FontSize="10" VerticalAlignment="Center" />
+                                                </StackPanel>
+                                            </Button>
+                                            <Button Command="{Binding JumpToNextSegmentCommand}" Theme="{DynamicResource MaterialOutlineButton}" Height="28" Padding="6,0" CornerRadius="4" ToolTip.Tip="Jump to next line">
+                                                <StackPanel Orientation="Horizontal" Spacing="2">
+                                                    <TextBlock Text="Next" FontSize="10" VerticalAlignment="Center" />
+                                                    <materialIcons:MaterialIcon Kind="ChevronRight" Width="14" Height="14" />
+                                                </StackPanel>
+                                            </Button>
+
+                                            <!-- Time Readout -->
+                                            <Border Background="#131D33" BorderBrush="#1E293B" BorderThickness="1" CornerRadius="4" Padding="7,3" Margin="3,0,0,0">
+                                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                                    <materialIcons:MaterialIcon Kind="ClockOutline" Width="13" Height="13" Foreground="#38BDF8" VerticalAlignment="Center" />
+                                                    <TextBlock Text="{Binding FormattedPlayheadTime}" FontSize="11" FontWeight="Bold" Foreground="#38BDF8" VerticalAlignment="Center" />
+                                                    <TextBlock Text="/" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                                                    <TextBlock Text="{Binding FormattedTotalDuration}" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                                                </StackPanel>
+                                            </Border>
+                                        </StackPanel>
+
+                                        <!-- Center: Dual Audio Mixer & Mode Selector -->
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <!-- Mode Selector Chips -->
+                                            <Border Background="#0F172A" BorderBrush="#1E293B" BorderThickness="1" CornerRadius="5" Padding="2">
+                                                <StackPanel Orientation="Horizontal" Spacing="2">
+                                                    <Button Command="{Binding SetAudioReviewModeCommand}" CommandParameter="Dual" Background="{Binding DualModeBrush}" Foreground="White" Height="24" Padding="7,0" CornerRadius="4" ToolTip.Tip="Dual Audio: Video track + Dubbed voice with ducking">
+                                                        <TextBlock Text="Dual" FontSize="10" FontWeight="Bold" />
+                                                    </Button>
+                                                    <Button Command="{Binding SetAudioReviewModeCommand}" CommandParameter="Original" Background="{Binding OriginalModeBrush}" Foreground="White" Height="24" Padding="7,0" CornerRadius="4" ToolTip.Tip="Original Audio Only: Hear source dialogue &amp; sound">
+                                                        <TextBlock Text="Original" FontSize="10" FontWeight="Bold" />
+                                                    </Button>
+                                                    <Button Command="{Binding SetAudioReviewModeCommand}" CommandParameter="Dubbed" Background="{Binding DubbedModeBrush}" Foreground="White" Height="24" Padding="7,0" CornerRadius="4" ToolTip.Tip="Dubbed Voice Only: Isolate synthesized speech">
+                                                        <TextBlock Text="Dubbed" FontSize="10" FontWeight="Bold" />
+                                                    </Button>
+                                                </StackPanel>
+                                            </Border>
+
+                                            <!-- Original Volume Slider -->
+                                            <StackPanel Orientation="Horizontal" Spacing="3" VerticalAlignment="Center">
+                                                <Button Command="{Binding ToggleOriginalMuteCommand}" Background="{Binding OriginalMuteBrush}" Height="22" Width="22" Padding="0" CornerRadius="3" ToolTip.Tip="Mute/Unmute original audio">
+                                                    <materialIcons:MaterialIcon Kind="VolumeHigh" Width="12" Height="12" Foreground="White" />
+                                                </Button>
+                                                <TextBlock Text="Orig" FontSize="9" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                                                <Slider Value="{Binding OriginalAudioVolume}" Minimum="0.0" Maximum="1.5" Width="50" Height="24" ToolTip.Tip="{Binding OriginalAudioVolume, StringFormat='Original Volume: {0:P0}'}" />
+                                            </StackPanel>
+
+                                            <!-- Dubbed Volume Slider -->
+                                            <StackPanel Orientation="Horizontal" Spacing="3" VerticalAlignment="Center">
+                                                <Button Command="{Binding ToggleDubbedMuteCommand}" Background="{Binding DubbedMuteBrush}" Height="22" Width="22" Padding="0" CornerRadius="3" ToolTip.Tip="Mute/Unmute dubbed voice">
+                                                    <materialIcons:MaterialIcon Kind="Microphone" Width="12" Height="12" Foreground="White" />
+                                                </Button>
+                                                <TextBlock Text="Dub" FontSize="9" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                                                <Slider Value="{Binding DubbedAudioVolume}" Minimum="0.0" Maximum="1.5" Width="50" Height="24" ToolTip.Tip="{Binding DubbedAudioVolume, StringFormat='Dubbed Volume: {0:P0}'}" />
+                                            </StackPanel>
+                                        </StackPanel>
+
+                                        <!-- Right: Zoom Controls -->
+                                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                                            <!-- Active Segment Badge -->
                                             <Border Background="{Binding SelectedSegment.SpeakerColor, TargetNullValue='#475569'}" CornerRadius="3" Padding="5,1.5">
                                                 <TextBlock Text="{Binding SelectedSegment.Index, StringFormat='#{0}', TargetNullValue='No Line'}" FontSize="9.5" FontWeight="Bold" Foreground="White" />
                                             </Border>
-                                            <TextBlock Text="{Binding SelectedSegment.StartTime, StringFormat='{}{0:mm\\:ss\\.ff}', TargetNullValue='--:--'}" FontWeight="Bold" FontSize="11" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
-                                            <TextBlock Text="➔" FontSize="9" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
-                                            <TextBlock Text="{Binding SelectedSegment.EndTime, StringFormat='{}{0:mm\\:ss\\.ff}', TargetNullValue='--:--'}" FontWeight="Bold" FontSize="11" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
-                                        </StackPanel>
 
-                                        <!-- Zoom Controls -->
-                                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                            <TextBlock Text="Zoom:" FontSize="10.5" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
-                                            <Button Command="{Binding ZoomOutTimelineCommand}" Theme="{DynamicResource MaterialOutlineButton}" Padding="5,2" CornerRadius="4">
-                                                <materialIcons:MaterialIcon Kind="MagnifyMinusOutline" Width="13" Height="13" />
+                                            <Rectangle Width="1" Height="16" Fill="#1E293B" Margin="2,0" />
+
+                                            <TextBlock Text="Zoom:" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                                            <Button Command="{Binding ZoomOutTimelineCommand}" Theme="{DynamicResource MaterialOutlineButton}" Padding="4,2" CornerRadius="4">
+                                                <materialIcons:MaterialIcon Kind="MagnifyMinusOutline" Width="12" Height="12" />
                                             </Button>
-                                            <TextBlock Text="{Binding TimelineZoom, StringFormat='{}{0:P0}'}" FontSize="10.5" FontWeight="SemiBold" VerticalAlignment="Center" Width="38" TextAlignment="Center" />
-                                            <Button Command="{Binding ZoomInTimelineCommand}" Theme="{DynamicResource MaterialOutlineButton}" Padding="5,2" CornerRadius="4">
-                                                <materialIcons:MaterialIcon Kind="MagnifyPlusOutline" Width="13" Height="13" />
+                                            <TextBlock Text="{Binding TimelineZoom, StringFormat='{}{0:P0}'}" FontSize="10" FontWeight="SemiBold" VerticalAlignment="Center" Width="34" TextAlignment="Center" />
+                                            <Button Command="{Binding ZoomInTimelineCommand}" Theme="{DynamicResource MaterialOutlineButton}" Padding="4,2" CornerRadius="4">
+                                                <materialIcons:MaterialIcon Kind="MagnifyPlusOutline" Width="12" Height="12" />
                                             </Button>
                                         </StackPanel>
                                     </Grid>

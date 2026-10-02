@@ -904,7 +904,7 @@
                     <!-- Card 2: Aspect Ratio & Smart Framing -->
                     <Border Grid.Column="1" Background="#0DFFFFFF" CornerRadius="10" Padding="14" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1">
                         <StackPanel Spacing="10">
-                            <TextBlock Text="ASPECT &amp; FRAMING" FontSize="12" FontWeight="Bold" LetterSpacing="0.5" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
+                            <TextBlock Text="ASPECT &amp; SMART REFRAME" FontSize="12" FontWeight="Bold" LetterSpacing="0.5" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
 
                             <StackPanel Spacing="4">
                                 <TextBlock Text="Aspect Ratio" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" />
@@ -918,7 +918,7 @@
                             </StackPanel>
 
                             <StackPanel Spacing="4">
-                                <TextBlock Text="Tracking Mode" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                <TextBlock Text="Tracking &amp; Focus Mode" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                 <ComboBox ItemsSource="{Binding AvailableTrackingModes}" SelectedItem="{Binding SelectedTrackingMode}" HorizontalAlignment="Stretch" FontSize="13">
                                     <ComboBox.ItemTemplate>
                                         <DataTemplate>
@@ -929,15 +929,30 @@
                             </StackPanel>
 
                             <CheckBox IsChecked="{Binding EnableMicroZoom}">
-                                <TextBlock Text="Micro-Zoom Edge Shift" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                <TextBlock Text="Auto Zoom &amp; Reframe (x0.9 Focus)" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
                             </CheckBox>
 
                             <StackPanel Spacing="6" IsVisible="{Binding EnableMicroZoom}">
                                 <Grid ColumnDefinitions="*,Auto">
-                                    <TextBlock Grid.Column="0" Text="Zoom Crop" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                    <TextBlock Grid.Column="1" Text="{Binding MicroZoomPercent, StringFormat='{}{0:0.#}%'}" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                    <TextBlock Grid.Column="0" Text="Zoom Scale" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding MicroZoomFactorDisplay}" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" />
                                 </Grid>
-                                <Slider Value="{Binding MicroZoomPercent}" Minimum="1.0" Maximum="7.0" TickFrequency="0.5" IsSnapToTickEnabled="True" />
+                                <Slider Value="{Binding MicroZoomPercent}" Minimum="1.0" Maximum="20.0" TickFrequency="0.5" IsSnapToTickEnabled="True" />
+
+                                <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="4">
+                                    <Button Grid.Column="0" Command="{Binding SetMicroZoomPercentCommand}" CommandParameter="3.0" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="24" CornerRadius="4" ToolTip.Tip="0.97x (3% Crop)">
+                                        <TextBlock Text="0.97x" FontSize="11" HorizontalAlignment="Center" />
+                                    </Button>
+                                    <Button Grid.Column="1" Command="{Binding SetMicroZoomPercentCommand}" CommandParameter="5.0" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="24" CornerRadius="4" ToolTip.Tip="0.95x (5% Crop)">
+                                        <TextBlock Text="0.95x" FontSize="11" HorizontalAlignment="Center" />
+                                    </Button>
+                                    <Button Grid.Column="2" Command="{Binding SetMicroZoomPercentCommand}" CommandParameter="10.0" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="24" CornerRadius="4" ToolTip.Tip="0.90x Focus (10% Zoom - Recommended)">
+                                        <TextBlock Text="0.90x" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" HorizontalAlignment="Center" />
+                                    </Button>
+                                    <Button Grid.Column="3" Command="{Binding SetMicroZoomPercentCommand}" CommandParameter="15.0" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="24" CornerRadius="4" ToolTip.Tip="0.85x (15% Crop)">
+                                        <TextBlock Text="0.85x" FontSize="11" HorizontalAlignment="Center" />
+                                    </Button>
+                                </Grid>
 
                                 <TextBlock Text="Framing Anchor" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                 <ComboBox ItemsSource="{Binding AvailableZoomModes}" SelectedItem="{Binding SelectedZoomMode}" HorizontalAlignment="Stretch" FontSize="13">

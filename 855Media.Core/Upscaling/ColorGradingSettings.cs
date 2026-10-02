@@ -222,7 +222,7 @@ public class ColorGradingSettings : INotifyPropertyChanged
             && !string.Equals(_toneCurve, "None", StringComparison.OrdinalIgnoreCase)
         )
         || _filmGrain > 0
-        || _vignette > 0.01;
+        || _vignette > 0.05;
 
     /// <summary>
     /// Builds the FFmpeg video filter chain string using AdvancedColorGradeService.

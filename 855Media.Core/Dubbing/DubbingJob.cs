@@ -398,6 +398,16 @@ public class SubtitleSegment : INotifyPropertyChanged
     public TimeSpan Duration => EndTime > StartTime ? EndTime - StartTime : TimeSpan.FromSeconds(1);
     public double DurationSeconds => Math.Max(0.1, (EndTime - StartTime).TotalSeconds);
 
+    [JsonIgnore]
+    public double StartSeconds => StartTime.TotalSeconds;
+
+    [JsonIgnore]
+    public double EndSeconds => EndTime.TotalSeconds;
+
+    [JsonIgnore]
+    public bool HasAudioClip =>
+        !string.IsNullOrWhiteSpace(AudioClipPath) && File.Exists(AudioClipPath);
+
     private double _audioDurationSeconds;
     public double AudioDurationSeconds
     {

@@ -7,19 +7,25 @@ namespace _855Media.Core.Upscaling;
 public enum AspectRatioMode
 {
     [Display(Name = "Original (Match Source)")]
-    Original,
+    Original = 0,
 
     [Display(Name = "Vertical 9:16 (Crop Fill)")]
-    Vertical916Crop,
+    Vertical916Crop = 1,
 
-    [Display(Name = "Vertical 9:16 (Blurred Canvas)")]
-    Vertical916BlurredCanvas,
+    [Display(Name = "Vertical 9:16 (Fit Full + Blur)")]
+    Vertical916BlurredCanvas = 2,
 
-    [Display(Name = "Square 1:1 (Instagram / Square)")]
-    Square11,
+    [Display(Name = "Square 1:1 (Crop Fill)")]
+    Square11 = 3,
 
     [Display(Name = "Cinematic 21:9 (Widescreen)")]
-    Cinematic219,
+    Cinematic219 = 4,
+
+    [Display(Name = "Vertical 9:16 (1:1 Crop + Blur)")]
+    Vertical916SquareBlur = 5,
+
+    [Display(Name = "Square 1:1 (Blurred Canvas)")]
+    Square11BlurredCanvas = 6,
 }
 
 public static class AspectRatioFilterBuilder
@@ -27,14 +33,15 @@ public static class AspectRatioFilterBuilder
     public static string? BuildFilter(
         AspectRatioMode mode,
         UpscaleTargetResolution targetResolution
-    ) => BuildFilter(mode, targetResolution, SmartTrackingMode.StaticCenter, 0.5, 0.5);
+    ) => BuildFilter(mode, targetResolution, SmartTrackingMode.StaticCenter, 0.5, 0.5, 0.0);
 
     public static string? BuildFilter(
         AspectRatioMode mode,
         UpscaleTargetResolution targetResolution,
         SmartTrackingMode trackingMode,
         double actionCentroidX = 0.5,
-        double actionCentroidY = 0.5
+        double actionCentroidY = 0.5,
+        double zoomPercent = 0.0
     )
     {
         bool is4k = targetResolution == UpscaleTargetResolution.Uhd4k;
@@ -49,22 +56,68 @@ public static class AspectRatioFilterBuilder
 
         bool isSmart = trackingMode != SmartTrackingMode.StaticCenter;
 
+        int proxyW = (Math.Max(2, targetW / 4) / 2) * 2;
+        int proxyH = (Math.Max(2, targetH / 4) / 2) * 2;
+
+        bool hasZoom = zoomPercent > 0.0;
+        double factor = hasZoom ? Math.Clamp(1.0 - (zoomPercent / 100.0), 0.70, 0.99) : 1.0;
+        string factorStr = factor.ToString("0.###", CultureInfo.InvariantCulture);
+
         return mode switch
         {
             AspectRatioMode.Vertical916Crop => isSmart
-                ? $"crop=w='min(iw,ih*9/16)':h='min(ih,iw*16/9)':x='max(0,min(iw-out_w,iw*{xStr}-out_w/2))':y='(ih-out_h)/2',scale={targetW}:{targetH}:flags=lanczos"
-                : $"crop=w='min(iw,ih*9/16)':h='min(ih,iw*16/9)',scale={targetW}:{targetH}:flags=lanczos",
+                ? (
+                    hasZoom
+                        ? $"crop=w='min(iw,ih*9/16)*{factorStr}':h='min(ih,iw*16/9)*{factorStr}':x='max(0,min(iw-out_w,iw*{xStr}-out_w/2))':y='max(0,min(ih-out_h,ih*{yStr}-out_h/2))',scale={targetW}:{targetH}:flags=lanczos,setsar=1"
+                        : $"crop=w='min(iw,ih*9/16)':h='min(ih,iw*16/9)':x='max(0,min(iw-out_w,iw*{xStr}-out_w/2))':y='(ih-out_h)/2',scale={targetW}:{targetH}:flags=lanczos,setsar=1"
+                )
+                : (
+                    hasZoom
+                        ? $"crop=w='min(iw,ih*9/16)*{factorStr}':h='min(ih,iw*16/9)*{factorStr}',scale={targetW}:{targetH}:flags=lanczos,setsar=1"
+                        : $"crop=w='min(iw,ih*9/16)':h='min(ih,iw*16/9)',scale={targetW}:{targetH}:flags=lanczos,setsar=1"
+                ),
 
             AspectRatioMode.Vertical916BlurredCanvas =>
-                $"split=2[bg][fg];[bg]scale={targetW}:{targetH}:flags=lanczos,boxblur=25:5[blurred];[fg]scale={targetW}:-2:flags=lanczos[scaled];[blurred][scaled]overlay=(W-w)/2:(H-h)/2",
+                $"format=yuv420p,split=2[bg][fg];[bg]scale={targetW}:{targetH}:force_original_aspect_ratio=increase:flags=bilinear,crop={targetW}:{targetH},scale={proxyW}:{proxyH},boxblur=10:2,scale={targetW}:{targetH}:flags=bilinear[blurred];[fg]scale={targetW}:-2:flags=lanczos[scaled];[blurred][scaled]overlay=(W-w)/2:(H-h)/2,setsar=1",
+
+            AspectRatioMode.Vertical916SquareBlur => isSmart
+                ? (
+                    hasZoom
+                        ? $"format=yuv420p,split=2[bg][fg];[bg]scale={targetW}:{targetH}:force_original_aspect_ratio=increase:flags=bilinear,crop={targetW}:{targetH},scale={proxyW}:{proxyH},boxblur=10:2,scale={targetW}:{targetH}:flags=bilinear[blurred];[fg]crop=w='min(iw,ih)*{factorStr}':h='min(iw,ih)*{factorStr}':x='max(0,min(iw-out_w,iw*{xStr}-out_w/2))':y='max(0,min(ih-out_h,ih*{yStr}-out_h/2))',scale={targetW}:{targetW}:flags=lanczos[scaled];[blurred][scaled]overlay=(W-w)/2:(H-h)/2,setsar=1"
+                        : $"format=yuv420p,split=2[bg][fg];[bg]scale={targetW}:{targetH}:force_original_aspect_ratio=increase:flags=bilinear,crop={targetW}:{targetH},scale={proxyW}:{proxyH},boxblur=10:2,scale={targetW}:{targetH}:flags=bilinear[blurred];[fg]crop=w='min(iw,ih)':h='min(iw,ih)':x='max(0,min(iw-out_w,iw*{xStr}-out_w/2))':y='max(0,min(ih-out_h,ih*{yStr}-out_h/2))',scale={targetW}:{targetW}:flags=lanczos[scaled];[blurred][scaled]overlay=(W-w)/2:(H-h)/2,setsar=1"
+                )
+                : (
+                    hasZoom
+                        ? $"format=yuv420p,split=2[bg][fg];[bg]scale={targetW}:{targetH}:force_original_aspect_ratio=increase:flags=bilinear,crop={targetW}:{targetH},scale={proxyW}:{proxyH},boxblur=10:2,scale={targetW}:{targetH}:flags=bilinear[blurred];[fg]crop=w='min(iw,ih)*{factorStr}':h='min(iw,ih)*{factorStr}',scale={targetW}:{targetW}:flags=lanczos[scaled];[blurred][scaled]overlay=(W-w)/2:(H-h)/2,setsar=1"
+                        : $"format=yuv420p,split=2[bg][fg];[bg]scale={targetW}:{targetH}:force_original_aspect_ratio=increase:flags=bilinear,crop={targetW}:{targetH},scale={proxyW}:{proxyH},boxblur=10:2,scale={targetW}:{targetH}:flags=bilinear[blurred];[fg]crop=w='min(iw,ih)':h='min(iw,ih)',scale={targetW}:{targetW}:flags=lanczos[scaled];[blurred][scaled]overlay=(W-w)/2:(H-h)/2,setsar=1"
+                ),
 
             AspectRatioMode.Square11 => isSmart
-                ? $"crop=w='min(iw,ih)':h='min(iw,ih)':x='max(0,min(iw-out_w,iw*{xStr}-out_w/2))':y='max(0,min(ih-out_h,ih*{yStr}-out_h/2))',scale={targetW}:{targetW}:flags=lanczos"
-                : $"crop=w='min(iw,ih)':h='min(iw,ih)',scale={targetW}:{targetW}:flags=lanczos",
+                ? (
+                    hasZoom
+                        ? $"crop=w='min(iw,ih)*{factorStr}':h='min(iw,ih)*{factorStr}':x='max(0,min(iw-out_w,iw*{xStr}-out_w/2))':y='max(0,min(ih-out_h,ih*{yStr}-out_h/2))',scale={targetW}:{targetW}:flags=lanczos,setsar=1"
+                        : $"crop=w='min(iw,ih)':h='min(iw,ih)':x='max(0,min(iw-out_w,iw*{xStr}-out_w/2))':y='max(0,min(ih-out_h,ih*{yStr}-out_h/2))',scale={targetW}:{targetW}:flags=lanczos,setsar=1"
+                )
+                : (
+                    hasZoom
+                        ? $"crop=w='min(iw,ih)*{factorStr}':h='min(iw,ih)*{factorStr}',scale={targetW}:{targetW}:flags=lanczos,setsar=1"
+                        : $"crop=w='min(iw,ih)':h='min(iw,ih)',scale={targetW}:{targetW}:flags=lanczos,setsar=1"
+                ),
+
+            AspectRatioMode.Square11BlurredCanvas =>
+                $"format=yuv420p,split=2[bg][fg];[bg]scale={targetW}:{targetH}:force_original_aspect_ratio=increase:flags=bilinear,crop={targetW}:{targetH},scale={proxyW}:{proxyW},boxblur=10:2,scale={targetW}:{targetH}:flags=bilinear[blurred];[fg]scale={targetW}:{targetW}:force_original_aspect_ratio=decrease:flags=lanczos[scaled];[blurred][scaled]overlay=(W-w)/2:(H-h)/2,setsar=1",
 
             AspectRatioMode.Cinematic219 => isSmart
-                ? $"crop=w=iw:h='min(ih,iw*9/21)':x=0:y='max(0,min(ih-out_h,ih*{yStr}-out_h/2))',scale={(is4k ? 3840 : 2560)}:{(is4k ? 1640 : 1080)}:flags=lanczos"
-                : $"crop=w=iw:h='min(ih,iw*9/21)',scale={(is4k ? 3840 : 2560)}:{(is4k ? 1640 : 1080)}:flags=lanczos",
+                ? (
+                    hasZoom
+                        ? $"crop=w='iw*{factorStr}':h='min(ih,iw*9/21)*{factorStr}':x='max(0,min(iw-out_w,iw*{xStr}-out_w/2))':y='max(0,min(ih-out_h,ih*{yStr}-out_h/2))',scale={(is4k ? 3840 : 2560)}:{(is4k ? 1640 : 1080)}:flags=lanczos,setsar=1"
+                        : $"crop=w=iw:h='min(ih,iw*9/21)':x=0:y='max(0,min(ih-out_h,ih*{yStr}-out_h/2))',scale={(is4k ? 3840 : 2560)}:{(is4k ? 1640 : 1080)}:flags=lanczos,setsar=1"
+                )
+                : (
+                    hasZoom
+                        ? $"crop=w='iw*{factorStr}':h='min(ih,iw*9/21)*{factorStr}',scale={(is4k ? 3840 : 2560)}:{(is4k ? 1640 : 1080)}:flags=lanczos,setsar=1"
+                        : $"crop=w=iw:h='min(ih,iw*9/21)',scale={(is4k ? 3840 : 2560)}:{(is4k ? 1640 : 1080)}:flags=lanczos,setsar=1"
+                ),
 
             _ => null,
         };
@@ -80,8 +133,8 @@ public static class AspectRatioFilterBuilder
         if (zoomPercent <= 0.0)
             return null;
 
-        double factor = Math.Clamp(1.0 - (zoomPercent / 100.0), 0.90, 0.99);
-        string factorStr = factor.ToString("0.##", CultureInfo.InvariantCulture);
+        double factor = Math.Clamp(1.0 - (zoomPercent / 100.0), 0.70, 0.99);
+        string factorStr = factor.ToString("0.###", CultureInfo.InvariantCulture);
         string xStr = Math.Clamp(actionCentroidX, 0.05, 0.95)
             .ToString("0.000", CultureInfo.InvariantCulture);
         string yStr = Math.Clamp(actionCentroidY, 0.05, 0.95)

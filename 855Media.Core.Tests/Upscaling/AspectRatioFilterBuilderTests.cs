@@ -46,9 +46,11 @@ public class AspectRatioFilterBuilderTests
             UpscaleTargetResolution.Hd1080p
         );
         Assert.NotNull(filter);
+        Assert.Contains("format=yuv420p", filter);
         Assert.Contains("split=2[bg][fg]", filter);
-        Assert.Contains("boxblur=25:5", filter);
+        Assert.Contains("boxblur=10:2", filter);
         Assert.Contains("overlay=(W-w)/2:(H-h)/2", filter);
+        Assert.Contains("setsar=1", filter);
     }
 
     [Fact]
@@ -61,6 +63,39 @@ public class AspectRatioFilterBuilderTests
         Assert.NotNull(filter);
         Assert.Contains("crop=w='min(iw,ih)':h='min(iw,ih)'", filter);
         Assert.Contains("scale=1080:1080:flags=lanczos", filter);
+    }
+
+    [Fact]
+    public void BuildFilter_Vertical916SquareBlur_1080p_Returns1to1CropWithBlurCanvas()
+    {
+        var filter = AspectRatioFilterBuilder.BuildFilter(
+            AspectRatioMode.Vertical916SquareBlur,
+            UpscaleTargetResolution.Hd1080p
+        );
+        Assert.NotNull(filter);
+        Assert.Contains("format=yuv420p", filter);
+        Assert.Contains("split=2[bg][fg]", filter);
+        Assert.Contains("crop=w='min(iw,ih)':h='min(iw,ih)'", filter);
+        Assert.Contains("scale=1080:1080:flags=lanczos[scaled]", filter);
+        Assert.Contains("boxblur=10:2", filter);
+        Assert.Contains("overlay=(W-w)/2:(H-h)/2", filter);
+        Assert.Contains("setsar=1", filter);
+    }
+
+    [Fact]
+    public void BuildFilter_Square11BlurredCanvas_1080p_ReturnsSquareCanvasWithBlur()
+    {
+        var filter = AspectRatioFilterBuilder.BuildFilter(
+            AspectRatioMode.Square11BlurredCanvas,
+            UpscaleTargetResolution.Hd1080p
+        );
+        Assert.NotNull(filter);
+        Assert.Contains("format=yuv420p", filter);
+        Assert.Contains("split=2[bg][fg]", filter);
+        Assert.Contains("scale=1080:1080:force_original_aspect_ratio=decrease", filter);
+        Assert.Contains("boxblur=10:2", filter);
+        Assert.Contains("overlay=(W-w)/2:(H-h)/2", filter);
+        Assert.Contains("setsar=1", filter);
     }
 
     [Fact]

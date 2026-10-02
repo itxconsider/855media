@@ -66,7 +66,16 @@ public partial class VideoUpscalerViewModel : ViewModelBase
     [ObservableProperty]
     private AspectRatioMode _selectedTargetAspectRatio = AspectRatioMode.Original;
 
-    public AspectRatioMode[] AvailableAspectRatios { get; } = Enum.GetValues<AspectRatioMode>();
+    public AspectRatioMode[] AvailableAspectRatios { get; } =
+    [
+        AspectRatioMode.Original,
+        AspectRatioMode.Vertical916Crop,
+        AspectRatioMode.Vertical916SquareBlur,
+        AspectRatioMode.Vertical916BlurredCanvas,
+        AspectRatioMode.Square11,
+        AspectRatioMode.Square11BlurredCanvas,
+        AspectRatioMode.Cinematic219,
+    ];
 
     [ObservableProperty]
     private SmartTrackingMode _selectedTrackingMode = SmartTrackingMode.StaticCenter;
@@ -157,6 +166,9 @@ public partial class VideoUpscalerViewModel : ViewModelBase
 
     [ObservableProperty]
     private double _microZoomPercent = 3.0;
+
+    public string MicroZoomFactorDisplay =>
+        $"{(1.0 - (MicroZoomPercent / 100.0)):0.00}x ({MicroZoomPercent:0.#}% crop)";
 
     [ObservableProperty]
     private SmartZoomMode _selectedZoomMode = SmartZoomMode.ActionAnchored;
@@ -417,6 +429,30 @@ public partial class VideoUpscalerViewModel : ViewModelBase
         }
     }
 
+    [RelayCommand]
+    public void SetMicroZoomPercent(object? parameter)
+    {
+        double val = 10.0;
+        if (parameter is double d)
+        {
+            val = d;
+        }
+        else if (
+            parameter is string s
+            && double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
+        )
+        {
+            val = parsed;
+        }
+
+        EnableMicroZoom = true;
+        MicroZoomPercent = val;
+        if (SelectedTrackingMode == SmartTrackingMode.StaticCenter)
+        {
+            SelectedTrackingMode = SmartTrackingMode.ObjectFocus;
+        }
+    }
+
     [ObservableProperty]
     private bool _isSavePresetPopupOpen;
 
@@ -494,7 +530,8 @@ public partial class VideoUpscalerViewModel : ViewModelBase
         get =>
             SelectedTargetAspectRatio
                 is AspectRatioMode.Vertical916Crop
-                    or AspectRatioMode.Vertical916BlurredCanvas;
+                    or AspectRatioMode.Vertical916BlurredCanvas
+                    or AspectRatioMode.Vertical916SquareBlur;
         set =>
             SelectedTargetAspectRatio = value
                 ? AspectRatioMode.Vertical916Crop
@@ -503,7 +540,10 @@ public partial class VideoUpscalerViewModel : ViewModelBase
 
     public bool IsSquare1x1Active
     {
-        get => SelectedTargetAspectRatio == AspectRatioMode.Square11;
+        get =>
+            SelectedTargetAspectRatio
+                is AspectRatioMode.Square11
+                    or AspectRatioMode.Square11BlurredCanvas;
         set =>
             SelectedTargetAspectRatio = value ? AspectRatioMode.Square11 : AspectRatioMode.Original;
     }
@@ -1283,6 +1323,7 @@ public partial class VideoUpscalerViewModel : ViewModelBase
             _settingsService.UpscalerMicroZoomPercent = value;
             ScheduleDebouncedSaveSettings();
         }
+        OnPropertyChanged(nameof(MicroZoomFactorDisplay));
         RequestPreviewUpdate(150);
     }
 
@@ -2308,7 +2349,22 @@ public partial class VideoUpscalerViewModel : ViewModelBase
             }
 
             var previewFilterParts = new List<string>();
-            if (EnableMicroZoom && MicroZoomPercent > 0)
+            double zoomPercent = EnableMicroZoom ? MicroZoomPercent : 0.0;
+            var arFilter = AspectRatioFilterBuilder.BuildFilter(
+                SelectedTargetAspectRatio,
+                SelectedTargetResolution,
+                SelectedTrackingMode,
+                SelectedJob?.ActionCentroidX ?? 0.5,
+                SelectedJob?.ActionCentroidY ?? 0.5,
+                zoomPercent: (SelectedTargetAspectRatio != AspectRatioMode.Original)
+                    ? zoomPercent
+                    : 0.0
+            );
+            if (!string.IsNullOrWhiteSpace(arFilter))
+            {
+                previewFilterParts.Add(arFilter);
+            }
+            else if (EnableMicroZoom && MicroZoomPercent > 0)
             {
                 var zoomFilter = AspectRatioFilterBuilder.BuildMicroZoomFilter(
                     MicroZoomPercent,

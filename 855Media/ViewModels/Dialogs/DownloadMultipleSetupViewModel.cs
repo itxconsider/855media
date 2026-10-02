@@ -157,7 +157,7 @@ public partial class DownloadMultipleSetupViewModel(
         }
         else
         {
-            SelectedVideos.AddRange(filtered);
+            ApplyCurrentSelection();
         }
     }
 
@@ -195,13 +195,149 @@ public partial class DownloadMultipleSetupViewModel(
     [RelayCommand]
     private void ShowGridView() => SelectedViewMode = DownloadMultipleVideosViewMode.Grid;
 
-    private void SelectTopVideos(int count)
+    public static readonly IReadOnlyList<SkipOption> StaticAvailableSkipOptions =
+    [
+        new("None", 0),
+        new("5", 5),
+        new("10", 10),
+        new("20", 20),
+        new("30", 30),
+        new("50", 50),
+        new("100", 100),
+        new("Custom...", null),
+    ];
+
+    public IReadOnlyList<SkipOption> AvailableSkipOptions => StaticAvailableSkipOptions;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsTake5Active))]
+    [NotifyPropertyChangedFor(nameof(IsTake10Active))]
+    [NotifyPropertyChangedFor(nameof(IsTake20Active))]
+    [NotifyPropertyChangedFor(nameof(IsTake50Active))]
+    [NotifyPropertyChangedFor(nameof(IsTakeAllActive))]
+    [NotifyPropertyChangedFor(nameof(IsTakeNoneActive))]
+    [NotifyPropertyChangedFor(nameof(IsTakeCustomActive))]
+    private int? _lastTakeCount = null;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsSkipNoneActive))]
+    [NotifyPropertyChangedFor(nameof(IsSkip10Active))]
+    [NotifyPropertyChangedFor(nameof(IsSkip20Active))]
+    [NotifyPropertyChangedFor(nameof(IsSkip50Active))]
+    [NotifyPropertyChangedFor(nameof(IsSkipCustomActive))]
+    private int _skipCount = 0;
+
+    [ObservableProperty]
+    private int _customSkipCount = 0;
+
+    [ObservableProperty]
+    private int _customTakeCount = 30;
+
+    public bool IsTake5Active => LastTakeCount == 5;
+    public bool IsTake10Active => LastTakeCount == 10;
+    public bool IsTake20Active => LastTakeCount == 20;
+    public bool IsTake50Active => LastTakeCount == 50;
+    public bool IsTakeAllActive => LastTakeCount is null;
+    public bool IsTakeNoneActive => LastTakeCount == 0;
+    public bool IsTakeCustomActive =>
+        LastTakeCount is not null
+        && LastTakeCount != 5
+        && LastTakeCount != 10
+        && LastTakeCount != 20
+        && LastTakeCount != 50
+        && LastTakeCount != 0;
+
+    public bool IsSkipNoneActive => SkipCount == 0;
+    public bool IsSkip10Active => SkipCount == 10;
+    public bool IsSkip20Active => SkipCount == 20;
+    public bool IsSkip50Active => SkipCount == 50;
+    public bool IsSkipCustomActive =>
+        SkipCount != 0 && SkipCount != 10 && SkipCount != 20 && SkipCount != 50;
+
+    public int CurrentSkipCount => SkipCount;
+
+    private void ApplyCurrentSelection()
     {
         if (DisplayedVideos.Count == 0)
             return;
 
         SelectedVideos.Clear();
-        SelectedVideos.AddRange(DisplayedVideos.Take(count));
+
+        if (LastTakeCount == 0)
+            return;
+
+        var skipped = DisplayedVideos.Skip(SkipCount);
+        if (LastTakeCount is { } takeCount)
+        {
+            SelectedVideos.AddRange(skipped.Take(takeCount));
+        }
+        else
+        {
+            SelectedVideos.AddRange(skipped);
+        }
+    }
+
+    [RelayCommand]
+    private void SkipNone()
+    {
+        if (LastTakeCount == 0)
+            LastTakeCount = null;
+
+        SkipCount = 0;
+        CustomSkipCount = 0;
+        ApplyCurrentSelection();
+    }
+
+    [RelayCommand]
+    private void Skip10()
+    {
+        if (LastTakeCount == 0)
+            LastTakeCount = null;
+
+        SkipCount = 10;
+        CustomSkipCount = 10;
+        ApplyCurrentSelection();
+    }
+
+    [RelayCommand]
+    private void Skip20()
+    {
+        if (LastTakeCount == 0)
+            LastTakeCount = null;
+
+        SkipCount = 20;
+        CustomSkipCount = 20;
+        ApplyCurrentSelection();
+    }
+
+    [RelayCommand]
+    private void Skip50()
+    {
+        if (LastTakeCount == 0)
+            LastTakeCount = null;
+
+        SkipCount = 50;
+        CustomSkipCount = 50;
+        ApplyCurrentSelection();
+    }
+
+    partial void OnCustomSkipCountChanged(int value)
+    {
+        var clamped = Math.Max(0, value);
+        if (SkipCount != clamped)
+        {
+            if (LastTakeCount == 0)
+                LastTakeCount = null;
+
+            SkipCount = clamped;
+            ApplyCurrentSelection();
+        }
+    }
+
+    private void SelectTopVideos(int count)
+    {
+        LastTakeCount = count;
+        ApplyCurrentSelection();
     }
 
     [RelayCommand]
@@ -212,6 +348,30 @@ public partial class DownloadMultipleSetupViewModel(
 
     [RelayCommand]
     private void SelectTop20() => SelectTopVideos(20);
+
+    [RelayCommand]
+    private void SelectTop50() => SelectTopVideos(50);
+
+    [RelayCommand]
+    private void SelectAll()
+    {
+        LastTakeCount = null;
+        ApplyCurrentSelection();
+    }
+
+    [RelayCommand]
+    private void ClearSelection()
+    {
+        LastTakeCount = 0;
+        SelectedVideos.Clear();
+    }
+
+    [RelayCommand]
+    private void SelectCustomTake()
+    {
+        LastTakeCount = CustomTakeCount > 0 ? CustomTakeCount : 1;
+        ApplyCurrentSelection();
+    }
 
     private bool CanConfirm() => SelectedVideos.Any();
 

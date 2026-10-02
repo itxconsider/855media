@@ -29,7 +29,20 @@ public record KhmerTtsVoice(string Id, string DisplayName, string Gender, string
         "Google Speech Translation Voice"
     );
 
-    public static readonly KhmerTtsVoice[] All = [PisethMale, SreymomFemale, GoogleFemale];
+    public static readonly KhmerTtsVoice VoxCpm2Local = new(
+        "km-KH-VoxCPM2Local",
+        "VoxCPM2 AI (Local RTX 5070 Ti - 48kHz)",
+        "Neural",
+        "OpenBMB VoxCPM2 48kHz Zero-Shot AI Voice"
+    );
+
+    public static readonly KhmerTtsVoice[] All =
+    [
+        PisethMale,
+        SreymomFemale,
+        GoogleFemale,
+        VoxCpm2Local,
+    ];
 
     /// <summary>
     /// Delivery intensity styles available in the Dubbing Actor Emotion Engine.

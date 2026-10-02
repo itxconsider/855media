@@ -426,6 +426,447 @@ public partial class DubbingViewModel : ViewModelBase
     public event Action<string, bool, string>? PlayMediaRequested;
     public event Action? StopMediaRequested;
 
+    // =========================================================================
+    // FULL-WIDTH PREMIERE/CAPCUT-STYLE TIMELINE & DUAL-AUDIO REVIEW
+    // =========================================================================
+    [ObservableProperty]
+    private bool _isTimelineExpanded = true;
+
+    [ObservableProperty]
+    private bool _isTimelineReviewActive;
+
+    [ObservableProperty]
+    private bool _isReviewPlaying;
+
+    [ObservableProperty]
+    private double _currentPlayheadSeconds;
+
+    [ObservableProperty]
+    private double _totalTimelineDurationSeconds = 60.0;
+
+    [ObservableProperty]
+    private string _formattedPlayheadTime = "00:00:00.00";
+
+    [ObservableProperty]
+    private string _formattedTotalDuration = "00:00:00.00";
+
+    [ObservableProperty]
+    private double _originalAudioVolume = 0.6;
+
+    [ObservableProperty]
+    private double _dubbedAudioVolume = 1.0;
+
+    [ObservableProperty]
+    private bool _isOriginalMuted;
+
+    [ObservableProperty]
+    private bool _isDubbedMuted;
+
+    [ObservableProperty]
+    private string _audioReviewMode = "Dual"; // "Dual", "Original", "Dubbed"
+
+    [ObservableProperty]
+    private double _timelinePixelsPerSecond = 8.0;
+
+    [ObservableProperty]
+    private bool _autoScrollPlayhead = true;
+
+    public double TimelineCanvasWidth =>
+        Math.Max(1200.0, TotalTimelineDurationSeconds * TimelinePixelsPerSecond);
+
+    public double PlayheadCanvasLeft =>
+        Math.Max(0.0, CurrentPlayheadSeconds * TimelinePixelsPerSecond);
+
+    public double EffectiveOriginalVolume => IsOriginalMuted ? 0.0 : OriginalAudioVolume;
+
+    public double EffectiveDubbedVolume => IsDubbedMuted ? 0.0 : DubbedAudioVolume;
+
+    public string DualModeBrush => AudioReviewMode == "Dual" ? "#0284C7" : "#1E293B";
+    public string OriginalModeBrush => AudioReviewMode == "Original" ? "#D97706" : "#1E293B";
+    public string DubbedModeBrush => AudioReviewMode == "Dubbed" ? "#059669" : "#1E293B";
+    public string OriginalMuteBrush => IsOriginalMuted ? "#EF4444" : "#1E293B";
+    public string DubbedMuteBrush => IsDubbedMuted ? "#EF4444" : "#1E293B";
+
+    public ObservableCollection<TimelineItemViewModel> TimelineVideoItems { get; } = [];
+    public ObservableCollection<TimelineItemViewModel> TimelineOriginalAudioItems { get; } = [];
+    public ObservableCollection<TimelineItemViewModel> TimelineDubbedAudioItems { get; } = [];
+    public ObservableCollection<TimelineRulerMark> TimelineRulerMarks { get; } = [];
+
+    public event Action<DubbingReviewSession>? StartReviewSessionRequested;
+    public event Action<double>? SeekRequested;
+    public event Action<bool>? PlaybackToggleRequested;
+    public event Action<double, double, string>? AudioMixRequested;
+
+    partial void OnOriginalAudioVolumeChanged(double value)
+    {
+        AudioMixRequested?.Invoke(EffectiveOriginalVolume, EffectiveDubbedVolume, AudioReviewMode);
+    }
+
+    partial void OnDubbedAudioVolumeChanged(double value)
+    {
+        AudioMixRequested?.Invoke(EffectiveOriginalVolume, EffectiveDubbedVolume, AudioReviewMode);
+    }
+
+    partial void OnIsOriginalMutedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(OriginalMuteBrush));
+        AudioMixRequested?.Invoke(EffectiveOriginalVolume, EffectiveDubbedVolume, AudioReviewMode);
+    }
+
+    partial void OnIsDubbedMutedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(DubbedMuteBrush));
+        AudioMixRequested?.Invoke(EffectiveOriginalVolume, EffectiveDubbedVolume, AudioReviewMode);
+    }
+
+    partial void OnAudioReviewModeChanged(string value)
+    {
+        OnPropertyChanged(nameof(DualModeBrush));
+        OnPropertyChanged(nameof(OriginalModeBrush));
+        OnPropertyChanged(nameof(DubbedModeBrush));
+        AudioMixRequested?.Invoke(EffectiveOriginalVolume, EffectiveDubbedVolume, AudioReviewMode);
+    }
+
+    partial void OnTimelinePixelsPerSecondChanged(double value)
+    {
+        OnPropertyChanged(nameof(TimelineCanvasWidth));
+        OnPropertyChanged(nameof(PlayheadCanvasLeft));
+        UpdateTimelineVisuals();
+    }
+
+    partial void OnTotalTimelineDurationSecondsChanged(double value)
+    {
+        FormattedTotalDuration = TimeSpan
+            .FromSeconds(Math.Max(0, value))
+            .ToString(@"hh\:mm\:ss\.ff");
+        OnPropertyChanged(nameof(TimelineCanvasWidth));
+        UpdateRulerMarks();
+    }
+
+    partial void OnCurrentPlayheadSecondsChanged(double value)
+    {
+        FormattedPlayheadTime = TimeSpan
+            .FromSeconds(Math.Max(0, value))
+            .ToString(@"hh\:mm\:ss\.ff");
+        OnPropertyChanged(nameof(PlayheadCanvasLeft));
+    }
+
+    public void UpdateTimelineVisuals()
+    {
+        var pps = Math.Max(0.5, TimelinePixelsPerSecond);
+
+        if (Segments.Count > 0)
+        {
+            var maxEnd = Segments.Max(s => s.EndTime.TotalSeconds);
+            if (maxEnd > TotalTimelineDurationSeconds)
+            {
+                TotalTimelineDurationSeconds = maxEnd;
+            }
+        }
+
+        TimelineVideoItems.Clear();
+        TimelineOriginalAudioItems.Clear();
+        TimelineDubbedAudioItems.Clear();
+
+        foreach (var seg in Segments)
+        {
+            var left = seg.StartTime.TotalSeconds * pps;
+            var width = Math.Max(16.0, seg.DurationSeconds * pps);
+
+            // Track 1: Video scene cut / thumbnail block
+            TimelineVideoItems.Add(
+                new TimelineItemViewModel
+                {
+                    Index = seg.Index,
+                    Segment = seg,
+                    LeftOffset = left,
+                    Width = width,
+                    TopOffset = 0,
+                    Height = 36,
+                    SpeakerName = seg.SpeakerName,
+                    SpeakerColor = seg.SpeakerColor,
+                    ThumbnailPath = seg.ThumbnailPath,
+                }
+            );
+
+            // Track 2: Original Audio speech presence
+            TimelineOriginalAudioItems.Add(
+                new TimelineItemViewModel
+                {
+                    Index = seg.Index,
+                    Segment = seg,
+                    LeftOffset = left,
+                    Width = width,
+                    TopOffset = 0,
+                    Height = 28,
+                    OriginalText = seg.OriginalText,
+                    SpeakerColor = seg.SpeakerColor,
+                }
+            );
+
+            // Track 3: Dubbed Voice Clip
+            TimelineDubbedAudioItems.Add(
+                new TimelineItemViewModel
+                {
+                    Index = seg.Index,
+                    Segment = seg,
+                    LeftOffset = left,
+                    Width = width,
+                    TopOffset = 0,
+                    Height = 38,
+                    SpeakerName = seg.SpeakerName,
+                    SpeakerColor = seg.SpeakerColor,
+                    KhmerText = seg.KhmerText,
+                    AudioClipPath = seg.AudioClipPath,
+                }
+            );
+        }
+
+        UpdateRulerMarks();
+        OnPropertyChanged(nameof(TimelineCanvasWidth));
+        OnPropertyChanged(nameof(PlayheadCanvasLeft));
+    }
+
+    private void UpdateRulerMarks()
+    {
+        TimelineRulerMarks.Clear();
+        var pps = Math.Max(0.5, TimelinePixelsPerSecond);
+        var totalSec = Math.Max(10.0, TotalTimelineDurationSeconds);
+
+        double majorStep;
+        double minorStep;
+
+        if (pps >= 25.0)
+        {
+            majorStep = 5.0;
+            minorStep = 1.0;
+        }
+        else if (pps >= 10.0)
+        {
+            majorStep = 10.0;
+            minorStep = 2.0;
+        }
+        else if (pps >= 4.0)
+        {
+            majorStep = 30.0;
+            minorStep = 5.0;
+        }
+        else if (pps >= 1.5)
+        {
+            majorStep = 60.0;
+            minorStep = 15.0;
+        }
+        else
+        {
+            majorStep = 300.0;
+            minorStep = 60.0;
+        }
+
+        for (double t = 0; t <= totalSec; t += minorStep)
+        {
+            bool isMajor = Math.Abs(t % majorStep) < 0.001 || (t == 0);
+            TimelineRulerMarks.Add(
+                new TimelineRulerMark
+                {
+                    X = t * pps,
+                    IsMajor = isMajor,
+                    Label = isMajor ? TimeSpan.FromSeconds(t).ToString(@"mm\:ss") : string.Empty,
+                }
+            );
+        }
+    }
+
+    public void UpdatePlayheadFromPlayer(
+        double currentSeconds,
+        double durationSeconds,
+        bool isPaused
+    )
+    {
+        CurrentPlayheadSeconds = currentSeconds;
+        if (durationSeconds > 1.0 && Math.Abs(TotalTimelineDurationSeconds - durationSeconds) > 0.5)
+        {
+            TotalTimelineDurationSeconds = durationSeconds;
+            UpdateTimelineVisuals();
+        }
+        IsReviewPlaying = !isPaused;
+        IsMonitorPlaying = !isPaused;
+
+        var active = Segments.FirstOrDefault(s =>
+            currentSeconds >= s.StartTime.TotalSeconds && currentSeconds <= s.EndTime.TotalSeconds
+        );
+        if (active != null && SelectedSegment != active)
+        {
+            SelectedSegment = active;
+        }
+    }
+
+    [RelayCommand]
+    public void StartTimelineReview()
+    {
+        if (string.IsNullOrWhiteSpace(VideoFilePath) || !File.Exists(VideoFilePath))
+        {
+            _snackbarManager.Notify("Please select an input video file first.");
+            return;
+        }
+
+        IsTimelineReviewActive = true;
+        HasActiveMedia = true;
+        IsMonitorPlaying = true;
+        IsReviewPlaying = true;
+        ActiveMediaTitle = $"Timeline Review: {Path.GetFileName(VideoFilePath)}";
+
+        double totalDur = TotalTimelineDurationSeconds > 0 ? TotalTimelineDurationSeconds : 0;
+        if (totalDur <= 0 && Segments.Count > 0)
+        {
+            totalDur = Segments.Max(s => s.EndTime.TotalSeconds);
+        }
+        if (totalDur <= 0)
+        {
+            totalDur = 60.0;
+        }
+        TotalTimelineDurationSeconds = totalDur;
+
+        var session = new DubbingReviewSession
+        {
+            VideoFilePath = VideoFilePath,
+            TotalDurationSeconds = totalDur,
+            OriginalAudioVolume = EffectiveOriginalVolume,
+            DubbedAudioVolume = EffectiveDubbedVolume,
+            AudioMode = AudioReviewMode,
+            EnableDucking = true,
+            DuckingVolumeRatio = 0.25,
+            Segments = Segments
+                .OrderBy(s => s.StartTime)
+                .Select(s => new ReviewSegmentData
+                {
+                    Index = s.Index,
+                    StartSeconds = s.StartTime.TotalSeconds,
+                    EndSeconds = s.EndTime.TotalSeconds,
+                    SpeakerName = s.SpeakerName,
+                    SpeakerColor = s.SpeakerColor,
+                    OriginalText = s.OriginalText,
+                    KhmerText = s.KhmerText,
+                    AudioClipPath = s.AudioClipPath,
+                    ThumbnailPath = s.ThumbnailPath,
+                })
+                .ToList(),
+        };
+
+        UpdateTimelineVisuals();
+        StartReviewSessionRequested?.Invoke(session);
+        _snackbarManager.Notify(
+            "Timeline Review active! Scrub and balance Original vs Dubbed audio."
+        );
+    }
+
+    [RelayCommand]
+    public void ToggleReviewPlayPause()
+    {
+        if (!IsTimelineReviewActive)
+        {
+            StartTimelineReview();
+            return;
+        }
+
+        IsReviewPlaying = !IsReviewPlaying;
+        PlaybackToggleRequested?.Invoke(IsReviewPlaying);
+    }
+
+    [RelayCommand]
+    public void SeekTimeline(double targetSeconds)
+    {
+        targetSeconds = Math.Clamp(targetSeconds, 0.0, TotalTimelineDurationSeconds);
+        CurrentPlayheadSeconds = targetSeconds;
+        SeekRequested?.Invoke(targetSeconds);
+    }
+
+    [RelayCommand]
+    public void ReplayFromStart()
+    {
+        SeekTimeline(0.0);
+    }
+
+    [RelayCommand]
+    public void StepForward()
+    {
+        SeekTimeline(CurrentPlayheadSeconds + 5.0);
+    }
+
+    [RelayCommand]
+    public void StepBackward()
+    {
+        SeekTimeline(CurrentPlayheadSeconds - 5.0);
+    }
+
+    [RelayCommand]
+    public void JumpToNextSegment()
+    {
+        var next = Segments
+            .OrderBy(s => s.StartTime)
+            .FirstOrDefault(s => s.StartTime.TotalSeconds > CurrentPlayheadSeconds + 0.1);
+        if (next != null)
+        {
+            SeekTimeline(next.StartTime.TotalSeconds);
+            SelectedSegment = next;
+        }
+    }
+
+    [RelayCommand]
+    public void JumpToPreviousSegment()
+    {
+        var prev = Segments
+            .OrderBy(s => s.StartTime)
+            .LastOrDefault(s => s.StartTime.TotalSeconds < CurrentPlayheadSeconds - 0.5);
+        if (prev != null)
+        {
+            SeekTimeline(prev.StartTime.TotalSeconds);
+            SelectedSegment = prev;
+        }
+    }
+
+    [RelayCommand]
+    public void SetAudioReviewMode(string mode)
+    {
+        AudioReviewMode = mode;
+    }
+
+    [RelayCommand]
+    public void ToggleOriginalMute()
+    {
+        IsOriginalMuted = !IsOriginalMuted;
+    }
+
+    [RelayCommand]
+    public void ToggleDubbedMute()
+    {
+        IsDubbedMuted = !IsDubbedMuted;
+    }
+
+    [RelayCommand]
+    public void ZoomInTimelinePixels()
+    {
+        TimelinePixelsPerSecond = Math.Clamp(TimelinePixelsPerSecond * 1.35, 1.0, 60.0);
+    }
+
+    [RelayCommand]
+    public void ZoomOutTimelinePixels()
+    {
+        TimelinePixelsPerSecond = Math.Clamp(TimelinePixelsPerSecond / 1.35, 1.0, 60.0);
+    }
+
+    [RelayCommand]
+    public void FitTimelineToWidth()
+    {
+        var targetSec = Math.Max(10.0, TotalTimelineDurationSeconds);
+        TimelinePixelsPerSecond = Math.Clamp(1200.0 / targetSec, 1.0, 50.0);
+    }
+
+    [RelayCommand]
+    public void ToggleTimelineExpanded()
+    {
+        IsTimelineExpanded = !IsTimelineExpanded;
+    }
+
     public IReadOnlyList<ActorEmotionConfig> AvailableEmotions => ActorEmotionEngine.AllEmotions;
 
     public IReadOnlyList<string> AvailableEmotionPresets => ActorEmotionEngine.EmotionNames;
@@ -3286,6 +3727,8 @@ public partial class DubbingViewModel : ViewModelBase
     [RelayCommand]
     public void StopMonitor()
     {
+        IsTimelineReviewActive = false;
+        IsReviewPlaying = false;
         IsMonitorPlaying = false;
         HasActiveMedia = false;
         ActiveMediaTitle = "Studio Monitor Standby";

@@ -503,36 +503,52 @@ public partial class VideoUpscaleService
             || (job.EnableMicroZoom && job.ZoomMode != SmartZoomMode.CenterCrop)
         )
         {
-            log(
-                $"[Smart Action Tracking] Analyzing video action points (Mode: {job.TrackingMode}, ZoomMode: {job.ZoomMode}, Speed: {job.SpeedMode})..."
-            );
-            try
+            if (job.ActionCentroidX != 0.5 || job.ActionCentroidY != 0.5)
             {
-                var analysis = await SmartActionAnalyzer.AnalyzeVideoAsync(
-                    job.FilePath,
-                    job.TrackingMode,
-                    ffmpegPath,
-                    speedMode: job.SpeedMode,
-                    cancellationToken: cancellationToken
-                );
-                job.ActionCentroidX = analysis.OverallCentroidX;
-                job.ActionCentroidY = analysis.OverallCentroidY;
                 log(
-                    $"[Smart Action Tracking] Detected action centroid: X={job.ActionCentroidX:0.00}, Y={job.ActionCentroidY:0.00} (Scene cuts: {analysis.DetectedSceneCuts})"
+                    $"[Smart Action Tracking] Reusing pre-analyzed action centroid: X={job.ActionCentroidX:0.00}, Y={job.ActionCentroidY:0.00}"
                 );
             }
-            catch (Exception ex)
+            else
             {
-                log($"[Smart Action Tracking] Warning: Action analysis fallback: {ex.Message}");
+                log(
+                    $"[Smart Action Tracking] Analyzing video action points (Mode: {job.TrackingMode}, ZoomMode: {job.ZoomMode}, Speed: {job.SpeedMode})..."
+                );
+                try
+                {
+                    var analysisMode =
+                        job.TrackingMode == SmartTrackingMode.StaticCenter
+                            ? SmartTrackingMode.ObjectFocus
+                            : job.TrackingMode;
+
+                    var analysis = await SmartActionAnalyzer.AnalyzeVideoAsync(
+                        job.FilePath,
+                        analysisMode,
+                        ffmpegPath,
+                        speedMode: job.SpeedMode,
+                        cancellationToken: cancellationToken
+                    );
+                    job.ActionCentroidX = analysis.OverallCentroidX;
+                    job.ActionCentroidY = analysis.OverallCentroidY;
+                    log(
+                        $"[Smart Action Tracking] Detected action centroid: X={job.ActionCentroidX:0.00}, Y={job.ActionCentroidY:0.00} (Scene cuts: {analysis.DetectedSceneCuts})"
+                    );
+                }
+                catch (Exception ex)
+                {
+                    log($"[Smart Action Tracking] Warning: Action analysis fallback: {ex.Message}");
+                }
             }
         }
 
+        double zoomPercent = job.EnableMicroZoom ? job.MicroZoomPercent : 0.0;
         var arFilter = AspectRatioFilterBuilder.BuildFilter(
             job.TargetAspectRatio,
             job.TargetResolution,
             job.TrackingMode,
             job.ActionCentroidX,
-            job.ActionCentroidY
+            job.ActionCentroidY,
+            zoomPercent: (job.TargetAspectRatio != AspectRatioMode.Original) ? zoomPercent : 0.0
         );
         string? scaleFilter = null;
         if (arFilter != null)
@@ -560,7 +576,8 @@ public partial class VideoUpscaleService
             filterParts.Add("hqdn3d=4:3:6:4.5");
             log("[Pre-Processing] Enabled Denoise / Deblock (hqdn3d=4:3:6:4.5)");
         }
-        if (job.EnableMicroZoom && job.MicroZoomPercent > 0)
+        // Micro zoom is applied here only if AspectRatioMode.Original (otherwise it was already combined in arFilter)
+        if (job.EnableMicroZoom && job.MicroZoomPercent > 0 && arFilter == null)
         {
             var zoomFilter = AspectRatioFilterBuilder.BuildMicroZoomFilter(
                 job.MicroZoomPercent,
@@ -1284,13 +1301,50 @@ public partial class VideoUpscaleService
             $"[Metadata Normalization] Applied profile: {job.CameraMetadata?.ProfileType.ToString() ?? "CleanNormalized"}"
         );
 
+        if (
+            (
+                job.TrackingMode != SmartTrackingMode.StaticCenter
+                || (job.EnableMicroZoom && job.ZoomMode != SmartZoomMode.CenterCrop)
+            )
+            && job.ActionCentroidX == 0.5
+            && job.ActionCentroidY == 0.5
+        )
+        {
+            try
+            {
+                var analysisMode =
+                    job.TrackingMode == SmartTrackingMode.StaticCenter
+                        ? SmartTrackingMode.ObjectFocus
+                        : job.TrackingMode;
+
+                var analysis = await SmartActionAnalyzer.AnalyzeVideoAsync(
+                    job.FilePath,
+                    analysisMode,
+                    ffmpegPath,
+                    speedMode: job.SpeedMode,
+                    cancellationToken: cancellationToken
+                );
+                job.ActionCentroidX = analysis.OverallCentroidX;
+                job.ActionCentroidY = analysis.OverallCentroidY;
+                log(
+                    $"[Smart Action Tracking] Detected action centroid: X={job.ActionCentroidX:0.00}, Y={job.ActionCentroidY:0.00} (Scene cuts: {analysis.DetectedSceneCuts})"
+                );
+            }
+            catch (Exception ex)
+            {
+                log($"[Smart Action Tracking] Warning: Action analysis fallback: {ex.Message}");
+            }
+        }
+
         // Resolution & Aspect Ratio clamping to prevent exceeding user target resolution or hardware encoder limits
+        double zoomPercentMux = job.EnableMicroZoom ? job.MicroZoomPercent : 0.0;
         var arFilterMux = AspectRatioFilterBuilder.BuildFilter(
             job.TargetAspectRatio,
             job.TargetResolution,
             job.TrackingMode,
             job.ActionCentroidX,
-            job.ActionCentroidY
+            job.ActionCentroidY,
+            zoomPercent: (job.TargetAspectRatio != AspectRatioMode.Original) ? zoomPercentMux : 0.0
         );
         string? targetScaleFilter =
             arFilterMux
@@ -1304,6 +1358,22 @@ public partial class VideoUpscaleService
             );
 
         var postFilterParts = new List<string>();
+        if (job.EnableMicroZoom && job.MicroZoomPercent > 0 && arFilterMux == null)
+        {
+            var zoomFilter = AspectRatioFilterBuilder.BuildMicroZoomFilter(
+                job.MicroZoomPercent,
+                job.ZoomMode,
+                job.ActionCentroidX,
+                job.ActionCentroidY
+            );
+            if (!string.IsNullOrWhiteSpace(zoomFilter))
+            {
+                postFilterParts.Add(zoomFilter);
+                log(
+                    $"[Micro-Zoom] Applied {job.MicroZoomPercent:0.#}% micro-zoom ({job.ZoomMode}): {zoomFilter}"
+                );
+            }
+        }
         if (!string.IsNullOrWhiteSpace(targetScaleFilter))
         {
             postFilterParts.Add(targetScaleFilter);
