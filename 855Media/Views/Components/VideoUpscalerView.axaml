@@ -16,31 +16,43 @@
         <Style Selector="Button.studio-tab">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Foreground" Value="{DynamicResource AntigravityMutedBrush}" />
-            <Setter Property="Padding" Value="14,7" />
-            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="14,6" />
+            <Setter Property="CornerRadius" Value="16" />
             <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontSize" Value="12.5" />
             <Setter Property="Focusable" Value="False" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.18" />
+                    <BrushTransition Property="Foreground" Duration="0:0:0.18" />
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.15" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
             <Style Selector="^:pointerover">
-                <Setter Property="Background" Value="#14FFFFFF" />
+                <Setter Property="Background" Value="{DynamicResource AntigravityElevatedBrush}" />
                 <Setter Property="Foreground" Value="{DynamicResource AntigravityTextBrush}" />
+                <Setter Property="RenderTransform" Value="scale(1.02)" />
+            </Style>
+            <Style Selector="^:pressed">
+                <Setter Property="RenderTransform" Value="scale(0.97)" />
             </Style>
             <Style Selector="^.active">
-                <Setter Property="Background" Value="Transparent" />
-                <Setter Property="Foreground" Value="{DynamicResource AntigravityAccentBrush}" />
+                <Setter Property="Background" Value="{DynamicResource AntigravityAccentBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource AntigravityAccentForegroundBrush}" />
             </Style>
             <Style Selector="^.active:pointerover">
-                <Setter Property="Background" Value="Transparent" />
-                <Setter Property="Foreground" Value="{DynamicResource AntigravityAccentBrush}" />
+                <Setter Property="Background" Value="{DynamicResource AntigravityAccentBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource AntigravityAccentForegroundBrush}" />
+                <Setter Property="RenderTransform" Value="scale(1.02)" />
             </Style>
         </Style>
 
         <!-- Quick Toggle Pill / Chip Style -->
         <Style Selector="CheckBox.quick-chip">
             <Setter Property="Padding" Value="10,4" />
-            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="CornerRadius" Value="14" />
             <Setter Property="FontSize" Value="12" />
-            <Setter Property="FontWeight" Value="Medium" />
+            <Setter Property="FontWeight" Value="SemiBold" />
         </Style>
 
         <!-- DataGrid Row Styling -->
@@ -81,8 +93,8 @@
                             VerticalAlignment="Center" />
                         <Border
                             IsVisible="{Binding !!Jobs.Count}"
-                            Background="#1838BDF8"
-                            BorderBrush="#3038BDF8"
+                            Background="{DynamicResource AntigravityElevatedBrush}"
+                            BorderBrush="{DynamicResource AntigravityBorderBrush}"
                             BorderThickness="1"
                             CornerRadius="10"
                             Padding="7,2"
@@ -91,7 +103,7 @@
                                 Text="{Binding Jobs.Count, StringFormat='{}{0} in queue'}"
                                 FontSize="11"
                                 FontWeight="SemiBold"
-                                Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                Foreground="{DynamicResource AntigravityTextBrush}" />
                         </Border>
                     </StackPanel>
 
@@ -141,7 +153,7 @@
                             <!-- Optional GPU Temp -->
                             <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center" IsVisible="{Binding HasHardwareGpuTemp}">
                                 <Separator Width="1" Height="12" Background="{DynamicResource AntigravityBorderBrush}" Margin="0,0,4,0" />
-                                <TextBlock Text="TEMP" FontSize="11" FontWeight="Bold" Foreground="#FF9800" VerticalAlignment="Center" />
+                                <TextBlock Text="TEMP" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
                                 <TextBlock Text="{Binding HardwareGpuTemp, StringFormat='{}{0}°C'}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
                             </StackPanel>
                         </StackPanel>
@@ -1286,8 +1298,8 @@
                             Padding="8,6"
                             ToolTip.Tip="Cancel all running &amp; queued jobs">
                             <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
-                                <materialIcons:MaterialIcon Kind="CloseOctagonOutline" Width="14" Height="14" Foreground="#FF8888" VerticalAlignment="Center" />
-                                <TextBlock Text="Cancel All" FontSize="12" Foreground="#FF8888" VerticalAlignment="Center" />
+                                <materialIcons:MaterialIcon Kind="CloseOctagonOutline" Width="14" Height="14" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                                <TextBlock Text="Cancel All" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
                             </StackPanel>
                         </Button>
                     </StackPanel>
@@ -1301,15 +1313,25 @@
                 <Border
                     IsVisible="{Binding !Jobs.Count}"
                     Margin="32,20"
-                    Padding="40,36"
+                    Padding="44,40"
                     HorizontalAlignment="Stretch"
                     VerticalAlignment="Stretch"
                     Background="{DynamicResource AntigravityPanelBrush}"
                     BorderBrush="{DynamicResource AntigravityBorderBrush}"
                     BorderThickness="1"
-                    CornerRadius="14">
+                    BoxShadow="0 8 32 0 #25000000"
+                    CornerRadius="18">
                     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="14">
-                        <materialIcons:MaterialIcon Kind="MoviePlusOutline" Width="44" Height="44" Foreground="{DynamicResource AntigravityAccentBrush}" Opacity="0.85" HorizontalAlignment="Center" />
+                        <Border
+                            Width="72"
+                            Height="72"
+                            CornerRadius="22"
+                            Background="{DynamicResource AntigravityElevatedBrush}"
+                            BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                            BorderThickness="1"
+                            HorizontalAlignment="Center">
+                            <materialIcons:MaterialIcon Kind="MoviePlusOutline" Width="36" Height="36" Foreground="{DynamicResource AntigravityAccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
                         <TextBlock
                             HorizontalAlignment="Center"
                             FontSize="20"
@@ -1323,24 +1345,28 @@
                             Foreground="{DynamicResource AntigravityMutedBrush}"
                             Text="Supports MP4, MOV, MKV, AVI, WebM" />
 
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="10" Margin="0,8,0,0">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="12" Margin="0,8,0,0">
                             <Button
                                 Command="{Binding AddFilesCommand}"
-                                Classes="accent"
-                                CornerRadius="8"
-                                Padding="18,9"
-                                Theme="{DynamicResource MaterialOutlineButton}">
-                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                    <materialIcons:MaterialIcon Kind="VideoPlusOutline" Width="16" Height="16" VerticalAlignment="Center" />
-                                    <TextBlock Text="Browse Videos" FontSize="13" FontWeight="Bold" VerticalAlignment="Center" />
+                                Background="{DynamicResource AntigravityAccentBrush}"
+                                Foreground="{DynamicResource AntigravityAccentForegroundBrush}"
+                                CornerRadius="20"
+                                Padding="20,10"
+                                Theme="{DynamicResource MaterialFlatButton}">
+                                <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
+                                    <materialIcons:MaterialIcon Kind="VideoPlusOutline" Width="17" Height="17" Foreground="{DynamicResource AntigravityAccentForegroundBrush}" VerticalAlignment="Center" />
+                                    <TextBlock Text="Browse Videos" FontSize="13" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentForegroundBrush}" VerticalAlignment="Center" />
                                 </StackPanel>
                             </Button>
                             <Button
                                 Command="{Binding AddFolderCommand}"
-                                CornerRadius="8"
-                                Padding="16,9"
+                                Background="{DynamicResource AntigravityElevatedBrush}"
+                                BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                                BorderThickness="1"
+                                CornerRadius="20"
+                                Padding="18,10"
                                 Theme="{DynamicResource MaterialFlatButton}">
-                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
                                     <materialIcons:MaterialIcon Kind="FolderPlusOutline" Width="16" Height="16" VerticalAlignment="Center" />
                                     <TextBlock Text="Add Folder" FontSize="13" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityTextBrush}" />
                                 </StackPanel>
@@ -1466,32 +1492,32 @@
                                 <DataTemplate DataType="upscaling:UpscaleJob">
                                     <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" Margin="6,0">
                                         <!-- Graded -->
-                                        <Border IsVisible="{Binding ColorGrading.HasActiveGrading}" Padding="5,2" CornerRadius="4" Background="#2038bdf8" ToolTip.Tip="Color Graded">
-                                            <TextBlock Text="GRADE" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                        <Border IsVisible="{Binding ColorGrading.HasActiveGrading}" Padding="5,2" CornerRadius="4" Background="{DynamicResource AntigravityElevatedBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" ToolTip.Tip="Color Graded">
+                                            <TextBlock Text="GRADE" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
                                         </Border>
                                         <!-- Facial Clarity -->
-                                        <Border IsVisible="{Binding EnableFacialClarity}" Padding="5,2" CornerRadius="4" Background="#20a78bfa" ToolTip.Tip="Facial Clarity Active">
-                                            <TextBlock Text="FACE" FontSize="11" FontWeight="Bold" Foreground="#a78bfa" />
+                                        <Border IsVisible="{Binding EnableFacialClarity}" Padding="5,2" CornerRadius="4" Background="{DynamicResource AntigravityElevatedBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" ToolTip.Tip="Facial Clarity Active">
+                                            <TextBlock Text="FACE" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
                                         </Border>
                                         <!-- Aspect Ratio (9:16, 1:1, 21:9) -->
                                         <Border IsVisible="{Binding TargetAspectRatio, Converter={x:Static converters:EqualityConverter.IsNotEqual}, ConverterParameter=Original}"
-                                                Padding="5,2" CornerRadius="4" Background="#20f472b6"
+                                                Padding="5,2" CornerRadius="4" Background="{DynamicResource AntigravityElevatedBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1"
                                                 ToolTip.Tip="{Binding TargetAspectRatio, Converter={x:Static converters:EnumDisplayNameConverter.Instance}}">
-                                            <TextBlock Text="{Binding TargetAspectRatio, Converter={x:Static converters:EnumDisplayNameConverter.Instance}}" FontSize="11" FontWeight="Bold" Foreground="#f472b6" />
+                                            <TextBlock Text="{Binding TargetAspectRatio, Converter={x:Static converters:EnumDisplayNameConverter.Instance}}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
                                         </Border>
                                         <!-- Playback Speed (if != 1.0) -->
                                         <Border IsVisible="{Binding PlaybackSpeed, Converter={x:Static converters:EqualityConverter.IsNotEqual}, ConverterParameter=1}"
-                                                Padding="5,2" CornerRadius="4" Background="#2034d399"
+                                                Padding="5,2" CornerRadius="4" Background="{DynamicResource AntigravityElevatedBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1"
                                                 ToolTip.Tip="{Binding PlaybackSpeed, StringFormat='{}{0:0.##}x Playback Speed'}">
-                                            <TextBlock Text="{Binding PlaybackSpeed, StringFormat='{}{0:0.#}x'}" FontSize="11" FontWeight="Bold" Foreground="#34d399" />
+                                            <TextBlock Text="{Binding PlaybackSpeed, StringFormat='{}{0:0.#}x'}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
                                         </Border>
                                         <!-- Split -->
-                                        <Border IsVisible="{Binding HasPartBadge}" Padding="5,2" CornerRadius="4" Background="#20fbbf24" ToolTip.Tip="{Binding PartBadge}">
-                                            <TextBlock Text="{Binding PartBadge}" FontSize="11" FontWeight="Bold" Foreground="#fbbf24" />
+                                        <Border IsVisible="{Binding HasPartBadge}" Padding="5,2" CornerRadius="4" Background="{DynamicResource AntigravityElevatedBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" ToolTip.Tip="{Binding PartBadge}">
+                                            <TextBlock Text="{Binding PartBadge}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
                                         </Border>
                                         <!-- Denoise -->
-                                        <Border IsVisible="{Binding EnableDenoise}" Padding="5,2" CornerRadius="4" Background="#2038bdf8" ToolTip.Tip="Denoise Active">
-                                            <TextBlock Text="DENOISE" FontSize="11" FontWeight="Bold" Foreground="#38bdf8" />
+                                        <Border IsVisible="{Binding EnableDenoise}" Padding="5,2" CornerRadius="4" Background="{DynamicResource AntigravityElevatedBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" ToolTip.Tip="Denoise Active">
+                                            <TextBlock Text="DENOISE" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
                                         </Border>
                                     </StackPanel>
                                 </DataTemplate>

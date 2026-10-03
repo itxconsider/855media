@@ -5,377 +5,770 @@
     xmlns:converters="clr-namespace:_855Media.Converters"
     xmlns:dialogs="clr-namespace:_855Media.ViewModels.Dialogs"
     xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
-    Width="380"
+    Width="760"
+    Height="520"
     x:DataType="dialogs:SettingsViewModel">
-    <Grid RowDefinitions="Auto,*,Auto">
-        <TextBlock
-            Grid.Row="0"
-            Margin="16"
-            FontSize="19"
-            FontWeight="Light"
-            Text="{Binding LocalizationManager.SettingsTitle}" />
 
-        <Border
-            Grid.Row="1"
-            Padding="0,8"
-            BorderBrush="{DynamicResource MaterialDividerBrush}"
-            BorderThickness="0,1">
-            <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-                <StackPanel Orientation="Vertical">
-                    <!--  License & Subscription  -->
-                    <Border
-                        Margin="16,8"
-                        Padding="12"
-                        Background="{DynamicResource MaterialCardBackgroundBrush}"
-                        BorderBrush="{DynamicResource MaterialDividerBrush}"
-                        BorderThickness="1"
-                        CornerRadius="8">
-                        <StackPanel Spacing="6">
-                            <DockPanel>
-                                <materialIcons:MaterialIcon
-                                    Width="18"
-                                    Height="18"
-                                    Margin="0,0,8,0"
-                                    Foreground="#0091EA"
-                                    Kind="KeyVariant" />
-                                <TextBlock
-                                    FontWeight="SemiBold"
-                                    Text="License &amp; Subscription"
-                                    VerticalAlignment="Center" />
-                                <Border
-                                    Margin="8,0,0,0"
-                                    Padding="6,2"
-                                    HorizontalAlignment="Left"
-                                    Background="#1877F2"
-                                    CornerRadius="10">
-                                    <TextBlock
-                                        FontSize="10"
-                                        FontWeight="Bold"
-                                        Foreground="White"
-                                        Text="{Binding LicenseStatusText}" />
-                                </Border>
-                            </DockPanel>
-                            <TextBlock
-                                FontSize="11"
-                                Opacity="0.75"
-                                Text="{Binding LicenseOwnerText}" />
+    <UserControl.Styles>
+        <!-- Navigation Pill Style -->
+        <Style Selector="Button.navPill">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource AntigravityMutedBrush}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Height" Value="36" />
+            <Setter Property="Padding" Value="10,0" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.12" />
+                    <BrushTransition Property="Foreground" Duration="0:0:0.12" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button.navPill:pointerover">
+            <Setter Property="Background" Value="{DynamicResource MusePillHoverBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource AntigravityTextBrush}" />
+        </Style>
+        <Style Selector="Button.navPill.active">
+            <Setter Property="Background" Value="{DynamicResource MusePillActiveBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource MusePillActiveForegroundBrush}" />
+        </Style>
+        <Style Selector="Button.navPill.active materialIcons|MaterialIcon">
+            <Setter Property="Foreground" Value="{DynamicResource MusePillActiveForegroundBrush}" />
+        </Style>
+
+        <!-- Card Row Button Style -->
+        <Style Selector="Button.cardRow">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource AntigravityTextBrush}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="16,14" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.12" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button.cardRow:pointerover">
+            <Setter Property="Background" Value="{DynamicResource MusePillHoverBrush}" />
+        </Style>
+        <Style Selector="Button.cardRow:pressed">
+            <Setter Property="RenderTransform" Value="none" />
+        </Style>
+
+        <!-- Close Circle Button Style -->
+        <Style Selector="Button.closeCircle">
+            <Setter Property="Width" Value="32" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="16" />
+            <Setter Property="Background" Value="{DynamicResource MuseCloseBtnBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource AntigravityTextBrush}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.12" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button.closeCircle:pointerover">
+            <Setter Property="Background" Value="{DynamicResource MusePillHoverBrush}" />
+        </Style>
+    </UserControl.Styles>
+
+    <Border
+        Background="{DynamicResource AntigravityPanelBrush}"
+        BorderBrush="{DynamicResource AntigravityBorderBrush}"
+        BorderThickness="1"
+        CornerRadius="16"
+        ClipToBounds="True">
+        <Grid ColumnDefinitions="220,*">
+            <!-- Left Sidebar Navigation -->
+            <Border
+                Grid.Column="0"
+                Background="{DynamicResource AntigravityRailBrush}"
+                BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                BorderThickness="0,0,1,0">
+                <Grid RowDefinitions="Auto,*,Auto">
+                    <!-- Title -->
+                    <TextBlock
+                        Grid.Row="0"
+                        Margin="18,18,16,14"
+                        FontSize="19"
+                        FontWeight="Bold"
+                        Foreground="{DynamicResource AntigravityTextBrush}"
+                        Text="Settings" />
+
+                    <!-- Navigation Items List -->
+                    <ScrollViewer
+                        Grid.Row="1"
+                        HorizontalScrollBarVisibility="Disabled"
+                        VerticalScrollBarVisibility="Auto">
+                        <StackPanel Margin="10,0,10,12" Spacing="2">
+                            <!-- 0: General -->
                             <Button
-                                Margin="0,4,0,0"
-                                HorizontalAlignment="Left"
-                                Command="{Binding OpenLicenseActivationCommand}"
-                                Theme="{DynamicResource MaterialOutlineButton}">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <materialIcons:MaterialIcon Width="14" Height="14" Kind="ShieldKeyOutline" />
-                                    <TextBlock Text="Manage License / Activate" />
+                                Classes="navPill"
+                                Classes.active="{Binding IsGeneralSelected}"
+                                Command="{Binding SelectCategoryCommand}"
+                                CommandParameter="0">
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <materialIcons:MaterialIcon Width="18" Height="18" Kind="CogOutline" VerticalAlignment="Center" />
+                                    <TextBlock FontSize="13" FontWeight="Medium" Text="General" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+
+                            <!-- 1: Connectors (AI) -->
+                            <Button
+                                Classes="navPill"
+                                Classes.active="{Binding IsConnectorsSelected}"
+                                Command="{Binding SelectCategoryCommand}"
+                                CommandParameter="1">
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <materialIcons:MaterialIcon Width="18" Height="18" Kind="ViewGridOutline" VerticalAlignment="Center" />
+                                    <TextBlock FontSize="13" FontWeight="Medium" Text="Connectors" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+
+                            <!-- 2: Wallet / License -->
+                            <Button
+                                Classes="navPill"
+                                Classes.active="{Binding IsLicenseSelected}"
+                                Command="{Binding SelectCategoryCommand}"
+                                CommandParameter="2">
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <materialIcons:MaterialIcon Width="18" Height="18" Kind="WalletOutline" VerticalAlignment="Center" />
+                                    <TextBlock FontSize="13" FontWeight="Medium" Text="Wallet" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+
+                            <!-- 3: Secure store -->
+                            <Button
+                                Classes="navPill"
+                                Command="{Binding SelectCategoryCommand}"
+                                CommandParameter="2">
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <materialIcons:MaterialIcon Width="18" Height="18" Kind="ShieldKeyOutline" VerticalAlignment="Center" />
+                                    <TextBlock FontSize="13" FontWeight="Medium" Text="Secure store" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+
+                            <!-- 4: Permissions -->
+                            <Button
+                                Classes="navPill"
+                                Command="{Binding SelectCategoryCommand}"
+                                CommandParameter="5">
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <materialIcons:MaterialIcon Width="18" Height="18" Kind="HandBackRightOutline" VerticalAlignment="Center" />
+                                    <TextBlock FontSize="13" FontWeight="Medium" Text="Permissions" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+
+                            <!-- 5: Messaging channels / Audio -->
+                            <Button
+                                Classes="navPill"
+                                Classes.active="{Binding IsAudioSelected}"
+                                Command="{Binding SelectCategoryCommand}"
+                                CommandParameter="4">
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <materialIcons:MaterialIcon Width="18" Height="18" Kind="ChatOutline" VerticalAlignment="Center" />
+                                    <TextBlock FontSize="13" FontWeight="Medium" Text="Messaging channels" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+
+                            <!-- 6: Devices -->
+                            <Button
+                                Classes="navPill"
+                                Classes.active="{Binding IsDevicesSelected}"
+                                Command="{Binding SelectCategoryCommand}"
+                                CommandParameter="5">
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <materialIcons:MaterialIcon Width="18" Height="18" Kind="Devices" VerticalAlignment="Center" />
+                                    <TextBlock FontSize="13" FontWeight="Medium" Text="Devices" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+
+                            <!-- 7: Data controls -->
+                            <Button
+                                Classes="navPill"
+                                Classes.active="{Binding IsDownloadsSelected}"
+                                Command="{Binding SelectCategoryCommand}"
+                                CommandParameter="3">
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <materialIcons:MaterialIcon Width="18" Height="18" Kind="LockOutline" VerticalAlignment="Center" />
+                                    <TextBlock FontSize="13" FontWeight="Medium" Text="Data controls" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+
+                            <!-- 8: Help & support -->
+                            <Button
+                                Classes="navPill"
+                                Classes.active="{Binding IsHelpSelected}"
+                                Command="{Binding SelectCategoryCommand}"
+                                CommandParameter="7">
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <materialIcons:MaterialIcon Width="18" Height="18" Kind="HelpCircleOutline" VerticalAlignment="Center" />
+                                    <TextBlock FontSize="13" FontWeight="Medium" Text="Help &amp; support" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+
+                            <!-- 9: Legal info -->
+                            <Button
+                                Classes="navPill"
+                                Classes.active="{Binding IsLegalSelected}"
+                                Command="{Binding SelectCategoryCommand}"
+                                CommandParameter="6">
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <materialIcons:MaterialIcon Width="18" Height="18" Kind="ShieldCheckOutline" VerticalAlignment="Center" />
+                                    <TextBlock FontSize="13" FontWeight="Medium" Text="Legal info" VerticalAlignment="Center" />
                                 </StackPanel>
                             </Button>
                         </StackPanel>
-                    </Border>
+                    </ScrollViewer>
 
-                    <!--  Google Gemini AI Translation  -->
+                    <!-- Bottom: Log out / Close -->
                     <Border
-                        Margin="16,8"
-                        Padding="12"
-                        Background="{DynamicResource MaterialCardBackgroundBrush}"
-                        BorderBrush="{DynamicResource MaterialDividerBrush}"
-                        BorderThickness="1"
-                        CornerRadius="8">
-                        <StackPanel Spacing="8">
-                            <DockPanel>
-                                <materialIcons:MaterialIcon
-                                    Width="18"
-                                    Height="18"
-                                    Margin="0,0,8,0"
-                                    Foreground="#8E24AA"
-                                    Kind="AutoAwesome" />
-                                <TextBlock
-                                    FontWeight="SemiBold"
-                                    Text="Google Gemini AI Translation"
-                                    VerticalAlignment="Center" />
-                            </DockPanel>
-                            <TextBlock
-                                FontSize="11"
-                                Opacity="0.75"
-                                Text="Enables context-aware, cinema-grade movie dubbing into natural spoken Khmer (ភាសាខ្មែរ)." />
-
-                            <TextBlock FontSize="12" Text="Gemini API Key" Margin="0,4,0,0" />
-                            <TextBox
-                                Text="{Binding GeminiApiKey}"
-                                Watermark="Paste your Gemini API key (AIzaSy...)"
-                                PasswordChar="•"
-                                Classes="dense">
-                                <TextBox.InnerRightContent>
-                                    <Button
-                                        Padding="4"
-                                        Command="{Binding OpenAiStudioApiKeyUrlCommand}"
-                                        Theme="{DynamicResource MaterialFlatButton}"
-                                        ToolTip.Tip="Get a free Gemini API key from Google AI Studio">
-                                        <materialIcons:MaterialIcon Width="14" Height="14" Kind="OpenInNew" />
-                                    </Button>
-                                </TextBox.InnerRightContent>
-                            </TextBox>
-
-                            <DockPanel LastChildFill="False">
-                                <TextBlock DockPanel.Dock="Left" Text="Model" VerticalAlignment="Center" FontSize="12" />
-                                <ComboBox
-                                    DockPanel.Dock="Right"
-                                    Width="160"
-                                    ItemsSource="{Binding AvailableGeminiModels}"
-                                    SelectedItem="{Binding GeminiModel}" />
-                            </DockPanel>
-                        </StackPanel>
+                        Grid.Row="2"
+                        Padding="10,8,10,14"
+                        BorderBrush="{DynamicResource MuseDividerBrush}"
+                        BorderThickness="0,1,0,0">
+                        <Button
+                            Classes="navPill"
+                            Command="{Binding CloseCommand}"
+                            ToolTip.Tip="Close Settings">
+                            <StackPanel Orientation="Horizontal" Spacing="10">
+                                <materialIcons:MaterialIcon Width="18" Height="18" Kind="LogoutVariant" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                                <TextBlock FontSize="13" FontWeight="Medium" Foreground="{DynamicResource AntigravityMutedBrush}" Text="Log out" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
                     </Border>
+                </Grid>
+            </Border>
 
-                    <!--  Theme  -->
-                    <DockPanel
-                        Margin="16,8"
-                        LastChildFill="False"
-                        ToolTip.Tip="{Binding LocalizationManager.ThemeTooltip}">
-                        <TextBlock DockPanel.Dock="Left" Text="{Binding LocalizationManager.ThemeLabel}" />
-                        <ComboBox
-                            Width="160"
-                            DockPanel.Dock="Right"
-                            ItemsSource="{Binding AvailableThemes}"
-                            SelectedItem="{Binding Theme}" />
-                    </DockPanel>
+            <!-- Right Content Area -->
+            <Grid Grid.Column="1" RowDefinitions="Auto,*">
+                <!-- Header with Category Title and Circular Close Button -->
+                <DockPanel Grid.Row="0" Margin="24,18,20,12" LastChildFill="True">
+                    <Button
+                        Classes="closeCircle"
+                        DockPanel.Dock="Right"
+                        Command="{Binding CloseCommand}"
+                        ToolTip.Tip="Close">
+                        <materialIcons:MaterialIcon Width="16" Height="16" Kind="Close" />
+                    </Button>
+                    <TextBlock
+                        FontSize="20"
+                        FontWeight="Bold"
+                        Foreground="{DynamicResource AntigravityTextBrush}"
+                        Text="{Binding CurrentCategoryTitle}"
+                        VerticalAlignment="Center" />
+                </DockPanel>
 
-                    <!--  Language  -->
-                    <DockPanel
-                        Margin="16,8"
-                        LastChildFill="False"
-                        ToolTip.Tip="{Binding LocalizationManager.LanguageTooltip}">
-                        <TextBlock DockPanel.Dock="Left" Text="{Binding LocalizationManager.LanguageLabel}" />
-                        <ComboBox
-                            Width="160"
-                            DockPanel.Dock="Right"
-                            ItemsSource="{Binding AvailableLanguages}"
-                            SelectedItem="{Binding Language}">
-                            <ComboBox.ItemTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding Converter={x:Static converters:EnumDisplayNameConverter.Instance}}" />
-                                </DataTemplate>
-                            </ComboBox.ItemTemplate>
-                        </ComboBox>
-                    </DockPanel>
+                <!-- Body Panels -->
+                <ScrollViewer
+                    Grid.Row="1"
+                    Margin="24,0,20,20"
+                    HorizontalScrollBarVisibility="Disabled"
+                    VerticalScrollBarVisibility="Auto">
+                    <Panel>
+                        <!-- ==================== TAB 6: LEGAL INFO (Matches Screenshot Exactly) ==================== -->
+                        <StackPanel IsVisible="{Binding IsLegalSelected}" Spacing="14">
+                            <!-- Notice Subtitle with Blue Link -->
+                            <TextBlock FontSize="13" TextWrapping="Wrap" LineHeight="20">
+                                <Run Foreground="{DynamicResource AntigravityMutedBrush}" Text="Responses are generated by AI. Some may be inaccurate or inappropriate. " />
+                                <Run Foreground="{DynamicResource AntigravityTextBrush}" Text="Learn more" TextDecorations="Underline" />
+                            </TextBlock>
 
-                    <!--  Auto-updates  -->
-                    <DockPanel
-                        Margin="16,8"
-                        IsVisible="{Binding IsAutoUpdateAvailable}"
-                        LastChildFill="False">
-                        <ToolTip.Tip>
-                            <TextBlock Inlines="{Binding LocalizationManager.AutoUpdateTooltip, Converter={x:Static converters:MarkdownToInlinesConverter.Instance}}" />
-                        </ToolTip.Tip>
-                        <TextBlock DockPanel.Dock="Left" Text="{Binding LocalizationManager.AutoUpdateLabel}" />
-                        <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding IsAutoUpdateEnabled}" />
-                    </DockPanel>
-
-                    <!--  Persist authentication  -->
-                    <DockPanel IsVisible="{OnPlatform False, Windows=True}" LastChildFill="False">
-                        <ToolTip.Tip>
-                            <TextBlock Inlines="{Binding LocalizationManager.PersistAuthTooltip, Converter={x:Static converters:MarkdownToInlinesConverter.Instance}}" />
-                        </ToolTip.Tip>
-                        <TextBlock
-                            Margin="16,8"
-                            DockPanel.Dock="Left"
-                            Text="{Binding LocalizationManager.PersistAuthLabel}" />
-                        <ToggleSwitch
-                            Margin="16,8"
-                            DockPanel.Dock="Right"
-                            IsChecked="{Binding IsAuthPersisted}" />
-                    </DockPanel>
-
-                    <!--  FFmpeg path  -->
-                    <DockPanel
-                        Margin="16,8"
-                        LastChildFill="False"
-                        ToolTip.Tip="{Binding LocalizationManager.FFmpegPathTooltip}">
-                        <TextBlock DockPanel.Dock="Left" Text="{Binding LocalizationManager.FFmpegPathLabel}" />
-                        <TextBox
-                            Width="150"
-                            Height="20"
-                            DockPanel.Dock="Right"
-                            FontSize="13"
-                            Text="{Binding FFmpegFilePath}"
-                            Theme="{DynamicResource CompactTextBox}"
-                            Watermark="{Binding LocalizationManager.FFmpegPathWatermark}">
-                            <TextBox.InnerRightContent>
-                                <StackPanel Orientation="Horizontal">
-                                    <Button
-                                        Padding="4"
-                                        Command="{Binding ResetFFmpegFilePathCommand}"
-                                        IsEnabled="{Binding FFmpegFilePath, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                        Theme="{DynamicResource MaterialFlatButton}"
-                                        ToolTip.Tip="{Binding LocalizationManager.FFmpegPathResetTooltip}">
-                                        <materialIcons:MaterialIcon
-                                            Width="14"
-                                            Height="14"
-                                            Kind="Close" />
+                            <!-- Muse Rounded Card Container -->
+                            <Border
+                                CornerRadius="14"
+                                Background="{DynamicResource AntigravityCardBrush}"
+                                BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                                BorderThickness="1"
+                                ClipToBounds="True">
+                                <StackPanel>
+                                    <Button Classes="cardRow" Command="{Binding OpenUrlCommand}" CommandParameter="https://muse.ai/privacy">
+                                        <DockPanel>
+                                            <materialIcons:MaterialIcon DockPanel.Dock="Right" Width="16" Height="16" Kind="ArrowTopRight" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                                            <TextBlock Text="Muse Privacy Policy" FontSize="14" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
+                                        </DockPanel>
                                     </Button>
-                                    <Button
-                                        Padding="4"
-                                        Command="{Binding BrowseFFmpegFilePathCommand}"
-                                        Theme="{DynamicResource MaterialFlatButton}"
-                                        ToolTip.Tip="{Binding LocalizationManager.FFmpegPathBrowseTooltip}">
-                                        <materialIcons:MaterialIcon
-                                            Width="14"
-                                            Height="14"
-                                            Kind="FolderOpen" />
+                                    <Border Height="1" Background="{DynamicResource MuseDividerBrush}" />
+
+                                    <Button Classes="cardRow" Command="{Binding OpenUrlCommand}" CommandParameter="https://muse.ai/terms">
+                                        <DockPanel>
+                                            <materialIcons:MaterialIcon DockPanel.Dock="Right" Width="16" Height="16" Kind="ArrowTopRight" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                                            <TextBlock Text="Muse Supplemental Terms" FontSize="14" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
+                                        </DockPanel>
+                                    </Button>
+                                    <Border Height="1" Background="{DynamicResource MuseDividerBrush}" />
+
+                                    <Button Classes="cardRow" Command="{Binding OpenUrlCommand}" CommandParameter="https://www.facebook.com/legal/terms">
+                                        <DockPanel>
+                                            <materialIcons:MaterialIcon DockPanel.Dock="Right" Width="16" Height="16" Kind="ArrowTopRight" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                                            <TextBlock Text="Meta Terms of Service" FontSize="14" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
+                                        </DockPanel>
+                                    </Button>
+                                    <Border Height="1" Background="{DynamicResource MuseDividerBrush}" />
+
+                                    <Button Classes="cardRow" Command="{Binding OpenUrlCommand}" CommandParameter="https://www.facebook.com/privacy/policy">
+                                        <DockPanel>
+                                            <materialIcons:MaterialIcon DockPanel.Dock="Right" Width="16" Height="16" Kind="ArrowTopRight" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                                            <TextBlock Text="Meta Privacy Policy" FontSize="14" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
+                                        </DockPanel>
+                                    </Button>
+                                    <Border Height="1" Background="{DynamicResource MuseDividerBrush}" />
+
+                                    <Button Classes="cardRow" Command="{Binding OpenUrlCommand}" CommandParameter="https://www.facebook.com/policies/other-policies/meta-ai-terms">
+                                        <DockPanel>
+                                            <materialIcons:MaterialIcon DockPanel.Dock="Right" Width="16" Height="16" Kind="ArrowTopRight" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                                            <TextBlock Text="Meta AI Terms of Service" FontSize="14" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
+                                        </DockPanel>
+                                    </Button>
+                                    <Border Height="1" Background="{DynamicResource MuseDividerBrush}" />
+
+                                    <Button Classes="cardRow" Command="{Binding OpenUrlCommand}" CommandParameter="https://github.com/itxconsider/855media">
+                                        <DockPanel>
+                                            <materialIcons:MaterialIcon DockPanel.Dock="Right" Width="16" Height="16" Kind="ArrowTopRight" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                                            <TextBlock Text="855Media Open Source &amp; License" FontSize="14" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
+                                        </DockPanel>
                                     </Button>
                                 </StackPanel>
-                            </TextBox.InnerRightContent>
-                        </TextBox>
-                    </DockPanel>
-
-                    <!--  Inject language-specific audio streams  -->
-                    <DockPanel
-                        Margin="16,8"
-                        LastChildFill="False"
-                        ToolTip.Tip="{Binding LocalizationManager.InjectAltLanguagesTooltip}">
-                        <TextBlock DockPanel.Dock="Left" Text="{Binding LocalizationManager.InjectAltLanguagesLabel}" />
-                        <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding ShouldInjectLanguageSpecificAudioStreams}" />
-                    </DockPanel>
-
-                    <!--  Inject subtitles  -->
-                    <DockPanel
-                        Margin="16,8"
-                        LastChildFill="False"
-                        ToolTip.Tip="{Binding LocalizationManager.InjectSubtitlesTooltip}">
-                        <TextBlock DockPanel.Dock="Left" Text="{Binding LocalizationManager.InjectSubtitlesLabel}" />
-                        <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding ShouldInjectSubtitles}" />
-                    </DockPanel>
-
-                    <!--  Translate caption to english  -->
-                    <DockPanel
-                        Margin="16,8"
-                        LastChildFill="False"
-                        ToolTip.Tip="{Binding LocalizationManager.TranslateCaptionsToEnglishTooltip}">
-                        <TextBlock DockPanel.Dock="Left" Text="{Binding LocalizationManager.TranslateCaptionsToEnglishLabel}" />
-                        <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding ShouldTranslateCaptionsToEnglish}" />
-                    </DockPanel>
-
-                    <!--  Inject tags  -->
-                    <DockPanel
-                        Margin="16,8"
-                        LastChildFill="False"
-                        ToolTip.Tip="{Binding LocalizationManager.InjectTagsTooltip}">
-                        <TextBlock DockPanel.Dock="Left" Text="{Binding LocalizationManager.InjectTagsLabel}" />
-                        <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding ShouldInjectTags}" />
-                    </DockPanel>
-
-                    <!--  Save title to text file  -->
-                    <DockPanel
-                        Margin="16,8"
-                        LastChildFill="False"
-                        ToolTip.Tip="{Binding LocalizationManager.SaveTitleToTextFileTooltip}">
-                        <TextBlock DockPanel.Dock="Left" Text="{Binding LocalizationManager.SaveTitleToTextFileLabel}" />
-                        <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding ShouldSaveTitleToTextFile}" />
-                    </DockPanel>
-
-                    <!--  Translate title & caption to English  -->
-                    <DockPanel
-                        Margin="16,8"
-                        LastChildFill="False"
-                        ToolTip.Tip="{Binding LocalizationManager.TranslateTitleToEnglishTooltip}">
-                        <TextBlock DockPanel.Dock="Left" Text="{Binding LocalizationManager.TranslateTitleToEnglishLabel}" />
-                        <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding ShouldTranslateTitleToEnglish}" />
-                    </DockPanel>
-
-                    <!--  Audio Processing Mode (None / Isolate Speech / Remove Vocals Karaoke)  -->
-                    <DockPanel
-                        Margin="16,8"
-                        LastChildFill="False"
-                        ToolTip.Tip="Applies FFmpeg audio processing to isolate human dialogue or remove lead vocals for karaoke instrumental tracks">
-                        <TextBlock DockPanel.Dock="Left" Text="Audio Processing Mode" VerticalAlignment="Center" />
-                        <ComboBox
-                            DockPanel.Dock="Right"
-                            Width="180"
-                            ItemsSource="{Binding AvailableAudioProcessingModes}"
-                            SelectedItem="{Binding SelectedAudioProcessingMode}" />
-                    </DockPanel>
-
-                    <!--  Skip existing files  -->
-                    <DockPanel
-                        Margin="16,8"
-                        LastChildFill="False"
-                        ToolTip.Tip="{Binding LocalizationManager.SkipExistingFilesTooltip}">
-                        <TextBlock DockPanel.Dock="Left" Text="{Binding LocalizationManager.SkipExistingFilesLabel}" />
-                        <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding ShouldSkipExistingFiles}" />
-                    </DockPanel>
-
-                    <!--  File name template  -->
-                    <DockPanel Margin="16,8" LastChildFill="False">
-                        <ToolTip.Tip>
-                            <TextBlock Inlines="{Binding LocalizationManager.FileNameTemplateTooltip, Converter={x:Static converters:MarkdownToInlinesConverter.Instance}}" />
-                        </ToolTip.Tip>
-                        <TextBlock DockPanel.Dock="Left" Text="{Binding LocalizationManager.FileNameTemplateLabel}" />
-                        <TextBox
-                            Width="150"
-                            Height="20"
-                            DockPanel.Dock="Right"
-                            FontSize="13"
-                            Text="{Binding FileNameTemplate}"
-                            Theme="{DynamicResource CompactTextBox}" />
-                    </DockPanel>
-
-                    <!--  Parallel limit  -->
-                    <DockPanel
-                        Margin="16,8"
-                        LastChildFill="False"
-                        ToolTip.Tip="{Binding LocalizationManager.ParallelLimitTooltip}">
-                        <TextBlock DockPanel.Dock="Left" Text="{Binding LocalizationManager.ParallelLimitLabel}" />
-                        <StackPanel
-                            DockPanel.Dock="Right"
-                            Orientation="Horizontal"
-                            Spacing="10">
-                            <TextBlock Text="{Binding ParallelLimit}" />
-                            <Slider
-                                Width="150"
-                                IsSnapToTickEnabled="True"
-                                Maximum="10"
-                                Minimum="1"
-                                TickFrequency="1"
-                                Value="{Binding ParallelLimit}" />
+                            </Border>
                         </StackPanel>
-                    </DockPanel>
 
-                    <!--  Auto-retry failed downloads  -->
-                    <DockPanel Margin="16,8" LastChildFill="False">
-                        <TextBlock DockPanel.Dock="Left" Text="{Binding LocalizationManager.AutoRetryFailedDownloads}" VerticalAlignment="Center" />
-                        <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding AutoRetryFailedDownloads}" />
-                    </DockPanel>
+                        <!-- ==================== TAB 0: GENERAL ==================== -->
+                        <StackPanel IsVisible="{Binding IsGeneralSelected}" Spacing="14">
+                            <TextBlock FontSize="13" Foreground="{DynamicResource AntigravityMutedBrush}" Text="Customize your interface appearance, language preferences, and update behavior." />
 
-                    <!--  Max retry count  -->
-                    <DockPanel
-                        Margin="16,8"
-                        IsVisible="{Binding AutoRetryFailedDownloads}"
-                        LastChildFill="False">
-                        <TextBlock DockPanel.Dock="Left" Text="{Binding LocalizationManager.MaxRetryCount}" VerticalAlignment="Center" />
-                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="10">
-                            <TextBlock Text="{Binding MaxRetryCount}" VerticalAlignment="Center" />
-                            <Slider
-                                Width="150"
-                                IsSnapToTickEnabled="True"
-                                Maximum="10"
-                                Minimum="1"
-                                TickFrequency="1"
-                                Value="{Binding MaxRetryCount}" />
+                            <Border
+                                CornerRadius="14"
+                                Background="{DynamicResource AntigravityCardBrush}"
+                                BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                                BorderThickness="1"
+                                ClipToBounds="True">
+                                <StackPanel>
+                                    <!-- Theme Selection -->
+                                    <DockPanel Margin="16,14" LastChildFill="False">
+                                        <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center" Spacing="2">
+                                            <TextBlock Text="{Binding LocalizationManager.ThemeLabel}" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                            <TextBlock Text="{Binding LocalizationManager.ThemeTooltip}" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        </StackPanel>
+                                        <ComboBox
+                                            DockPanel.Dock="Right"
+                                            Width="160"
+                                            VerticalAlignment="Center"
+                                            ItemsSource="{Binding AvailableThemes}"
+                                            SelectedItem="{Binding Theme}" />
+                                    </DockPanel>
+                                    <Border Height="1" Background="{DynamicResource MuseDividerBrush}" />
+
+                                    <!-- Language Selection -->
+                                    <DockPanel Margin="16,14" LastChildFill="False">
+                                        <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center" Spacing="2">
+                                            <TextBlock Text="{Binding LocalizationManager.LanguageLabel}" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                            <TextBlock Text="{Binding LocalizationManager.LanguageTooltip}" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        </StackPanel>
+                                        <ComboBox
+                                            DockPanel.Dock="Right"
+                                            Width="160"
+                                            VerticalAlignment="Center"
+                                            ItemsSource="{Binding AvailableLanguages}"
+                                            SelectedItem="{Binding Language}">
+                                            <ComboBox.ItemTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding Converter={x:Static converters:EnumDisplayNameConverter.Instance}}" />
+                                                </DataTemplate>
+                                            </ComboBox.ItemTemplate>
+                                        </ComboBox>
+                                    </DockPanel>
+                                    <Border Height="1" Background="{DynamicResource MuseDividerBrush}" />
+
+                                    <!-- Auto-updates -->
+                                    <DockPanel Margin="16,14" LastChildFill="False" IsVisible="{Binding IsAutoUpdateAvailable}">
+                                        <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center" Spacing="2">
+                                            <TextBlock Text="{Binding LocalizationManager.AutoUpdateLabel}" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                            <TextBlock Text="Automatically check for new versions on startup" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        </StackPanel>
+                                        <ToggleSwitch DockPanel.Dock="Right" VerticalAlignment="Center" IsChecked="{Binding IsAutoUpdateEnabled}" />
+                                    </DockPanel>
+
+                                    <!-- Persist authentication -->
+                                    <DockPanel Margin="16,14" LastChildFill="False" IsVisible="{OnPlatform False, Windows=True}">
+                                        <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center" Spacing="2">
+                                            <TextBlock Text="{Binding LocalizationManager.PersistAuthLabel}" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                            <TextBlock Text="Store session tokens securely for seamless access" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        </StackPanel>
+                                        <ToggleSwitch DockPanel.Dock="Right" VerticalAlignment="Center" IsChecked="{Binding IsAuthPersisted}" />
+                                    </DockPanel>
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
-                    </DockPanel>
-                </StackPanel>
-            </ScrollViewer>
-        </Border>
 
-        <!--  Close button  -->
-        <Button
-            Grid.Row="2"
-            Margin="16"
-            HorizontalAlignment="Stretch"
-            Command="{Binding CloseCommand}"
-            Content="{Binding LocalizationManager.CloseButton}"
-            IsCancel="True"
-            IsDefault="True"
-            Theme="{DynamicResource MaterialOutlineButton}" />
-    </Grid>
+                        <!-- ==================== TAB 1: CONNECTORS (AI) ==================== -->
+                        <StackPanel IsVisible="{Binding IsConnectorsSelected}" Spacing="14">
+                            <TextBlock FontSize="13" Foreground="{DynamicResource AntigravityMutedBrush}" Text="Connect AI models for context-aware movie dubbing and Khmer subtitle translation." />
+
+                            <Border
+                                CornerRadius="14"
+                                Background="{DynamicResource AntigravityCardBrush}"
+                                BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                                BorderThickness="1"
+                                Padding="16"
+                                ClipToBounds="True">
+                                <StackPanel Spacing="14">
+                                    <StackPanel Spacing="6">
+                                        <DockPanel>
+                                            <TextBlock Text="Gemini API Key" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
+                                            <Button
+                                                DockPanel.Dock="Right"
+                                                HorizontalAlignment="Right"
+                                                Command="{Binding OpenAiStudioApiKeyUrlCommand}"
+                                                Theme="{DynamicResource MaterialFlatButton}"
+                                                ToolTip.Tip="Get API Key from Google AI Studio">
+                                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                                    <materialIcons:MaterialIcon Width="14" Height="14" Kind="OpenInNew" />
+                                                    <TextBlock FontSize="12" Text="Get API Key" />
+                                                </StackPanel>
+                                            </Button>
+                                        </DockPanel>
+                                        <TextBox
+                                            Text="{Binding GeminiApiKey}"
+                                            Watermark="Paste your Gemini API key (AIzaSy...)"
+                                            PasswordChar="•"
+                                            Classes="dense" />
+                                    </StackPanel>
+
+                                    <Border Height="1" Background="{DynamicResource MuseDividerBrush}" />
+
+                                    <DockPanel LastChildFill="False">
+                                        <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center" Spacing="2">
+                                            <TextBlock Text="Default Gemini Model" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                            <TextBlock Text="Select inference model for dubbing reasoning" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        </StackPanel>
+                                        <ComboBox
+                                            DockPanel.Dock="Right"
+                                            Width="180"
+                                            VerticalAlignment="Center"
+                                            ItemsSource="{Binding AvailableGeminiModels}"
+                                            SelectedItem="{Binding GeminiModel}" />
+                                    </DockPanel>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+
+                        <!-- ==================== TAB 2: WALLET / LICENSE ==================== -->
+                        <StackPanel IsVisible="{Binding IsLicenseSelected}" Spacing="14">
+                            <TextBlock FontSize="13" Foreground="{DynamicResource AntigravityMutedBrush}" Text="Manage your software license status, machine activation, and entitlements." />
+
+                            <Border
+                                CornerRadius="14"
+                                Background="{DynamicResource AntigravityCardBrush}"
+                                BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                                BorderThickness="1"
+                                Padding="16"
+                                ClipToBounds="True">
+                                <StackPanel Spacing="12">
+                                    <DockPanel>
+                                        <StackPanel VerticalAlignment="Center" Spacing="4">
+                                            <TextBlock Text="Subscription Status" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                            <TextBlock Text="{Binding LicenseOwnerText}" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        </StackPanel>
+                                        <Border
+                                            DockPanel.Dock="Right"
+                                            HorizontalAlignment="Right"
+                                            VerticalAlignment="Center"
+                                            Padding="10,4"
+                                            Background="{DynamicResource AntigravityAccentBrush}"
+                                            CornerRadius="12">
+                                            <TextBlock
+                                                FontSize="11"
+                                                FontWeight="Bold"
+                                                Foreground="{DynamicResource AntigravityAccentForegroundBrush}"
+                                                Text="{Binding LicenseStatusText}" />
+                                        </Border>
+                                    </DockPanel>
+
+                                    <Border Height="1" Background="{DynamicResource MuseDividerBrush}" />
+
+                                    <DockPanel LastChildFill="False">
+                                        <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center" Spacing="2">
+                                            <TextBlock Text="Unique Device ID" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                            <TextBlock Text="{Binding MachineFingerprint}" FontFamily="Consolas, monospace" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        </StackPanel>
+                                    </DockPanel>
+
+                                    <Border Height="1" Background="{DynamicResource MuseDividerBrush}" />
+
+                                    <Button
+                                        HorizontalAlignment="Left"
+                                        Command="{Binding OpenLicenseActivationCommand}"
+                                        Theme="{DynamicResource MaterialOutlineButton}">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <materialIcons:MaterialIcon Width="16" Height="16" Kind="ShieldKeyOutline" />
+                                            <TextBlock Text="Manage License / Activate" />
+                                        </StackPanel>
+                                    </Button>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+
+                        <!-- ==================== TAB 3: DATA CONTROLS ==================== -->
+                        <StackPanel IsVisible="{Binding IsDownloadsSelected}" Spacing="14">
+                            <TextBlock FontSize="13" Foreground="{DynamicResource AntigravityMutedBrush}" Text="Configure storage rules, download parallelism, and file naming templates." />
+
+                            <Border
+                                CornerRadius="14"
+                                Background="{DynamicResource AntigravityCardBrush}"
+                                BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                                BorderThickness="1"
+                                ClipToBounds="True">
+                                <StackPanel>
+                                    <!-- Skip Existing Files -->
+                                    <DockPanel Margin="16,14" LastChildFill="False">
+                                        <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center" Spacing="2">
+                                            <TextBlock Text="{Binding LocalizationManager.SkipExistingFilesLabel}" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                            <TextBlock Text="Prevent duplicate downloads if destination file exists" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        </StackPanel>
+                                        <ToggleSwitch DockPanel.Dock="Right" VerticalAlignment="Center" IsChecked="{Binding ShouldSkipExistingFiles}" />
+                                    </DockPanel>
+                                    <Border Height="1" Background="{DynamicResource MuseDividerBrush}" />
+
+                                    <!-- File Name Template -->
+                                    <DockPanel Margin="16,14" LastChildFill="True">
+                                        <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8" Spacing="2">
+                                            <TextBlock Text="{Binding LocalizationManager.FileNameTemplateLabel}" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                            <TextBlock Text="Format pattern for naming output video files" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        </StackPanel>
+                                        <TextBox
+                                            Text="{Binding FileNameTemplate}"
+                                            Theme="{DynamicResource CompactTextBox}"
+                                            FontSize="13" />
+                                    </DockPanel>
+                                    <Border Height="1" Background="{DynamicResource MuseDividerBrush}" />
+
+                                    <!-- Parallel Limit -->
+                                    <DockPanel Margin="16,14" LastChildFill="False">
+                                        <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center" Spacing="2">
+                                            <TextBlock Text="{Binding LocalizationManager.ParallelLimitLabel}" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                            <TextBlock Text="Maximum simultaneous download tasks" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        </StackPanel>
+                                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding ParallelLimit}" FontWeight="Bold" Width="20" TextAlignment="Right" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                            <Slider
+                                                Width="140"
+                                                IsSnapToTickEnabled="True"
+                                                Maximum="10"
+                                                Minimum="1"
+                                                TickFrequency="1"
+                                                Value="{Binding ParallelLimit}" />
+                                        </StackPanel>
+                                    </DockPanel>
+                                    <Border Height="1" Background="{DynamicResource MuseDividerBrush}" />
+
+                                    <!-- Auto-retry -->
+                                    <DockPanel Margin="16,14" LastChildFill="False">
+                                        <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center" Spacing="2">
+                                            <TextBlock Text="{Binding LocalizationManager.AutoRetryFailedDownloads}" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                            <TextBlock Text="Automatically retry network or download interruptions" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        </StackPanel>
+                                        <ToggleSwitch DockPanel.Dock="Right" VerticalAlignment="Center" IsChecked="{Binding AutoRetryFailedDownloads}" />
+                                    </DockPanel>
+
+                                    <!-- Max Retry Count (if enabled) -->
+                                    <DockPanel Margin="16,14" LastChildFill="False" IsVisible="{Binding AutoRetryFailedDownloads}">
+                                        <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center" Spacing="2">
+                                            <TextBlock Text="{Binding LocalizationManager.MaxRetryCount}" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                            <TextBlock Text="Number of retry attempts before reporting failure" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        </StackPanel>
+                                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding MaxRetryCount}" FontWeight="Bold" Width="20" TextAlignment="Right" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                            <Slider
+                                                Width="140"
+                                                IsSnapToTickEnabled="True"
+                                                Maximum="10"
+                                                Minimum="1"
+                                                TickFrequency="1"
+                                                Value="{Binding MaxRetryCount}" />
+                                        </StackPanel>
+                                    </DockPanel>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+
+                        <!-- ==================== TAB 4: MESSAGING CHANNELS / AUDIO ==================== -->
+                        <StackPanel IsVisible="{Binding IsAudioSelected}" Spacing="14">
+                            <TextBlock FontSize="13" Foreground="{DynamicResource AntigravityMutedBrush}" Text="Fine-tune audio demuxing, vocal separation, and subtitle track injection." />
+
+                            <Border
+                                CornerRadius="14"
+                                Background="{DynamicResource AntigravityCardBrush}"
+                                BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                                BorderThickness="1"
+                                ClipToBounds="True">
+                                <StackPanel>
+                                    <!-- Audio Processing Mode -->
+                                    <DockPanel Margin="16,14" LastChildFill="False">
+                                        <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center" Spacing="2">
+                                            <TextBlock Text="Audio Processing Mode" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                            <TextBlock Text="Isolate speech dialogue or remove vocals for karaoke" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        </StackPanel>
+                                        <ComboBox
+                                            DockPanel.Dock="Right"
+                                            Width="180"
+                                            VerticalAlignment="Center"
+                                            ItemsSource="{Binding AvailableAudioProcessingModes}"
+                                            SelectedItem="{Binding SelectedAudioProcessingMode}" />
+                                    </DockPanel>
+                                    <Border Height="1" Background="{DynamicResource MuseDividerBrush}" />
+
+                                    <!-- Inject Language Streams -->
+                                    <DockPanel Margin="16,14" LastChildFill="False">
+                                        <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center" Spacing="2">
+                                            <TextBlock Text="{Binding LocalizationManager.InjectAltLanguagesLabel}" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                            <TextBlock Text="Inject dubbed audio streams into output video container" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        </StackPanel>
+                                        <ToggleSwitch DockPanel.Dock="Right" VerticalAlignment="Center" IsChecked="{Binding ShouldInjectLanguageSpecificAudioStreams}" />
+                                    </DockPanel>
+                                    <Border Height="1" Background="{DynamicResource MuseDividerBrush}" />
+
+                                    <!-- Inject Subtitles -->
+                                    <DockPanel Margin="16,14" LastChildFill="False">
+                                        <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center" Spacing="2">
+                                            <TextBlock Text="{Binding LocalizationManager.InjectSubtitlesLabel}" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                            <TextBlock Text="Embed soft subtitle tracks inside output video" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        </StackPanel>
+                                        <ToggleSwitch DockPanel.Dock="Right" VerticalAlignment="Center" IsChecked="{Binding ShouldInjectSubtitles}" />
+                                    </DockPanel>
+                                    <Border Height="1" Background="{DynamicResource MuseDividerBrush}" />
+
+                                    <!-- Translate Captions to English -->
+                                    <DockPanel Margin="16,14" LastChildFill="False">
+                                        <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center" Spacing="2">
+                                            <TextBlock Text="{Binding LocalizationManager.TranslateCaptionsToEnglishLabel}" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                            <TextBlock Text="Translate foreign language captions to English" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        </StackPanel>
+                                        <ToggleSwitch DockPanel.Dock="Right" VerticalAlignment="Center" IsChecked="{Binding ShouldTranslateCaptionsToEnglish}" />
+                                    </DockPanel>
+                                    <Border Height="1" Background="{DynamicResource MuseDividerBrush}" />
+
+                                    <!-- Inject Tags -->
+                                    <DockPanel Margin="16,14" LastChildFill="False">
+                                        <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center" Spacing="2">
+                                            <TextBlock Text="{Binding LocalizationManager.InjectTagsLabel}" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                            <TextBlock Text="Write metadata tags directly into output container" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        </StackPanel>
+                                        <ToggleSwitch DockPanel.Dock="Right" VerticalAlignment="Center" IsChecked="{Binding ShouldInjectTags}" />
+                                    </DockPanel>
+                                    <Border Height="1" Background="{DynamicResource MuseDividerBrush}" />
+
+                                    <!-- Save Title to Text File -->
+                                    <DockPanel Margin="16,14" LastChildFill="False">
+                                        <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center" Spacing="2">
+                                            <TextBlock Text="{Binding LocalizationManager.SaveTitleToTextFileLabel}" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                            <TextBlock Text="Export video title to sidecar .txt file" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        </StackPanel>
+                                        <ToggleSwitch DockPanel.Dock="Right" VerticalAlignment="Center" IsChecked="{Binding ShouldSaveTitleToTextFile}" />
+                                    </DockPanel>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+
+                        <!-- ==================== TAB 5: DEVICES & SYSTEM ==================== -->
+                        <StackPanel IsVisible="{Binding IsDevicesSelected}" Spacing="14">
+                            <TextBlock FontSize="13" Foreground="{DynamicResource AntigravityMutedBrush}" Text="External encoders, FFmpeg binaries, and device hardware settings." />
+
+                            <Border
+                                CornerRadius="14"
+                                Background="{DynamicResource AntigravityCardBrush}"
+                                BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                                BorderThickness="1"
+                                Padding="16"
+                                ClipToBounds="True">
+                                <StackPanel Spacing="12">
+                                    <StackPanel Spacing="6">
+                                        <TextBlock Text="{Binding LocalizationManager.FFmpegPathLabel}" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                        <TextBlock Text="Custom FFmpeg binary for muxing and audio encoding" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        <TextBox
+                                            Height="32"
+                                            FontSize="13"
+                                            Text="{Binding FFmpegFilePath}"
+                                            Watermark="Default bundled FFmpeg (ffmpeg.exe)">
+                                            <TextBox.InnerRightContent>
+                                                <StackPanel Orientation="Horizontal">
+                                                    <Button
+                                                        Padding="6"
+                                                        Command="{Binding ResetFFmpegFilePathCommand}"
+                                                        IsEnabled="{Binding FFmpegFilePath, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                                        Theme="{DynamicResource MaterialFlatButton}"
+                                                        ToolTip.Tip="Reset to bundled FFmpeg">
+                                                        <materialIcons:MaterialIcon Width="14" Height="14" Kind="Close" />
+                                                    </Button>
+                                                    <Button
+                                                        Padding="6"
+                                                        Command="{Binding BrowseFFmpegFilePathCommand}"
+                                                        Theme="{DynamicResource MaterialFlatButton}"
+                                                        ToolTip.Tip="Browse for FFmpeg executable">
+                                                        <materialIcons:MaterialIcon Width="14" Height="14" Kind="FolderOpen" />
+                                                    </Button>
+                                                </StackPanel>
+                                            </TextBox.InnerRightContent>
+                                        </TextBox>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+
+                        <!-- ==================== TAB 7: HELP & SUPPORT ==================== -->
+                        <StackPanel IsVisible="{Binding IsHelpSelected}" Spacing="14">
+                            <TextBlock FontSize="13" Foreground="{DynamicResource AntigravityMutedBrush}" Text="Get assistance, read documentation, or contribute to 855Media." />
+
+                            <Border
+                                CornerRadius="14"
+                                Background="{DynamicResource AntigravityCardBrush}"
+                                BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                                BorderThickness="1"
+                                ClipToBounds="True">
+                                <StackPanel>
+                                    <Button Classes="cardRow" Command="{Binding OpenUrlCommand}" CommandParameter="https://github.com/itxconsider/855media#readme">
+                                        <DockPanel>
+                                            <materialIcons:MaterialIcon DockPanel.Dock="Right" Width="16" Height="16" Kind="ArrowTopRight" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                                            <TextBlock Text="Documentation &amp; User Guides" FontSize="14" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
+                                        </DockPanel>
+                                    </Button>
+                                    <Border Height="1" Background="{DynamicResource MuseDividerBrush}" />
+
+                                    <Button Classes="cardRow" Command="{Binding OpenUrlCommand}" CommandParameter="https://github.com/itxconsider/855media/issues">
+                                        <DockPanel>
+                                            <materialIcons:MaterialIcon DockPanel.Dock="Right" Width="16" Height="16" Kind="ArrowTopRight" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                                            <TextBlock Text="Report an Issue / GitHub Tracker" FontSize="14" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
+                                        </DockPanel>
+                                    </Button>
+                                    <Border Height="1" Background="{DynamicResource MuseDividerBrush}" />
+
+                                    <Button Classes="cardRow" Command="{Binding OpenUrlCommand}" CommandParameter="https://github.com/itxconsider/855media/releases">
+                                        <DockPanel>
+                                            <materialIcons:MaterialIcon DockPanel.Dock="Right" Width="16" Height="16" Kind="ArrowTopRight" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                                            <TextBlock Text="Check for Updates &amp; Release Notes" FontSize="14" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
+                                        </DockPanel>
+                                    </Button>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Panel>
+                </ScrollViewer>
+            </Grid>
+        </Grid>
+    </Border>
 </UserControl>
-

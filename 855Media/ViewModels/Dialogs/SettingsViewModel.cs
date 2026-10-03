@@ -46,6 +46,83 @@ public partial class SettingsViewModel : DialogViewModelBase
         _eventSubscription = _settingsService.WatchAllProperties(OnAllPropertiesChanged);
     }
 
+    private int _selectedCategory = 0;
+    public int SelectedCategory
+    {
+        get => _selectedCategory;
+        set
+        {
+            if (SetProperty(ref _selectedCategory, value))
+            {
+                NotifyCategoryChanges();
+            }
+        }
+    }
+
+    public bool IsGeneralSelected => SelectedCategory == 0;
+    public bool IsConnectorsSelected => SelectedCategory == 1;
+    public bool IsLicenseSelected => SelectedCategory == 2;
+    public bool IsDownloadsSelected => SelectedCategory == 3;
+    public bool IsAudioSelected => SelectedCategory == 4;
+    public bool IsDevicesSelected => SelectedCategory == 5;
+    public bool IsLegalSelected => SelectedCategory == 6;
+    public bool IsHelpSelected => SelectedCategory == 7;
+
+    public string CurrentCategoryTitle =>
+        SelectedCategory switch
+        {
+            0 => LocalizationManager.SettingsTitle ?? "General",
+            1 => "AI & Connectors",
+            2 => "License & Subscription",
+            3 => "Data controls",
+            4 => "Messaging & Audio",
+            5 => "Devices & System",
+            6 => "Legal info",
+            7 => "Help & support",
+            _ => "Settings",
+        };
+
+    [RelayCommand]
+    private void SelectCategory(object? parameter)
+    {
+        if (parameter is int intVal)
+        {
+            SelectedCategory = intVal;
+        }
+        else if (parameter is string strVal && int.TryParse(strVal, out var parsed))
+        {
+            SelectedCategory = parsed;
+        }
+    }
+
+    private void NotifyCategoryChanges()
+    {
+        OnPropertyChanged(nameof(CurrentCategoryTitle));
+        OnPropertyChanged(nameof(IsGeneralSelected));
+        OnPropertyChanged(nameof(IsConnectorsSelected));
+        OnPropertyChanged(nameof(IsLicenseSelected));
+        OnPropertyChanged(nameof(IsDownloadsSelected));
+        OnPropertyChanged(nameof(IsAudioSelected));
+        OnPropertyChanged(nameof(IsDevicesSelected));
+        OnPropertyChanged(nameof(IsLegalSelected));
+        OnPropertyChanged(nameof(IsHelpSelected));
+    }
+
+    [RelayCommand]
+    private void OpenUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return;
+
+        try
+        {
+            System.Diagnostics.Process.Start(
+                new System.Diagnostics.ProcessStartInfo { FileName = url, UseShellExecute = true }
+            );
+        }
+        catch { }
+    }
+
     public string LicenseStatusText =>
         _licenseService.Status switch
         {

@@ -481,11 +481,11 @@ public partial class DubbingViewModel : ViewModelBase
 
     public double EffectiveDubbedVolume => IsDubbedMuted ? 0.0 : DubbedAudioVolume;
 
-    public string DualModeBrush => AudioReviewMode == "Dual" ? "#0284C7" : "#1E293B";
-    public string OriginalModeBrush => AudioReviewMode == "Original" ? "#D97706" : "#1E293B";
-    public string DubbedModeBrush => AudioReviewMode == "Dubbed" ? "#059669" : "#1E293B";
-    public string OriginalMuteBrush => IsOriginalMuted ? "#EF4444" : "#1E293B";
-    public string DubbedMuteBrush => IsDubbedMuted ? "#EF4444" : "#1E293B";
+    public string DualModeBrush => AudioReviewMode == "Dual" ? "#FFFFFF" : "#2B2D31";
+    public string OriginalModeBrush => AudioReviewMode == "Original" ? "#FFFFFF" : "#2B2D31";
+    public string DubbedModeBrush => AudioReviewMode == "Dubbed" ? "#FFFFFF" : "#2B2D31";
+    public string OriginalMuteBrush => IsOriginalMuted ? "#71717A" : "#2B2D31";
+    public string DubbedMuteBrush => IsDubbedMuted ? "#71717A" : "#2B2D31";
 
     public ObservableCollection<TimelineItemViewModel> TimelineVideoItems { get; } = [];
     public ObservableCollection<TimelineItemViewModel> TimelineOriginalAudioItems { get; } = [];

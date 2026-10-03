@@ -16,7 +16,7 @@
         <Border
             Grid.Row="0"
             Padding="16,8"
-            Background="#0B0F19"
+            Background="{DynamicResource AntigravityPanelBrush}"
             BorderBrush="{DynamicResource AntigravityBorderBrush}"
             BorderThickness="0,0,0,1">
             <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
@@ -46,8 +46,8 @@
                         MaxWidth="200"
                         Height="28"
                         Padding="8,3"
-                        Background="#161F30"
-                        BorderBrush="#2A3850"
+                        Background="{DynamicResource AntigravityElevatedBrush}"
+                        BorderBrush="{DynamicResource AntigravityBorderBrush}"
                         CornerRadius="5"
                         VerticalAlignment="Center"
                         ToolTip.Tip="Click to rename project" />
@@ -55,8 +55,8 @@
                     <!-- Saved/Unsaved Status Badge -->
                     <Border
                         CornerRadius="4"
-                        Background="#1E293B"
-                        BorderBrush="#334155"
+                        Background="{DynamicResource AntigravityElevatedBrush}"
+                        BorderBrush="{DynamicResource AntigravityBorderBrush}"
                         BorderThickness="1"
                         Padding="6,2"
                         VerticalAlignment="Center"
@@ -85,7 +85,7 @@
                                 </MenuItem>
                                 <MenuItem Header="Open Project..." Command="{Binding OpenProjectCommand}">
                                     <MenuItem.Icon>
-                                        <materialIcons:MaterialIcon Kind="FolderOpenOutline" Width="15" Height="15" Foreground="#38BDF8" />
+                                        <materialIcons:MaterialIcon Kind="FolderOpenOutline" Width="15" Height="15" Foreground="{DynamicResource AntigravityTextBrush}" />
                                     </MenuItem.Icon>
                                 </MenuItem>
                                 <MenuItem Header="Save Project (Ctrl+S)" Command="{Binding SaveProjectCommand}">
@@ -128,14 +128,14 @@
                     <!-- If video is loaded: Sleek source capsule -->
                     <Border
                         IsVisible="{Binding VideoFilePath, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                        Background="#111827"
-                        BorderBrush="#1F2937"
+                        Background="{DynamicResource AntigravityElevatedBrush}"
+                        BorderBrush="{DynamicResource AntigravityBorderBrush}"
                         BorderThickness="1"
                         CornerRadius="6"
                         Padding="8,3"
                         VerticalAlignment="Center">
                         <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                            <materialIcons:MaterialIcon Kind="MovieOutline" Width="15" Height="15" Foreground="#38BDF8" VerticalAlignment="Center" />
+                            <materialIcons:MaterialIcon Kind="MovieOutline" Width="15" Height="15" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
                             <TextBlock
                                 Text="{Binding VideoFilePath}"
                                 FontWeight="SemiBold"
@@ -155,7 +155,7 @@
                                 <materialIcons:MaterialIcon Kind="FolderOpenOutline" Width="13" Height="13" Foreground="{DynamicResource AntigravityMutedBrush}" />
                             </Button>
 
-                            <Rectangle Width="1" Height="16" Fill="#374151" Margin="2,0" />
+                            <Rectangle Width="1" Height="16" Fill="{DynamicResource AntigravityBorderBrush}" Margin="2,0" />
 
                             <!-- Source Language -->
                             <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
@@ -199,17 +199,17 @@
                         Command="{Binding AutoPrepareAllCommand}"
                         IsEnabled="{Binding !IsAutoPreparing}"
                         Theme="{DynamicResource MaterialSolidButton}"
-                        Background="#7C3AED"
-                        Foreground="White"
+                        Background="{DynamicResource AntigravityAccentBrush}"
+                        Foreground="{DynamicResource AntigravityAccentForegroundBrush}"
                         CornerRadius="7"
                         Height="32"
                         Padding="12,0"
                         ToolTip.Tip="Complete 1-Click Studio Setup: Speech Scan / Subtitles ➔ Clean Phrasing ➔ Translate to Khmer ➔ Assign Cast &amp; Voices ➔ Acting Tones ➔ Scene Snapshots">
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <materialIcons:MaterialIcon Kind="LightningBolt" Width="15" Height="15" Foreground="#FDE047" IsVisible="{Binding !IsAutoPreparing}" />
-                            <ProgressBar Theme="{DynamicResource MaterialCircularProgressBar}" Width="13" Height="13" IsIndeterminate="True" Foreground="White" IsVisible="{Binding IsAutoPreparing}" />
-                            <TextBlock Text="⚡ Auto-Prep Studio" FontWeight="Bold" FontSize="12" VerticalAlignment="Center" Foreground="White" IsVisible="{Binding !IsAutoPreparing}" />
-                            <TextBlock Text="Prepping..." FontWeight="Bold" FontSize="12" VerticalAlignment="Center" Foreground="White" IsVisible="{Binding IsAutoPreparing}" />
+                            <materialIcons:MaterialIcon Kind="LightningBolt" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentForegroundBrush}" IsVisible="{Binding !IsAutoPreparing}" />
+                            <ProgressBar Theme="{DynamicResource MaterialCircularProgressBar}" Width="13" Height="13" IsIndeterminate="True" Foreground="{DynamicResource AntigravityAccentForegroundBrush}" IsVisible="{Binding IsAutoPreparing}" />
+                            <TextBlock Text="⚡ Auto-Prep Studio" FontWeight="Bold" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityAccentForegroundBrush}" IsVisible="{Binding !IsAutoPreparing}" />
+                            <TextBlock Text="Prepping..." FontWeight="Bold" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityAccentForegroundBrush}" IsVisible="{Binding IsAutoPreparing}" />
                         </StackPanel>
                     </Button>
 
@@ -221,12 +221,12 @@
                         CornerRadius="7"
                         Height="32"
                         Padding="10,0"
-                        BorderBrush="#D97706"
-                        Foreground="#F59E0B"
+                        BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                        Foreground="{DynamicResource AntigravityTextBrush}"
                         ToolTip.Tip="Pre-synthesize all Khmer voice clips to audition">
                         <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
-                            <materialIcons:MaterialIcon Kind="VolumeHigh" Width="14" Height="14" Foreground="#F59E0B" />
-                            <TextBlock Text="Pre-Dub All" FontWeight="SemiBold" FontSize="11.5" VerticalAlignment="Center" />
+                            <materialIcons:MaterialIcon Kind="VolumeHigh" Width="14" Height="14" Foreground="{DynamicResource AntigravityTextBrush}" />
+                            <TextBlock Text="Pre-Dub All" FontWeight="SemiBold" FontSize="11.5" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityTextBrush}" />
                         </StackPanel>
                     </Button>
 
@@ -235,15 +235,17 @@
                         Command="{Binding StartDubbingCommand}"
                         IsVisible="{Binding !IsProcessing}"
                         Theme="{DynamicResource MaterialSolidButton}"
-                        Background="{DynamicResource AntigravityAccentBrush}"
-                        Foreground="{DynamicResource AntigravityAccentForegroundBrush}"
+                        Background="{DynamicResource AntigravityElevatedBrush}"
+                        BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                        BorderThickness="1"
+                        Foreground="{DynamicResource AntigravityTextBrush}"
                         CornerRadius="7"
                         Height="32"
                         Padding="14,0"
                         ToolTip.Tip="Render and export final dubbed movie video">
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <materialIcons:MaterialIcon Kind="MoviePlay" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentForegroundBrush}" />
-                            <TextBlock Text="Master Export" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityAccentForegroundBrush}" />
+                            <materialIcons:MaterialIcon Kind="MoviePlay" Width="15" Height="15" Foreground="{DynamicResource AntigravityTextBrush}" />
+                            <TextBlock Text="Master Export" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityTextBrush}" />
                         </StackPanel>
                     </Button>
 
@@ -252,7 +254,7 @@
                         Command="{Binding CancelDubbingCommand}"
                         IsVisible="{Binding IsProcessing}"
                         Theme="{DynamicResource MaterialFlatButton}"
-                        Foreground="#FF5252"
+                        Foreground="{DynamicResource AntigravityMutedBrush}"
                         CornerRadius="7"
                         Height="32"
                         Padding="10,0">
@@ -278,17 +280,17 @@
                                 </MenuItem>
                                 <MenuItem Header="Extend Video Timeline (+)" Command="{Binding ExtendCurrentVideoCommand}">
                                     <MenuItem.Icon>
-                                        <materialIcons:MaterialIcon Kind="MoviePlusOutline" Width="15" Height="15" Foreground="#38BDF8" />
+                                        <materialIcons:MaterialIcon Kind="MoviePlusOutline" Width="15" Height="15" Foreground="{DynamicResource AntigravityTextBrush}" />
                                     </MenuItem.Icon>
                                 </MenuItem>
                                 <MenuItem Header="Extract Scene Thumbnails" Command="{Binding ExtractSceneThumbnailsCommand}">
                                     <MenuItem.Icon>
-                                        <materialIcons:MaterialIcon Kind="ImageMultipleOutline" Width="15" Height="15" Foreground="#10B981" />
+                                        <materialIcons:MaterialIcon Kind="ImageMultipleOutline" Width="15" Height="15" Foreground="{DynamicResource AntigravityTextBrush}" />
                                     </MenuItem.Icon>
                                 </MenuItem>
                                 <MenuItem Header="Scan Audio Speech (Whisper)" Command="{Binding ScanAudioToTextCommand}">
                                     <MenuItem.Icon>
-                                        <materialIcons:MaterialIcon Kind="Microphone" Width="15" Height="15" Foreground="#F59E0B" />
+                                        <materialIcons:MaterialIcon Kind="Microphone" Width="15" Height="15" Foreground="{DynamicResource AntigravityTextBrush}" />
                                     </MenuItem.Icon>
                                 </MenuItem>
                                 <Separator />
@@ -328,8 +330,8 @@
                             <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <materialIcons:MaterialIcon Kind="PlayCircle" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentBrush}" />
                                 <TextBlock Text="STUDIO MONITOR" FontWeight="Bold" FontSize="11" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
-                                <Border CornerRadius="3" Background="#10B981" Padding="4,1" Margin="4,0,0,0" IsVisible="{Binding IsMonitorPlaying}">
-                                    <TextBlock Text="PLAYING" FontSize="8.5" FontWeight="Bold" Foreground="White" />
+                                <Border CornerRadius="3" Background="{DynamicResource AntigravityElevatedBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" Padding="4,1" Margin="4,0,0,0" IsVisible="{Binding IsMonitorPlaying}">
+                                    <TextBlock Text="PLAYING" FontSize="8.5" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
                                 </Border>
                             </StackPanel>
 
@@ -340,11 +342,11 @@
                                     Padding="6,2"
                                     Height="22"
                                     CornerRadius="4"
-                                    BorderBrush="#38BDF8"
-                                    Foreground="#38BDF8"
+                                    BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                                    Foreground="{DynamicResource AntigravityTextBrush}"
                                     ToolTip.Tip="Launch Dual-Audio Review Session">
                                     <StackPanel Orientation="Horizontal" Spacing="3">
-                                        <materialIcons:MaterialIcon Kind="MoviePlayOutline" Width="12" Height="12" Foreground="#38BDF8" />
+                                        <materialIcons:MaterialIcon Kind="MoviePlayOutline" Width="12" Height="12" Foreground="{DynamicResource AntigravityTextBrush}" />
                                         <TextBlock Text="Review" FontSize="9" FontWeight="Bold" />
                                     </StackPanel>
                                 </Button>
@@ -387,7 +389,7 @@
                             Background="#000000"
                             CornerRadius="5"
                             ClipToBounds="True"
-                            BorderBrush="#1E293B"
+                            BorderBrush="{DynamicResource AntigravityBorderBrush}"
                             BorderThickness="1">
                             <Panel>
                                 <!-- Idle / Standby Poster -->
@@ -401,7 +403,7 @@
                                     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="4">
                                         <materialIcons:MaterialIcon Kind="MoviePlayOutline" Width="30" Height="30" Foreground="{DynamicResource AntigravityMutedBrush}" HorizontalAlignment="Center" />
                                         <TextBlock Text="Monitor Standby" FontWeight="SemiBold" FontSize="11.5" Foreground="{DynamicResource AntigravityMutedBrush}" HorizontalAlignment="Center" />
-                                        <TextBlock Text="Click any line cut or audition voice to play" FontSize="9.5" Foreground="#64748B" HorizontalAlignment="Center" />
+                                        <TextBlock Text="Click any line cut or audition voice to play" FontSize="9.5" Foreground="{DynamicResource AntigravityMutedBrush}" HorizontalAlignment="Center" />
                                     </StackPanel>
                                 </Grid>
 
@@ -446,7 +448,7 @@
                                     CornerRadius="4"
                                     ToolTip.Tip="Play synthesized Khmer voice in monitor">
                                     <StackPanel Orientation="Horizontal" Spacing="3">
-                                        <materialIcons:MaterialIcon Kind="VolumeHigh" Width="11" Height="11" Foreground="#10B981" />
+                                        <materialIcons:MaterialIcon Kind="VolumeHigh" Width="11" Height="11" Foreground="{DynamicResource AntigravityTextBrush}" />
                                         <TextBlock Text="Voice" FontSize="9.5" FontWeight="SemiBold" />
                                     </StackPanel>
                                 </Button>
@@ -471,14 +473,16 @@
                                 <Grid ColumnDefinitions="Auto,*,Auto">
                                     <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                         <Border
-                                            Background="{Binding SelectedSegment.SpeakerColor}"
+                                            Background="{DynamicResource AntigravityElevatedBrush}"
+                                            BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                                            BorderThickness="1"
                                             CornerRadius="4"
                                             Padding="5,1.5">
                                             <TextBlock
                                                 Text="{Binding SelectedSegment.Index, StringFormat='#{0}'}"
                                                 FontSize="9.5"
                                                 FontWeight="Bold"
-                                                Foreground="White" />
+                                                Foreground="{DynamicResource AntigravityTextBrush}" />
                                         </Border>
                                         <TextBlock
                                             Text="{Binding SelectedSegment.StartTime, StringFormat='{}{0:mm\\:ss\\.ff}'}"
@@ -496,7 +500,7 @@
                                         <TextBlock
                                             Text="{Binding SelectedSegment.DurationSeconds, StringFormat='({0:F1}s)'}"
                                             FontSize="10"
-                                            Foreground="#38BDF8"
+                                            Foreground="{DynamicResource AntigravityMutedBrush}"
                                             FontWeight="SemiBold"
                                             VerticalAlignment="Center" />
                                     </StackPanel>
@@ -516,11 +520,11 @@
                                             Command="{Binding AutoAlignSpeechStartCommand}"
                                             CommandParameter="{Binding SelectedSegment}"
                                             Theme="{DynamicResource MaterialOutlineButton}"
-                                            BorderBrush="#38BDF8"
+                                            BorderBrush="{DynamicResource AntigravityBorderBrush}"
                                             Padding="4,1"
                                             CornerRadius="3"
                                             ToolTip.Tip="Auto-align speech start: detects silence/intro music and snaps start to actor's voice onset">
-                                            <materialIcons:MaterialIcon Kind="Target" Width="10" Height="10" Foreground="#38BDF8" />
+                                            <materialIcons:MaterialIcon Kind="Target" Width="10" Height="10" Foreground="{DynamicResource AntigravityTextBrush}" />
                                         </Button>
                                         <Button
                                             Command="{Binding NudgeEndTimeCommand}"
@@ -534,7 +538,7 @@
                                     </StackPanel>
                                 </Grid>
 
-                                <Separator Height="1" Background="#1E293B" Margin="0,2" />
+                                <Separator Height="1" Background="{DynamicResource AntigravityBorderBrush}" Margin="0,2" />
 
                                 <!-- Speaker & Acting Emotion Selectors -->
                                 <Grid ColumnDefinitions="*,*">
@@ -594,8 +598,8 @@
                                             Height="20"
                                             ToolTip.Tip="Clean noise tags ([Music], stutters) and format phrasing">
                                             <StackPanel Orientation="Horizontal" Spacing="3">
-                                                <materialIcons:MaterialIcon Kind="TextBoxCheckOutline" Width="11" Height="11" Foreground="#38BDF8" />
-                                                <TextBlock Text="Clean Text" FontSize="9" Foreground="#38BDF8" />
+                                                <materialIcons:MaterialIcon Kind="TextBoxCheckOutline" Width="11" Height="11" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                                <TextBlock Text="Clean Text" FontSize="9" Foreground="{DynamicResource AntigravityTextBrush}" />
                                             </StackPanel>
                                         </Button>
                                     </Grid>
@@ -605,8 +609,8 @@
                                         AcceptsReturn="True"
                                         MaxHeight="50"
                                         FontSize="11.5"
-                                        Background="#131D33"
-                                        BorderBrush="#1E293B"
+                                        Background="{DynamicResource AntigravityCardBrush}"
+                                        BorderBrush="{DynamicResource AntigravityBorderBrush}"
                                         CornerRadius="5"
                                         Padding="6,4" />
                                 </StackPanel>
@@ -636,8 +640,8 @@
                                             Height="20"
                                             ToolTip.Tip="Polish Khmer phrasing into natural Cambodian cinema dialogue">
                                             <StackPanel Orientation="Horizontal" Spacing="3">
-                                                <materialIcons:MaterialIcon Kind="AutoFix" Width="11" Height="11" Foreground="#10B981" />
-                                                <TextBlock Text="Polish" FontSize="9" Foreground="#10B981" />
+                                                <materialIcons:MaterialIcon Kind="AutoFix" Width="11" Height="11" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                                <TextBlock Text="Polish" FontSize="9" Foreground="{DynamicResource AntigravityTextBrush}" />
                                             </StackPanel>
                                         </Button>
                                     </Grid>
@@ -647,8 +651,8 @@
                                         AcceptsReturn="True"
                                         MaxHeight="55"
                                         FontSize="12"
-                                        Background="#131D33"
-                                        BorderBrush="#1E293B"
+                                        Background="{DynamicResource AntigravityCardBrush}"
+                                        BorderBrush="{DynamicResource AntigravityBorderBrush}"
                                         CornerRadius="5"
                                         Padding="6,4" />
                                 </StackPanel>
@@ -659,16 +663,17 @@
                                         Grid.Column="0"
                                         Command="{Binding PlayDubbedClipCommand}"
                                         CommandParameter="{Binding SelectedSegment}"
+                                        Classes="accent"
                                         Theme="{DynamicResource MaterialSolidButton}"
-                                        Background="#059669"
-                                        Foreground="White"
+                                        Background="{DynamicResource AntigravityAccentBrush}"
+                                        Foreground="{DynamicResource AntigravityAccentForegroundBrush}"
                                         Height="30"
                                         CornerRadius="5"
                                         Margin="0,0,6,0"
                                         ToolTip.Tip="Audition synthesized Khmer speech in Studio Monitor">
                                         <StackPanel Orientation="Horizontal" Spacing="5" HorizontalAlignment="Center">
-                                            <materialIcons:MaterialIcon Kind="VolumeHigh" Width="13" Height="13" Foreground="White" />
-                                            <TextBlock Text="▶ Audition Voice" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                            <materialIcons:MaterialIcon Kind="VolumeHigh" Width="13" Height="13" Foreground="{DynamicResource AntigravityAccentForegroundBrush}" />
+                                            <TextBlock Text="▶ Audition Voice" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityAccentForegroundBrush}" />
                                         </StackPanel>
                                     </Button>
 
@@ -677,13 +682,13 @@
                                         Command="{Binding AutoFitSegmentAudioCommand}"
                                         CommandParameter="{Binding SelectedSegment}"
                                         Theme="{DynamicResource MaterialOutlineButton}"
-                                        BorderBrush="#D97706"
-                                        Foreground="#F59E0B"
+                                        BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                                        Foreground="{DynamicResource AntigravityTextBrush}"
                                         Height="30"
                                         CornerRadius="5"
                                         ToolTip.Tip="Auto-fit audio tempo to match scene duration">
                                         <StackPanel Orientation="Horizontal" Spacing="4">
-                                            <materialIcons:MaterialIcon Kind="TimerSyncOutline" Width="12" Height="12" Foreground="#F59E0B" />
+                                            <materialIcons:MaterialIcon Kind="TimerSyncOutline" Width="12" Height="12" Foreground="{DynamicResource AntigravityTextBrush}" />
                                             <TextBlock Text="Auto-Fit" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" />
                                         </StackPanel>
                                     </Button>
@@ -702,7 +707,7 @@
                             <StackPanel Spacing="6" HorizontalAlignment="Center" VerticalAlignment="Center">
                                 <materialIcons:MaterialIcon Kind="CursorDefaultClickOutline" Width="24" Height="24" Foreground="{DynamicResource AntigravityMutedBrush}" HorizontalAlignment="Center" />
                                 <TextBlock Text="No Dialogue Selected" FontWeight="SemiBold" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" HorizontalAlignment="Center" />
-                                <TextBlock Text="Click any line or scene card to inspect, audition voice, and adjust timing." FontSize="9.5" Foreground="#64748B" TextWrapping="Wrap" TextAlignment="Center" />
+                                <TextBlock Text="Click any line or scene card to inspect, audition voice, and adjust timing." FontSize="9.5" Foreground="{DynamicResource AntigravityMutedBrush}" TextWrapping="Wrap" TextAlignment="Center" />
                             </StackPanel>
                         </Border>
                     </StackPanel>
@@ -754,7 +759,7 @@
                                 <Slider Minimum="-12" Maximum="12" Value="{Binding PitchShift}" TickFrequency="1" IsSnapToTickEnabled="True" Height="24" />
                             </StackPanel>
 
-                            <Separator Height="1" Background="#1E293B" />
+                            <Separator Height="1" Background="{DynamicResource AntigravityBorderBrush}" />
 
                             <!-- Dynamic BGM Ducking & Stems -->
                             <Grid ColumnDefinitions="*,Auto">
@@ -804,7 +809,7 @@
                         <TabItem>
                             <TabItem.Header>
                                 <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <materialIcons:MaterialIcon Kind="ScriptTextOutline" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                                    <materialIcons:MaterialIcon Kind="ScriptTextOutline" Width="15" Height="15" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                     <TextBlock Text="Dialogue Editor" VerticalAlignment="Center" />
                                 </StackPanel>
                             </TabItem.Header>
@@ -822,32 +827,32 @@
                                             FontSize="11"
                                             Padding="6,3"
                                             CornerRadius="5"
-                                            Background="#131D33"
-                                            BorderBrush="#1E293B" />
+                                            Background="{DynamicResource AntigravityElevatedBrush}"
+                                            BorderBrush="{DynamicResource AntigravityBorderBrush}" />
 
-                                        <Border Background="#1E293B" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
+                                        <Border Background="{DynamicResource AntigravityElevatedBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
                                             <TextBlock Text="{Binding Segments.Count, StringFormat='{}{0} Lines'}" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                         </Border>
                                     </StackPanel>
 
                                     <!-- Center: Live Operation Badges -->
                                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                        <Border IsVisible="{Binding IsScanningAudio}" Background="#1E3A8A" CornerRadius="8" Padding="6,2">
+                                        <Border IsVisible="{Binding IsScanningAudio}" Background="{DynamicResource AntigravityElevatedBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="6,2">
                                             <StackPanel Orientation="Horizontal" Spacing="4">
-                                                <ProgressBar Theme="{DynamicResource MaterialCircularProgressBar}" Width="10" Height="10" IsIndeterminate="True" Foreground="#60A5FA" />
-                                                <TextBlock Text="Scanning Speech..." FontSize="10" Foreground="#93C5FD" />
+                                                <ProgressBar Theme="{DynamicResource MaterialCircularProgressBar}" Width="10" Height="10" IsIndeterminate="True" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                                <TextBlock Text="Scanning Speech..." FontSize="10" Foreground="{DynamicResource AntigravityTextBrush}" />
                                             </StackPanel>
                                         </Border>
-                                        <Border IsVisible="{Binding IsTranslating}" Background="#581C87" CornerRadius="8" Padding="6,2">
+                                        <Border IsVisible="{Binding IsTranslating}" Background="{DynamicResource AntigravityElevatedBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="6,2">
                                             <StackPanel Orientation="Horizontal" Spacing="4">
-                                                <ProgressBar Theme="{DynamicResource MaterialCircularProgressBar}" Width="10" Height="10" IsIndeterminate="True" Foreground="#C084FC" />
-                                                <TextBlock Text="Translating to Khmer..." FontSize="10" Foreground="#E9D5FF" />
+                                                <ProgressBar Theme="{DynamicResource MaterialCircularProgressBar}" Width="10" Height="10" IsIndeterminate="True" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                                <TextBlock Text="Translating to Khmer..." FontSize="10" Foreground="{DynamicResource AntigravityTextBrush}" />
                                             </StackPanel>
                                         </Border>
-                                        <Border IsVisible="{Binding IsExtractingScenes}" Background="#064E3B" CornerRadius="8" Padding="6,2">
+                                        <Border IsVisible="{Binding IsExtractingScenes}" Background="{DynamicResource AntigravityElevatedBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="6,2">
                                             <StackPanel Orientation="Horizontal" Spacing="4">
-                                                <ProgressBar Theme="{DynamicResource MaterialCircularProgressBar}" Width="10" Height="10" IsIndeterminate="True" Foreground="#34D399" />
-                                                <TextBlock Text="Extracting Scenes..." FontSize="10" Foreground="#6EE7B7" />
+                                                <ProgressBar Theme="{DynamicResource MaterialCircularProgressBar}" Width="10" Height="10" IsIndeterminate="True" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                                <TextBlock Text="Extracting Scenes..." FontSize="10" Foreground="{DynamicResource AntigravityTextBrush}" />
                                             </StackPanel>
                                         </Border>
                                     </StackPanel>
@@ -911,34 +916,34 @@
                                                     </MenuItem>
                                                     <MenuItem Header="Auto-Fit All Audio to Scene Durations" Command="{Binding AutoFitAllSegmentsAudioCommand}">
                                                         <MenuItem.Icon>
-                                                            <materialIcons:MaterialIcon Kind="TimerSyncOutline" Width="15" Height="15" Foreground="#F59E0B" />
+                                                            <materialIcons:MaterialIcon Kind="TimerSyncOutline" Width="15" Height="15" Foreground="{DynamicResource AntigravityTextBrush}" />
                                                         </MenuItem.Icon>
                                                     </MenuItem>
                                                     <Separator />
                                                     <MenuItem Header="Clean All Original Dialogue (Remove tags &amp; stutters)" Command="{Binding ImproveOriginalDialogueCommand}">
                                                         <MenuItem.Icon>
-                                                            <materialIcons:MaterialIcon Kind="TextBoxCheckOutline" Width="15" Height="15" Foreground="#38BDF8" />
+                                                            <materialIcons:MaterialIcon Kind="TextBoxCheckOutline" Width="15" Height="15" Foreground="{DynamicResource AntigravityTextBrush}" />
                                                         </MenuItem.Icon>
                                                     </MenuItem>
                                                     <MenuItem Header="Polish All Khmer Phrasing (Cinema Dialogue)" Command="{Binding PolishKhmerDialogueCommand}">
                                                         <MenuItem.Icon>
-                                                            <materialIcons:MaterialIcon Kind="AutoFix" Width="15" Height="15" Foreground="#10B981" />
+                                                            <materialIcons:MaterialIcon Kind="AutoFix" Width="15" Height="15" Foreground="{DynamicResource AntigravityTextBrush}" />
                                                         </MenuItem.Icon>
                                                     </MenuItem>
                                                     <Separator />
                                                     <MenuItem Header="Auto-Assign Cast &amp; Voices" Command="{Binding AutoDetectSpeakersCommand}">
                                                         <MenuItem.Icon>
-                                                            <materialIcons:MaterialIcon Kind="AccountSearchOutline" Width="15" Height="15" Foreground="#A78BFA" />
+                                                            <materialIcons:MaterialIcon Kind="AccountSearchOutline" Width="15" Height="15" Foreground="{DynamicResource AntigravityTextBrush}" />
                                                         </MenuItem.Icon>
                                                     </MenuItem>
                                                     <MenuItem Header="Auto-Detect Acting Emotions" Command="{Binding AutoDetectEmotionsCommand}">
                                                         <MenuItem.Icon>
-                                                            <materialIcons:MaterialIcon Kind="EmoticonExcitedOutline" Width="15" Height="15" Foreground="#EC4899" />
+                                                            <materialIcons:MaterialIcon Kind="EmoticonExcitedOutline" Width="15" Height="15" Foreground="{DynamicResource AntigravityTextBrush}" />
                                                         </MenuItem.Icon>
                                                     </MenuItem>
                                                     <MenuItem Header="Alternate A/B Dialogue Turns" Command="{Binding AlternateSpeakersCommand}">
                                                         <MenuItem.Icon>
-                                                            <materialIcons:MaterialIcon Kind="SwapHorizontal" Width="15" Height="15" Foreground="#38BDF8" />
+                                                            <materialIcons:MaterialIcon Kind="SwapHorizontal" Width="15" Height="15" Foreground="{DynamicResource AntigravityTextBrush}" />
                                                         </MenuItem.Icon>
                                                     </MenuItem>
                                                 </MenuFlyout>
@@ -964,12 +969,12 @@
                                                     </MenuItem>
                                                     <MenuItem Header="Export Bilingual Dual Subtitles (.srt)" Command="{Binding ExportBilingualSubtitlesCommand}">
                                                         <MenuItem.Icon>
-                                                            <materialIcons:MaterialIcon Kind="Translate" Width="15" Height="15" Foreground="#38BDF8" />
+                                                            <materialIcons:MaterialIcon Kind="Translate" Width="15" Height="15" Foreground="{DynamicResource AntigravityTextBrush}" />
                                                         </MenuItem.Icon>
                                                     </MenuItem>
                                                     <MenuItem Header="Export Clean Dubbed Vocal Track (.wav)" Command="{Binding ExportDubbedVocalTrackCommand}">
                                                         <MenuItem.Icon>
-                                                            <materialIcons:MaterialIcon Kind="MicrophoneVariant" Width="15" Height="15" Foreground="#10B981" />
+                                                            <materialIcons:MaterialIcon Kind="MicrophoneVariant" Width="15" Height="15" Foreground="{DynamicResource AntigravityTextBrush}" />
                                                         </MenuItem.Icon>
                                                     </MenuItem>
                                                 </MenuFlyout>
@@ -988,7 +993,7 @@
                                             CornerRadius="5"
                                             Height="28"
                                             Padding="6,0"
-                                            Foreground="#EF4444"
+                                            Foreground="{DynamicResource AntigravityMutedBrush}"
                                             ToolTip.Tip="Delete selected line">
                                             <materialIcons:MaterialIcon Kind="DeleteOutline" Width="14" Height="14" />
                                         </Button>
@@ -999,16 +1004,16 @@
                                 <Border
                                     Grid.Row="1"
                                     IsVisible="{Binding HasSelectedRows}"
-                                    Background="#0F172A"
-                                    BorderBrush="{DynamicResource AntigravityAccentBrush}"
+                                    Background="{DynamicResource AntigravityPanelBrush}"
+                                    BorderBrush="{DynamicResource AntigravityBorderBrush}"
                                     BorderThickness="1"
                                     CornerRadius="6"
                                     Padding="8,5"
                                     Margin="0,0,0,8">
                                     <Grid ColumnDefinitions="Auto,*,Auto">
                                         <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                            <Border Background="#1D4ED8" CornerRadius="10" Padding="6,2">
-                                                <TextBlock Text="{Binding SelectedSegmentsCount, StringFormat='{}{0} Selected'}" FontWeight="Bold" FontSize="10.5" Foreground="White" />
+                                            <Border Background="{DynamicResource AntigravityElevatedBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="6,2">
+                                                <TextBlock Text="{Binding SelectedSegmentsCount, StringFormat='{}{0} Selected'}" FontWeight="Bold" FontSize="10.5" Foreground="{DynamicResource AntigravityTextBrush}" />
                                             </Border>
                                             <TextBlock Text="Batch:" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
                                         </StackPanel>
@@ -1056,16 +1061,16 @@
                                                 CornerRadius="5"
                                                 Height="26"
                                                 Padding="6,0">
-                                                <TextBlock Text="Auto-Fit Duration" FontSize="10.5" FontWeight="SemiBold" Foreground="#F59E0B" />
+                                                <TextBlock Text="Auto-Fit Duration" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" />
                                             </Button>
                                         </StackPanel>
 
                                         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
                                             <Button Command="{Binding ToggleSelectAllCommand}" Theme="{DynamicResource MaterialFlatButton}" Height="24" Padding="6,0">
-                                                <TextBlock Text="Toggle All" FontSize="10" Foreground="#38BDF8" />
+                                                <TextBlock Text="Toggle All" FontSize="10" Foreground="{DynamicResource AntigravityTextBrush}" />
                                             </Button>
                                             <Button Command="{Binding DeselectAllSegmentsCommand}" Theme="{DynamicResource MaterialFlatButton}" Height="24" Padding="6,0">
-                                                <materialIcons:MaterialIcon Kind="Close" Width="13" Height="13" Foreground="#94A3B8" />
+                                                <materialIcons:MaterialIcon Kind="Close" Width="13" Height="13" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                             </Button>
                                         </StackPanel>
                                     </Grid>
@@ -1090,17 +1095,17 @@
                                         <ContextMenu>
                                             <MenuItem Header="Auto-Align Speech Start (Trim Silence/Music)" Command="{Binding AutoAlignSpeechStartCommand}" CommandParameter="{Binding SelectedSegment}">
                                                 <MenuItem.Icon>
-                                                    <materialIcons:MaterialIcon Kind="Target" Width="15" Height="15" Foreground="#38BDF8" />
+                                                    <materialIcons:MaterialIcon Kind="Target" Width="15" Height="15" Foreground="{DynamicResource AntigravityTextBrush}" />
                                                 </MenuItem.Icon>
                                             </MenuItem>
                                             <MenuItem Header="Auto-Fit Audio Duration to Scene" Command="{Binding AutoFitSegmentAudioCommand}" CommandParameter="{Binding SelectedSegment}">
                                                 <MenuItem.Icon>
-                                                    <materialIcons:MaterialIcon Kind="TimerSyncOutline" Width="15" Height="15" Foreground="#F59E0B" />
+                                                    <materialIcons:MaterialIcon Kind="TimerSyncOutline" Width="15" Height="15" Foreground="{DynamicResource AntigravityTextBrush}" />
                                                 </MenuItem.Icon>
                                             </MenuItem>
                                             <MenuItem Header="Clean Original Dialogue (Remove tags &amp; stutters)" Command="{Binding ImproveOriginalDialogueCommand}" CommandParameter="{Binding SelectedSegment}">
                                                 <MenuItem.Icon>
-                                                    <materialIcons:MaterialIcon Kind="TextBoxCheckOutline" Width="15" Height="15" Foreground="#38BDF8" />
+                                                    <materialIcons:MaterialIcon Kind="TextBoxCheckOutline" Width="15" Height="15" Foreground="{DynamicResource AntigravityTextBrush}" />
                                                 </MenuItem.Icon>
                                             </MenuItem>
                                             <MenuItem Header="Translate This Line to Khmer" Command="{Binding TranslateSelectedLineCommand}">
@@ -1111,7 +1116,7 @@
                                             <Separator />
                                             <MenuItem Header="Delete Line" Command="{Binding RemoveSegmentCommand}" CommandParameter="{Binding SelectedSegment}">
                                                 <MenuItem.Icon>
-                                                    <materialIcons:MaterialIcon Kind="DeleteOutline" Width="15" Height="15" Foreground="#EF4444" />
+                                                    <materialIcons:MaterialIcon Kind="DeleteOutline" Width="15" Height="15" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                                 </MenuItem.Icon>
                                             </MenuItem>
                                         </ContextMenu>
@@ -1151,7 +1156,7 @@
                                                             Height="44"
                                                             CornerRadius="4"
                                                             ClipToBounds="True"
-                                                            Background="#0F172A"
+                                                            Background="{DynamicResource AntigravityElevatedBrush}"
                                                             BorderBrush="{DynamicResource AntigravityBorderBrush}"
                                                             BorderThickness="1"
                                                             Margin="2"
@@ -1179,10 +1184,10 @@
                                         <DataGridTemplateColumn Header="Speaker" Width="110">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate DataType="dubbing:SubtitleSegment">
-                                                    <Border Background="#1E293B" CornerRadius="4" Padding="5,2" Margin="3" VerticalAlignment="Center">
+                                                    <Border Background="{DynamicResource AntigravityElevatedBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="4" Padding="5,2" Margin="3" VerticalAlignment="Center">
                                                         <StackPanel Orientation="Horizontal" Spacing="4">
-                                                            <Border Width="7" Height="7" CornerRadius="3.5" Background="{Binding SpeakerColor}" VerticalAlignment="Center" />
-                                                            <TextBlock Text="{Binding SpeakerName}" FontSize="10.5" FontWeight="SemiBold" Foreground="{Binding SpeakerColor}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                                            <Border Width="7" Height="7" CornerRadius="3.5" Background="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
+                                                            <TextBlock Text="{Binding SpeakerName}" FontSize="10.5" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                                                         </StackPanel>
                                                     </Border>
                                                 </DataTemplate>
@@ -1193,8 +1198,8 @@
                                         <DataGridTemplateColumn Header="Tone" Width="95">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate DataType="dubbing:SubtitleSegment">
-                                                    <Border Background="#111827" CornerRadius="4" Padding="4,2" Margin="3" VerticalAlignment="Center">
-                                                        <TextBlock Text="{Binding EmotionDisplayName}" FontSize="10" Foreground="{Binding EmotionColor}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                                    <Border Background="{DynamicResource AntigravityPanelBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="4" Padding="4,2" Margin="3" VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding EmotionDisplayName}" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
                                                     </Border>
                                                 </DataTemplate>
                                             </DataGridTemplateColumn.CellTemplate>
@@ -1208,7 +1213,7 @@
                                                         Text="{Binding OriginalText}"
                                                         TextWrapping="Wrap"
                                                         FontSize="11.5"
-                                                        Foreground="White"
+                                                        Foreground="{DynamicResource AntigravityTextBrush}"
                                                         VerticalAlignment="Center"
                                                         Padding="4,2"
                                                         ToolTip.Tip="{Binding OriginalText}" />
@@ -1247,7 +1252,7 @@
                                                             Padding="4,2"
                                                             CornerRadius="4"
                                                             ToolTip.Tip="Audition voice clip">
-                                                            <materialIcons:MaterialIcon Kind="VolumeHigh" Width="13" Height="13" Foreground="#10B981" />
+                                                            <materialIcons:MaterialIcon Kind="VolumeHigh" Width="13" Height="13" Foreground="{DynamicResource AntigravityTextBrush}" />
                                                         </Button>
 
                                                         <!-- Auto-Align Button -->
@@ -1258,7 +1263,7 @@
                                                             Padding="4,2"
                                                             CornerRadius="4"
                                                             ToolTip.Tip="Auto-align speech start">
-                                                            <materialIcons:MaterialIcon Kind="Target" Width="13" Height="13" Foreground="#38BDF8" />
+                                                            <materialIcons:MaterialIcon Kind="Target" Width="13" Height="13" Foreground="{DynamicResource AntigravityTextBrush}" />
                                                         </Button>
 
                                                         <!-- Delete Button -->
@@ -1269,7 +1274,7 @@
                                                             Padding="4,2"
                                                             CornerRadius="4"
                                                             ToolTip.Tip="Delete line">
-                                                            <materialIcons:MaterialIcon Kind="DeleteOutline" Width="13" Height="13" Foreground="#EF4444" />
+                                                            <materialIcons:MaterialIcon Kind="DeleteOutline" Width="13" Height="13" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                                         </Button>
                                                     </StackPanel>
                                                 </DataTemplate>
@@ -1282,7 +1287,7 @@
                                 <Border
                                     Grid.Row="2"
                                     IsVisible="{Binding !HasSegments}"
-                                    Background="#F2090D16"
+                                    Background="{DynamicResource AntigravityCanvasBrush}"
                                     BorderBrush="{DynamicResource AntigravityBorderBrush}"
                                     BorderThickness="1"
                                     CornerRadius="6"
@@ -1290,8 +1295,8 @@
                                     VerticalAlignment="Stretch"
                                     HorizontalAlignment="Stretch">
                                     <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="14" MaxWidth="480">
-                                        <Border Width="56" Height="56" CornerRadius="28" Background="#1E1B4B" HorizontalAlignment="Center" BorderBrush="#7C3AED" BorderThickness="2">
-                                            <materialIcons:MaterialIcon Kind="AutoAwesome" Width="26" Height="26" Foreground="#C084FC" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        <Border Width="56" Height="56" CornerRadius="28" Background="{DynamicResource AntigravityElevatedBrush}" HorizontalAlignment="Center" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1">
+                                            <materialIcons:MaterialIcon Kind="AutoAwesome" Width="26" Height="26" Foreground="{DynamicResource AntigravityTextBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                         </Border>
                                         <StackPanel Spacing="4" HorizontalAlignment="Center">
                                             <TextBlock Text="Movie AI Dubbing Studio" FontSize="17" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" HorizontalAlignment="Center" />
@@ -1302,13 +1307,13 @@
                                                 Command="{Binding AutoPrepareAllCommand}"
                                                 IsEnabled="{Binding !IsAutoPreparing}"
                                                 Theme="{DynamicResource MaterialSolidButton}"
-                                                Background="#7C3AED"
-                                                Foreground="White"
+                                                Background="{DynamicResource AntigravityAccentBrush}"
+                                                Foreground="{DynamicResource AntigravityAccentForegroundBrush}"
                                                 CornerRadius="7"
                                                 Padding="14,8">
                                                 <StackPanel Orientation="Horizontal" Spacing="6">
-                                                    <materialIcons:MaterialIcon Kind="LightningBolt" Width="15" Height="15" Foreground="#FDE047" />
-                                                    <TextBlock Text="⚡ 1-Click Auto-Prep" FontWeight="Bold" FontSize="12" Foreground="White" />
+                                                    <materialIcons:MaterialIcon Kind="LightningBolt" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentForegroundBrush}" />
+                                                    <TextBlock Text="⚡ 1-Click Auto-Prep" FontWeight="Bold" FontSize="12" Foreground="{DynamicResource AntigravityAccentForegroundBrush}" />
                                                 </StackPanel>
                                             </Button>
 
@@ -1342,7 +1347,7 @@
                         <TabItem>
                             <TabItem.Header>
                                 <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <materialIcons:MaterialIcon Kind="TimelineClockOutline" Width="15" Height="15" Foreground="#38BDF8" />
+                                    <materialIcons:MaterialIcon Kind="TimelineClockOutline" Width="15" Height="15" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                     <TextBlock Text="Visual Timeline" VerticalAlignment="Center" />
                                 </StackPanel>
                             </TabItem.Header>
@@ -1351,7 +1356,7 @@
                                 <!-- Timeline Review Transport & Dual-Audio Mixer Toolbar -->
                                 <Border
                                     Grid.Row="0"
-                                    Background="#0B132B"
+                                    Background="{DynamicResource AntigravityElevatedBrush}"
                                     BorderBrush="{DynamicResource AntigravityBorderBrush}"
                                     BorderThickness="1"
                                     CornerRadius="6"
@@ -1363,19 +1368,19 @@
                                             <Button
                                                 Command="{Binding StartTimelineReviewCommand}"
                                                 Theme="{DynamicResource MaterialSolidButton}"
-                                                Background="#0284C7"
-                                                Foreground="White"
+                                                Background="{DynamicResource AntigravityAccentBrush}"
+                                                Foreground="{DynamicResource AntigravityAccentForegroundBrush}"
                                                 CornerRadius="5"
                                                 Height="28"
                                                 Padding="10,0"
                                                 ToolTip.Tip="Launch synchronized Dual-Audio Review Session in monitor">
                                                 <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
-                                                    <materialIcons:MaterialIcon Kind="MoviePlayOutline" Width="14" Height="14" Foreground="White" />
-                                                    <TextBlock Text="Start Review" FontWeight="Bold" FontSize="11" />
+                                                    <materialIcons:MaterialIcon Kind="MoviePlayOutline" Width="14" Height="14" Foreground="{DynamicResource AntigravityAccentForegroundBrush}" />
+                                                    <TextBlock Text="Start Review" FontWeight="Bold" FontSize="11" Foreground="{DynamicResource AntigravityAccentForegroundBrush}" />
                                                 </StackPanel>
                                             </Button>
 
-                                            <Rectangle Width="1" Height="18" Fill="#1E293B" Margin="2,0" />
+                                            <Rectangle Width="1" Height="18" Fill="{DynamicResource AntigravityBorderBrush}" Margin="2,0" />
 
                                             <!-- Transport Controls -->
                                             <Button Command="{Binding ReplayFromStartCommand}" Theme="{DynamicResource MaterialOutlineButton}" Height="28" Width="28" Padding="0" CornerRadius="4" ToolTip.Tip="Replay from start (00:00)">
@@ -1394,7 +1399,7 @@
                                                 <materialIcons:MaterialIcon Kind="StepForward" Width="14" Height="14" />
                                             </Button>
 
-                                            <Rectangle Width="1" Height="18" Fill="#1E293B" Margin="2,0" />
+                                            <Rectangle Width="1" Height="18" Fill="{DynamicResource AntigravityBorderBrush}" Margin="2,0" />
 
                                             <Button Command="{Binding JumpToPreviousSegmentCommand}" Theme="{DynamicResource MaterialOutlineButton}" Height="28" Padding="6,0" CornerRadius="4" ToolTip.Tip="Jump to previous line">
                                                 <StackPanel Orientation="Horizontal" Spacing="2">
@@ -1410,10 +1415,10 @@
                                             </Button>
 
                                             <!-- Time Readout -->
-                                            <Border Background="#131D33" BorderBrush="#1E293B" BorderThickness="1" CornerRadius="4" Padding="7,3" Margin="3,0,0,0">
+                                            <Border Background="{DynamicResource AntigravityPanelBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="4" Padding="7,3" Margin="3,0,0,0">
                                                 <StackPanel Orientation="Horizontal" Spacing="4">
-                                                    <materialIcons:MaterialIcon Kind="ClockOutline" Width="13" Height="13" Foreground="#38BDF8" VerticalAlignment="Center" />
-                                                    <TextBlock Text="{Binding FormattedPlayheadTime}" FontSize="11" FontWeight="Bold" Foreground="#38BDF8" VerticalAlignment="Center" />
+                                                    <materialIcons:MaterialIcon Kind="ClockOutline" Width="13" Height="13" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                                                    <TextBlock Text="{Binding FormattedPlayheadTime}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
                                                     <TextBlock Text="/" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
                                                     <TextBlock Text="{Binding FormattedTotalDuration}" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
                                                 </StackPanel>
@@ -1423,15 +1428,15 @@
                                         <!-- Center: Dual Audio Mixer & Mode Selector -->
                                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center" VerticalAlignment="Center">
                                             <!-- Mode Selector Chips -->
-                                            <Border Background="#0F172A" BorderBrush="#1E293B" BorderThickness="1" CornerRadius="5" Padding="2">
+                                            <Border Background="{DynamicResource AntigravityPanelBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="5" Padding="2">
                                                 <StackPanel Orientation="Horizontal" Spacing="2">
-                                                    <Button Command="{Binding SetAudioReviewModeCommand}" CommandParameter="Dual" Background="{Binding DualModeBrush}" Foreground="White" Height="24" Padding="7,0" CornerRadius="4" ToolTip.Tip="Dual Audio: Video track + Dubbed voice with ducking">
+                                                    <Button Command="{Binding SetAudioReviewModeCommand}" CommandParameter="Dual" Background="{Binding DualModeBrush}" Foreground="{DynamicResource AntigravityTextBrush}" Height="24" Padding="7,0" CornerRadius="4" ToolTip.Tip="Dual Audio: Video track + Dubbed voice with ducking">
                                                         <TextBlock Text="Dual" FontSize="10" FontWeight="Bold" />
                                                     </Button>
-                                                    <Button Command="{Binding SetAudioReviewModeCommand}" CommandParameter="Original" Background="{Binding OriginalModeBrush}" Foreground="White" Height="24" Padding="7,0" CornerRadius="4" ToolTip.Tip="Original Audio Only: Hear source dialogue &amp; sound">
+                                                    <Button Command="{Binding SetAudioReviewModeCommand}" CommandParameter="Original" Background="{Binding OriginalModeBrush}" Foreground="{DynamicResource AntigravityTextBrush}" Height="24" Padding="7,0" CornerRadius="4" ToolTip.Tip="Original Audio Only: Hear source dialogue &amp; sound">
                                                         <TextBlock Text="Original" FontSize="10" FontWeight="Bold" />
                                                     </Button>
-                                                    <Button Command="{Binding SetAudioReviewModeCommand}" CommandParameter="Dubbed" Background="{Binding DubbedModeBrush}" Foreground="White" Height="24" Padding="7,0" CornerRadius="4" ToolTip.Tip="Dubbed Voice Only: Isolate synthesized speech">
+                                                    <Button Command="{Binding SetAudioReviewModeCommand}" CommandParameter="Dubbed" Background="{Binding DubbedModeBrush}" Foreground="{DynamicResource AntigravityTextBrush}" Height="24" Padding="7,0" CornerRadius="4" ToolTip.Tip="Dubbed Voice Only: Isolate synthesized speech">
                                                         <TextBlock Text="Dubbed" FontSize="10" FontWeight="Bold" />
                                                     </Button>
                                                 </StackPanel>
@@ -1459,11 +1464,11 @@
                                         <!-- Right: Zoom Controls -->
                                         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
                                             <!-- Active Segment Badge -->
-                                            <Border Background="{Binding SelectedSegment.SpeakerColor, TargetNullValue='#475569'}" CornerRadius="3" Padding="5,1.5">
-                                                <TextBlock Text="{Binding SelectedSegment.Index, StringFormat='#{0}', TargetNullValue='No Line'}" FontSize="9.5" FontWeight="Bold" Foreground="White" />
+                                            <Border Background="{DynamicResource AntigravityElevatedBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="3" Padding="5,1.5">
+                                                <TextBlock Text="{Binding SelectedSegment.Index, StringFormat='#{0}', TargetNullValue='No Line'}" FontSize="9.5" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
                                             </Border>
 
-                                            <Rectangle Width="1" Height="16" Fill="#1E293B" Margin="2,0" />
+                                            <Rectangle Width="1" Height="16" Fill="{DynamicResource AntigravityBorderBrush}" Margin="2,0" />
 
                                             <TextBlock Text="Zoom:" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
                                             <Button Command="{Binding ZoomOutTimelineCommand}" Theme="{DynamicResource MaterialOutlineButton}" Padding="4,2" CornerRadius="4">
@@ -1480,7 +1485,7 @@
                                 <!-- Multi-Track Synchronized Layout -->
                                 <Border
                                     Grid.Row="1"
-                                    Background="#0A0F1D"
+                                    Background="{DynamicResource AntigravityPanelBrush}"
                                     BorderBrush="{DynamicResource AntigravityBorderBrush}"
                                     BorderThickness="1"
                                     CornerRadius="6"
@@ -1489,7 +1494,7 @@
                                         <!-- Fixed Left Track Headers -->
                                         <Border
                                             Grid.Column="0"
-                                            Background="#0C1222"
+                                            Background="{DynamicResource AntigravityElevatedBrush}"
                                             BorderBrush="{DynamicResource AntigravityBorderBrush}"
                                             BorderThickness="1"
                                             CornerRadius="5"
@@ -1497,48 +1502,48 @@
                                             Width="160"
                                             Margin="0,0,8,0">
                                             <StackPanel Spacing="6">
-                                                <Border Height="26" Background="#131D33" CornerRadius="4" Padding="6,3" VerticalAlignment="Center">
-                                                    <TextBlock Text="🎬 TRACKS" FontSize="8.5" FontWeight="Bold" Foreground="#38BDF8" VerticalAlignment="Center" />
+                                                <Border Height="26" Background="{DynamicResource AntigravityCardBrush}" CornerRadius="4" Padding="6,3" VerticalAlignment="Center">
+                                                    <TextBlock Text="🎬 TRACKS" FontSize="8.5" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
                                                 </Border>
 
                                                 <!-- Track 1 Header: Video -->
-                                                <Border Height="90" Background="#111827" BorderBrush="#1F2937" BorderThickness="1" CornerRadius="4" Padding="6,4">
+                                                <Border Height="90" Background="{DynamicResource AntigravityPanelBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="4" Padding="6,4">
                                                     <StackPanel VerticalAlignment="Center" Spacing="2">
                                                         <StackPanel Orientation="Horizontal" Spacing="4">
-                                                            <materialIcons:MaterialIcon Kind="MoviePlayOutline" Width="13" Height="13" Foreground="#38BDF8" />
-                                                            <TextBlock Text="TRACK 1: VIDEO" FontSize="8.5" FontWeight="Bold" Foreground="#38BDF8" />
+                                                            <materialIcons:MaterialIcon Kind="MoviePlayOutline" Width="13" Height="13" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                                            <TextBlock Text="TRACK 1: VIDEO" FontSize="8.5" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
                                                         </StackPanel>
                                                         <TextBlock Text="Scene Cut Preview" FontSize="9.5" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" />
                                                     </StackPanel>
                                                 </Border>
 
                                                 <!-- Track 2 Header: Dialogue -->
-                                                <Border Height="72" Background="#111827" BorderBrush="#1F2937" BorderThickness="1" CornerRadius="4" Padding="6,4">
+                                                <Border Height="72" Background="{DynamicResource AntigravityPanelBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="4" Padding="6,4">
                                                     <StackPanel VerticalAlignment="Center" Spacing="2">
                                                         <StackPanel Orientation="Horizontal" Spacing="4">
-                                                            <materialIcons:MaterialIcon Kind="MessageTextOutline" Width="13" Height="13" Foreground="#A78BFA" />
-                                                            <TextBlock Text="TRACK 2: DIALOGUE" FontSize="8.5" FontWeight="Bold" Foreground="#A78BFA" />
+                                                            <materialIcons:MaterialIcon Kind="MessageTextOutline" Width="13" Height="13" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                                            <TextBlock Text="TRACK 2: DIALOGUE" FontSize="8.5" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
                                                         </StackPanel>
                                                         <TextBlock Text="Subtitles &amp; Speech Onset" FontSize="9.5" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" />
                                                     </StackPanel>
                                                 </Border>
 
                                                 <!-- Track 3 Header: Dubbed Voice -->
-                                                <Border Height="72" Background="#111827" BorderBrush="#1F2937" BorderThickness="1" CornerRadius="4" Padding="6,4">
+                                                <Border Height="72" Background="{DynamicResource AntigravityPanelBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="4" Padding="6,4">
                                                     <StackPanel VerticalAlignment="Center" Spacing="2">
                                                         <StackPanel Orientation="Horizontal" Spacing="4">
-                                                            <materialIcons:MaterialIcon Kind="MicrophoneOutline" Width="13" Height="13" Foreground="#34D399" />
-                                                            <TextBlock Text="TRACK 3: DUBBED" FontSize="8.5" FontWeight="Bold" Foreground="#34D399" />
+                                                            <materialIcons:MaterialIcon Kind="MicrophoneOutline" Width="13" Height="13" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                                            <TextBlock Text="TRACK 3: DUBBED" FontSize="8.5" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
                                                         </StackPanel>
                                                         <TextBlock Text="Khmer Neural &amp; RVC" FontSize="9.5" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" />
                                                     </StackPanel>
                                                 </Border>
 
                                                 <!-- Track 4 Header: Ducking -->
-                                                <Border Height="28" Background="#111827" BorderBrush="#1F2937" BorderThickness="1" CornerRadius="4" Padding="6,3">
+                                                <Border Height="28" Background="{DynamicResource AntigravityPanelBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="4" Padding="6,3">
                                                     <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                                                        <materialIcons:MaterialIcon Kind="TuneVertical" Width="12" Height="12" Foreground="#F472B6" />
-                                                        <TextBlock Text="TRACK 4: DUCKING" FontSize="8" FontWeight="Bold" Foreground="#F472B6" />
+                                                        <materialIcons:MaterialIcon Kind="TuneVertical" Width="12" Height="12" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                                        <TextBlock Text="TRACK 4: DUCKING" FontSize="8" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
                                                     </StackPanel>
                                                 </Border>
                                             </StackPanel>
@@ -1556,8 +1561,8 @@
                                                     <DataTemplate DataType="dubbing:SubtitleSegment">
                                                         <Border
                                                             Width="{Binding $parent[UserControl].((components:DubbingViewModel)DataContext).TimelineColumnWidth}"
-                                                            Background="#0D1424"
-                                                            BorderBrush="#1E293B"
+                                                            Background="{DynamicResource AntigravityElevatedBrush}"
+                                                            BorderBrush="{DynamicResource AntigravityBorderBrush}"
                                                             BorderThickness="1"
                                                             CornerRadius="5"
                                                             Padding="5">
@@ -1566,7 +1571,7 @@
                                                                 <Button
                                                                     Command="{Binding $parent[UserControl].((components:DubbingViewModel)DataContext).SelectSegmentCommand}"
                                                                     CommandParameter="{Binding}"
-                                                                    Background="#131D33"
+                                                                    Background="{DynamicResource AntigravityCardBrush}"
                                                                     BorderBrush="{DynamicResource AntigravityBorderBrush}"
                                                                     BorderThickness="1"
                                                                     CornerRadius="4"
@@ -1576,16 +1581,16 @@
                                                                     Cursor="Hand"
                                                                     ToolTip.Tip="Click to inspect in Studio Monitor">
                                                                     <Grid ColumnDefinitions="Auto,*,Auto">
-                                                                        <Border Grid.Column="0" Background="{Binding SpeakerColor}" CornerRadius="3" Padding="3,1" Margin="0,0,4,0">
-                                                                            <TextBlock Text="{Binding Index, StringFormat='#{0}'}" FontSize="8" FontWeight="Bold" Foreground="White" />
+                                                                        <Border Grid.Column="0" Background="{DynamicResource AntigravityPanelBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="3" Padding="3,1" Margin="0,0,4,0">
+                                                                            <TextBlock Text="{Binding Index, StringFormat='#{0}'}" FontSize="8" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
                                                                         </Border>
                                                                         <TextBlock Grid.Column="1" Text="{Binding StartTime, StringFormat='{}{0:mm\\:ss\\.ff}'}" FontSize="8" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
-                                                                        <TextBlock Grid.Column="2" Text="{Binding DurationSeconds, StringFormat='{}{0:F1}s'}" FontSize="8" Foreground="#38BDF8" FontWeight="Bold" VerticalAlignment="Center" />
+                                                                        <TextBlock Grid.Column="2" Text="{Binding DurationSeconds, StringFormat='{}{0:F1}s'}" FontSize="8" Foreground="{DynamicResource AntigravityMutedBrush}" FontWeight="Bold" VerticalAlignment="Center" />
                                                                     </Grid>
                                                                 </Button>
 
                                                                 <!-- Track 1: Scene Cut Video Snapshot -->
-                                                                <Border Height="90" CornerRadius="4" ClipToBounds="True" Background="#000" BorderBrush="{Binding SpeakerColor}" BorderThickness="1.5">
+                                                                <Border Height="90" CornerRadius="4" ClipToBounds="True" Background="#000" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1.5">
                                                                     <Grid>
                                                                         <Image asyncImageLoader:ImageLoader.Source="{Binding ThumbnailPath}" Stretch="UniformToFill" />
                                                                         <Button
@@ -1608,17 +1613,17 @@
                                                                 </Border>
 
                                                                 <!-- Track 2: Dialogue Lines & Auto-Align -->
-                                                                <Border Height="72" CornerRadius="4" Background="#182032" BorderBrush="{Binding SpeakerColor}" BorderThickness="1.5" Padding="5,3">
+                                                                <Border Height="72" CornerRadius="4" Background="{DynamicResource AntigravityCardBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1.5" Padding="5,3">
                                                                     <Grid RowDefinitions="Auto,*,Auto">
                                                                         <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
-                                                                            <TextBlock Text="{Binding SpeakerName}" FontSize="9" FontWeight="Bold" Foreground="{Binding SpeakerColor}" TextTrimming="CharacterEllipsis" />
+                                                                            <TextBlock Text="{Binding SpeakerName}" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" TextTrimming="CharacterEllipsis" />
                                                                             <TextBlock Grid.Column="1" Text="{Binding DurationSeconds, StringFormat='{}{0:F1}s'}" FontSize="7.5" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                                                         </Grid>
                                                                         <TextBlock
                                                                             Grid.Row="1"
                                                                             Text="{Binding OriginalText}"
                                                                             FontSize="8.5"
-                                                                            Foreground="White"
+                                                                            Foreground="{DynamicResource AntigravityTextBrush}"
                                                                             TextWrapping="Wrap"
                                                                             MaxLines="2"
                                                                             TextTrimming="CharacterEllipsis"
@@ -1637,8 +1642,8 @@
                                                                                 Cursor="Hand"
                                                                                 ToolTip.Tip="Auto-align speech start: trims intro silence/music">
                                                                                 <StackPanel Orientation="Horizontal" Spacing="2">
-                                                                                    <materialIcons:MaterialIcon Kind="Target" Width="8" Height="8" Foreground="#38BDF8" />
-                                                                                    <TextBlock Text="Align" FontSize="7.5" FontWeight="SemiBold" Foreground="#38BDF8" VerticalAlignment="Center" />
+                                                                                    <materialIcons:MaterialIcon Kind="Target" Width="8" Height="8" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                                                                    <TextBlock Text="Align" FontSize="7.5" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
                                                                                 </StackPanel>
                                                                             </Button>
                                                                         </Grid>
@@ -1646,7 +1651,7 @@
                                                                 </Border>
 
                                                                 <!-- Track 3: Dubbed Khmer Voice Clip -->
-                                                                <Border Height="72" CornerRadius="4" Background="#111D2E" BorderBrush="{Binding SyncStatusColor}" BorderThickness="1.5" Padding="5,3">
+                                                                <Border Height="72" CornerRadius="4" Background="{DynamicResource AntigravityCardBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1.5" Padding="5,3">
                                                                     <Grid RowDefinitions="Auto,*,Auto">
                                                                         <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto">
                                                                             <Button
@@ -1658,12 +1663,12 @@
                                                                                 Cursor="Hand"
                                                                                 ToolTip.Tip="Audition dubbed audio">
                                                                                 <StackPanel Orientation="Horizontal" Spacing="3">
-                                                                                    <materialIcons:MaterialIcon Kind="VolumeHigh" Width="11" Height="11" Foreground="{Binding SyncStatusColor}" />
-                                                                                    <TextBlock Text="Audition" FontSize="7.5" Foreground="{DynamicResource AntigravityAccentBrush}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                                                                    <materialIcons:MaterialIcon Kind="VolumeHigh" Width="11" Height="11" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                                                                    <TextBlock Text="Audition" FontSize="7.5" Foreground="{DynamicResource AntigravityTextBrush}" FontWeight="SemiBold" VerticalAlignment="Center" />
                                                                                 </StackPanel>
                                                                             </Button>
-                                                                            <Border Grid.Column="2" Background="{Binding SyncStatusColor}" CornerRadius="2" Padding="2,0.5">
-                                                                                <TextBlock Text="{Binding SyncStatus}" FontSize="7" FontWeight="Bold" Foreground="White" />
+                                                                            <Border Grid.Column="2" Background="{DynamicResource AntigravityPanelBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="2" Padding="2,0.5">
+                                                                                <TextBlock Text="{Binding SyncStatus}" FontSize="7" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
                                                                             </Border>
                                                                         </Grid>
                                                                         <TextBlock
@@ -1685,10 +1690,10 @@
                                                                 </Border>
 
                                                                 <!-- Track 4: Ducking Profile -->
-                                                                <Border Height="28" CornerRadius="3" Background="#1E1B4B" BorderBrush="#4338CA" BorderThickness="1" Padding="2">
+                                                                <Border Height="28" CornerRadius="3" Background="{DynamicResource AntigravityCardBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" Padding="2">
                                                                     <Grid VerticalAlignment="Center">
-                                                                        <Border Height="10" CornerRadius="2" Background="#EC4899" Opacity="0.85" />
-                                                                        <TextBlock Text="Ducked -25dB" FontSize="6.5" FontWeight="Bold" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                                        <Border Height="10" CornerRadius="2" Background="{DynamicResource AntigravityTextBrush}" Opacity="0.25" />
+                                                                        <TextBlock Text="Ducked -25dB" FontSize="6.5" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                                                     </Grid>
                                                                 </Border>
                                                             </StackPanel>
@@ -1708,7 +1713,7 @@
                         <TabItem>
                             <TabItem.Header>
                                 <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <materialIcons:MaterialIcon Kind="AccountMultipleOutline" Width="15" Height="15" Foreground="#EC4899" />
+                                    <materialIcons:MaterialIcon Kind="AccountMultipleOutline" Width="15" Height="15" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                     <TextBlock Text="Cast &amp; Voices" VerticalAlignment="Center" />
                                 </StackPanel>
                             </TabItem.Header>
@@ -1760,17 +1765,17 @@
                                             <DataTemplate DataType="dubbing:MovieCharacter">
                                                 <Border
                                                     Width="310"
-                                                    Background="#0F172A"
-                                                    BorderBrush="{Binding ColorTag}"
-                                                    BorderThickness="1.5"
+                                                    Background="{DynamicResource AntigravityElevatedBrush}"
+                                                    BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                                                    BorderThickness="1"
                                                     CornerRadius="8"
                                                     Padding="12"
                                                     Margin="0,0,12,12">
                                                     <StackPanel Spacing="8">
                                                         <!-- Card Header: Avatar, Name, Audition -->
                                                         <Grid ColumnDefinitions="Auto,*,Auto">
-                                                            <Border Width="28" Height="28" CornerRadius="14" Background="{Binding ColorTag}" Margin="0,0,8,0">
-                                                                <materialIcons:MaterialIcon Kind="Account" Width="16" Height="16" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                            <Border Width="28" Height="28" CornerRadius="14" Background="{DynamicResource AntigravityCardBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" Margin="0,0,8,0">
+                                                                <materialIcons:MaterialIcon Kind="Account" Width="16" Height="16" Foreground="{DynamicResource AntigravityTextBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                                             </Border>
                                                             <TextBox Grid.Column="1" Text="{Binding Name, Mode=TwoWay}" FontWeight="Bold" FontSize="12" VerticalAlignment="Center" Height="26" Padding="6,2" />
                                                             <Button
@@ -1843,7 +1848,7 @@
                                                             Command="{Binding $parent[UserControl].((components:DubbingViewModel)DataContext).RemoveCharacterCommand}"
                                                             CommandParameter="{Binding}"
                                                             Theme="{DynamicResource MaterialFlatButton}"
-                                                            Foreground="#EF4444"
+                                                            Foreground="{DynamicResource AntigravityMutedBrush}"
                                                             HorizontalAlignment="Right"
                                                             Padding="6,2"
                                                             Height="22"
@@ -1868,7 +1873,7 @@
                         <TabItem>
                             <TabItem.Header>
                                 <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <materialIcons:MaterialIcon Kind="FormatListNumbered" Width="15" Height="15" Foreground="#F59E0B" />
+                                    <materialIcons:MaterialIcon Kind="FormatListNumbered" Width="15" Height="15" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                     <TextBlock Text="Batch Queue" VerticalAlignment="Center" />
                                 </StackPanel>
                             </TabItem.Header>
@@ -1942,7 +1947,7 @@
                                                         CommandParameter="{Binding}"
                                                         Theme="{DynamicResource MaterialFlatButton}"
                                                         Padding="4"
-                                                        Foreground="#EF4444">
+                                                        Foreground="{DynamicResource AntigravityMutedBrush}">
                                                         <materialIcons:MaterialIcon Kind="DeleteOutline" Width="13" Height="13" />
                                                     </Button>
                                                 </DataTemplate>
@@ -1963,7 +1968,7 @@
         <Border
             Grid.Row="2"
             Padding="16,6"
-            Background="#080C14"
+            Background="{DynamicResource AntigravityRailBrush}"
             BorderBrush="{DynamicResource AntigravityBorderBrush}"
             BorderThickness="0,1,0,0">
             <Grid ColumnDefinitions="*,Auto">

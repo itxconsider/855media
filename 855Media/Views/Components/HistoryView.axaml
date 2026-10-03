@@ -1,4 +1,4 @@
-﻿<UserControl
+<UserControl
     x:Class="_855Media.Views.Components.HistoryView"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -7,33 +7,95 @@
     xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
     x:DataType="components:HistoryViewModel">
 
-    <Grid RowDefinitions="Auto, *">
+    <UserControl.Styles>
+        <Style Selector="Border.history-item-card">
+            <Setter Property="Margin" Value="0,0,0,10" />
+            <Setter Property="Padding" Value="14" />
+            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="Background" Value="{DynamicResource AntigravityCardBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource AntigravityBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.2" />
+                    <BrushTransition Property="BorderBrush" Duration="0:0:0.2" />
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.18" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
+            <Style Selector="^:pointerover">
+                <Setter Property="Background" Value="{DynamicResource AntigravityElevatedBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource AntigravityAccentBrush}" />
+                <Setter Property="RenderTransform" Value="scale(1.01)" />
+            </Style>
+        </Style>
+
+        <Style Selector="Button.history-tool-btn">
+            <Setter Property="Padding" Value="14,7" />
+            <Setter Property="CornerRadius" Value="18" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.18" />
+                    <BrushTransition Property="BorderBrush" Duration="0:0:0.18" />
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.15" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
+            <Style Selector="^:pointerover">
+                <Setter Property="RenderTransform" Value="scale(1.04)" />
+            </Style>
+            <Style Selector="^:pressed">
+                <Setter Property="RenderTransform" Value="scale(0.96)" />
+            </Style>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid RowDefinitions="Auto, *" Margin="32,20,32,20">
         <!-- Top Toolbar -->
-        <Grid Grid.Row="0" ColumnDefinitions="*, Auto, Auto" Margin="0,0,0,16">
-            <TextBox
+        <Grid Grid.Row="0" ColumnDefinitions="*, Auto, Auto" Margin="0,0,0,18">
+            <!-- Glass Pill Search Box -->
+            <Border
                 Grid.Column="0"
-                Text="{Binding SearchQuery, Mode=TwoWay}"
-                Watermark="{Binding LocalizationManager.SearchHistoryPlaceholder}"
-                Margin="0,0,12,0"
-                VerticalAlignment="Center">
-                <TextBox.InnerRightContent>
+                Height="42"
+                CornerRadius="21"
+                Background="{DynamicResource AntigravityPanelBrush}"
+                BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                BorderThickness="1"
+                Margin="0,0,14,0"
+                Padding="6,0,12,0">
+                <Grid ColumnDefinitions="Auto,*">
                     <materialIcons:MaterialIcon
+                        Grid.Column="0"
                         Kind="Magnify"
                         Width="18"
                         Height="18"
-                        Margin="0,0,10,0"
-                        Foreground="{DynamicResource AntigravityMutedBrush}" />
-                </TextBox.InnerRightContent>
-            </TextBox>
+                        Margin="8,0,6,0"
+                        Foreground="{DynamicResource AntigravityMutedBrush}"
+                        VerticalAlignment="Center" />
+                    <TextBox
+                        Grid.Column="1"
+                        Text="{Binding SearchQuery, Mode=TwoWay}"
+                        Watermark="{Binding LocalizationManager.SearchHistoryPlaceholder}"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        FontSize="13"
+                        VerticalAlignment="Center"
+                        VerticalContentAlignment="Center"
+                        Theme="{DynamicResource SoloTextBox}" />
+                </Grid>
+            </Border>
 
             <Button
                 Grid.Column="1"
                 Command="{Binding ExportHistoryCommand}"
-                Margin="0,0,8,0"
-                Padding="12,8"
+                Classes="history-tool-btn"
+                Background="{DynamicResource AntigravityElevatedBrush}"
+                BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                BorderThickness="1"
+                Margin="0,0,10,0"
                 ToolTip.Tip="{Binding LocalizationManager.ExportHistoryTitle}">
                 <StackPanel Orientation="Horizontal" Spacing="6">
-                    <materialIcons:MaterialIcon Kind="Export" Width="16" Height="16" />
+                    <materialIcons:MaterialIcon Kind="Export" Width="15" Height="15" Foreground="{DynamicResource AntigravityTextBrush}" />
                     <TextBlock Text="{Binding LocalizationManager.ExportHistoryButton}" VerticalAlignment="Center" />
                 </StackPanel>
             </Button>
@@ -41,12 +103,14 @@
             <Button
                 Grid.Column="2"
                 Command="{Binding ClearHistoryCommand}"
-                Padding="12,8"
-                Classes="danger"
+                Classes="history-tool-btn"
+                Background="{DynamicResource AntigravityElevatedBrush}"
+                BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                BorderThickness="1"
                 ToolTip.Tip="{Binding LocalizationManager.ClearHistoryTitle}">
                 <StackPanel Orientation="Horizontal" Spacing="6">
-                    <materialIcons:MaterialIcon Kind="DeleteSweep" Width="16" Height="16" />
-                    <TextBlock Text="{Binding LocalizationManager.ClearHistoryButton}" VerticalAlignment="Center" />
+                    <materialIcons:MaterialIcon Kind="DeleteSweep" Width="15" Height="15" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                    <TextBlock Text="{Binding LocalizationManager.ClearHistoryButton}" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
                 </StackPanel>
             </Button>
         </Grid>
@@ -57,16 +121,28 @@
             <StackPanel
                 HorizontalAlignment="Center"
                 VerticalAlignment="Center"
-                Spacing="12"
+                Spacing="14"
                 IsVisible="{Binding !HasRecords}">
-                <materialIcons:MaterialIcon
-                    Kind="History"
-                    Width="64"
-                    Height="64"
-                    Foreground="{DynamicResource AntigravityMutedBrush}" />
+                <Border
+                    Width="80"
+                    Height="80"
+                    CornerRadius="40"
+                    Background="#10FFFFFF"
+                    BorderBrush="#20FFFFFF"
+                    BorderThickness="1"
+                    HorizontalAlignment="Center">
+                    <materialIcons:MaterialIcon
+                        Kind="History"
+                        Width="40"
+                        Height="40"
+                        Foreground="{DynamicResource AntigravityMutedBrush}"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center" />
+                </Border>
                 <TextBlock
                     Text="{Binding LocalizationManager.NoHistoryRecords}"
                     FontSize="16"
+                    FontWeight="SemiBold"
                     Foreground="{DynamicResource AntigravityMutedBrush}"
                     HorizontalAlignment="Center" />
             </StackPanel>
@@ -76,28 +152,25 @@
                 <ItemsControl ItemsSource="{Binding FilteredRecords}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="services:HistoryRecord">
-                            <Border
-                                Margin="0,0,0,8"
-                                Padding="12"
-                                CornerRadius="8"
-                                Background="#0AFFFFFF"
-                                BorderBrush="#1FFFFFFF"
-                                BorderThickness="1">
+                            <Border Classes="history-item-card">
                                 <Grid ColumnDefinitions="Auto, *, Auto">
                                     <!-- Source Icon -->
                                     <Border
                                         Grid.Column="0"
-                                        Width="40"
-                                        Height="40"
-                                        CornerRadius="20"
-                                        Background="#1AFFFFFF"
-                                        Margin="0,0,12,0"
+                                        Width="42"
+                                        Height="42"
+                                        CornerRadius="12"
+                                        Background="{DynamicResource AntigravityElevatedBrush}"
+                                        BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                                        BorderThickness="1"
+                                        Margin="0,0,14,0"
                                         HorizontalAlignment="Center"
                                         VerticalAlignment="Center">
                                         <materialIcons:MaterialIcon
                                             Kind="MoviePlay"
                                             Width="22"
                                             Height="22"
+                                            Foreground="{DynamicResource AntigravityTextBrush}"
                                             HorizontalAlignment="Center"
                                             VerticalAlignment="Center" />
                                     </Border>
@@ -106,39 +179,52 @@
                                     <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
                                         <TextBlock
                                             Text="{Binding Title}"
-                                            FontWeight="SemiBold"
+                                            FontWeight="Bold"
                                             FontSize="14"
+                                            Foreground="{DynamicResource AntigravityTextBrush}"
                                             TextWrapping="NoWrap"
                                             TextTrimming="CharacterEllipsis" />
 
-                                        <StackPanel Orientation="Horizontal" Spacing="12">
+                                        <StackPanel Orientation="Horizontal" Spacing="10">
                                             <TextBlock
                                                 Text="{Binding Author}"
                                                 FontSize="12"
                                                 Foreground="{DynamicResource AntigravityMutedBrush}" />
+
+                                            <TextBlock Text="•" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
 
                                             <TextBlock
                                                 Text="{Binding FormattedDownloadedAt}"
                                                 FontSize="12"
                                                 Foreground="{DynamicResource AntigravityMutedBrush}" />
 
-                                            <TextBlock
-                                                Text="{Binding FormattedFileSize}"
-                                                FontSize="12"
-                                                Foreground="{DynamicResource AntigravityMutedBrush}"
-                                                IsVisible="{Binding FormattedFileSize, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                            <TextBlock Text="•" FontSize="10" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" IsVisible="{Binding FormattedFileSize, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+                                            <Border
+                                                Background="{DynamicResource AntigravityElevatedBrush}"
+                                                BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                                                BorderThickness="1"
+                                                CornerRadius="6"
+                                                Padding="6,1"
+                                                IsVisible="{Binding FormattedFileSize, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                                                <TextBlock
+                                                    Text="{Binding FormattedFileSize}"
+                                                    FontSize="11"
+                                                    FontWeight="SemiBold"
+                                                    Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                            </Border>
                                         </StackPanel>
 
                                         <TextBlock
                                             Text="{Binding ErrorMessage}"
                                             FontSize="11"
-                                            Foreground="#FF5555"
+                                            Foreground="{DynamicResource AntigravityMutedBrush}"
                                             TextWrapping="Wrap"
                                             IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                                     </StackPanel>
 
                                     <!-- Actions -->
-                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" Margin="12,0,0,0">
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="14,0,0,0">
                                         <Button
                                             Command="{Binding $parent[UserControl].((components:HistoryViewModel)DataContext).RedownloadCommand}"
                                             CommandParameter="{Binding}"

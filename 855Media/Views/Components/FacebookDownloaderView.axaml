@@ -60,7 +60,7 @@
                         Command="{Binding GoHomeCommand}"
                         Theme="{DynamicResource MaterialFlatButton}"
                         ToolTip.Tip="Facebook Home">
-                        <materialIcons:MaterialIcon Width="18" Height="18" Foreground="#1877F2" Kind="Facebook" />
+                        <materialIcons:MaterialIcon Width="18" Height="18" Foreground="{DynamicResource AntigravityTextBrush}" Kind="Facebook" />
                     </Button>
                 </StackPanel>
 
@@ -130,7 +130,7 @@
                             <materialIcons:MaterialIcon
                                 Width="16"
                                 Height="16"
-                                Foreground="#FF4B4B"
+                                Foreground="{DynamicResource AntigravityMutedBrush}"
                                 IsVisible="{Binding IsScrapingActive}"
                                 Kind="StopCircleOutline" />
                             <TextBlock
@@ -144,14 +144,14 @@
                     <!--  Import Photos Button  -->
                     <Button
                         Command="{Binding ImportPhotosCommand}"
-                        Background="#1877F2"
-                        Foreground="White"
+                        Background="{DynamicResource AntigravityAccentBrush}"
+                        Foreground="{DynamicResource AntigravityAccentForegroundBrush}"
                         CornerRadius="16"
                         Padding="14,6"
                         Theme="{DynamicResource MaterialFlatButton}"
                         ToolTip.Tip="Import all detected photos on this page into 855Media download queue">
                         <StackPanel Orientation="Horizontal" Spacing="6">
-                            <materialIcons:MaterialIcon Width="16" Height="16" Foreground="White" Kind="Download" />
+                            <materialIcons:MaterialIcon Width="16" Height="16" Foreground="{DynamicResource AntigravityAccentForegroundBrush}" Kind="Download" />
                             <TextBlock
                                 Text="{Binding DetectedPhotosCount, StringFormat='Import ({0})'}"
                                 VerticalAlignment="Center"
@@ -220,13 +220,13 @@
                     Margin="8,0,0,0"
                     Height="36"
                     Padding="14,0"
-                    Background="#1877F2"
+                    Background="{DynamicResource AntigravityAccentBrush}"
                     Command="{Binding ProcessQueryCommand}"
                     CornerRadius="18"
-                    Foreground="White"
+                    Foreground="{DynamicResource AntigravityAccentForegroundBrush}"
                     Theme="{DynamicResource MaterialFlatButton}">
                     <StackPanel Orientation="Horizontal" Spacing="6">
-                        <materialIcons:MaterialIcon Width="16" Height="16" Foreground="White" Kind="Download" />
+                        <materialIcons:MaterialIcon Width="16" Height="16" Foreground="{DynamicResource AntigravityAccentForegroundBrush}" Kind="Download" />
                         <TextBlock Text="Download" VerticalAlignment="Center" FontSize="13" FontWeight="Bold" />
                     </StackPanel>
                 </Button>

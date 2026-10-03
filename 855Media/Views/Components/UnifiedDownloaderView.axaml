@@ -12,33 +12,51 @@
         <Style Selector="Button.mode-btn">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Foreground" Value="{DynamicResource AntigravityMutedBrush}" />
-            <Setter Property="Padding" Value="14,7" />
+            <Setter Property="Padding" Value="15,7" />
             <Setter Property="CornerRadius" Value="18" />
             <Setter Property="FontSize" Value="13" />
             <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.18" />
+                    <BrushTransition Property="Foreground" Duration="0:0:0.18" />
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.15" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
             <Style Selector="^:pointerover">
-                <Setter Property="Background" Value="#14FFFFFF" />
+                <Setter Property="Background" Value="{DynamicResource MusePillHoverBrush}" />
                 <Setter Property="Foreground" Value="{DynamicResource AntigravityTextBrush}" />
+                <Setter Property="RenderTransform" Value="scale(1.02)" />
+            </Style>
+            <Style Selector="^:pressed">
+                <Setter Property="RenderTransform" Value="scale(0.97)" />
             </Style>
             <Style Selector="^.active">
-                <Setter Property="Background" Value="{DynamicResource AntigravityAccentBrush}" />
-                <Setter Property="Foreground" Value="{DynamicResource AntigravityAccentForegroundBrush}" />
+                <Setter Property="Background" Value="{DynamicResource MusePillActiveBrush}" />
+                <Setter Property="Foreground" Value="{DynamicResource MusePillActiveForegroundBrush}" />
+                <Setter Property="FontWeight" Value="Bold" />
             </Style>
         </Style>
 
-
-
         <!-- Feature Card Style -->
         <Style Selector="Border.feature-card">
-            <Setter Property="Background" Value="{DynamicResource AntigravityPanelBrush}" />
+            <Setter Property="Background" Value="{DynamicResource AntigravityCardBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource AntigravityBorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="CornerRadius" Value="14" />
             <Setter Property="Padding" Value="16" />
             <Setter Property="Margin" Value="6" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.2" />
+                    <BrushTransition Property="BorderBrush" Duration="0:0:0.2" />
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.2" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
             <Style Selector="^:pointerover">
-                <Setter Property="BorderBrush" Value="#406366F1" />
+                <Setter Property="BorderBrush" Value="{DynamicResource AntigravityAccentBrush}" />
                 <Setter Property="Background" Value="{DynamicResource AntigravityElevatedBrush}" />
+                <Setter Property="RenderTransform" Value="scale(1.02)" />
             </Style>
         </Style>
     </UserControl.Styles>
@@ -76,7 +94,7 @@
                             Classes="mode-btn"
                             Classes.active="{Binding IsBrowserMode}">
                             <StackPanel Orientation="Horizontal" Spacing="6">
-                                <materialIcons:MaterialIcon Kind="Facebook" Width="16" Height="16" Foreground="#1877F2" />
+                                <materialIcons:MaterialIcon Kind="Facebook" Width="16" Height="16" Foreground="{DynamicResource AntigravityTextBrush}" />
                                 <TextBlock Text="Facebook Web Browser" VerticalAlignment="Center" />
                             </StackPanel>
                         </Button>
@@ -140,8 +158,8 @@
                     IsVisible="{Binding IsProfileQuery}"
                     Width="740"
                     Padding="14,10"
-                    Background="#1E6366F1"
-                    BorderBrush="#506366F1"
+                    Background="{DynamicResource AntigravityElevatedBrush}"
+                    BorderBrush="{DynamicResource AntigravityBorderBrush}"
                     BorderThickness="1"
                     CornerRadius="12">
                     <Grid ColumnDefinitions="Auto,*,Auto">
@@ -150,22 +168,24 @@
                             Width="36"
                             Height="36"
                             CornerRadius="18"
-                            Background="#6366F1"
+                            Background="{DynamicResource AntigravityPanelBrush}"
+                            BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                            BorderThickness="1"
                             Margin="0,0,12,0">
-                            <materialIcons:MaterialIcon Kind="AccountHeart" Width="20" Height="20" Foreground="#FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            <materialIcons:MaterialIcon Kind="AccountHeart" Width="20" Height="20" Foreground="{DynamicResource AntigravityAccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Border>
 
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
                             <StackPanel Orientation="Horizontal" Spacing="8">
-                                <TextBlock Text="Creator / Channel Profile Detected" FontWeight="Bold" FontSize="13" Foreground="#FFFFFF" />
-                                <Border Background="#30FFFFFF" CornerRadius="8" Padding="6,1">
-                                    <TextBlock Text="{Binding ProfileHandleDisplay}" FontSize="11" FontWeight="SemiBold" Foreground="#E0E7FF" />
+                                <TextBlock Text="Creator / Channel Profile Detected" FontWeight="Bold" FontSize="13" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                <Border Background="{DynamicResource AntigravityCardBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="6,1">
+                                    <TextBlock Text="{Binding ProfileHandleDisplay}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" />
                                 </Border>
                             </StackPanel>
                             <TextBlock
                                 Text="You can download their full uploads in batch, and their profile picture (avatar) will automatically be saved."
                                 FontSize="11"
-                                Foreground="#C7D2FE" />
+                                Foreground="{DynamicResource AntigravityMutedBrush}" />
                         </StackPanel>
 
                         <Button
@@ -173,13 +193,13 @@
                             Command="{Binding DownloadProfilePictureImmediatelyCommand}"
                             Padding="12,6"
                             CornerRadius="14"
-                            Background="#6366F1"
-                            Foreground="#FFFFFF"
+                            Background="{DynamicResource AntigravityAccentBrush}"
+                            Foreground="{DynamicResource AntigravityAccentForegroundBrush}"
                             Theme="{DynamicResource MaterialFlatButton}"
                             ToolTip.Tip="Save creator avatar directly without fetching video list">
                             <StackPanel Orientation="Horizontal" Spacing="6">
-                                <materialIcons:MaterialIcon Kind="ImageOutline" Width="15" Height="15" />
-                                <TextBlock Text="Save Avatar Only" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                <materialIcons:MaterialIcon Kind="ImageOutline" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentForegroundBrush}" />
+                                <TextBlock Text="Save Avatar Only" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityAccentForegroundBrush}" VerticalAlignment="Center" />
                             </StackPanel>
                         </Button>
                     </Grid>
@@ -192,9 +212,9 @@
                         Height="54"
                         ClipToBounds="True"
                         Background="{DynamicResource AntigravityPanelBrush}"
-                        BorderBrush="{DynamicResource AntigravityAccentBrush}"
+                        BorderBrush="{DynamicResource AntigravityBorderBrush}"
                         BorderThickness="1"
-                        BoxShadow="0 4 20 0 #206366F1"
+                        BoxShadow="0 8 32 0 #25000000"
                         CornerRadius="27">
                         <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
                             <!-- Platform Icon / Auto Indicator -->
@@ -204,25 +224,25 @@
                                         Kind="Youtube"
                                         Width="22"
                                         Height="22"
-                                        Foreground="#FF0000"
+                                        Foreground="{DynamicResource AntigravityTextBrush}"
                                         IsVisible="{Binding DetectedPlatform, Converter={x:Static converters:EqualityConverter.IsEqual}, ConverterParameter={x:Static components:DetectedPlatformKind.YouTube}}" />
                                     <materialIcons:MaterialIcon
                                         Kind="Music"
                                         Width="22"
                                         Height="22"
-                                        Foreground="#00F2FE"
+                                        Foreground="{DynamicResource AntigravityTextBrush}"
                                         IsVisible="{Binding DetectedPlatform, Converter={x:Static converters:EqualityConverter.IsEqual}, ConverterParameter={x:Static components:DetectedPlatformKind.TikTok}}" />
                                     <materialIcons:MaterialIcon
                                         Kind="Facebook"
                                         Width="22"
                                         Height="22"
-                                        Foreground="#1877F2"
+                                        Foreground="{DynamicResource AntigravityTextBrush}"
                                         IsVisible="{Binding DetectedPlatform, Converter={x:Static converters:EqualityConverter.IsEqual}, ConverterParameter={x:Static components:DetectedPlatformKind.Facebook}}" />
                                     <materialIcons:MaterialIcon
                                         Kind="MoviePlay"
                                         Width="22"
                                         Height="22"
-                                        Foreground="#E11D48"
+                                        Foreground="{DynamicResource AntigravityTextBrush}"
                                         IsVisible="{Binding DetectedPlatform, Converter={x:Static converters:EqualityConverter.IsEqual}, ConverterParameter={x:Static components:DetectedPlatformKind.DramaBox}}" />
                                     <materialIcons:MaterialIcon
                                         Kind="Magnify"
@@ -281,15 +301,15 @@
                                 Grid.Column="4"
                                 Command="{Binding ProcessQueryCommand}"
                                 Height="54"
-                                Padding="24,0"
+                                Padding="26,0"
                                 Background="{DynamicResource AntigravityAccentBrush}"
                                 CornerRadius="0,27,27,0"
                                 Foreground="{DynamicResource AntigravityAccentForegroundBrush}"
                                 IsDefault="True"
                                 Theme="{DynamicResource MaterialFlatButton}">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <materialIcons:MaterialIcon Width="20" Height="20" Kind="Download" />
-                                    <TextBlock Text="Download" FontWeight="Bold" FontSize="14" VerticalAlignment="Center" />
+                                    <materialIcons:MaterialIcon Width="20" Height="20" Kind="Download" Foreground="{DynamicResource AntigravityAccentForegroundBrush}" />
+                                    <TextBlock Text="Download" FontWeight="Bold" FontSize="14" Foreground="{DynamicResource AntigravityAccentForegroundBrush}" VerticalAlignment="Center" />
                                 </StackPanel>
                             </Button>
                         </Grid>
@@ -302,10 +322,10 @@
                         Width="740"
                         MinHeight="230"
                         Background="{DynamicResource AntigravityPanelBrush}"
-                        BorderBrush="{DynamicResource AntigravityAccentBrush}"
+                        BorderBrush="{DynamicResource AntigravityBorderBrush}"
                         BorderThickness="1"
-                        BoxShadow="0 4 20 0 #206366F1"
-                        CornerRadius="14"
+                        BoxShadow="0 8 32 0 #25000000"
+                        CornerRadius="18"
                         Padding="6">
                         <Grid RowDefinitions="*,Auto">
                             <TextBox
@@ -330,18 +350,20 @@
                                 Background="#0AFFFFFF"
                                 BorderBrush="{DynamicResource AntigravityBorderBrush}"
                                 BorderThickness="0,1,0,0"
-                                CornerRadius="0,0,8,8">
+                                CornerRadius="0,0,12,12">
                                 <Grid ColumnDefinitions="Auto,*,Auto,Auto">
                                     <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                                         <Border
-                                            Background="#206366F1"
+                                            Background="{DynamicResource AntigravityElevatedBrush}"
+                                            BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                                            BorderThickness="1"
                                             CornerRadius="10"
                                             Padding="8,3">
                                             <TextBlock
                                                 Text="{Binding BatchUrlCount, StringFormat='{}{0} URLs detected'}"
                                                 FontSize="11"
                                                 FontWeight="SemiBold"
-                                                Foreground="#A5B4FC" />
+                                                Foreground="{DynamicResource AntigravityTextBrush}" />
                                         </Border>
                                     </StackPanel>
 
@@ -374,12 +396,12 @@
                                         Command="{Binding ProcessQueryCommand}"
                                         Background="{DynamicResource AntigravityAccentBrush}"
                                         Foreground="{DynamicResource AntigravityAccentForegroundBrush}"
-                                        Padding="20,8"
+                                        Padding="22,9"
                                         CornerRadius="16"
                                         Theme="{DynamicResource MaterialFlatButton}">
                                         <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <materialIcons:MaterialIcon Kind="DownloadMultiple" Width="17" Height="17" />
-                                            <TextBlock Text="Process Batch Downloads" FontWeight="Bold" FontSize="13" VerticalAlignment="Center" />
+                                            <materialIcons:MaterialIcon Kind="DownloadMultiple" Width="17" Height="17" Foreground="{DynamicResource AntigravityAccentForegroundBrush}" />
+                                            <TextBlock Text="Process Batch Downloads" FontWeight="Bold" FontSize="13" Foreground="{DynamicResource AntigravityAccentForegroundBrush}" VerticalAlignment="Center" />
                                         </StackPanel>
                                     </Button>
                                 </Grid>
@@ -393,7 +415,7 @@
                     <!-- YouTube Feature Card -->
                     <Border Classes="feature-card">
                         <StackPanel Spacing="8">
-                            <materialIcons:MaterialIcon Kind="Youtube" Width="26" Height="26" Foreground="#FF0000" />
+                            <materialIcons:MaterialIcon Kind="Youtube" Width="26" Height="26" Foreground="{DynamicResource AntigravityAccentBrush}" />
                             <TextBlock Text="YouTube" FontWeight="Bold" FontSize="13" Foreground="{DynamicResource AntigravityTextBrush}" />
                             <TextBlock Text="4K / 60fps video, audio extraction, full channel uploads, playlists &amp; channel avatars." FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" TextWrapping="Wrap" LineHeight="16" />
                         </StackPanel>
@@ -402,7 +424,7 @@
                     <!-- TikTok Feature Card -->
                     <Border Classes="feature-card">
                         <StackPanel Spacing="8">
-                            <materialIcons:MaterialIcon Kind="Music" Width="26" Height="26" Foreground="#00F2FE" />
+                            <materialIcons:MaterialIcon Kind="Music" Width="26" Height="26" Foreground="{DynamicResource AntigravityAccentBrush}" />
                             <TextBlock Text="TikTok" FontWeight="Bold" FontSize="13" Foreground="{DynamicResource AntigravityTextBrush}" />
                             <TextBlock Text="Clean watermark-free video, sound tracks, photo sets, and user profile pictures." FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" TextWrapping="Wrap" LineHeight="16" />
                         </StackPanel>
@@ -411,7 +433,7 @@
                     <!-- Facebook Feature Card -->
                     <Border Classes="feature-card">
                         <StackPanel Spacing="8">
-                            <materialIcons:MaterialIcon Kind="Facebook" Width="26" Height="26" Foreground="#1877F2" />
+                            <materialIcons:MaterialIcon Kind="Facebook" Width="26" Height="26" Foreground="{DynamicResource AntigravityAccentBrush}" />
                             <TextBlock Text="Facebook" FontWeight="Bold" FontSize="13" Foreground="{DynamicResource AntigravityTextBrush}" />
                             <TextBlock Text="HD Reels, video posts, full albums with automated in-app browser scroller." FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" TextWrapping="Wrap" LineHeight="16" />
                         </StackPanel>
@@ -420,7 +442,7 @@
                     <!-- DramaBox Feature Card -->
                     <Border Classes="feature-card">
                         <StackPanel Spacing="8">
-                            <materialIcons:MaterialIcon Kind="MoviePlay" Width="26" Height="26" Foreground="#E11D48" />
+                            <materialIcons:MaterialIcon Kind="MoviePlay" Width="26" Height="26" Foreground="{DynamicResource AntigravityAccentBrush}" />
                             <TextBlock Text="DramaBox" FontWeight="Bold" FontSize="13" Foreground="{DynamicResource AntigravityTextBrush}" />
                             <TextBlock Text="Full mini-drama series, fast HLS stream copy, 1080p episodes &amp; series posters." FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" TextWrapping="Wrap" LineHeight="16" />
                         </StackPanel>
@@ -441,7 +463,7 @@
                             Kind="LightbulbOnOutline"
                             Width="20"
                             Height="20"
-                            Foreground="#F59E0B"
+                            Foreground="{DynamicResource AntigravityTextBrush}"
                             VerticalAlignment="Center"
                             Margin="0,0,12,0" />
                         <TextBlock
@@ -452,9 +474,9 @@
                             TextWrapping="Wrap">
                             <Run Text="Creator Profile Tip: " FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
                             <Run Text="When you paste a creator's profile page (e.g. TikTok " />
-                            <Run Text="tiktok.com/@user" Foreground="#00F2FE" />
+                            <Run Text="tiktok.com/@user" Foreground="{DynamicResource AntigravityTextBrush}" FontWeight="SemiBold" />
                             <Run Text=" or YouTube " />
-                            <Run Text="youtube.com/@channel" Foreground="#FF0000" />
+                            <Run Text="youtube.com/@channel" Foreground="{DynamicResource AntigravityTextBrush}" FontWeight="SemiBold" />
                             <Run Text="), 855Media resolves all their videos and gives you the option to download their high-resolution profile picture (avatar.jpg) right into your folder." />
                         </TextBlock>
                     </Grid>

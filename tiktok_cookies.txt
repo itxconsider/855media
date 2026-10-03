@@ -4,7 +4,7 @@
 .tiktok.com	TRUE	/	TRUE	1822138870	_ttp	3IUfwfFXoRFHwg1BP4gsQAuaexV
 .tiktok.com	TRUE	/	TRUE	1793532129	cmpl_token	AgQYAPOo_hfkTtKyGm2GFDidPPD5n7QGDn-TCWClVB4
 .tiktok.com	TRUE	/	FALSE	1819884128	d_ticket	90c084a00ce970ba397312aac50f1eecfb46a
-.tiktok.com	TRUE	/	TRUE	1791786365	msToken	_O0Czk5QiqzQkmGE9GRAtBYParNlNEtWnb7RvRQHOGjycZtb3xrvnFBfZSzNO0dd-K1NEvJ5G3hv3x6fZaKf1A-Ps8evBXwjdkQ8YwR8sgkLnCNpnv7mHqehdRqqxv8=
+.tiktok.com	TRUE	/	TRUE	1791839115	msToken	SoxjkAjRBKt6yKc3ePsHMm_3MRp86BWTPSSYPGXJ2-2oXPMDILHlESDiHmIaFk5Q7zarKHBPpul8De5WAl5UJdLf00VJaUzjHp55UJ1zs4nfBE6ZelF8KbMB5EQ7z5I=
 .tiktok.com	TRUE	/	TRUE	1793532129	multi_sids	7071921495253599237%3A84e81c47f6c49c3868701bbe2759e669
 .tiktok.com	TRUE	/	FALSE	1820260442	odin_tt	a68cb504e9f5ee11a1640be5dcbbade28c5e709c3fc51f28a05e8d0e6df0042a6bfdb0c4a949a525b3a04f17d5111454ede1783a9c811ffe50f90023109885b742a160b7b0bc22cfaab72c273bb51ece
 .tiktok.com	TRUE	/	TRUE	0	s_v_web_id	verify_mtq6vofm_j6WfFtGH_fxCW_4RTz_BdYe_pXqzRnbBThqB
@@ -20,7 +20,7 @@
 .tiktok.com	TRUE	/	FALSE	1820257971	store-idc	alisg
 .tiktok.com	TRUE	/	FALSE	1820257971	tt-target-idc	alisg
 .tiktok.com	TRUE	/	FALSE	1820257971	tt-target-idc-sign	UQ771IQ8M03ven3-tJQuDVCAoUVN_cvGhiImkfIsfOyyQpGIzM495nMBF9_xiOzYhLGYzDQZDFP6GdNO5MB5KGWdh7BUSlgQyiQ7EOMwsBGdz7KmM17lpYgiMEfAJ4b5YIrx6VPuKc3JUcyrrcdFF8MHm4ULmZxaoT-Uu_2uXW9VA2ByxUPmeZQ0t66b0H5w4aeEWpDfywKfpiA5ocNWgcQ07w1-I_KE8XjC5Wd9ijrX1OKGrV-I-MgBZZE3ag-WveFpO7GQz95Skit5UuajKSUuiFM1hlYWjTw7k41G4wUFE68FI06LWh2eJltdYhBdZGq2dVfGTA7PvWerRv4cPES35QR6r20OIG9FVFtiE4-95HRa8zF6Fwwvl233EUFUlKzPp3a0qW6UBf-iv6jYoTFEsin51fh0iVHqJcql6dMd21PhATwxtoA5r32TlMfwGJjxnfMq4KY0pfN5APr6sJ9wCeae9P41ZCSWYlH6cYLiyKTz2vLL3lV78NZbFdTv
-.tiktok.com	TRUE	/	TRUE	1806476066	tt_chain_token	i1ky7BlPMhwXqEADI2c9ww==
+.tiktok.com	TRUE	/	TRUE	1806527382	tt_chain_token	i1ky7BlPMhwXqEADI2c9ww==
 .tiktok.com	TRUE	/	TRUE	0	tt_csrf_token	TMvbCjqU-ozl4ZeQTkZjnA0j2VEJqW1AeUyQ
 .tiktok.com	TRUE	/	TRUE	1803900128	tt_session_tlb_tag	sttt%7C5%7ChOgcR_bEnDhocBu-J1nmaf_________Nxmtc4fL9p-TUapFa1zvD4kaQxrb1Jof_yv7PJAqh8Ik%3D
 .tiktok.com	TRUE	/	TRUE	1821763984	ttwid	1%7C6PDFV94jvpTDVXCnB76eVAR97Bq-T2BTG2wa3FNLZ9k%7C1788721958%7C41551899c7631bf64b81c7c62e15c79cc883044794db7d25e618a323b9a00ddb
@@ -30,11 +30,10 @@
 .www.tiktok.com	TRUE	/	FALSE	0	passport_fe_beating_status	true
 .www.tiktok.com	TRUE	/	TRUE	1814641940	tiktok_webapp_theme	dark
 .www.tiktok.com	TRUE	/	TRUE	1814641940	tiktok_webapp_theme_source	auto
-.youtube.com	TRUE	/	TRUE	1790970086	GPS	1
 .youtube.com	TRUE	/	FALSE	0	PREF	hl=en&tz=UTC
 .youtube.com	TRUE	/	TRUE	0	SOCS	CAI
-.youtube.com	TRUE	/	TRUE	1806520286	VISITOR_INFO1_LIVE	VEmSwDY0x-M
-.youtube.com	TRUE	/	TRUE	1806520286	VISITOR_PRIVACY_METADATA	CgJLSBIEGgAgKw%3D%3D
+.youtube.com	TRUE	/	TRUE	1806523361	VISITOR_INFO1_LIVE	VEmSwDY0x-M
+.youtube.com	TRUE	/	TRUE	1806523361	VISITOR_PRIVACY_METADATA	CgJLSBIEGgAgKw%3D%3D
 .youtube.com	TRUE	/	TRUE	0	YSC	4W3XXYwn0dE
 .youtube.com	TRUE	/	TRUE	1806520286	__Secure-BUCKET	CKQD
 .youtube.com	TRUE	/	TRUE	1806520286	__Secure-ROLLOUT_TOKEN	CKqi7umPstbPmAEQvuDg5uKLlwMY1tKg5ISclwM%3D
@@ -42,4 +41,5 @@
 www.tiktok.com	FALSE	/	TRUE	0	csrf_session_id	0683eb7b6fa1cf4017c4ca64dd092d51
 www.tiktok.com	FALSE	/	FALSE	1803900047	g_state	{"i_l":0,"i_ll":1788348047816,"i_b":"SW26tJcyeRsmf8BkaJ1Goj8ayAkNyy195X0qI2jeei0","i_e":{"enable_itp_optimization":24},"i_et":1788348047816}
 www.tiktok.com	FALSE	/	FALSE	1796124129	last_login_method	google
-www.tiktok.com	FALSE	/	TRUE	1791788066	msToken	zDXtevSyWLEOjNxhbcjKgKeYVYN_Jd5Gae240SJac1KTY12V-R2avXP2iOdEPo5JEErT9DzHi646S4X-wMVgvDhuu4XR0j0xWJGZgzEZh7mG38t5I5n1bCLrqSr3rYg=
+www.tiktok.com	FALSE	/	TRUE	1791839381	msToken	sJgqMOhHgyhSF9WyOlZYXxxjpM5JkzOA9xJKsqBO1CcuyIVtv5YjDTmE8B2VLmpixrdvbZLuWJq-u9ja8D1i8-F3F5AyNsFObOBtgrUWXH52Hrgi56tPA8DFElaamHM=
+www.tiktok.com	FALSE	/@babypluto4u/video	FALSE	1790975483	_waftokenid	eyJ2Ijp7ImEiOiJkV0I1ZjRyejE0RUloRllxY3hjY1JXRit5bFp6czJZb0NhaWRpN1U5MEVrPSIsImIiOjE3OTA5NzUxODIsImMiOiJkSno3RWxJV2FJbURUdjBqeXVwNGhPUjhoRTNaUSs5YmRMOUh5ZnBCaVZRPSJ9LCJzIjoiMWRObkpOcVcva3YxQlRsYjJ5WHlYdGx3Ukx5N1ZzZEloWkdLN1Y4UFJ2bz0ifQ

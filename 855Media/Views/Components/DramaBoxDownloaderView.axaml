@@ -19,15 +19,16 @@
                     Width="60"
                     Height="60"
                     HorizontalAlignment="Center"
-                    Background="#E11D48"
-                    BoxShadow="0 6 24 0 #4DE11D48"
+                    Background="{DynamicResource AntigravityElevatedBrush}"
+                    BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                    BorderThickness="1"
                     CornerRadius="16">
                     <materialIcons:MaterialIcon
                         Width="36"
                         Height="36"
                         HorizontalAlignment="Center"
                         VerticalAlignment="Center"
-                        Foreground="#FFFFFF"
+                        Foreground="{DynamicResource AntigravityTextBrush}"
                         Kind="MoviePlay" />
                 </Border>
 
@@ -52,9 +53,9 @@
                     Height="48"
                     ClipToBounds="True"
                     Background="{DynamicResource AntigravityPanelBrush}"
-                    BorderBrush="#E11D48"
+                    BorderBrush="{DynamicResource AntigravityBorderBrush}"
                     BorderThickness="1"
-                    BoxShadow="0 4 20 0 #26E11D48"
+                    BoxShadow="0 4 20 0 #20000000"
                     CornerRadius="24">
                     <Grid ColumnDefinitions="*,Auto">
                         <TextBox
@@ -74,13 +75,13 @@
                             Grid.Column="1"
                             Width="64"
                             VerticalAlignment="Stretch"
-                            Background="#E11D48"
+                            Background="{DynamicResource AntigravityAccentBrush}"
                             Command="{Binding ProcessQueryCommand}"
                             CornerRadius="0,24,24,0"
-                            Foreground="#FFFFFF"
+                            Foreground="{DynamicResource AntigravityAccentForegroundBrush}"
                             IsDefault="True"
                             Theme="{DynamicResource MaterialFlatButton}">
-                            <materialIcons:MaterialIcon Width="22" Height="22" Kind="Download" />
+                            <materialIcons:MaterialIcon Width="22" Height="22" Kind="Download" Foreground="{DynamicResource AntigravityAccentForegroundBrush}" />
                         </Button>
                     </Grid>
                 </Border>
@@ -90,7 +91,7 @@
             <UniformGrid Columns="2" Width="740" Margin="0,12,0,0">
                 <Border Margin="6" Padding="16" Background="{DynamicResource AntigravityPanelBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="12">
                     <Grid ColumnDefinitions="Auto,*">
-                        <materialIcons:MaterialIcon Grid.Column="0" Kind="PlaylistPlay" Width="28" Height="28" Foreground="#E11D48" VerticalAlignment="Top" Margin="0,2,14,0" />
+                        <materialIcons:MaterialIcon Grid.Column="0" Kind="PlaylistPlay" Width="28" Height="28" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Top" Margin="0,2,14,0" />
                         <StackPanel Grid.Column="1" Spacing="4">
                             <TextBlock Text="Full Series &amp; Playlists" FontWeight="Bold" FontSize="14" Foreground="{DynamicResource AntigravityTextBrush}" />
                             <TextBlock Text="Paste a movie or series URL to resolve all episodes and download the entire drama in batch." FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" TextWrapping="Wrap" />
@@ -100,7 +101,7 @@
 
                 <Border Margin="6" Padding="16" Background="{DynamicResource AntigravityPanelBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="12">
                     <Grid ColumnDefinitions="Auto,*">
-                        <materialIcons:MaterialIcon Grid.Column="0" Kind="Flash" Width="28" Height="28" Foreground="#E11D48" VerticalAlignment="Top" Margin="0,2,14,0" />
+                        <materialIcons:MaterialIcon Grid.Column="0" Kind="Flash" Width="28" Height="28" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Top" Margin="0,2,14,0" />
                         <StackPanel Grid.Column="1" Spacing="4">
                             <TextBlock Text="Ultra-Fast HLS Stream Copy" FontWeight="Bold" FontSize="14" Foreground="{DynamicResource AntigravityTextBrush}" />
                             <TextBlock Text="Native FFmpeg HLS stream copy downloads full episodes in seconds with zero re-encoding quality loss." FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" TextWrapping="Wrap" />
@@ -110,7 +111,7 @@
 
                 <Border Margin="6" Padding="16" Background="{DynamicResource AntigravityPanelBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="12">
                     <Grid ColumnDefinitions="Auto,*">
-                        <materialIcons:MaterialIcon Grid.Column="0" Kind="VideoHighDefinition" Width="28" Height="28" Foreground="#E11D48" VerticalAlignment="Top" Margin="0,2,14,0" />
+                        <materialIcons:MaterialIcon Grid.Column="0" Kind="VideoHighDefinition" Width="28" Height="28" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Top" Margin="0,2,14,0" />
                         <StackPanel Grid.Column="1" Spacing="4">
                             <TextBlock Text="Crisp HD Video" FontWeight="Bold" FontSize="14" Foreground="{DynamicResource AntigravityTextBrush}" />
                             <TextBlock Text="Captures top 1080p and 720p drama video streams packaged directly into Windows-compatible MP4 files." FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" TextWrapping="Wrap" />
@@ -120,7 +121,7 @@
 
                 <Border Margin="6" Padding="16" Background="{DynamicResource AntigravityPanelBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="12">
                     <Grid ColumnDefinitions="Auto,*">
-                        <materialIcons:MaterialIcon Grid.Column="0" Kind="MusicNote" Width="28" Height="28" Foreground="#E11D48" VerticalAlignment="Top" Margin="0,2,14,0" />
+                        <materialIcons:MaterialIcon Grid.Column="0" Kind="MusicNote" Width="28" Height="28" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Top" Margin="0,2,14,0" />
                         <StackPanel Grid.Column="1" Spacing="4">
                             <TextBlock Text="OST &amp; Audio Extraction" FontWeight="Bold" FontSize="14" Foreground="{DynamicResource AntigravityTextBrush}" />
                             <TextBlock Text="Extract background music, soundtrack, and audio dialogue into high-bitrate MP3 or M4A tracks." FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" TextWrapping="Wrap" />
@@ -135,7 +136,7 @@
                 Margin="0,4,0,0"
                 Padding="16,14"
                 Background="{DynamicResource AntigravityElevatedBrush}"
-                BorderBrush="#40E11D48"
+                BorderBrush="{DynamicResource AntigravityBorderBrush}"
                 BorderThickness="1"
                 CornerRadius="10">
                 <Grid ColumnDefinitions="Auto,*">
@@ -144,7 +145,7 @@
                         Kind="InformationOutline"
                         Width="22"
                         Height="22"
-                        Foreground="#E11D48"
+                        Foreground="{DynamicResource AntigravityTextBrush}"
                         VerticalAlignment="Top"
                         Margin="0,2,14,0" />
                     <StackPanel Grid.Column="1" Spacing="6">
@@ -158,14 +159,14 @@
                             Foreground="{DynamicResource AntigravityMutedBrush}"
                             LineHeight="18"
                             TextWrapping="Wrap">
-                            <Run Text="• " FontWeight="Bold" Foreground="#E11D48" />
+                            <Run Text="• " FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
                             <Run Text="DramaBox series are vertical micro-dramas (" />
                             <Run Text="typically 1 to 2.5 minutes per full episode" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" />
                             <Run Text="). A 2-minute video is the complete, uncut episode." />
                             <LineBreak />
-                            <Run Text="• " FontWeight="Bold" Foreground="#E11D48" />
+                            <Run Text="• " FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
                             <Run Text="DramaBox provides the first 10–12 episodes for free. Subsequent episodes (Ep 13+) are VIP-locked by DramaBox and will download as " />
-                            <Run Text="15-second teaser clips" FontWeight="SemiBold" Foreground="#F59E0B" />
+                            <Run Text="15-second teaser clips" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" />
                             <Run Text=" unless unlocked with an authenticated DramaBox VIP account." />
                         </TextBlock>
                     </StackPanel>
@@ -187,7 +188,7 @@
                         Kind="LightbulbOutline"
                         Width="20"
                         Height="20"
-                        Foreground="#F59E0B"
+                        Foreground="{DynamicResource AntigravityTextBrush}"
                         VerticalAlignment="Center"
                         Margin="0,0,12,0" />
                     <TextBlock
@@ -198,9 +199,9 @@
                         TextWrapping="Wrap">
                         <Run Text="Tip: " FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
                         <Run Text="Paste an episode URL (" />
-                        <Run Text="https://www.dramaboxdb.com/ep/..." Foreground="#E11D48" />
+                        <Run Text="https://www.dramaboxdb.com/ep/..." Foreground="{DynamicResource AntigravityTextBrush}" FontWeight="SemiBold" />
                         <Run Text=") for single episode download, or paste a series page (" />
-                        <Run Text="https://www.dramaboxdb.com/movie/..." Foreground="#E11D48" />
+                        <Run Text="https://www.dramaboxdb.com/movie/..." Foreground="{DynamicResource AntigravityTextBrush}" FontWeight="SemiBold" />
                         <Run Text=") to download all available episodes in batch." />
                     </TextBlock>
                 </Grid>

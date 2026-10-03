@@ -12,6 +12,7 @@
     MinHeight="560"
     x:DataType="viewModels:MainViewModel"
     Icon="/favicon.ico"
+    Background="{DynamicResource AntigravityCanvasBrush}"
     RenderOptions.BitmapInterpolationMode="HighQuality"
     WindowStartupLocation="CenterScreen">
     <!--  Hack: dialog host animations mess up webview positioning, so need to disable them  -->

@@ -105,8 +105,8 @@ public class App : Application, IDisposable
 
         this.LocateMaterialTheme<MaterialThemeBase>().CurrentTheme =
             actualTheme == PlatformThemeVariant.Light
-                ? Theme.Create(Theme.Light, Color.Parse("#6366F1"), Color.Parse("#8B5CF6"))
-                : Theme.Create(Theme.Dark, Color.Parse("#6366F1"), Color.Parse("#8B5CF6"));
+                ? Theme.Create(Theme.Light, Color.Parse("#111111"), Color.Parse("#333333"))
+                : Theme.Create(Theme.Dark, Color.Parse("#EEEEEE"), Color.Parse("#CCCCCC"));
     }
 
     public override void Initialize()
@@ -134,6 +134,15 @@ public class App : Application, IDisposable
         {
             // SettingsService handles corruption fallback internally
         }
+
+        // Apply saved theme on startup
+        RequestedThemeVariant = _settingsService.Theme switch
+        {
+            ThemeVariant.Light => Avalonia.Styling.ThemeVariant.Light,
+            ThemeVariant.Dark => Avalonia.Styling.ThemeVariant.Dark,
+            _ => Avalonia.Styling.ThemeVariant.Default,
+        };
+        InitializeTheme();
 
         // Initialize licensing
         _settingsService.FirstRunDate ??= DateTime.UtcNow;
