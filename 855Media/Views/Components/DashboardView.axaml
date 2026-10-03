@@ -20,141 +20,279 @@
             <Setter Property="Foreground" Value="{DynamicResource AntigravityMutedBrush}" />
             <Setter Property="MinWidth" Value="32" />
             <Setter Property="MinHeight" Value="32" />
-
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.18" />
+                    <BrushTransition Property="Foreground" Duration="0:0:0.18" />
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.15" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
             <Style Selector="^:pointerover">
-                <Setter Property="Background" Value="#14000000" />
+                <Setter Property="Background" Value="#1FFFFFFF" />
                 <Setter Property="Foreground" Value="{DynamicResource AntigravityTextBrush}" />
+                <Setter Property="RenderTransform" Value="scale(1.08)" />
             </Style>
         </Style>
 
         <Style Selector="Button.tab-button">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Foreground" Value="{DynamicResource AntigravityMutedBrush}" />
-            <Setter Property="Padding" Value="14,8" />
-            <Setter Property="CornerRadius" Value="3" />
-            <Setter Property="FontWeight" Value="Bold" />
-            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Padding" Value="14,7" />
+            <Setter Property="CornerRadius" Value="20" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FontSize" Value="12.5" />
             <Setter Property="Focusable" Value="False" />
-            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="BorderThickness" Value="1" />
             <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.2" />
+                    <BrushTransition Property="BorderBrush" Duration="0:0:0.2" />
+                    <BrushTransition Property="Foreground" Duration="0:0:0.2" />
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.15" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
             <Style Selector="^:pointerover">
-                <Setter Property="Background" Value="#14FFFFFF" />
-                <Setter Property="Foreground" Value="{DynamicResource AntigravityTextBrush}" />
-            </Style>
-            <Style Selector="^.active">
-                <Setter Property="Background" Value="Transparent" />
-                <Setter Property="Foreground" Value="{DynamicResource AntigravityAccentBrush}" />
-            </Style>
-            <Style Selector="^.active:pointerover">
-                <Setter Property="Background" Value="Transparent" />
-                <Setter Property="Foreground" Value="{DynamicResource AntigravityAccentBrush}" />
+                <Setter Property="Background" Value="#1C2132" />
+                <Setter Property="BorderBrush" Value="#2A324B" />
+                <Setter Property="Foreground" Value="#FFFFFF" />
+                <Setter Property="RenderTransform" Value="scale(1.02)" />
             </Style>
             <Style Selector="^:pressed">
-                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="RenderTransform" Value="scale(0.97)" />
             </Style>
-            <Style Selector="^.active:pressed">
-                <Setter Property="Background" Value="Transparent" />
-                <Setter Property="Foreground" Value="{DynamicResource AntigravityAccentBrush}" />
+            <Style Selector="^.active">
+                <Setter Property="Background" Value="{DynamicResource MuseGradientBrush}" />
+                <Setter Property="BorderBrush" Value="#818CF8" />
+                <Setter Property="Foreground" Value="#FFFFFF" />
+                <Setter Property="FontWeight" Value="Bold" />
+            </Style>
+            <Style Selector="^.active:pointerover">
+                <Setter Property="Background" Value="{DynamicResource MuseGradientBrush}" />
+                <Setter Property="BorderBrush" Value="#A5B4FC" />
+                <Setter Property="Foreground" Value="#FFFFFF" />
+                <Setter Property="RenderTransform" Value="scale(1.02)" />
             </Style>
         </Style>
 
-        <Style Selector="Button.tab-button TextBlock">
-            <Setter Property="FontWeight" Value="Bold" />
-            <Setter Property="LetterSpacing" Value="0.6" />
+        <Style Selector="Button.tab-button materialIcons|MaterialIcon">
+            <Setter Property="Width" Value="16" />
+            <Setter Property="Height" Value="16" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Margin" Value="0,0,6,0" />
         </Style>
 
         <Style Selector="Button.filter-chip">
-            <Setter Property="Background" Value="#0FFFFFFF" />
+            <Setter Property="Background" Value="#10FFFFFF" />
             <Setter Property="Foreground" Value="{DynamicResource AntigravityMutedBrush}" />
-            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="Padding" Value="14,6" />
             <Setter Property="CornerRadius" Value="16" />
-            <Setter Property="FontSize" Value="13" />
-            <Setter Property="FontWeight" Value="Medium" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.18" />
+                    <BrushTransition Property="BorderBrush" Duration="0:0:0.18" />
+                    <BrushTransition Property="Foreground" Duration="0:0:0.18" />
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.15" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
             <Style Selector="^:pointerover">
-                <Setter Property="Background" Value="#1AFFFFFF" />
-                <Setter Property="Foreground" Value="{DynamicResource AntigravityTextBrush}" />
+                <Setter Property="Background" Value="#22283A" />
+                <Setter Property="BorderBrush" Value="#3B4259" />
+                <Setter Property="Foreground" Value="#FFFFFF" />
+                <Setter Property="RenderTransform" Value="scale(1.03)" />
+            </Style>
+            <Style Selector="^:pressed">
+                <Setter Property="RenderTransform" Value="scale(0.97)" />
             </Style>
             <Style Selector="^.active">
-                <Setter Property="Background" Value="{DynamicResource AntigravityAccentBrush}" />
-                <Setter Property="Foreground" Value="{DynamicResource AntigravityAccentForegroundBrush}" />
+                <Setter Property="Background" Value="{DynamicResource MuseGradientBrush}" />
+                <Setter Property="BorderBrush" Value="#818CF8" />
+                <Setter Property="Foreground" Value="#FFFFFF" />
+            </Style>
+        </Style>
+
+        <Style Selector="Button.icon-tool-btn">
+            <Setter Property="Padding" Value="8" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Background" Value="#0AFFFFFF" />
+            <Setter Property="BorderBrush" Value="{DynamicResource AntigravityBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="{DynamicResource AntigravityRailIconBrush}" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.18" />
+                    <BrushTransition Property="BorderBrush" Duration="0:0:0.18" />
+                    <BrushTransition Property="Foreground" Duration="0:0:0.18" />
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.15" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
+            <Style Selector="^:pointerover">
+                <Setter Property="Background" Value="#1E2436" />
+                <Setter Property="BorderBrush" Value="#384360" />
+                <Setter Property="Foreground" Value="#FFFFFF" />
+                <Setter Property="RenderTransform" Value="scale(1.06)" />
+            </Style>
+            <Style Selector="^:pressed">
+                <Setter Property="RenderTransform" Value="scale(0.95)" />
             </Style>
         </Style>
     </UserControl.Styles>
 
     <Grid Background="{DynamicResource AntigravityCanvasBrush}" RowDefinitions="Auto,*,Auto">
-            <!--  Top Navigation Header Tabs  -->
+            <!--  Top Navigation Header Tabs (Muse.ai Design)  -->
             <Border
                 Grid.Row="0"
                 BorderBrush="{DynamicResource AntigravityBorderBrush}"
                 BorderThickness="0,0,0,1"
                 Padding="20,10"
                 Background="{DynamicResource AntigravityRailBrush}">
-                <Grid ColumnDefinitions="*,Auto">
-                    <ScrollViewer Grid.Column="0" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
-                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,16,0">
+                <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+                    <!-- Left: Muse Brand Identity & Status Lockup -->
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center" Margin="0,0,16,0">
+                        <Border
+                            Width="34"
+                            Height="34"
+                            CornerRadius="10"
+                            Background="{DynamicResource MuseGradientBrush}"
+                            BoxShadow="0 4 16 0 #406366F1"
+                            VerticalAlignment="Center">
+                            <materialIcons:MaterialIcon
+                                Kind="Sparkles"
+                                Width="18"
+                                Height="18"
+                                Foreground="#FFFFFF"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center" />
+                        </Border>
+                        <StackPanel VerticalAlignment="Center" Spacing="1">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <TextBlock
+                                    Text="855Media"
+                                    FontSize="15"
+                                    FontWeight="ExtraBold"
+                                    Foreground="{DynamicResource AntigravityTextBrush}"
+                                    VerticalAlignment="Center"
+                                    LetterSpacing="0.3" />
+                                <Border
+                                    Background="#226366F1"
+                                    BorderBrush="#556366F1"
+                                    BorderThickness="1"
+                                    CornerRadius="10"
+                                    Padding="6,1"
+                                    VerticalAlignment="Center">
+                                    <TextBlock
+                                        Text="PRO 2.2"
+                                        FontSize="9.5"
+                                        FontWeight="Bold"
+                                        Foreground="#818CF8" />
+                                </Border>
+                            </StackPanel>
+                            <TextBlock
+                                Text="AI Media Studio"
+                                FontSize="10.5"
+                                Foreground="{DynamicResource AntigravityMutedBrush}" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Center: Floating Pill Navigation Capsule (Muse.ai signature) -->
+                    <Border
+                        Grid.Column="1"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Background="#0D101C"
+                        BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                        BorderThickness="1"
+                        CornerRadius="24"
+                        BoxShadow="0 4 20 0 #30000000"
+                        Padding="4,4">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <!-- Downloader Tab -->
                             <Button
                                 Command="{Binding SelectDownloaderTabCommand}"
                                 Classes="tab-button"
                                 Classes.active="{Binding IsDownloaderTab}"
                                 Theme="{DynamicResource MaterialFlatButton}">
-                                <TextBlock Text="{Binding LocalizationManager.DownloaderTabTitle}" FontWeight="Bold" VerticalAlignment="Center" />
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <materialIcons:MaterialIcon Kind="CloudDownloadOutline" />
+                                    <TextBlock Text="{Binding LocalizationManager.DownloaderTabTitle}" VerticalAlignment="Center" />
+                                </StackPanel>
                             </Button>
 
+                            <!-- Upscaler Tab -->
                             <Button
                                 Command="{Binding SelectUpscalerTabCommand}"
                                 Classes="tab-button"
                                 Classes.active="{Binding IsUpscalerTab}"
                                 Theme="{DynamicResource MaterialFlatButton}">
-                                <TextBlock Text="{Binding LocalizationManager.UpscalerTabTitle}" FontWeight="Bold" VerticalAlignment="Center" />
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <materialIcons:MaterialIcon Kind="AutoFix" />
+                                    <TextBlock Text="{Binding LocalizationManager.UpscalerTabTitle}" VerticalAlignment="Center" />
+                                </StackPanel>
                             </Button>
 
+                            <!-- Dubbing Tab -->
                             <Button
                                 Command="{Binding SelectDubbingTabCommand}"
                                 Classes="tab-button"
                                 Classes.active="{Binding IsDubbingTab}"
                                 Theme="{DynamicResource MaterialFlatButton}">
-                                <TextBlock Text="DUB PRO" FontWeight="Bold" VerticalAlignment="Center" />
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <materialIcons:MaterialIcon Kind="MicrophoneVariant" />
+                                    <TextBlock Text="DUB PRO" VerticalAlignment="Center" />
+                                </StackPanel>
                             </Button>
 
+                            <!-- Downloads Manager Tab -->
                             <Button
                                 Command="{Binding SelectManagerTabCommand}"
                                 Classes="tab-button"
                                 Classes.active="{Binding IsManagerTab}"
                                 Theme="{DynamicResource MaterialFlatButton}">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <TextBlock Text="{Binding LocalizationManager.DownloadsManagerTabTitle}" FontWeight="Bold" VerticalAlignment="Center" />
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <materialIcons:MaterialIcon Kind="FolderDownloadOutline" />
+                                    <TextBlock Text="{Binding LocalizationManager.DownloadsManagerTabTitle}" VerticalAlignment="Center" />
                                     <Border
                                         IsVisible="{Binding !!ActiveDownloadsCount}"
-                                        Background="{DynamicResource AntigravityAccentBrush}"
+                                        Background="#FFFFFF"
                                         CornerRadius="10"
-                                        Margin="4,0,0,0"
-                                        Padding="6,2">
+                                        Margin="2,0,0,0"
+                                        Padding="6,1">
                                         <TextBlock
                                             Text="{Binding ActiveDownloadsCount}"
-                                            FontSize="11"
-                                            FontWeight="Bold"
-                                            Foreground="{DynamicResource AntigravityAccentForegroundBrush}" />
+                                            FontSize="10.5"
+                                            FontWeight="ExtraBold"
+                                            Foreground="#6366F1" />
                                     </Border>
                                 </StackPanel>
                             </Button>
 
+                            <!-- History Tab -->
                             <Button
                                 Command="{Binding SelectHistoryTabCommand}"
                                 Classes="tab-button"
                                 Classes.active="{Binding IsHistoryTab}"
                                 Theme="{DynamicResource MaterialFlatButton}">
-                                <TextBlock Text="{Binding LocalizationManager.HistoryTabTitle}" FontWeight="Bold" VerticalAlignment="Center" />
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <materialIcons:MaterialIcon Kind="History" />
+                                    <TextBlock Text="{Binding LocalizationManager.HistoryTabTitle}" VerticalAlignment="Center" />
+                                </StackPanel>
                             </Button>
                         </StackPanel>
-                    </ScrollViewer>
+                    </Border>
 
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
+                    <!-- Right: Hardware Diagnostics & Tool Actions -->
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
                         <TextBlock
                             Text="{Binding TotalDownloadsCount, StringFormat='Total: {0}'}"
                             Foreground="{DynamicResource AntigravityMutedBrush}"
-                            FontSize="13"
+                            FontSize="12"
                             VerticalAlignment="Center"
-                            Margin="0,0,6,0" />
+                            Margin="0,0,4,0" />
 
                         <Separator Width="1" Height="22" Margin="2,0" Background="{DynamicResource AntigravityBorderBrush}" />
 
@@ -353,42 +491,36 @@
 
                         <!-- Auth Setup Button -->
                         <Button
-                            Padding="8"
+                            Classes="icon-tool-btn"
                             Command="{Binding ShowAuthSetupCommand}"
-                            Foreground="{DynamicResource AntigravityRailIconBrush}"
                             IsVisible="{OnPlatform False,
                                                    Windows=True}"
-                            Theme="{DynamicResource MaterialFlatButton}"
                             ToolTip.Tip="{Binding LocalizationManager.AuthTooltip}">
                             <materialIcons:MaterialIcon
-                                Width="20"
-                                Height="20"
+                                Width="18"
+                                Height="18"
                                 Kind="AccountKey" />
                         </Button>
 
                         <!-- License & Activation Button -->
                         <Button
-                            Padding="8"
+                            Classes="icon-tool-btn"
                             Command="{Binding ShowLicenseActivationCommand}"
-                            Foreground="{DynamicResource AntigravityRailIconBrush}"
-                            Theme="{DynamicResource MaterialFlatButton}"
                             ToolTip.Tip="License &amp; Activation">
                             <materialIcons:MaterialIcon
-                                Width="20"
-                                Height="20"
+                                Width="18"
+                                Height="18"
                                 Kind="KeyVariant" />
                         </Button>
 
                         <!-- Settings Button -->
                         <Button
-                            Padding="8"
+                            Classes="icon-tool-btn"
                             Command="{Binding ShowSettingsCommand}"
-                            Foreground="{DynamicResource AntigravityRailIconBrush}"
-                            Theme="{DynamicResource MaterialFlatButton}"
                             ToolTip.Tip="{Binding LocalizationManager.SettingsTooltip}">
                             <materialIcons:MaterialIcon
-                                Width="20"
-                                Height="20"
+                                Width="18"
+                                Height="18"
                                 Kind="Settings" />
                         </Button>
                     </StackPanel>
@@ -397,6 +529,33 @@
 
             <!--  Tab Content Area  -->
             <Grid Grid.Row="1">
+                <Grid.Styles>
+                    <Style Selector="ContentControl">
+                        <Style.Animations>
+                            <Animation Duration="0:0:0.25" FillMode="Forward" Easing="CubicEaseOut">
+                                <KeyFrame Cue="0%">
+                                    <Setter Property="Opacity" Value="0.0" />
+                                </KeyFrame>
+                                <KeyFrame Cue="100%">
+                                    <Setter Property="Opacity" Value="1.0" />
+                                </KeyFrame>
+                            </Animation>
+                        </Style.Animations>
+                    </Style>
+                    <Style Selector="Grid.manager-tab-content">
+                        <Style.Animations>
+                            <Animation Duration="0:0:0.25" FillMode="Forward" Easing="CubicEaseOut">
+                                <KeyFrame Cue="0%">
+                                    <Setter Property="Opacity" Value="0.0" />
+                                </KeyFrame>
+                                <KeyFrame Cue="100%">
+                                    <Setter Property="Opacity" Value="1.0" />
+                                </KeyFrame>
+                            </Animation>
+                        </Style.Animations>
+                    </Style>
+                </Grid.Styles>
+
                 <!--  UNIFIED DOWNLOADER VIEW  -->
                 <ContentControl Content="{Binding UnifiedDownloader}" IsVisible="{Binding IsDownloaderTab}" />
 
@@ -410,7 +569,7 @@
                 <ContentControl Content="{Binding Dubbing}" IsVisible="{Binding IsDubbingTab}" />
 
                 <!--  DOWNLOADS MANAGER TAB  -->
-                <Grid IsVisible="{Binding IsManagerTab}" RowDefinitions="Auto,*">
+                <Grid Classes="manager-tab-content" IsVisible="{Binding IsManagerTab}" RowDefinitions="Auto,*">
                     <!-- Manager Header & Status Filters -->
                     <Grid Grid.Row="0" Margin="32,16,32,12" ColumnDefinitions="*,Auto">
                         <!-- Status Filter Chips -->
@@ -841,119 +1000,127 @@
                 </Grid>
             </Grid>
 
-            <!--  Real-Time Hardware Usage & System Performance Status Bar  -->
+            <!--  Real-Time Hardware Usage & System Performance Status Bar (Muse.ai Glass Dock)  -->
             <Border
                 Grid.Row="2"
-                Background="{DynamicResource AntigravityRailBrush}"
-                BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                Background="#0C0E17"
+                BorderBrush="#1D2338"
                 BorderThickness="0,1,0,0"
-                Padding="16,6">
+                Padding="20,8">
                 <Grid ColumnDefinitions="Auto,*,Auto">
-                    <!-- Left: Real-time Hardware Metrics (CPU, RAM, GPU, VRAM, Temp) -->
-                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
-                        <!-- CPU Usage -->
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" ToolTip.Tip="Real-time CPU Utilization">
-                            <materialIcons:MaterialIcon Kind="Cpu64Bit" Width="16" Height="16" Foreground="{DynamicResource AntigravityAccentBrush}" />
-                            <TextBlock Text="CPU" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
-                            <ProgressBar
-                                Value="{Binding CpuUsagePercent}"
-                                Minimum="0"
-                                Maximum="100"
-                                Width="50"
-                                Height="6"
-                                CornerRadius="3"
-                                VerticalAlignment="Center" />
-                            <TextBlock Text="{Binding CpuUsagePercent, StringFormat='{}{0:0}%'}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" Width="32" />
-                        </StackPanel>
+                    <!-- Left: Real-time Hardware Metrics Pills (CPU, RAM, GPU, VRAM, Temp) -->
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                        <!-- CPU Usage Capsule -->
+                        <Border Background="#121624" BorderBrush="#20273D" BorderThickness="1" CornerRadius="14" Padding="10,4" ToolTip.Tip="Real-time CPU Utilization">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <materialIcons:MaterialIcon Kind="Cpu64Bit" Width="14" Height="14" Foreground="#10B981" />
+                                <TextBlock Text="CPU" FontSize="11" FontWeight="Bold" Foreground="#64748B" VerticalAlignment="Center" />
+                                <ProgressBar
+                                    Value="{Binding CpuUsagePercent}"
+                                    Minimum="0"
+                                    Maximum="100"
+                                    Width="44"
+                                    Height="5"
+                                    CornerRadius="3"
+                                    Background="#20273D"
+                                    Foreground="#10B981"
+                                    VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding CpuUsagePercent, StringFormat='{}{0:0}%'}" FontSize="11" FontWeight="SemiBold" Foreground="#E2E8F0" VerticalAlignment="Center" Width="30" />
+                            </StackPanel>
+                        </Border>
 
-                        <Separator Width="1" Height="14" Background="{DynamicResource AntigravityBorderBrush}" />
+                        <!-- RAM Usage Capsule -->
+                        <Border Background="#121624" BorderBrush="#20273D" BorderThickness="1" CornerRadius="14" Padding="10,4" ToolTip.Tip="System Physical RAM Usage">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <materialIcons:MaterialIcon Kind="Memory" Width="14" Height="14" Foreground="#38BDF8" />
+                                <TextBlock Text="RAM" FontSize="11" FontWeight="Bold" Foreground="#64748B" VerticalAlignment="Center" />
+                                <ProgressBar
+                                    Value="{Binding RamUsagePercent}"
+                                    Minimum="0"
+                                    Maximum="100"
+                                    Width="44"
+                                    Height="5"
+                                    CornerRadius="3"
+                                    Background="#20273D"
+                                    Foreground="#38BDF8"
+                                    VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding RamUsageText}" FontSize="11" FontWeight="SemiBold" Foreground="#E2E8F0" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
 
-                        <!-- RAM Usage -->
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" ToolTip.Tip="System Physical RAM Usage">
-                            <materialIcons:MaterialIcon Kind="Memory" Width="16" Height="16" Foreground="{DynamicResource AntigravityAccentBrush}" />
-                            <TextBlock Text="RAM" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
-                            <ProgressBar
-                                Value="{Binding RamUsagePercent}"
-                                Minimum="0"
-                                Maximum="100"
-                                Width="50"
-                                Height="6"
-                                CornerRadius="3"
-                                VerticalAlignment="Center" />
-                            <TextBlock Text="{Binding RamUsageText}" FontSize="11" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
-                        </StackPanel>
+                        <!-- GPU Usage Capsule -->
+                        <Border Background="#121624" BorderBrush="#20273D" BorderThickness="1" CornerRadius="14" Padding="10,4" ToolTip.Tip="{Binding GpuNameShort, StringFormat='GPU Compute Utilization ({0})'}">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <materialIcons:MaterialIcon Kind="ExpansionCardVariant" Width="14" Height="14" Foreground="#A855F7" />
+                                <TextBlock Text="GPU" FontSize="11" FontWeight="Bold" Foreground="#64748B" VerticalAlignment="Center" />
+                                <ProgressBar
+                                    Value="{Binding GpuUsagePercent}"
+                                    Minimum="0"
+                                    Maximum="100"
+                                    Width="44"
+                                    Height="5"
+                                    CornerRadius="3"
+                                    Background="#20273D"
+                                    Foreground="#A855F7"
+                                    VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding GpuUsagePercent, StringFormat='{}{0:0}%'}" FontSize="11" FontWeight="SemiBold" Foreground="#E2E8F0" VerticalAlignment="Center" Width="30" />
+                                <TextBlock Text="{Binding GpuNameShort}" FontSize="11" Foreground="#94A3B8" VerticalAlignment="Center" Margin="2,0,0,0" />
+                            </StackPanel>
+                        </Border>
 
-                        <Separator Width="1" Height="14" Background="{DynamicResource AntigravityBorderBrush}" />
+                        <!-- VRAM Usage Capsule -->
+                        <Border Background="#121624" BorderBrush="#20273D" BorderThickness="1" CornerRadius="14" Padding="10,4" ToolTip.Tip="Dedicated GPU Video Memory (VRAM)">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <materialIcons:MaterialIcon Kind="Memory" Width="14" Height="14" Foreground="#EC4899" />
+                                <TextBlock Text="VRAM" FontSize="11" FontWeight="Bold" Foreground="#64748B" VerticalAlignment="Center" />
+                                <ProgressBar
+                                    Value="{Binding VramUsagePercent}"
+                                    Minimum="0"
+                                    Maximum="100"
+                                    Width="44"
+                                    Height="5"
+                                    CornerRadius="3"
+                                    Background="#20273D"
+                                    Foreground="#EC4899"
+                                    VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding VramUsageText}" FontSize="11" FontWeight="SemiBold" Foreground="#E2E8F0" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
 
-                        <!-- GPU Usage -->
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" ToolTip.Tip="{Binding GpuNameShort, StringFormat='GPU Compute Utilization ({0})'}">
-                            <materialIcons:MaterialIcon Kind="ExpansionCardVariant" Width="16" Height="16" Foreground="{DynamicResource AntigravityAccentBrush}" />
-                            <TextBlock Text="GPU" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
-                            <ProgressBar
-                                Value="{Binding GpuUsagePercent}"
-                                Minimum="0"
-                                Maximum="100"
-                                Width="50"
-                                Height="6"
-                                CornerRadius="3"
-                                VerticalAlignment="Center" />
-                            <TextBlock Text="{Binding GpuUsagePercent, StringFormat='{}{0:0}%'}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" Width="32" />
-                            <TextBlock Text="{Binding GpuNameShort}" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
-                        </StackPanel>
-
-                        <Separator Width="1" Height="14" Background="{DynamicResource AntigravityBorderBrush}" />
-
-                        <!-- VRAM Usage -->
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" ToolTip.Tip="Dedicated GPU Video Memory (VRAM)">
-                            <materialIcons:MaterialIcon Kind="Memory" Width="16" Height="16" Foreground="{DynamicResource AntigravityAccentBrush}" />
-                            <TextBlock Text="VRAM" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
-                            <ProgressBar
-                                Value="{Binding VramUsagePercent}"
-                                Minimum="0"
-                                Maximum="100"
-                                Width="50"
-                                Height="6"
-                                CornerRadius="3"
-                                VerticalAlignment="Center" />
-                            <TextBlock Text="{Binding VramUsageText}" FontSize="11" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
-                        </StackPanel>
-
-                        <!-- GPU Temp -->
-                        <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" IsVisible="{Binding HasGpuTemp}" ToolTip.Tip="GPU Core Temperature">
-                            <Separator Width="1" Height="14" Background="{DynamicResource AntigravityBorderBrush}" Margin="0,0,6,0" />
-                            <materialIcons:MaterialIcon Kind="Thermometer" Width="16" Height="16" Foreground="#FF9800" />
-                            <TextBlock Text="{Binding GpuTemperatureC, StringFormat='{}{0}°C'}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
-                        </StackPanel>
+                        <!-- GPU Temp Capsule -->
+                        <Border Background="#121624" BorderBrush="#20273D" BorderThickness="1" CornerRadius="14" Padding="10,4" IsVisible="{Binding HasGpuTemp}" ToolTip.Tip="GPU Core Temperature">
+                            <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                                <materialIcons:MaterialIcon Kind="Thermometer" Width="14" Height="14" Foreground="#F59E0B" />
+                                <TextBlock Text="{Binding GpuTemperatureC, StringFormat='{}{0}°C'}" FontSize="11" FontWeight="SemiBold" Foreground="#E2E8F0" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
 
                     <!-- Right: RTX Tensor Engine Badge & Diagnostics -->
-                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
                         <Button
                             Command="{Binding CopyHardwareDiagnosticsCommand}"
-                            Padding="6,2"
-                            CornerRadius="8"
-                            Background="#0FFFFFFF"
-                            BorderBrush="{DynamicResource AntigravityBorderBrush}"
-                            BorderThickness="1"
-                            Theme="{DynamicResource MaterialFlatButton}"
+                            Padding="10,5"
+                            CornerRadius="14"
+                            Classes="icon-tool-btn"
                             ToolTip.Tip="Copy Complete Hardware &amp; Module Diagnostics Report to Clipboard">
-                            <StackPanel Orientation="Horizontal" Spacing="4">
-                                <materialIcons:MaterialIcon Kind="ContentCopy" Width="12" Height="12" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                <TextBlock Text="Diagnostics" FontSize="10" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <materialIcons:MaterialIcon Kind="ContentCopy" Width="13" Height="13" Foreground="#94A3B8" />
+                                <TextBlock Text="Diagnostics" FontSize="11" FontWeight="SemiBold" Foreground="#94A3B8" />
                             </StackPanel>
                         </Button>
 
                         <Border
                             IsVisible="{Binding HasRtx}"
-                            Background="#1A10B981"
+                            Background="#1810B981"
                             BorderBrush="#4010B981"
                             BorderThickness="1"
-                            CornerRadius="10"
-                            Padding="8,2"
+                            CornerRadius="14"
+                            Padding="10,5"
                             ToolTip.Tip="Hardware Tensor Cores Detected &amp; Ready for Ultra-Fast Super-Resolution">
-                            <StackPanel Orientation="Horizontal" Spacing="4">
-                                <materialIcons:MaterialIcon Kind="LightningBolt" Width="12" Height="12" Foreground="#10B981" />
-                                <TextBlock Text="RTX Tensor Cores" FontSize="10" FontWeight="Bold" Foreground="#10B981" VerticalAlignment="Center" />
+                            <StackPanel Orientation="Horizontal" Spacing="5">
+                                <materialIcons:MaterialIcon Kind="LightningBolt" Width="13" Height="13" Foreground="#10B981" />
+                                <TextBlock Text="RTX Tensor Cores" FontSize="11" FontWeight="Bold" Foreground="#10B981" VerticalAlignment="Center" />
                             </StackPanel>
                         </Border>
                     </StackPanel>

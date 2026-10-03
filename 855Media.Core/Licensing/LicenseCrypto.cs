@@ -10,12 +10,12 @@ public static class LicenseCrypto
     // Default embedded Public Key for 855Media (SubjectPublicKeyInfo format)
     // Vendors sign with Private Key; client verifies with this Public Key.
     public const string DefaultPublicKeyBase64 =
-        "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzgM1A/3x3p/3oB9XjcGD/Q2d/BCFrwDt"
-        + "XNZ1fOgerPscl2i0kQy6X9ctBCyNQF5kphfkkLhESd+CfcPQf5I5rnXZh+wmPW51lFzpBQXrdJQK"
-        + "tw6Gbd4HFUu5gnrgMKuVmPTrrhb5+HLB0Hfv+Dy+94C25Wt3bJKjLPUR5hhpglgJRQ5jzwd3kR3t"
-        + "4+EPU65MhwssoyotZ2aQT2d39qgkfIWVyS+jtfl9aqcUzJlf7uOUrHB8Ftfm7U4T6bgEcFvytIg2"
-        + "6DnM3uiPLT7fxVUwcdCd1t68rbiocLpH1qjnS5mHb4gHPQuFtkgRoCGa6kZ9hSDrdde1wEkWdcE8"
-        + "vkIJRQIDAQAB";
+        "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0MqJ1MZ4Ae4R4c3lKtGHghCwRRNgLTTW"
+        + "U00+T/sWY5i6n6/oiR5wJxTQrH9Xvk98XRur9vwbf7PgCI6PVyiyM9QkwuvvNsNN67MjJwNaeke0"
+        + "li1K18OZ4fP/DIYljGOJCqdsklHGeUGmwf4+98NKY/a+hF01/KKkzuVEqVMqBSiJ4KGwVnLCvErm"
+        + "3wPhOlKqIbLxDm/rFq96jt7zCi+3DM5kOcW0vCliKZbAArKrhZwBA74AK4b4lO+H6FnN8PG64qcm"
+        + "by2poEQ3ZladDDsDu0Wq0FEkySlLSyoL0f1FUoaOXqHSD9Xi/tuZXVYm3MnDFdwVyN1DvMf9bYYJk"
+        + "bebKQIDAQAB";
 
     private const string SerialSecret = "855MediaMasterSerialKeySecret2026";
 
@@ -49,10 +49,10 @@ public static class LicenseCrypto
         var prefixHex = cleaned[..12];
         var checksumHex = cleaned[12..];
 
-        return string.Equals(
-            ComputeSerialChecksum(prefixHex),
-            checksumHex,
-            StringComparison.OrdinalIgnoreCase
+        var expectedChecksum = ComputeSerialChecksum(prefixHex);
+        return CryptographicOperations.FixedTimeEquals(
+            Encoding.UTF8.GetBytes(expectedChecksum),
+            Encoding.UTF8.GetBytes(checksumHex)
         );
     }
 

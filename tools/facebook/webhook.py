@@ -11,7 +11,7 @@ async def verify_webhook(
     token: str = Query(..., alias="hub.verify_token"),
     challenge: str = Query(..., alias="hub.challenge")
 ):
-    if mode == "subscribe" and token == settings.webhook_verify_token:
+    if mode == "subscribe" and hmac.compare_digest(token, settings.webhook_verify_token):
         return Response(content=challenge, media_type="text/plain")
     raise HTTPException(status_code=403, detail="Verification token mismatch")
 

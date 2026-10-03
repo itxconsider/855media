@@ -1,5 +1,6 @@
 using System;
 using System.Net.Http;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -222,19 +223,19 @@ public class LicenseService : ILicenseService
             );
 
         // Check machine fingerprint binding (if license was locked to a specific device)
-        if (
-            !string.IsNullOrWhiteSpace(payload.MachineFingerprint)
-            && !string.Equals(
-                payload.MachineFingerprint,
-                MachineFingerprint,
-                StringComparison.OrdinalIgnoreCase
-            )
-        )
+        if (!string.IsNullOrWhiteSpace(payload.MachineFingerprint))
         {
-            return LicenseActivationResult.Failed(
-                $"This license is locked to another computer (Device ID mismatch). Your Device ID: {MachineFingerprint}",
-                LicenseStatus.HardwareMismatch
+            var expectedBytes = Encoding.UTF8.GetBytes(
+                payload.MachineFingerprint.ToUpperInvariant()
             );
+            var actualBytes = Encoding.UTF8.GetBytes(MachineFingerprint.ToUpperInvariant());
+            if (!CryptographicOperations.FixedTimeEquals(expectedBytes, actualBytes))
+            {
+                return LicenseActivationResult.Failed(
+                    $"This license is locked to another computer (Device ID mismatch). Your Device ID: {MachineFingerprint}",
+                    LicenseStatus.HardwareMismatch
+                );
+            }
         }
 
         return LicenseActivationResult.Succeeded(payload);

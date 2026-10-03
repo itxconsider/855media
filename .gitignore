@@ -50,3 +50,10 @@ models/
 
 # Tools binary models
 tools/whisper/
+
+# Security, Licensing & Secrets
+*.key
+*.pem
+*.lic
+.env
+.env.local

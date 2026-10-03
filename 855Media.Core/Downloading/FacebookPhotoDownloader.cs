@@ -242,12 +242,24 @@ public class FacebookPhotoDownloader
                         var startInfo = new ProcessStartInfo
                         {
                             FileName = ffmpegPath,
-                            Arguments =
-                                $"-y -i \"{tempPath}\" -frames:v 1 -f image2 -vcodec mjpeg -update 1 -q:v 2 \"{destinationPath}\"",
                             UseShellExecute = false,
                             CreateNoWindow = true,
                             RedirectStandardError = true,
                         };
+                        startInfo.ArgumentList.Add("-y");
+                        startInfo.ArgumentList.Add("-i");
+                        startInfo.ArgumentList.Add(tempPath);
+                        startInfo.ArgumentList.Add("-frames:v");
+                        startInfo.ArgumentList.Add("1");
+                        startInfo.ArgumentList.Add("-f");
+                        startInfo.ArgumentList.Add("image2");
+                        startInfo.ArgumentList.Add("-vcodec");
+                        startInfo.ArgumentList.Add("mjpeg");
+                        startInfo.ArgumentList.Add("-update");
+                        startInfo.ArgumentList.Add("1");
+                        startInfo.ArgumentList.Add("-q:v");
+                        startInfo.ArgumentList.Add("2");
+                        startInfo.ArgumentList.Add(destinationPath);
 
                         using var proc = Process.Start(startInfo);
                         if (proc is not null)

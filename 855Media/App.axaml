@@ -23,15 +23,33 @@
         <materialIcons:MaterialIconStyles />
         <dialogHostAvalonia:DialogHostStyles />
 
-        <!-- Global Modern Typography -->
+        <!-- Global Modern Typography & Animations -->
         <Style Selector="TextBlock">
             <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI, -apple-system, BlinkMacSystemFont, Roboto, Helvetica Neue, sans-serif" />
         </Style>
         <Style Selector="Button">
             <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI, -apple-system, BlinkMacSystemFont, Roboto, Helvetica Neue, sans-serif" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.18" />
+                    <BrushTransition Property="BorderBrush" Duration="0:0:0.18" />
+                    <BrushTransition Property="Foreground" Duration="0:0:0.18" />
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.18" />
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.15" Easing="CubicEaseOut" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Button:pressed">
+            <Setter Property="RenderTransform" Value="scale(0.97)" />
         </Style>
         <Style Selector="TextBox">
             <Setter Property="FontFamily" Value="Segoe UI Variable Text, Segoe UI, -apple-system, BlinkMacSystemFont, Roboto, Helvetica Neue, sans-serif" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="BorderBrush" Duration="0:0:0.2" />
+                    <BrushTransition Property="Background" Duration="0:0:0.2" />
+                </Transitions>
+            </Setter>
         </Style>
 
         <!--  Combo box  -->
@@ -194,34 +212,60 @@
         <ResourceDictionary>
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Default">
-                    <SolidColorBrush x:Key="ToggleBackgroundBrush" Color="#8E8E8E" />
-                    <SolidColorBrush x:Key="AntigravityCanvasBrush" Color="#0D0D0D" />
-                    <SolidColorBrush x:Key="AntigravityPanelBrush" Color="#161616" />
-                    <SolidColorBrush x:Key="AntigravityElevatedBrush" Color="#18181C" />
-                    <SolidColorBrush x:Key="AntigravityCardBrush" Color="#131316" />
-                    <SolidColorBrush x:Key="AntigravityRailBrush" Color="#0D0D0D" />
-                    <SolidColorBrush x:Key="AntigravityTextBrush" Color="#EDEDED" />
-                    <SolidColorBrush x:Key="AntigravityMutedBrush" Color="#888888" />
-                    <SolidColorBrush x:Key="AntigravityBorderBrush" Color="#262626" />
-                    <SolidColorBrush x:Key="AntigravityAccentBrush" Color="#FFFFFF" />
-                    <SolidColorBrush x:Key="AntigravityAccentForegroundBrush" Color="#000000" />
-                    <SolidColorBrush x:Key="AntigravityRailIconBrush" Color="#999999" />
-                    <SolidColorBrush x:Key="YouTubeSearchButtonBackgroundBrush" Color="#222222" />
+                    <SolidColorBrush x:Key="ToggleBackgroundBrush" Color="#6366F1" />
+                    <SolidColorBrush x:Key="AntigravityCanvasBrush" Color="#090A0F" />
+                    <SolidColorBrush x:Key="AntigravityPanelBrush" Color="#111420" />
+                    <SolidColorBrush x:Key="AntigravityElevatedBrush" Color="#161A29" />
+                    <SolidColorBrush x:Key="AntigravityCardBrush" Color="#131624" />
+                    <SolidColorBrush x:Key="AntigravityRailBrush" Color="#0C0E17" />
+                    <SolidColorBrush x:Key="AntigravityTextBrush" Color="#F8FAFC" />
+                    <SolidColorBrush x:Key="AntigravityMutedBrush" Color="#94A3B8" />
+                    <SolidColorBrush x:Key="AntigravityBorderBrush" Color="#22283C" />
+                    <SolidColorBrush x:Key="AntigravityAccentBrush" Color="#6366F1" />
+                    <SolidColorBrush x:Key="AntigravityAccentForegroundBrush" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="AntigravityRailIconBrush" Color="#94A3B8" />
+                    <SolidColorBrush x:Key="YouTubeSearchButtonBackgroundBrush" Color="#1C2032" />
+                    <LinearGradientBrush x:Key="MuseGradientBrush" StartPoint="0%,0%" EndPoint="100%,100%">
+                        <GradientStop Offset="0.0" Color="#6366F1" />
+                        <GradientStop Offset="0.5" Color="#8B5CF6" />
+                        <GradientStop Offset="1.0" Color="#EC4899" />
+                    </LinearGradientBrush>
+                    <LinearGradientBrush x:Key="MuseCyanGradientBrush" StartPoint="0%,0%" EndPoint="100%,100%">
+                        <GradientStop Offset="0.0" Color="#06B6D4" />
+                        <GradientStop Offset="1.0" Color="#3B82F6" />
+                    </LinearGradientBrush>
+                    <LinearGradientBrush x:Key="MuseSubtleCardBrush" StartPoint="0%,0%" EndPoint="0%,100%">
+                        <GradientStop Offset="0.0" Color="#171B2B" />
+                        <GradientStop Offset="1.0" Color="#111422" />
+                    </LinearGradientBrush>
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
-                    <SolidColorBrush x:Key="ToggleBackgroundBrush" Color="#8E8E8E" />
-                    <SolidColorBrush x:Key="AntigravityCanvasBrush" Color="#0D0D0D" />
-                    <SolidColorBrush x:Key="AntigravityPanelBrush" Color="#161616" />
-                    <SolidColorBrush x:Key="AntigravityElevatedBrush" Color="#18181C" />
-                    <SolidColorBrush x:Key="AntigravityCardBrush" Color="#131316" />
-                    <SolidColorBrush x:Key="AntigravityRailBrush" Color="#0D0D0D" />
-                    <SolidColorBrush x:Key="AntigravityTextBrush" Color="#EDEDED" />
-                    <SolidColorBrush x:Key="AntigravityMutedBrush" Color="#888888" />
-                    <SolidColorBrush x:Key="AntigravityBorderBrush" Color="#262626" />
-                    <SolidColorBrush x:Key="AntigravityAccentBrush" Color="#FFFFFF" />
-                    <SolidColorBrush x:Key="AntigravityAccentForegroundBrush" Color="#000000" />
-                    <SolidColorBrush x:Key="AntigravityRailIconBrush" Color="#999999" />
-                    <SolidColorBrush x:Key="YouTubeSearchButtonBackgroundBrush" Color="#222222" />
+                    <SolidColorBrush x:Key="ToggleBackgroundBrush" Color="#6366F1" />
+                    <SolidColorBrush x:Key="AntigravityCanvasBrush" Color="#090A0F" />
+                    <SolidColorBrush x:Key="AntigravityPanelBrush" Color="#111420" />
+                    <SolidColorBrush x:Key="AntigravityElevatedBrush" Color="#161A29" />
+                    <SolidColorBrush x:Key="AntigravityCardBrush" Color="#131624" />
+                    <SolidColorBrush x:Key="AntigravityRailBrush" Color="#0C0E17" />
+                    <SolidColorBrush x:Key="AntigravityTextBrush" Color="#F8FAFC" />
+                    <SolidColorBrush x:Key="AntigravityMutedBrush" Color="#94A3B8" />
+                    <SolidColorBrush x:Key="AntigravityBorderBrush" Color="#22283C" />
+                    <SolidColorBrush x:Key="AntigravityAccentBrush" Color="#6366F1" />
+                    <SolidColorBrush x:Key="AntigravityAccentForegroundBrush" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="AntigravityRailIconBrush" Color="#94A3B8" />
+                    <SolidColorBrush x:Key="YouTubeSearchButtonBackgroundBrush" Color="#1C2032" />
+                    <LinearGradientBrush x:Key="MuseGradientBrush" StartPoint="0%,0%" EndPoint="100%,100%">
+                        <GradientStop Offset="0.0" Color="#6366F1" />
+                        <GradientStop Offset="0.5" Color="#8B5CF6" />
+                        <GradientStop Offset="1.0" Color="#EC4899" />
+                    </LinearGradientBrush>
+                    <LinearGradientBrush x:Key="MuseCyanGradientBrush" StartPoint="0%,0%" EndPoint="100%,100%">
+                        <GradientStop Offset="0.0" Color="#06B6D4" />
+                        <GradientStop Offset="1.0" Color="#3B82F6" />
+                    </LinearGradientBrush>
+                    <LinearGradientBrush x:Key="MuseSubtleCardBrush" StartPoint="0%,0%" EndPoint="0%,100%">
+                        <GradientStop Offset="0.0" Color="#171B2B" />
+                        <GradientStop Offset="1.0" Color="#111422" />
+                    </LinearGradientBrush>
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
 
