@@ -1,4 +1,5 @@
 using System;
+using _855Media.Core.LDPlayer;
 using _855Media.Core.Licensing;
 using _855Media.Core.Upscaling;
 using _855Media.Core.Utils;
@@ -13,7 +14,6 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Media;
 using Avalonia.Platform;
-using AvaloniaWebView;
 using Material.Styles.Themes;
 using Microsoft.Extensions.DependencyInjection;
 using PowerKit.Extensions;
@@ -53,6 +53,8 @@ public class App : Application, IDisposable
         services.AddSingleton<VideoUpscaleService>();
         services.AddSingleton<VideoQueueManager>();
         services.AddSingleton<HardwareMonitorService>();
+        services.AddSingleton<AtxAgentClient>();
+        services.AddSingleton<ILDPlayerService, LDPlayerService>();
 
         // View models
         services.AddTransient<MainViewModel>();
@@ -65,6 +67,7 @@ public class App : Application, IDisposable
         services.AddTransient<HistoryViewModel>();
         services.AddTransient<VideoUpscalerViewModel>();
         services.AddTransient<DubbingViewModel>();
+        services.AddTransient<AutoPostViewModel>();
         services.AddTransient<DownloadViewModel>();
         services.AddTransient<AuthSetupViewModel>();
         services.AddTransient<DownloadMultipleSetupViewModel>();
@@ -114,13 +117,6 @@ public class App : Application, IDisposable
         base.Initialize();
 
         AvaloniaXamlLoader.Load(this);
-    }
-
-    public override void RegisterServices()
-    {
-        base.RegisterServices();
-
-        AvaloniaWebViewBuilder.Initialize(config => config.IsInPrivateModeEnabled = false);
     }
 
     public override void OnFrameworkInitializationCompleted()

@@ -126,6 +126,7 @@ public partial class DashboardViewModel : ViewModelBase
         History = _viewModelManager.GetHistoryViewModel(this);
         VideoUpscaler = _viewModelManager.GetVideoUpscalerViewModel();
         Dubbing = _viewModelManager.GetDubbingViewModel();
+        AutoPost = _viewModelManager.GetAutoPostViewModel();
 
         _eventSubscription = Disposable.Merge(
             _settingsService.WatchProperty(
@@ -177,6 +178,7 @@ public partial class DashboardViewModel : ViewModelBase
     public HistoryViewModel History { get; }
     public VideoUpscalerViewModel VideoUpscaler { get; }
     public DubbingViewModel Dubbing { get; }
+    public AutoPostViewModel AutoPost { get; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsProgressIndeterminate))]
@@ -210,6 +212,7 @@ public partial class DashboardViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsBatchTab))]
     [NotifyPropertyChangedFor(nameof(IsUpscalerTab))]
     [NotifyPropertyChangedFor(nameof(IsDubbingTab))]
+    [NotifyPropertyChangedFor(nameof(IsAutoPostTab))]
     [NotifyPropertyChangedFor(nameof(IsManagerTab))]
     [NotifyPropertyChangedFor(nameof(IsHistoryTab))]
     public partial DashboardTab SelectedTab { get; set; } = DashboardTab.Downloader;
@@ -237,6 +240,7 @@ public partial class DashboardViewModel : ViewModelBase
     public bool IsBatchTab => SelectedTab == DashboardTab.Batch;
     public bool IsUpscalerTab => SelectedTab == DashboardTab.Upscaler;
     public bool IsDubbingTab => SelectedTab == DashboardTab.Dubbing;
+    public bool IsAutoPostTab => SelectedTab == DashboardTab.AutoPost;
     public bool IsManagerTab => SelectedTab == DashboardTab.Manager;
     public bool IsHistoryTab => SelectedTab == DashboardTab.History;
 
@@ -263,6 +267,9 @@ public partial class DashboardViewModel : ViewModelBase
 
     [RelayCommand]
     private void SelectDubbingTab() => SelectedTab = DashboardTab.Dubbing;
+
+    [RelayCommand]
+    private void SelectAutoPostTab() => SelectedTab = DashboardTab.AutoPost;
 
     [RelayCommand]
     private void SelectManagerTab() => SelectedTab = DashboardTab.Manager;
@@ -1218,6 +1225,7 @@ public enum DashboardTab
     History,
     Upscaler,
     Dubbing,
+    AutoPost,
 }
 
 public enum DownloadStatusFilter

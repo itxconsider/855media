@@ -52,15 +52,41 @@ public class DialogManager : IDisposable
     }
 
     public async Task<string?> PromptOpenFilePathAsync(
-        IReadOnlyList<FilePickerFileType>? fileTypes = null
+        IReadOnlyList<FilePickerFileType>? fileTypes = null,
+        string? suggestedStartPath = null
     )
     {
         var topLevel =
             Application.Current?.ApplicationLifetime?.TryGetTopLevel()
             ?? throw new ApplicationException("Could not find the top-level visual element.");
 
+        IStorageFolder? suggestedFolder = null;
+        if (!string.IsNullOrWhiteSpace(suggestedStartPath))
+        {
+            try
+            {
+                var clean = suggestedStartPath.Trim().Trim('"', '\'');
+                var dir = Directory.Exists(clean)
+                    ? clean
+                    : (File.Exists(clean) ? Path.GetDirectoryName(clean) : null);
+                if (!string.IsNullOrWhiteSpace(dir) && Directory.Exists(dir))
+                {
+                    suggestedFolder = await topLevel.StorageProvider.TryGetFolderFromPathAsync(dir);
+                }
+            }
+            catch
+            {
+                // Fallback to default start location
+            }
+        }
+
         var result = await topLevel.StorageProvider.OpenFilePickerAsync(
-            new FilePickerOpenOptions { FileTypeFilter = fileTypes, AllowMultiple = false }
+            new FilePickerOpenOptions
+            {
+                FileTypeFilter = fileTypes,
+                AllowMultiple = false,
+                SuggestedStartLocation = suggestedFolder,
+            }
         );
 
         var file = result.FirstOrDefault();
@@ -123,13 +149,31 @@ public class DialogManager : IDisposable
             Application.Current?.ApplicationLifetime?.TryGetTopLevel()
             ?? throw new ApplicationException("Could not find the top-level visual element.");
 
+        IStorageFolder? suggestedFolder = null;
+        if (!string.IsNullOrWhiteSpace(defaultDirPath))
+        {
+            try
+            {
+                var clean = defaultDirPath.Trim().Trim('"', '\'');
+                var dir = Directory.Exists(clean)
+                    ? clean
+                    : (File.Exists(clean) ? Path.GetDirectoryName(clean) : null);
+                if (!string.IsNullOrWhiteSpace(dir) && Directory.Exists(dir))
+                {
+                    suggestedFolder = await topLevel.StorageProvider.TryGetFolderFromPathAsync(dir);
+                }
+            }
+            catch
+            {
+                // Fallback to default start location
+            }
+        }
+
         var result = await topLevel.StorageProvider.OpenFolderPickerAsync(
             new FolderPickerOpenOptions
             {
                 AllowMultiple = false,
-                SuggestedStartLocation = await topLevel.StorageProvider.TryGetFolderFromPathAsync(
-                    defaultDirPath
-                ),
+                SuggestedStartLocation = suggestedFolder,
             }
         );
 

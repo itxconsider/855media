@@ -57,7 +57,7 @@ public partial class HistoryViewModel : ViewModelBase
 
     public bool HasRecords => _historyService.Records.Count > 0;
 
-    public IEnumerable<HistoryRecord> FilteredRecords
+    public IReadOnlyList<HistoryRecord> FilteredRecords
     {
         get
         {
@@ -66,12 +66,14 @@ public partial class HistoryViewModel : ViewModelBase
                 return records;
 
             var query = SearchQuery.Trim();
-            return records.Where(r =>
-                r.Title.Contains(query, StringComparison.OrdinalIgnoreCase)
-                || r.Author.Contains(query, StringComparison.OrdinalIgnoreCase)
-                || r.Url.Contains(query, StringComparison.OrdinalIgnoreCase)
-                || r.Source.Contains(query, StringComparison.OrdinalIgnoreCase)
-            );
+            return records
+                .Where(r =>
+                    r.Title.Contains(query, StringComparison.OrdinalIgnoreCase)
+                    || r.Author.Contains(query, StringComparison.OrdinalIgnoreCase)
+                    || r.Url.Contains(query, StringComparison.OrdinalIgnoreCase)
+                    || r.Source.Contains(query, StringComparison.OrdinalIgnoreCase)
+                )
+                .ToList();
         }
     }
 

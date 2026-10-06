@@ -1,3 +1,4 @@
+using System;
 using _855Media.ViewModels;
 using _855Media.ViewModels.Components;
 using _855Media.ViewModels.Dialogs;
@@ -30,6 +31,8 @@ public partial class ViewManager
             LicenseActivationViewModel => new LicenseActivationView(),
             VideoUpscalerViewModel => new VideoUpscalerView(),
             DubbingViewModel => new DubbingView(),
+            AutoPostViewModel => new AutoPostView(),
+            HistoryViewModel => new HistoryView(),
             _ => null,
         };
 

@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Reflection;
 using _855Media.Utils;
 using Avalonia;
@@ -23,7 +24,7 @@ public static class Program
     public static string ProjectReleasesUrl { get; } = $"{ProjectUrl}/releases";
 
     public static AppBuilder BuildAvaloniaApp() =>
-        AppBuilder.Configure<App>().UsePlatformDetect().LogToTrace().UseDesktopWebView();
+        AppBuilder.Configure<App>().UsePlatformDetect().LogToTrace().UseDesktopWebViewSafe();
 
     [STAThread]
     public static int Main(string[] args)
@@ -37,6 +38,15 @@ public static class Program
         }
         catch (Exception ex)
         {
+            try
+            {
+                File.WriteAllText(
+                    Path.Combine(AppContext.BaseDirectory, "startup_error.log"),
+                    ex.ToString()
+                );
+            }
+            catch { }
+
             if (OperatingSystem.IsWindows())
                 _ = NativeMethods.Windows.MessageBox(0, ex.ToString(), "Fatal Error", 0x10);
 

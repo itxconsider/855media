@@ -147,10 +147,29 @@
                     HorizontalAlignment="Center" />
             </StackPanel>
 
-            <!-- History List -->
-            <ScrollViewer IsVisible="{Binding HasRecords}">
-                <ItemsControl ItemsSource="{Binding FilteredRecords}">
-                    <ItemsControl.ItemTemplate>
+            <!-- History List (Virtualized) -->
+            <ListBox
+                IsVisible="{Binding HasRecords}"
+                ItemsSource="{Binding FilteredRecords}"
+                Background="Transparent"
+                BorderThickness="0"
+                Padding="0"
+                ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                ScrollViewer.VerticalScrollBarVisibility="Auto">
+                <ListBox.Styles>
+                    <Style Selector="ListBoxItem">
+                        <Setter Property="Padding" Value="0" />
+                        <Setter Property="Margin" Value="0" />
+                        <Setter Property="Background" Value="Transparent" />
+                    </Style>
+                    <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+                        <Setter Property="Background" Value="Transparent" />
+                    </Style>
+                    <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+                        <Setter Property="Background" Value="Transparent" />
+                    </Style>
+                </ListBox.Styles>
+                <ListBox.ItemTemplate>
                         <DataTemplate x:DataType="services:HistoryRecord">
                             <Border Classes="history-item-card">
                                 <Grid ColumnDefinitions="Auto, *, Auto">
@@ -260,9 +279,8 @@
                                 </Grid>
                             </Border>
                         </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </ScrollViewer>
+                </ListBox.ItemTemplate>
+            </ListBox>
         </Grid>
     </Grid>
 </UserControl>

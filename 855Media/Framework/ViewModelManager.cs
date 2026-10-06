@@ -75,6 +75,9 @@ public class ViewModelManager(IServiceProvider services)
     public DubbingViewModel GetDubbingViewModel() =>
         services.GetRequiredService<DubbingViewModel>();
 
+    public AutoPostViewModel GetAutoPostViewModel() =>
+        services.GetRequiredService<AutoPostViewModel>();
+
     public AuthSetupViewModel GetAuthSetupViewModel() =>
         services.GetRequiredService<AuthSetupViewModel>();
 
