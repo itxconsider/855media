@@ -17,7 +17,7 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Foreground" Value="{DynamicResource AntigravityMutedBrush}" />
             <Setter Property="Padding" Value="9,3" />
-            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="CornerRadius" Value="6" />
             <Setter Property="FontSize" Value="12" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="MinHeight" Value="24" />
@@ -38,7 +38,7 @@
             <Setter Property="Background" Value="#0AFFFFFF" />
             <Setter Property="BorderBrush" Value="{DynamicResource AntigravityBorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="16" />
+            <Setter Property="CornerRadius" Value="8" />
             <Setter Property="Padding" Value="2" />
         </Style>
     </UserControl.Styles>
@@ -64,13 +64,13 @@
                 Background="{DynamicResource AntigravityElevatedBrush}"
                 BorderBrush="{DynamicResource AntigravityBorderBrush}"
                 BorderThickness="1"
-                CornerRadius="10">
+                CornerRadius="8">
                 <Grid ColumnDefinitions="Auto,*,Auto">
                     <Border
                         Grid.Column="0"
                         Width="36"
                         Height="36"
-                        CornerRadius="18"
+                        CornerRadius="8"
                         ClipToBounds="True"
                         Background="#2A2A32"
                         Margin="0,0,12,0">
@@ -167,7 +167,7 @@
             Background="{DynamicResource AntigravityElevatedBrush}"
             BorderBrush="{DynamicResource AntigravityBorderBrush}"
             BorderThickness="1"
-            CornerRadius="10">
+            CornerRadius="8">
             <WrapPanel Orientation="Horizontal" VerticalAlignment="Center">
                 <!-- Group 1: Quick Select (Take Presets) -->
                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,2,12,2">
@@ -431,7 +431,7 @@
                                     Width="160"
                                     Height="90"
                                     ClipToBounds="True"
-                                    CornerRadius="4">
+                                    CornerRadius="6">
                                     <Image
                                         Stretch="UniformToFill"
                                         asyncImageLoader:ImageLoader.Source="{Binding Converter={x:Static converters:VideoToLowestQualityThumbnailUrlStringConverter.Instance}}" />
@@ -446,7 +446,7 @@
                                     HorizontalAlignment="Right"
                                     VerticalAlignment="Top"
                                     Background="{DynamicResource MaterialSecondaryMidBrush}"
-                                    CornerRadius="14"
+                                    CornerRadius="6"
                                     IsVisible="{Binding $parent[ListBoxItem].IsSelected, Mode=OneWay}">
                                     <materialIcons:MaterialIcon
                                         Width="20"
@@ -591,6 +591,7 @@
                 Margin="8"
                 Command="{Binding ConfirmCommand}"
                 IsDefault="True"
+                Classes="btn-primary"
                 Theme="{DynamicResource MaterialOutlineButton}">
                 <Button.Content>
                     <TextBlock>
@@ -606,6 +607,7 @@
                 Command="{Binding CloseCommand}"
                 Content="{Binding LocalizationManager.CancelButton}"
                 IsCancel="True"
+                Classes="btn-secondary"
                 Theme="{DynamicResource MaterialOutlineButton}" />
         </UniformGrid>
     </Grid>

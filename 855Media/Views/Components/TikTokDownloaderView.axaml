@@ -22,7 +22,7 @@
                     Background="{DynamicResource AntigravityElevatedBrush}"
                     BorderBrush="{DynamicResource AntigravityBorderBrush}"
                     BorderThickness="1"
-                    CornerRadius="16">
+                    CornerRadius="8">
                     <materialIcons:MaterialIcon
                         Width="36"
                         Height="36"
@@ -50,7 +50,7 @@
                     BorderBrush="{DynamicResource AntigravityBorderBrush}"
                     BorderThickness="1"
                     BoxShadow="0 4 16 0 #20000000"
-                    CornerRadius="24">
+                    CornerRadius="8">
                     <Grid ColumnDefinitions="*,Auto">
                         <TextBox
                             Grid.Column="0"
@@ -71,7 +71,7 @@
                             VerticalAlignment="Stretch"
                             Background="{DynamicResource AntigravityAccentBrush}"
                             Command="{Binding ProcessQueryCommand}"
-                            CornerRadius="0,24,24,0"
+                            CornerRadius="0,8,8,0"
                             Foreground="{DynamicResource AntigravityAccentForegroundBrush}"
                             IsDefault="True"
                             Theme="{DynamicResource MaterialFlatButton}">
@@ -83,7 +83,7 @@
 
             <!-- TikTok Features Overview Cards -->
             <UniformGrid Columns="3" Width="720" Margin="0,16,0,0">
-                <Border Margin="6" Padding="16" Background="{DynamicResource AntigravityPanelBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="12">
+                <Border Margin="6" Padding="16" Background="{DynamicResource AntigravityPanelBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="8">
                     <StackPanel Spacing="8">
                         <materialIcons:MaterialIcon Kind="Video" Width="24" Height="24" Foreground="{DynamicResource AntigravityTextBrush}" />
                         <TextBlock Text="No Watermark" FontWeight="Bold" FontSize="14" Foreground="{DynamicResource AntigravityTextBrush}" />
@@ -91,7 +91,7 @@
                     </StackPanel>
                 </Border>
 
-                <Border Margin="6" Padding="16" Background="{DynamicResource AntigravityPanelBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="12">
+                <Border Margin="6" Padding="16" Background="{DynamicResource AntigravityPanelBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="8">
                     <StackPanel Spacing="8">
                         <materialIcons:MaterialIcon Kind="ImageMultiple" Width="24" Height="24" Foreground="{DynamicResource AntigravityTextBrush}" />
                         <TextBlock Text="Slideshow &amp; Photo Posts" FontWeight="Bold" FontSize="14" Foreground="{DynamicResource AntigravityTextBrush}" />
@@ -99,7 +99,7 @@
                     </StackPanel>
                 </Border>
 
-                <Border Margin="6" Padding="16" Background="{DynamicResource AntigravityPanelBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="12">
+                <Border Margin="6" Padding="16" Background="{DynamicResource AntigravityPanelBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="8">
                     <StackPanel Spacing="8">
                         <materialIcons:MaterialIcon Kind="MusicNote" Width="24" Height="24" Foreground="{DynamicResource AntigravityTextBrush}" />
                         <TextBlock Text="Audio Extraction" FontWeight="Bold" FontSize="14" Foreground="{DynamicResource AntigravityTextBrush}" />

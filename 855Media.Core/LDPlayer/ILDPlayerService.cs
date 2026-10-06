@@ -133,6 +133,21 @@ public interface ILDPlayerService
         CancellationToken cancellationToken = default
     );
 
+    Task<bool> DeleteFileFromEmulatorAsync(
+        int index,
+        string remotePath,
+        string? customPath = null,
+        CancellationToken cancellationToken = default
+    );
+
+    Task<bool> WaitForFacebookUploadCompletedAsync(
+        int index,
+        string? remotePath = null,
+        TimeSpan? timeout = null,
+        string? customPath = null,
+        CancellationToken cancellationToken = default
+    );
+
     Task<bool> ShareImageToFacebookAsync(
         int index,
         string remotePath,

@@ -13,7 +13,7 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Foreground" Value="{DynamicResource AntigravityMutedBrush}" />
             <Setter Property="Padding" Value="15,7" />
-            <Setter Property="CornerRadius" Value="18" />
+            <Setter Property="CornerRadius" Value="8" />
             <Setter Property="FontSize" Value="13" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Transitions">
@@ -43,7 +43,7 @@
             <Setter Property="Background" Value="{DynamicResource AntigravityCardBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource AntigravityBorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="CornerRadius" Value="8" />
             <Setter Property="Padding" Value="16" />
             <Setter Property="Margin" Value="6" />
             <Setter Property="Transitions">
@@ -76,7 +76,7 @@
                     Background="#10FFFFFF"
                     BorderBrush="{DynamicResource AntigravityBorderBrush}"
                     BorderThickness="1"
-                    CornerRadius="20"
+                    CornerRadius="8"
                     Padding="3">
                     <StackPanel Orientation="Horizontal" Spacing="4">
                         <Button
@@ -110,7 +110,7 @@
                     Background="#10FFFFFF"
                     BorderBrush="{DynamicResource AntigravityBorderBrush}"
                     BorderThickness="1"
-                    CornerRadius="18"
+                    CornerRadius="8"
                     Padding="2">
                     <StackPanel Orientation="Horizontal" Spacing="2">
                         <Button
@@ -161,13 +161,13 @@
                     Background="{DynamicResource AntigravityElevatedBrush}"
                     BorderBrush="{DynamicResource AntigravityBorderBrush}"
                     BorderThickness="1"
-                    CornerRadius="12">
+                    CornerRadius="8">
                     <Grid ColumnDefinitions="Auto,*,Auto">
                         <Border
                             Grid.Column="0"
                             Width="36"
                             Height="36"
-                            CornerRadius="18"
+                            CornerRadius="8"
                             Background="{DynamicResource AntigravityPanelBrush}"
                             BorderBrush="{DynamicResource AntigravityBorderBrush}"
                             BorderThickness="1"
@@ -178,7 +178,7 @@
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <TextBlock Text="Creator / Channel Profile Detected" FontWeight="Bold" FontSize="13" Foreground="{DynamicResource AntigravityTextBrush}" />
-                                <Border Background="{DynamicResource AntigravityCardBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="6,1">
+                                <Border Background="{DynamicResource AntigravityCardBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="6,1">
                                     <TextBlock Text="{Binding ProfileHandleDisplay}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" />
                                 </Border>
                             </StackPanel>
@@ -192,14 +192,13 @@
                             Grid.Column="2"
                             Command="{Binding DownloadProfilePictureImmediatelyCommand}"
                             Padding="12,6"
-                            CornerRadius="14"
-                            Background="{DynamicResource AntigravityAccentBrush}"
-                            Foreground="{DynamicResource AntigravityAccentForegroundBrush}"
+                            Classes="btn-primary"
+                            CornerRadius="8"
                             Theme="{DynamicResource MaterialFlatButton}"
                             ToolTip.Tip="Save creator avatar directly without fetching video list">
                             <StackPanel Orientation="Horizontal" Spacing="6">
-                                <materialIcons:MaterialIcon Kind="ImageOutline" Width="15" Height="15" Foreground="{DynamicResource AntigravityAccentForegroundBrush}" />
-                                <TextBlock Text="Save Avatar Only" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityAccentForegroundBrush}" VerticalAlignment="Center" />
+                                <materialIcons:MaterialIcon Kind="ImageOutline" Width="15" Height="15" />
+                                <TextBlock Text="Save Avatar Only" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
                             </StackPanel>
                         </Button>
                     </Grid>
@@ -215,7 +214,7 @@
                         BorderBrush="{DynamicResource AntigravityBorderBrush}"
                         BorderThickness="1"
                         BoxShadow="0 8 32 0 #25000000"
-                        CornerRadius="27">
+                        CornerRadius="8">
                         <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
                             <!-- Platform Icon / Auto Indicator -->
                             <Border Grid.Column="0" Margin="16,0,8,0" VerticalAlignment="Center">
@@ -274,7 +273,7 @@
                                 Width="38"
                                 Height="38"
                                 Margin="4,0"
-                                CornerRadius="19"
+                                CornerRadius="6"
                                 Padding="0"
                                 Theme="{DynamicResource MaterialFlatButton}"
                                 ToolTip.Tip="Paste from Clipboard">
@@ -288,7 +287,7 @@
                                 Width="34"
                                 Height="34"
                                 Margin="0,0,8,0"
-                                CornerRadius="17"
+                                CornerRadius="6"
                                 Padding="0"
                                 IsVisible="{Binding !!Query.Length}"
                                 Theme="{DynamicResource MaterialFlatButton}"
@@ -302,14 +301,13 @@
                                 Command="{Binding ProcessQueryCommand}"
                                 Height="54"
                                 Padding="26,0"
-                                Background="{DynamicResource AntigravityAccentBrush}"
-                                CornerRadius="0,27,27,0"
-                                Foreground="{DynamicResource AntigravityAccentForegroundBrush}"
+                                Classes="btn-primary"
+                                CornerRadius="0,8,8,0"
                                 IsDefault="True"
                                 Theme="{DynamicResource MaterialFlatButton}">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <materialIcons:MaterialIcon Width="20" Height="20" Kind="Download" Foreground="{DynamicResource AntigravityAccentForegroundBrush}" />
-                                    <TextBlock Text="Download" FontWeight="Bold" FontSize="14" Foreground="{DynamicResource AntigravityAccentForegroundBrush}" VerticalAlignment="Center" />
+                                    <materialIcons:MaterialIcon Width="20" Height="20" Kind="Download" />
+                                    <TextBlock Text="Download" FontWeight="Bold" FontSize="14" VerticalAlignment="Center" />
                                 </StackPanel>
                             </Button>
                         </Grid>
@@ -325,7 +323,7 @@
                         BorderBrush="{DynamicResource AntigravityBorderBrush}"
                         BorderThickness="1"
                         BoxShadow="0 8 32 0 #25000000"
-                        CornerRadius="18"
+                        CornerRadius="8"
                         Padding="6">
                         <Grid RowDefinitions="*,Auto">
                             <TextBox
@@ -350,14 +348,14 @@
                                 Background="#0AFFFFFF"
                                 BorderBrush="{DynamicResource AntigravityBorderBrush}"
                                 BorderThickness="0,1,0,0"
-                                CornerRadius="0,0,12,12">
+                                CornerRadius="0,0,8,8">
                                 <Grid ColumnDefinitions="Auto,*,Auto,Auto">
                                     <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                                         <Border
                                             Background="{DynamicResource AntigravityElevatedBrush}"
                                             BorderBrush="{DynamicResource AntigravityBorderBrush}"
                                             BorderThickness="1"
-                                            CornerRadius="10"
+                                            CornerRadius="6"
                                             Padding="8,3">
                                             <TextBlock
                                                 Text="{Binding BatchUrlCount, StringFormat='{}{0} URLs detected'}"
@@ -370,8 +368,9 @@
                                     <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" Margin="0,0,12,0">
                                         <Button
                                             Command="{Binding PasteFromClipboardCommand}"
+                                            Classes="btn-secondary"
                                             Padding="12,6"
-                                            CornerRadius="14"
+                                            CornerRadius="8"
                                             Theme="{DynamicResource MaterialFlatButton}">
                                             <StackPanel Orientation="Horizontal" Spacing="6">
                                                 <materialIcons:MaterialIcon Kind="ContentPaste" Width="15" Height="15" />
@@ -381,8 +380,9 @@
 
                                         <Button
                                             Command="{Binding ClearInputCommand}"
+                                            Classes="btn-secondary"
                                             Padding="10,6"
-                                            CornerRadius="14"
+                                            CornerRadius="8"
                                             Theme="{DynamicResource MaterialFlatButton}">
                                             <StackPanel Orientation="Horizontal" Spacing="6">
                                                 <materialIcons:MaterialIcon Kind="TrashCanOutline" Width="15" Height="15" />
@@ -394,14 +394,13 @@
                                     <Button
                                         Grid.Column="3"
                                         Command="{Binding ProcessQueryCommand}"
-                                        Background="{DynamicResource AntigravityAccentBrush}"
-                                        Foreground="{DynamicResource AntigravityAccentForegroundBrush}"
+                                        Classes="btn-primary"
                                         Padding="22,9"
-                                        CornerRadius="16"
+                                        CornerRadius="8"
                                         Theme="{DynamicResource MaterialFlatButton}">
                                         <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <materialIcons:MaterialIcon Kind="DownloadMultiple" Width="17" Height="17" Foreground="{DynamicResource AntigravityAccentForegroundBrush}" />
-                                            <TextBlock Text="Process Batch Downloads" FontWeight="Bold" FontSize="13" Foreground="{DynamicResource AntigravityAccentForegroundBrush}" VerticalAlignment="Center" />
+                                            <materialIcons:MaterialIcon Kind="DownloadMultiple" Width="17" Height="17" />
+                                            <TextBlock Text="Process Batch Downloads" FontWeight="Bold" FontSize="13" VerticalAlignment="Center" />
                                         </StackPanel>
                                     </Button>
                                 </Grid>
@@ -456,7 +455,7 @@
                     Background="{DynamicResource AntigravityElevatedBrush}"
                     BorderBrush="{DynamicResource AntigravityBorderBrush}"
                     BorderThickness="1"
-                    CornerRadius="10">
+                    CornerRadius="8">
                     <Grid ColumnDefinitions="Auto,*">
                         <materialIcons:MaterialIcon
                             Grid.Column="0"

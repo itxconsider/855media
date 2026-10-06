@@ -113,6 +113,26 @@ public partial class FacebookPageTargetViewModel : ObservableObject
     public bool IsProfile => string.Equals(Type, "Profile", StringComparison.OrdinalIgnoreCase);
     public bool IsPage => !IsProfile;
 
+    // Page Maturity & Daily Limit Tracking
+    public PageMaturityLevel Maturity => Model?.GetPageMaturity() ?? PageMaturityLevel.New;
+    public string MaturityName => Maturity.ToString();
+    public int MaxDailyPosts => Model?.GetMaxDailyPostsLimit() ?? 3;
+    public int PostsToday => Model?.GetPostsToday() ?? 0;
+    public string DailyPostStatus => $"{PostsToday}/{MaxDailyPosts}";
+
+    [ObservableProperty]
+    private int _customMaxDailyPosts;
+
+    partial void OnCustomMaxDailyPostsChanged(int value)
+    {
+        if (Model != null)
+        {
+            Model.CustomMaxDailyPosts = value;
+        }
+        OnPropertyChanged(nameof(MaxDailyPosts));
+        OnPropertyChanged(nameof(DailyPostStatus));
+    }
+
     // Per-page Config
     [ObservableProperty]
     private bool _useTitleFromTextFile;
@@ -227,6 +247,7 @@ public partial class FacebookPageTargetViewModel : ObservableObject
         GroupPicturePath = model.GroupPicturePath;
         GroupReelPath = model.GroupReelPath;
         GroupVideoPath = model.GroupVideoPath;
+        CustomMaxDailyPosts = model.CustomMaxDailyPosts;
 
         RefreshMediaCounts();
     }
@@ -274,6 +295,32 @@ public partial class FacebookPageTargetViewModel : ObservableObject
 
             FileInGroup = groupCount.ToString();
         }
+
+        RefreshMaturityStatus();
+    }
+
+    public int GetPostsToday() => Model?.GetPostsToday() ?? 0;
+
+    public void RecordPostToday()
+    {
+        Model?.RecordPostToday();
+        RefreshMaturityStatus();
+    }
+
+    public PageMaturityLevel GetPageMaturity() => Model?.GetPageMaturity() ?? PageMaturityLevel.New;
+
+    public int GetMaxDailyPostsLimit() => Model?.GetMaxDailyPostsLimit() ?? 3;
+
+    public bool HasReachedDailyLimit(int pending = 0) =>
+        Model?.HasReachedDailyLimit(pending) ?? false;
+
+    public void RefreshMaturityStatus()
+    {
+        OnPropertyChanged(nameof(Maturity));
+        OnPropertyChanged(nameof(MaturityName));
+        OnPropertyChanged(nameof(MaxDailyPosts));
+        OnPropertyChanged(nameof(PostsToday));
+        OnPropertyChanged(nameof(DailyPostStatus));
     }
 
     public void SyncToModel()
@@ -323,5 +370,6 @@ public partial class FacebookPageTargetViewModel : ObservableObject
         Model.GroupPicturePath = GroupPicturePath;
         Model.GroupReelPath = GroupReelPath;
         Model.GroupVideoPath = GroupVideoPath;
+        Model.CustomMaxDailyPosts = CustomMaxDailyPosts;
     }
 }

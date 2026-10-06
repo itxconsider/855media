@@ -11,7 +11,7 @@
         <Style Selector="Border.history-item-card">
             <Setter Property="Margin" Value="0,0,0,10" />
             <Setter Property="Padding" Value="14" />
-            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="CornerRadius" Value="8" />
             <Setter Property="Background" Value="{DynamicResource AntigravityCardBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource AntigravityBorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
@@ -31,7 +31,7 @@
 
         <Style Selector="Button.history-tool-btn">
             <Setter Property="Padding" Value="14,7" />
-            <Setter Property="CornerRadius" Value="18" />
+            <Setter Property="CornerRadius" Value="8" />
             <Setter Property="FontSize" Value="12" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Transitions">
@@ -56,8 +56,8 @@
             <!-- Glass Pill Search Box -->
             <Border
                 Grid.Column="0"
-                Height="42"
-                CornerRadius="21"
+                Height="36"
+                CornerRadius="6"
                 Background="{DynamicResource AntigravityPanelBrush}"
                 BorderBrush="{DynamicResource AntigravityBorderBrush}"
                 BorderThickness="1"
@@ -126,7 +126,7 @@
                 <Border
                     Width="80"
                     Height="80"
-                    CornerRadius="40"
+                    CornerRadius="8"
                     Background="#10FFFFFF"
                     BorderBrush="#20FFFFFF"
                     BorderThickness="1"
@@ -178,7 +178,7 @@
                                         Grid.Column="0"
                                         Width="42"
                                         Height="42"
-                                        CornerRadius="12"
+                                        CornerRadius="8"
                                         Background="{DynamicResource AntigravityElevatedBrush}"
                                         BorderBrush="{DynamicResource AntigravityBorderBrush}"
                                         BorderThickness="1"

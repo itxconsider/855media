@@ -15,7 +15,7 @@ public class LDSettings
     public int DelayAfterOpenLD { get; set; } = 30;
     public int DelayOpenEachLD { get; set; } = 20;
     public int DelayBeforeCloseLD { get; set; } = 30;
-    public int DelayUpload { get; set; } = 30;
+    public int DelayUpload { get; set; } = 60;
     public int DelayOpenApp { get; set; } = 30;
     public int DelayBeforeSwitchPage { get; set; } = 30;
 

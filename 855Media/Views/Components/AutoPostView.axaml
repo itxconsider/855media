@@ -7,42 +7,6 @@
     x:Name="RootView"
     x:DataType="components:AutoPostViewModel">
 
-    <UserControl.Styles>
-        <Style Selector="Border.card-panel">
-            <Setter Property="Background" Value="{DynamicResource AntigravityCardBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource AntigravityBorderBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="12" />
-            <Setter Property="Padding" Value="16" />
-        </Style>
-
-        <Style Selector="TextBlock.section-title">
-            <Setter Property="FontSize" Value="13" />
-            <Setter Property="FontWeight" Value="Bold" />
-            <Setter Property="Foreground" Value="{DynamicResource AntigravityTextBrush}" />
-            <Setter Property="Margin" Value="0,0,0,10" />
-        </Style>
-
-        <Style Selector="Button.action-btn">
-            <Setter Property="Padding" Value="14,8" />
-            <Setter Property="CornerRadius" Value="8" />
-            <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="FontSize" Value="12.5" />
-            <Setter Property="Transitions">
-                <Transitions>
-                    <BrushTransition Property="Background" Duration="0:0:0.18" />
-                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.15" Easing="CubicEaseOut" />
-                </Transitions>
-            </Setter>
-            <Style Selector="^:pointerover">
-                <Setter Property="RenderTransform" Value="scale(1.03)" />
-            </Style>
-            <Style Selector="^:pressed">
-                <Setter Property="RenderTransform" Value="scale(0.97)" />
-            </Style>
-        </Style>
-    </UserControl.Styles>
-
     <Grid>
         <!-- MAIN DASHBOARD CONTENT -->
         <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
@@ -69,21 +33,28 @@
 
                         <!-- Top Row Right: Action Controls -->
                         <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                            <Button Command="{Binding OpenManagePagesCommand}" Classes="action-btn" Background="#2563EB" Foreground="White">
+                            <Button Command="{Binding OpenConfigCommand}" Classes="action-btn" ToolTip.Tip="Configure account warmup, posting options, delays &amp; behavior">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <materialIcons:MaterialIcon Kind="TuneVertical" Width="16" Height="16" />
+                                    <TextBlock Text="Config" FontWeight="Bold" />
+                                </StackPanel>
+                            </Button>
+
+                            <Button Command="{Binding OpenManagePagesCommand}" Classes="action-btn">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <materialIcons:MaterialIcon Kind="AccountMultipleOutline" Width="16" Height="16" />
                                     <TextBlock Text="Pages" FontWeight="Bold" />
                                 </StackPanel>
                             </Button>
 
-                            <Button Command="{Binding StartAutomationCommand}" IsEnabled="{Binding !IsRunning}" Classes="action-btn" Background="#16A34A" Foreground="White">
+                            <Button Command="{Binding StartAutomationCommand}" IsEnabled="{Binding !IsRunning}" Classes="action-btn btn-success">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <materialIcons:MaterialIcon Kind="Play" Width="16" Height="16" />
                                     <TextBlock Text="Start" FontWeight="Bold" />
                                 </StackPanel>
                             </Button>
 
-                            <Button Command="{Binding StopAutomationCommand}" IsEnabled="{Binding IsRunning}" Classes="action-btn" Background="#DC2626" Foreground="White">
+                            <Button Command="{Binding StopAutomationCommand}" IsEnabled="{Binding IsRunning}" Classes="action-btn btn-danger">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <materialIcons:MaterialIcon Kind="Stop" Width="16" Height="16" />
                                     <TextBlock Text="Stop" FontWeight="Bold" />
@@ -114,231 +85,80 @@
                     </Grid>
                 </Border>
 
-                <!-- 2. WORKFLOW PARAMETERS & EMULATOR MONITOR MATRIX -->
-                <Grid ColumnDefinitions="360, 360, *" Margin="0,0,0,0">
-
-                    <!-- COLUMN 1: WARMUP & BEHAVIOR EMULATION -->
-                    <Border Grid.Column="0" Classes="card-panel" Margin="0,0,12,0">
-                        <StackPanel Spacing="12">
-                            <TextBlock Text="ACCOUNT WARMUP &amp; ANTI-BAN" Classes="section-title" />
-
-                            <!-- Watch Video -->
-                            <Grid ColumnDefinitions="Auto, *, Auto, *">
-                                <CheckBox Grid.Column="0" IsChecked="{Binding IsWatchVideo}" Content="Watch Video" VerticalAlignment="Center" />
-                                <NumericUpDown Grid.Column="1" Value="{Binding WatchVideoMin}" Minimum="10" Maximum="999" Height="30" Margin="6,0,4,0" FormatString="0" />
-                                <TextBlock Grid.Column="2" Text="To" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                <NumericUpDown Grid.Column="3" Value="{Binding WatchVideoMax}" Minimum="10" Maximum="999" Height="30" Margin="4,0,0,0" FormatString="0" />
-                            </Grid>
-
-                            <!-- Market Place -->
-                            <Grid ColumnDefinitions="Auto, *, Auto, *">
-                                <CheckBox Grid.Column="0" IsChecked="{Binding IsMarketPlace}" Content="Market Place" VerticalAlignment="Center" />
-                                <NumericUpDown Grid.Column="1" Value="{Binding MarketPlaceMin}" Minimum="5" Maximum="999" Height="30" Margin="6,0,4,0" FormatString="0" />
-                                <TextBlock Grid.Column="2" Text="To" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                <NumericUpDown Grid.Column="3" Value="{Binding MarketPlaceMax}" Minimum="5" Maximum="999" Height="30" Margin="4,0,0,0" FormatString="0" />
-                            </Grid>
-
-                            <!-- Like Post -->
-                            <Grid ColumnDefinitions="Auto, *, Auto, *">
-                                <CheckBox Grid.Column="0" IsChecked="{Binding IsLikePost}" Content="Like Post" VerticalAlignment="Center" />
-                                <NumericUpDown Grid.Column="1" Value="{Binding LikePostMin}" Minimum="1" Maximum="50" Height="30" Margin="6,0,4,0" FormatString="0" />
-                                <TextBlock Grid.Column="2" Text="To" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                <NumericUpDown Grid.Column="3" Value="{Binding LikePostMax}" Minimum="1" Maximum="50" Height="30" Margin="4,0,0,0" FormatString="0" />
-                            </Grid>
-
-                            <!-- NewsFeed -->
-                            <Grid ColumnDefinitions="Auto, *, Auto, *">
-                                <CheckBox Grid.Column="0" IsChecked="{Binding IsNewsFeed}" Content="NewsFeed" VerticalAlignment="Center" />
-                                <NumericUpDown Grid.Column="1" Value="{Binding NewsFeedMin}" Minimum="10" Maximum="999" Height="30" Margin="6,0,4,0" FormatString="0" />
-                                <TextBlock Grid.Column="2" Text="To" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                <NumericUpDown Grid.Column="3" Value="{Binding NewsFeedMax}" Minimum="10" Maximum="999" Height="30" Margin="4,0,0,0" FormatString="0" />
-                            </Grid>
-
-                            <!-- Check In -->
-                            <Grid ColumnDefinitions="Auto, *">
-                                <CheckBox Grid.Column="0" IsChecked="{Binding IsCheckIn}" Content="Check In" VerticalAlignment="Center" />
-                                <TextBox Grid.Column="1" Text="{Binding CheckInLocation}" Watermark="Location..." Height="30" Margin="6,0,0,0" />
-                            </Grid>
-
-                            <Grid ColumnDefinitions="*, *">
-                                <CheckBox Grid.Column="0" IsChecked="{Binding IsReadNotification}" Content="Read Notif" />
-                                <CheckBox Grid.Column="1" IsChecked="{Binding IsClearRecentApp}" Content="Clear Recent" />
-                            </Grid>
-
-                            <Separator Height="1" Background="{DynamicResource AntigravityBorderBrush}" Margin="0,4" />
-
-                            <!-- Social Actions -->
-                            <TextBlock Text="SOCIAL ACTIONS &amp; FRIENDS" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" />
-
-                            <Grid ColumnDefinitions="Auto, *, Auto, *">
-                                <CheckBox Grid.Column="0" IsChecked="{Binding AddFriendSuggest}" Content="Add Sug" VerticalAlignment="Center" />
-                                <NumericUpDown Grid.Column="1" Value="{Binding AddFriendSuggestMin}" Minimum="0" Maximum="20" Height="30" Margin="6,0,4,0" FormatString="0" />
-                                <TextBlock Grid.Column="2" Text="To" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                <NumericUpDown Grid.Column="3" Value="{Binding AddFriendSuggestMax}" Minimum="0" Maximum="20" Height="30" Margin="4,0,0,0" FormatString="0" />
-                            </Grid>
-
-                            <Grid ColumnDefinitions="Auto, *, Auto, *">
-                                <CheckBox Grid.Column="0" IsChecked="{Binding AcceptFriends}" Content="Accept" VerticalAlignment="Center" />
-                                <NumericUpDown Grid.Column="1" Value="{Binding AcceptFriendsMin}" Minimum="0" Maximum="20" Height="30" Margin="6,0,4,0" FormatString="0" />
-                                <TextBlock Grid.Column="2" Text="To" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                <NumericUpDown Grid.Column="3" Value="{Binding AcceptFriendsMax}" Minimum="0" Maximum="20" Height="30" Margin="4,0,0,0" FormatString="0" />
-                            </Grid>
-
-                            <Grid ColumnDefinitions="Auto, *, Auto, *">
-                                <CheckBox Grid.Column="0" IsChecked="{Binding DeleteFriendRequest}" Content="Del Req" VerticalAlignment="Center" />
-                                <NumericUpDown Grid.Column="1" Value="{Binding DeleteFriendRequestMin}" Minimum="0" Maximum="20" Height="30" Margin="6,0,4,0" FormatString="0" />
-                                <TextBlock Grid.Column="2" Text="To" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                <NumericUpDown Grid.Column="3" Value="{Binding DeleteFriendRequestMax}" Minimum="0" Maximum="20" Height="30" Margin="4,0,0,0" FormatString="0" />
-                            </Grid>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- COLUMN 2: POSTING & DELAY TIMERS -->
-                    <Border Grid.Column="1" Classes="card-panel" Margin="0,0,12,0">
-                        <StackPanel Spacing="12">
-                            <TextBlock Text="POSTING CONFIG &amp; DELAYS" Classes="section-title" />
-
-                            <!-- Post Reel -->
-                            <StackPanel Spacing="6">
-                                <CheckBox IsChecked="{Binding IsPostReel}" Content="Post Reel" FontWeight="SemiBold" />
-                                <StackPanel Orientation="Horizontal" Spacing="16" Margin="24,0,0,0">
-                                    <CheckBox IsChecked="{Binding IsDeleteReelFile}" Content="Delete File" FontSize="11.5" />
-                                    <CheckBox IsChecked="{Binding IsBackupReelFile}" Content="Backup File" FontSize="11.5" />
-                                </StackPanel>
-                            </StackPanel>
-
-                            <!-- Post Picture -->
-                            <StackPanel Spacing="6">
-                                <CheckBox IsChecked="{Binding IsPostPicture}" Content="Post Picture" FontWeight="SemiBold" />
-                                <StackPanel Orientation="Horizontal" Spacing="16" Margin="24,0,0,0">
-                                    <CheckBox IsChecked="{Binding IsDeletePictureFile}" Content="Delete File" FontSize="11.5" />
-                                    <CheckBox IsChecked="{Binding IsBackupPictureFile}" Content="Backup File" FontSize="11.5" />
-                                </StackPanel>
-                            </StackPanel>
-
-                            <!-- Post Video -->
-                            <StackPanel Spacing="6">
-                                <CheckBox IsChecked="{Binding IsPostVideo}" Content="Post Video" FontWeight="SemiBold" />
-                                <StackPanel Orientation="Horizontal" Spacing="16" Margin="24,0,0,0">
-                                    <CheckBox IsChecked="{Binding IsDeleteVideoFile}" Content="Delete File" FontSize="11.5" />
-                                    <CheckBox IsChecked="{Binding IsBackupVideoFile}" Content="Backup File" FontSize="11.5" />
-                                </StackPanel>
-                            </StackPanel>
-
-                            <Separator Height="1" Background="{DynamicResource AntigravityBorderBrush}" Margin="0,4" />
-
-                            <!-- Delays Grid -->
-                            <Grid ColumnDefinitions="*, *" RowDefinitions="Auto, Auto, Auto, Auto" Margin="0,2,0,0">
-                                <StackPanel Grid.Row="0" Grid.Column="0" Spacing="2" Margin="0,0,6,8">
-                                    <TextBlock Text="Delay Upload (s)" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                    <NumericUpDown Value="{Binding DelayUpload}" Minimum="1" Maximum="600" Height="30" FormatString="0" />
-                                </StackPanel>
-                                <StackPanel Grid.Row="0" Grid.Column="1" Spacing="2" Margin="6,0,0,8">
-                                    <TextBlock Text="Delay Open App (s)" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                    <NumericUpDown Value="{Binding DelayOpenApp}" Minimum="1" Maximum="600" Height="30" FormatString="0" />
-                                </StackPanel>
-
-                                <StackPanel Grid.Row="1" Grid.Column="0" Spacing="2" Margin="0,0,6,8">
-                                    <TextBlock Text="Delay After Open (s)" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                    <NumericUpDown Value="{Binding DelayAfterOpenLD}" Minimum="1" Maximum="600" Height="30" FormatString="0" />
-                                </StackPanel>
-                                <StackPanel Grid.Row="1" Grid.Column="1" Spacing="2" Margin="6,0,0,8">
-                                    <TextBlock Text="Delay Open Each (s)" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                    <NumericUpDown Value="{Binding DelayOpenEachLD}" Minimum="1" Maximum="600" Height="30" FormatString="0" />
-                                </StackPanel>
-
-                                <StackPanel Grid.Row="2" Grid.Column="0" Spacing="2" Margin="0,0,6,8">
-                                    <TextBlock Text="Delay Before Close (s)" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                    <NumericUpDown Value="{Binding DelayBeforeCloseLD}" Minimum="1" Maximum="600" Height="30" FormatString="0" />
-                                </StackPanel>
-                                <StackPanel Grid.Row="2" Grid.Column="1" Spacing="2" Margin="6,0,0,8">
-                                    <TextBlock Text="Delay Switch Page (s)" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                    <NumericUpDown Value="{Binding DelayBeforeSwitchPage}" Minimum="1" Maximum="600" Height="30" FormatString="0" />
-                                </StackPanel>
-                            </Grid>
-
-                            <CheckBox IsChecked="{Binding CloseLDAfterAction}" Content="Close LDPlayer After Action" />
-                            <CheckBox IsChecked="{Binding ClearCacheFBBeforeOpen}" Content="Clear Cache FB Before Open" />
-                            <CheckBox IsChecked="{Binding AfterPostCheckCopyRight}" Content="After Post Check CopyRight" />
-                            <CheckBox IsChecked="{Binding SwitchToProfileAfterPost}" Content="Switch To Profile After Post" />
-                            <CheckBox IsChecked="{Binding SleepPcAfterActionDone}" Content="Sleep PC After Action Done" />
-                        </StackPanel>
-                    </Border>
-
-                    <!-- COLUMN 3: LDPLAYER LIVE INSTANCE STATUS TABLE -->
-                    <Border Grid.Column="2" Classes="card-panel">
-                        <Grid RowDefinitions="Auto, *">
-                            <Grid Grid.Row="0" ColumnDefinitions="*, Auto" Margin="0,0,0,10">
-                                <TextBlock Text="CONNECTED LDPLAYER WORKERS" Classes="section-title" Margin="0" VerticalAlignment="Center" />
-                                <TextBlock Grid.Column="1" Text="{Binding DisplayedInstances.Count, StringFormat='Instances: {0}'}" Foreground="{DynamicResource AntigravityMutedBrush}" FontSize="12" VerticalAlignment="Center" />
-                            </Grid>
-
-                            <DataGrid
-                                x:Name="WorkerDataGrid"
-                                Grid.Row="1"
-                                ItemsSource="{Binding DisplayedInstances}"
-                                AutoGenerateColumns="False"
-                                CanUserSortColumns="True"
-                                GridLinesVisibility="Horizontal"
-                                BorderThickness="1"
-                                BorderBrush="{DynamicResource AntigravityBorderBrush}"
-                                CornerRadius="8"
-                                MinHeight="580"
-                                MaxHeight="620"
-                                VerticalScrollBarVisibility="Visible"
-                                HorizontalScrollBarVisibility="Disabled">
-                                <DataGrid.Columns>
-                                    <DataGridTemplateColumn Width="46">
-                                        <DataGridTemplateColumn.Header>
-                                            <CheckBox IsChecked="{Binding $parent[UserControl].((components:AutoPostViewModel)DataContext).IsAllSelected, Mode=TwoWay}"
-                                                      HorizontalAlignment="Center" VerticalAlignment="Center" Margin="6,0,0,0" ToolTip.Tip="Select All / Deselect All" />
-                                        </DataGridTemplateColumn.Header>
-                                        <DataGridTemplateColumn.CellTemplate>
-                                            <DataTemplate DataType="components:LDInstanceItemViewModel">
-                                                <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}"
-                                                          HorizontalAlignment="Center" VerticalAlignment="Center" Margin="6,0,0,0" />
-                                            </DataTemplate>
-                                        </DataGridTemplateColumn.CellTemplate>
-                                    </DataGridTemplateColumn>
-                                    <DataGridTextColumn Header="Stt" Binding="{Binding Index}" Width="50" IsReadOnly="True" />
-                                    <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="100" FontWeight="Bold" IsReadOnly="True" />
-                                    <DataGridTextColumn Header="FB" Binding="{Binding FbClone}" Width="70" />
-                                    <DataGridTemplateColumn Header="Status" Width="*">
-                                        <DataGridTemplateColumn.CellTemplate>
-                                            <DataTemplate DataType="components:LDInstanceItemViewModel">
-                                                <Border
-                                                    Padding="8,3"
-                                                    Margin="4"
-                                                    CornerRadius="6"
-                                                    Background="{DynamicResource AntigravityElevatedBrush}"
-                                                    HorizontalAlignment="Left">
-                                                    <TextBlock Text="{Binding Status}" FontSize="11.5" Foreground="{DynamicResource AntigravityTextBrush}" TextTrimming="CharacterEllipsis" />
-                                                </Border>
-                                            </DataTemplate>
-                                        </DataGridTemplateColumn.CellTemplate>
-                                    </DataGridTemplateColumn>
-                                    <DataGridTemplateColumn Header="Actions" Width="130">
-                                        <DataGridTemplateColumn.CellTemplate>
-                                            <DataTemplate DataType="components:LDInstanceItemViewModel">
-                                                <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center">
-                                                    <Button Command="{Binding LaunchCommand}" ToolTip.Tip="Start LDPlayer" Padding="4">
-                                                        <materialIcons:MaterialIcon Kind="Play" Width="14" Height="14" Foreground="#10B981" />
-                                                    </Button>
-                                                    <Button Command="{Binding QuitCommand}" ToolTip.Tip="Close LDPlayer" Padding="4">
-                                                        <materialIcons:MaterialIcon Kind="Stop" Width="14" Height="14" Foreground="#EF4444" />
-                                                    </Button>
-                                                    <Button Command="{Binding ClearCacheCommand}" ToolTip.Tip="Clear FB Cache" Padding="4">
-                                                        <materialIcons:MaterialIcon Kind="Broom" Width="14" Height="14" Foreground="#F59E0B" />
-                                                    </Button>
-                                                </StackPanel>
-                                            </DataTemplate>
-                                        </DataGridTemplateColumn.CellTemplate>
-                                    </DataGridTemplateColumn>
-                                </DataGrid.Columns>
-                            </DataGrid>
+                <!-- 2. CONNECTED LDPLAYER WORKERS -->
+                <Border Classes="card-panel">
+                    <Grid RowDefinitions="Auto, *">
+                        <Grid Grid.Row="0" ColumnDefinitions="*, Auto" Margin="0,0,0,10">
+                            <TextBlock Text="CONNECTED LDPLAYER WORKERS" Classes="section-title" Margin="0" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="{Binding DisplayedInstances.Count, StringFormat='Instances: {0}'}" Foreground="{DynamicResource AntigravityMutedBrush}" FontSize="12" VerticalAlignment="Center" />
                         </Grid>
-                    </Border>
-                </Grid>
+
+                        <DataGrid
+                            x:Name="WorkerDataGrid"
+                            Grid.Row="1"
+                            ItemsSource="{Binding DisplayedInstances}"
+                            AutoGenerateColumns="False"
+                            CanUserSortColumns="True"
+                            CanUserResizeColumns="True"
+                            GridLinesVisibility="Horizontal"
+                            BorderThickness="1"
+                            BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                            CornerRadius="8"
+                            MinHeight="360"
+                            MaxHeight="460"
+                            VerticalScrollBarVisibility="Visible"
+                            HorizontalScrollBarVisibility="Auto">
+                            <DataGrid.Columns>
+                                <DataGridTemplateColumn Width="46">
+                                    <DataGridTemplateColumn.Header>
+                                        <CheckBox IsChecked="{Binding $parent[UserControl].((components:AutoPostViewModel)DataContext).IsAllSelected, Mode=TwoWay}"
+                                                  HorizontalAlignment="Center" VerticalAlignment="Center" Margin="6,0,0,0" ToolTip.Tip="Select All / Deselect All" />
+                                    </DataGridTemplateColumn.Header>
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate DataType="components:LDInstanceItemViewModel">
+                                            <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                      HorizontalAlignment="Center" VerticalAlignment="Center" Margin="6,0,0,0" />
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTextColumn Header="Stt" Binding="{Binding Index}" Width="50" IsReadOnly="True" />
+                                <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="120" FontWeight="Bold" IsReadOnly="True" />
+                                <DataGridTextColumn Header="FB" Binding="{Binding FbClone}" Width="80" />
+                                <DataGridTemplateColumn Header="Status" Width="*">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate DataType="components:LDInstanceItemViewModel">
+                                            <Border
+                                                Padding="8,3"
+                                                Margin="4"
+                                                CornerRadius="6"
+                                                Background="{DynamicResource AntigravityElevatedBrush}"
+                                                HorizontalAlignment="Left">
+                                                <TextBlock Text="{Binding Status}" FontSize="11.5" Foreground="{DynamicResource AntigravityTextBrush}" TextTrimming="CharacterEllipsis" />
+                                            </Border>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="Actions" Width="130">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate DataType="components:LDInstanceItemViewModel">
+                                            <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center">
+                                                <Button Command="{Binding LaunchCommand}" ToolTip.Tip="Start LDPlayer" Padding="4">
+                                                    <materialIcons:MaterialIcon Kind="Play" Width="14" Height="14" Foreground="#10B981" />
+                                                </Button>
+                                                <Button Command="{Binding QuitCommand}" ToolTip.Tip="Close LDPlayer" Padding="4">
+                                                    <materialIcons:MaterialIcon Kind="Stop" Width="14" Height="14" Foreground="#EF4444" />
+                                                </Button>
+                                                <Button Command="{Binding ClearCacheCommand}" ToolTip.Tip="Clear FB Cache" Padding="4">
+                                                    <materialIcons:MaterialIcon Kind="Broom" Width="14" Height="14" Foreground="#F59E0B" />
+                                                </Button>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </Grid>
+                </Border>
 
                 <!-- 3. BOTTOM: REELS QUEUE & EXECUTION DISPATCH MATRIX -->
                 <Border Classes="card-panel">
@@ -348,27 +168,48 @@
                                 <materialIcons:MaterialIcon Kind="VideoPlusOutline" Width="18" Height="18" Foreground="{DynamicResource AntigravityAccentBrush}" VerticalAlignment="Center" />
                                 <TextBlock Text="ACTIVE DISPATCH QUEUE" Classes="section-title" Margin="0" VerticalAlignment="Center" />
                             </StackPanel>
-                            <TextBlock Grid.Column="1" Text="{Binding Tasks.Count, StringFormat='Tasks Queued: {0}'}" Foreground="{DynamicResource AntigravityMutedBrush}" FontSize="12" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Tasks.Count, StringFormat='Tasks Queued: {0}'}" Foreground="{DynamicResource AntigravityMutedBrush}" FontSize="12" VerticalAlignment="Center" />
+                                <Button Command="{Binding ClearTasksCommand}" Classes="action-btn" Content="Clear Queue" Padding="8,4" FontSize="11" Background="{DynamicResource AntigravityElevatedBrush}" />
+                            </StackPanel>
                         </Grid>
 
                         <DataGrid
                             Grid.Row="1"
                             ItemsSource="{Binding Tasks}"
                             AutoGenerateColumns="False"
+                            CanUserResizeColumns="True"
+                            CanUserSortColumns="True"
+                            CanUserReorderColumns="True"
+                            HorizontalScrollBarVisibility="Auto"
+                            VerticalScrollBarVisibility="Auto"
                             GridLinesVisibility="Horizontal"
                             BorderThickness="1"
                             BorderBrush="{DynamicResource AntigravityBorderBrush}"
                             CornerRadius="8"
                             MinHeight="120">
+                            <DataGrid.Styles>
+                                <Style Selector="DataGridColumnHeader">
+                                    <Setter Property="Padding" Value="8,5" />
+                                    <Setter Property="FontSize" Value="11" />
+                                    <Setter Property="FontWeight" Value="SemiBold" />
+                                    <Setter Property="HorizontalContentAlignment" Value="Left" />
+                                </Style>
+                                <Style Selector="DataGridCell">
+                                    <Setter Property="Padding" Value="8,4" />
+                                    <Setter Property="FontSize" Value="11.5" />
+                                    <Setter Property="VerticalContentAlignment" Value="Center" />
+                                </Style>
+                            </DataGrid.Styles>
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="Stt" Binding="{Binding Index}" Width="50" IsReadOnly="True" />
-                                <DataGridTextColumn Header="Title" Binding="{Binding Title}" Width="*" FontWeight="SemiBold" />
-                                <DataGridTextColumn Header="Path" Binding="{Binding FilePath}" Width="180" />
-                                <DataGridTextColumn Header="Device Name" Binding="{Binding DeviceName}" Width="100" />
-                                <DataGridTextColumn Header="App" Binding="{Binding App}" Width="70" />
-                                <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="80" />
-                                <DataGridTextColumn Header="Page" Binding="{Binding Page}" Width="180" FontWeight="SemiBold" />
-                                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="100" />
+                                <DataGridTextColumn Header="Stt" Binding="{Binding Index}" Width="50" MinWidth="40" IsReadOnly="True" />
+                                <DataGridTextColumn Header="Title" Binding="{Binding Title}" Width="*" MinWidth="120" FontWeight="SemiBold" />
+                                <DataGridTextColumn Header="Path" Binding="{Binding FilePath}" Width="180" MinWidth="100" />
+                                <DataGridTextColumn Header="Device Name" Binding="{Binding DeviceName}" Width="110" MinWidth="80" />
+                                <DataGridTextColumn Header="App" Binding="{Binding App}" Width="70" MinWidth="50" />
+                                <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="80" MinWidth="60" />
+                                <DataGridTextColumn Header="Page" Binding="{Binding Page}" Width="180" MinWidth="100" FontWeight="SemiBold" />
+                                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="100" MinWidth="80" />
                             </DataGrid.Columns>
                         </DataGrid>
                     </Grid>
@@ -382,14 +223,7 @@
             Background="#D0000000"
             HorizontalAlignment="Stretch"
             VerticalAlignment="Stretch">
-            <Border
-                Margin="16,12"
-                HorizontalAlignment="Stretch"
-                VerticalAlignment="Stretch"
-                Classes="card-panel"
-                Background="{DynamicResource AntigravityElevatedBrush}"
-                BoxShadow="0 20 60 0 #A0000000"
-                Padding="16,12">
+            <Border Classes="modal-window">
                 <Grid RowDefinitions="Auto, Auto, *, Auto">
                     <!-- Modal Header -->
                     <Grid Grid.Row="0" ColumnDefinitions="*, Auto" Margin="0,0,0,12">
@@ -406,10 +240,10 @@
                     <Border Grid.Row="1" Background="{DynamicResource AntigravityCardBrush}" CornerRadius="8" Padding="12" Margin="0,0,0,12">
                         <StackPanel Spacing="10">
                             <!-- Top row: Post Configurations -->
-                            <Grid ColumnDefinitions="Auto, Auto, Auto, Auto, Auto, Auto, *, Auto">
+                            <Grid ColumnDefinitions="Auto, Auto, Auto, Auto, Auto, Auto, Auto, *, Auto">
                                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" Margin="0,0,16,0" VerticalAlignment="Center">
                                     <TextBlock Text="Post Type" VerticalAlignment="Center" FontWeight="SemiBold" />
-                                    <ComboBox SelectedIndex="0" Height="32">
+                                    <ComboBox SelectedIndex="{Binding SelectedPostTypeIndex, Mode=TwoWay}" Height="32">
                                         <ComboBoxItem Content="Post Reel" />
                                         <ComboBoxItem Content="Post Picture" />
                                         <ComboBoxItem Content="Post Video" />
@@ -418,7 +252,7 @@
 
                                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" Margin="0,0,16,0" VerticalAlignment="Center">
                                     <TextBlock Text="Select File By" VerticalAlignment="Center" FontWeight="SemiBold" />
-                                    <ComboBox SelectedIndex="0" Height="32">
+                                    <ComboBox SelectedIndex="{Binding SelectedFileByIndex, Mode=TwoWay}" Height="32">
                                         <ComboBoxItem Content="Random" />
                                         <ComboBoxItem Content="Sequential" />
                                     </ComboBox>
@@ -426,16 +260,17 @@
 
                                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" Margin="0,0,16,0" VerticalAlignment="Center">
                                     <TextBlock Text="Post From" VerticalAlignment="Center" FontWeight="SemiBold" />
-                                    <NumericUpDown Value="2" Minimum="1" Maximum="20" Width="80" Height="32" FormatString="0" />
+                                    <NumericUpDown Value="{Binding PostFromCount, Mode=TwoWay}" Minimum="1" Maximum="50" Width="80" Height="32" FormatString="0" />
                                     <TextBlock Text="To" VerticalAlignment="Center" Margin="4,0" />
-                                    <NumericUpDown Value="5" Minimum="1" Maximum="20" Width="80" Height="32" FormatString="0" />
+                                    <NumericUpDown Value="{Binding PostToCount, Mode=TwoWay}" Minimum="1" Maximum="50" Width="80" Height="32" FormatString="0" />
                                 </StackPanel>
 
-                                <CheckBox Grid.Column="3" Content="Upload Unique File" IsChecked="True" VerticalAlignment="Center" Margin="0,0,16,0" />
-                                <CheckBox Grid.Column="4" Content="Get Pages By Api" IsChecked="False" VerticalAlignment="Center" Margin="0,0,16,0" />
-                                <CheckBox Grid.Column="5" Content="Filter by Selected LD" IsChecked="{Binding FilterBySelectedDevice}" VerticalAlignment="Center" Margin="0,0,16,0" FontWeight="SemiBold" />
+                                <CheckBox Grid.Column="3" Content="Upload Unique File" IsChecked="{Binding UploadUniqueFile, Mode=TwoWay}" VerticalAlignment="Center" Margin="0,0,16,0" />
+                                <CheckBox Grid.Column="4" Content="Get Pages By Api" IsChecked="{Binding GetPagesByApi, Mode=TwoWay}" VerticalAlignment="Center" Margin="0,0,16,0" />
+                                <CheckBox Grid.Column="5" Content="Filter by Selected LD" IsChecked="{Binding FilterBySelectedDevice, Mode=TwoWay}" VerticalAlignment="Center" Margin="0,0,16,0" FontWeight="SemiBold" />
+                                <CheckBox Grid.Column="6" Content="Limit by Page Maturity" IsChecked="{Binding AutoMaxPostByMaturity, Mode=TwoWay}" VerticalAlignment="Center" Margin="0,0,16,0" FontWeight="SemiBold" ToolTip.Tip="Skip queuing when page meets or exceeds daily post limit by maturity (New: 3/day, Growing: 5/day, Mature: 10/day)" />
 
-                                <Button Grid.Column="7" Content="Set File Upload" Classes="action-btn" Background="#2563EB" Foreground="White" />
+                                <Button Grid.Column="8" Content="Set File Upload" Command="{Binding SetFileUploadCommand}" Classes="action-btn btn-primary" />
                             </Grid>
 
                             <!-- Bottom row: Page Operations (Fetch via ADB, Add, Delete, Save) -->
@@ -443,13 +278,23 @@
                                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
                                     <Button
                                         Command="{Binding FetchSelectedPagesInfoCommand}"
-                                        Classes="action-btn"
-                                        Background="#16A34A"
-                                        Foreground="White"
+                                        IsEnabled="{Binding !IsBusy}"
+                                        Classes="action-btn btn-success"
                                         ToolTip.Tip="Fast extraction of Facebook UID, email, access token &amp; managed pages from selected LDPlayer via Root Shell (instant, no UI dump)">
                                         <StackPanel Orientation="Horizontal" Spacing="6">
                                             <materialIcons:MaterialIcon Kind="LightningBoltOutline" Width="16" Height="16" />
                                             <TextBlock Text="Fetch Accounts (Root Shell)" FontWeight="SemiBold" />
+                                        </StackPanel>
+                                    </Button>
+
+                                    <Button
+                                        Command="{Binding CancelFetchCommand}"
+                                        IsVisible="{Binding IsBusy}"
+                                        Classes="action-btn btn-danger"
+                                        ToolTip.Tip="Stop running bulk extraction">
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <materialIcons:MaterialIcon Kind="StopCircleOutline" Width="16" Height="16" />
+                                            <TextBlock Text="Stop Fetch" FontWeight="SemiBold" />
                                         </StackPanel>
                                     </Button>
 
@@ -477,9 +322,7 @@
                                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
                                     <Button
                                         Command="{Binding SavePagesCommand}"
-                                        Classes="action-btn"
-                                        Background="#2563EB"
-                                        Foreground="White">
+                                        Classes="action-btn btn-primary">
                                         <StackPanel Orientation="Horizontal" Spacing="6">
                                             <materialIcons:MaterialIcon Kind="ContentSaveOutline" Width="16" Height="16" />
                                             <TextBlock Text="Save Pages" FontWeight="SemiBold" />
@@ -491,7 +334,7 @@
                     </Border>
 
                     <!-- Master-Detail: LD Instances on Left, Facebook Account & Pages on Right -->
-                    <Grid Grid.Row="2" ColumnDefinitions="240, 8, *">
+                    <Grid Grid.Row="2" ColumnDefinitions="280, 8, *">
                         <!-- LEFT PANEL: LD Instances Table -->
                         <Border Grid.Column="0" BorderThickness="1" BorderBrush="{DynamicResource AntigravityBorderBrush}" CornerRadius="8" Background="{DynamicResource AntigravityCardBrush}">
                             <Grid RowDefinitions="Auto, *">
@@ -511,7 +354,21 @@
                                     VerticalScrollBarVisibility="Visible"
                                     HorizontalScrollBarVisibility="Disabled"
                                     CanUserSortColumns="True"
+                                    CanUserResizeColumns="True"
                                     BorderThickness="0">
+                                    <DataGrid.Styles>
+                                        <Style Selector="DataGridColumnHeader">
+                                            <Setter Property="Padding" Value="4,4" />
+                                            <Setter Property="FontSize" Value="11" />
+                                            <Setter Property="FontWeight" Value="SemiBold" />
+                                            <Setter Property="HorizontalContentAlignment" Value="Left" />
+                                        </Style>
+                                        <Style Selector="DataGridCell">
+                                            <Setter Property="Padding" Value="4,2" />
+                                            <Setter Property="FontSize" Value="11.5" />
+                                            <Setter Property="VerticalContentAlignment" Value="Center" />
+                                        </Style>
+                                    </DataGrid.Styles>
                                     <DataGrid.ContextMenu>
                                         <ContextMenu>
                                             <MenuItem Header="Fetch Facebook Account &amp; Pages (Root Shell)"
@@ -524,7 +381,7 @@
                                         </ContextMenu>
                                     </DataGrid.ContextMenu>
                                     <DataGrid.Columns>
-                                        <DataGridTemplateColumn Width="38" MinWidth="38" MaxWidth="44">
+                                        <DataGridTemplateColumn Width="38" MinWidth="34" MaxWidth="42">
                                             <DataGridTemplateColumn.Header>
                                                 <CheckBox IsChecked="{Binding #RootView.((components:AutoPostViewModel)DataContext).IsAllManageInstancesSelected, Mode=TwoWay}"
                                                           ToolTip.Tip="Select / Deselect All LD Instances"
@@ -541,7 +398,7 @@
                                                 </DataTemplate>
                                             </DataGridTemplateColumn.CellTemplate>
                                         </DataGridTemplateColumn>
-                                        <DataGridTextColumn Header="No" Binding="{Binding Index}" Width="38" IsReadOnly="True" />
+                                        <DataGridTextColumn Header="No" Binding="{Binding Index}" Width="50" MinWidth="44" IsReadOnly="True" />
                                         <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="80" FontWeight="Bold" IsReadOnly="True" />
                                         <DataGridTemplateColumn Header="Status" Width="*">
                                             <DataGridTemplateColumn.CellTemplate>
@@ -565,7 +422,7 @@
 
                         <!-- RIGHT PANEL: Pages Table for Selected LD -->
                         <Border Grid.Column="2" BorderThickness="1" BorderBrush="{DynamicResource AntigravityBorderBrush}" CornerRadius="8" Background="{DynamicResource AntigravityCardBrush}">
-                            <Grid RowDefinitions="Auto, Auto, Auto, *">
+                            <Grid RowDefinitions="Auto, Auto, *">
                                 <!-- Panel Header -->
                                 <Border Grid.Row="0" Background="{DynamicResource AntigravityElevatedBrush}" Padding="12,8" CornerRadius="8,8,0,0">
                                     <Grid ColumnDefinitions="Auto, *, Auto">
@@ -574,140 +431,44 @@
                                             <TextBlock Text="{Binding ManagePagesHeaderTitle}" FontWeight="Bold" FontSize="12.5" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
                                         </StackPanel>
 
+                                        <!-- Quick Switch & Fetch Buttons + Count Badge -->
                                         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                                            <Border Background="{DynamicResource AntigravityCardBrush}" CornerRadius="12" Padding="8,2" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1">
+                                            <Button
+                                                Command="{Binding SwitchToPrimaryProfileCommand}"
+                                                Classes="action-btn"
+                                                Background="#1E293B"
+                                                BorderBrush="#475569"
+                                                BorderThickness="1"
+                                                Padding="8,4"
+                                                ToolTip.Tip="Open Facebook and switch emulator to Primary Personal Profile">
+                                                <StackPanel Orientation="Horizontal" Spacing="5">
+                                                    <materialIcons:MaterialIcon Kind="AccountSwitch" Width="13" Height="13" Foreground="#A78BFA" />
+                                                    <TextBlock Text="Switch to Profile" FontSize="11" FontWeight="SemiBold" Foreground="#C4B5FD" />
+                                                </StackPanel>
+                                            </Button>
+
+                                            <Button
+                                                Command="{Binding FetchDevicePagesCommand}"
+                                                CommandParameter="{Binding SelectedManageInstance}"
+                                                IsEnabled="{Binding !IsBusy}"
+                                                Classes="action-btn"
+                                                Padding="8,4"
+                                                ToolTip.Tip="Extract latest Facebook profile UID, email, and managed pages via Root Shell">
+                                                <StackPanel Orientation="Horizontal" Spacing="5">
+                                                    <materialIcons:MaterialIcon Kind="Refresh" Width="13" Height="13" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                                    <TextBlock Text="Fetch Account Info" FontSize="11" FontWeight="Bold" />
+                                                </StackPanel>
+                                            </Button>
+
+                                            <Border Background="{DynamicResource AntigravityCardBrush}" CornerRadius="6" Padding="8,3" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1">
                                                 <TextBlock Text="{Binding DisplayedManagePages.Count, StringFormat='Showing {0} items'}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
                                             </Border>
                                         </StackPanel>
                                     </Grid>
                                 </Border>
 
-                                <!-- Account Information Showcase Card -->
-                                <Border Grid.Row="1" Margin="10,8,10,6" Padding="14,12" Background="{DynamicResource AntigravityElevatedBrush}" CornerRadius="10" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1">
-                                    <Grid RowDefinitions="Auto, Auto">
-                                        <!-- Top row: Profile Avatar, Name, Badges, Action Buttons -->
-                                        <Grid Grid.Row="0" ColumnDefinitions="Auto, *, Auto" Margin="0,0,0,10">
-                                            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-                                                <Border Width="40" Height="40" CornerRadius="20" Background="#1E3A8A" BorderBrush="#3B82F6" BorderThickness="2">
-                                                    <materialIcons:MaterialIcon Kind="AccountTie" Width="24" Height="24" Foreground="#93C5FD" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                                </Border>
-                                                <StackPanel VerticalAlignment="Center" Spacing="3">
-                                                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                                                        <TextBlock Text="{Binding SelectedAccountName}" FontWeight="Bold" FontSize="15" Foreground="{DynamicResource AntigravityTextBrush}" />
-                                                        <!-- Primary Account Badge (if Profile) -->
-                                                        <Border IsVisible="{Binding IsSelectedAccountProfile}" Background="#1E3A8A" CornerRadius="4" Padding="6,2" VerticalAlignment="Center" BorderBrush="#3B82F6" BorderThickness="1">
-                                                            <StackPanel Orientation="Horizontal" Spacing="4">
-                                                                <materialIcons:MaterialIcon Kind="Crown" Width="11" Height="11" Foreground="#93C5FD" VerticalAlignment="Center" />
-                                                                <TextBlock Text="Primary Profile" FontSize="10" FontWeight="SemiBold" Foreground="#93C5FD" VerticalAlignment="Center" />
-                                                            </StackPanel>
-                                                        </Border>
-                                                        <!-- Facebook Page Badge (if Page) -->
-                                                        <Border IsVisible="{Binding !IsSelectedAccountProfile}" Background="#064E3B" CornerRadius="4" Padding="6,2" VerticalAlignment="Center" BorderBrush="#10B981" BorderThickness="1">
-                                                            <StackPanel Orientation="Horizontal" Spacing="4">
-                                                                <materialIcons:MaterialIcon Kind="FileDocumentOutline" Width="11" Height="11" Foreground="#34D399" VerticalAlignment="Center" />
-                                                                <TextBlock Text="Facebook Page" FontSize="10" FontWeight="SemiBold" Foreground="#34D399" VerticalAlignment="Center" />
-                                                            </StackPanel>
-                                                        </Border>
-                                                        <!-- Active Session Badge -->
-                                                        <Border IsVisible="{Binding IsSelectedAccountActive}" Background="#064E3B" CornerRadius="4" Padding="6,2" VerticalAlignment="Center" BorderBrush="#10B981" BorderThickness="1">
-                                                            <StackPanel Orientation="Horizontal" Spacing="4">
-                                                                <materialIcons:MaterialIcon Kind="CheckCircle" Width="11" Height="11" Foreground="#10B981" VerticalAlignment="Center" />
-                                                                <TextBlock Text="Active Session" FontSize="10" FontWeight="SemiBold" Foreground="#10B981" VerticalAlignment="Center" />
-                                                            </StackPanel>
-                                                        </Border>
-                                                        <!-- Managed Pages Count Badge -->
-                                                        <Border Background="#312E81" CornerRadius="4" Padding="6,2" VerticalAlignment="Center" BorderBrush="#6366F1" BorderThickness="1">
-                                                            <StackPanel Orientation="Horizontal" Spacing="4">
-                                                                <materialIcons:MaterialIcon Kind="FileDocumentMultipleOutline" Width="11" Height="11" Foreground="#C7D2FE" VerticalAlignment="Center" />
-                                                                <TextBlock Text="{Binding ManagePagesPagesCount, StringFormat='{}{0} Managed Pages'}" FontSize="10" FontWeight="SemiBold" Foreground="#C7D2FE" VerticalAlignment="Center" />
-                                                            </StackPanel>
-                                                        </Border>
-                                                    </StackPanel>
-                                                    <TextBlock Text="Facebook Account Credentials, Persona Management &amp; Bloks Switcher" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                                </StackPanel>
-                                            </StackPanel>
-
-                                            <!-- Quick Switch & Fetch Buttons -->
-                                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                                                <Button
-                                                    Command="{Binding SwitchToPrimaryProfileCommand}"
-                                                    Classes="action-btn"
-                                                    Background="#1E293B"
-                                                    BorderBrush="#475569"
-                                                    BorderThickness="1"
-                                                    ToolTip.Tip="Open Facebook and switch emulator to Primary Personal Profile">
-                                                    <StackPanel Orientation="Horizontal" Spacing="6">
-                                                        <materialIcons:MaterialIcon Kind="AccountSwitch" Width="14" Height="14" Foreground="#A78BFA" />
-                                                        <TextBlock Text="Switch to Profile" FontSize="11" FontWeight="SemiBold" Foreground="#C4B5FD" />
-                                                    </StackPanel>
-                                                </Button>
-
-                                                <Button
-                                                    Command="{Binding FetchDevicePagesCommand}"
-                                                    CommandParameter="{Binding SelectedManageInstance}"
-                                                    Classes="action-btn"
-                                                    Background="#2563EB"
-                                                    Foreground="White"
-                                                    ToolTip.Tip="Extract latest Facebook profile UID, email, and managed pages via Root Shell">
-                                                    <StackPanel Orientation="Horizontal" Spacing="6">
-                                                        <materialIcons:MaterialIcon Kind="Refresh" Width="14" Height="14" Foreground="White" />
-                                                        <TextBlock Text="Fetch Account Info" FontSize="11" FontWeight="Bold" />
-                                                    </StackPanel>
-                                                </Button>
-                                            </StackPanel>
-                                        </Grid>
-
-                                        <!-- Bottom row: Details Grid (User UID, Email, Creation Date, Birthdate) -->
-                                        <Grid Grid.Row="1" ColumnDefinitions="*, 8, *, 8, *, 8, *">
-                                            <!-- UID -->
-                                            <Border Grid.Column="0" Background="{DynamicResource AntigravityCardBrush}" CornerRadius="6" Padding="10,7" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1">
-                                                <StackPanel Spacing="3">
-                                                    <StackPanel Orientation="Horizontal" Spacing="4">
-                                                        <materialIcons:MaterialIcon Kind="AccountKeyOutline" Width="13" Height="13" Foreground="#9CA3AF" />
-                                                        <TextBlock Text="USER UID" FontSize="9.5" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                                    </StackPanel>
-                                                    <TextBlock Text="{Binding SelectedAccountUid}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" TextTrimming="CharacterEllipsis" />
-                                                </StackPanel>
-                                            </Border>
-
-                                            <!-- Email -->
-                                            <Border Grid.Column="2" Background="{DynamicResource AntigravityCardBrush}" CornerRadius="6" Padding="10,7" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1">
-                                                <StackPanel Spacing="3">
-                                                    <StackPanel Orientation="Horizontal" Spacing="4">
-                                                        <materialIcons:MaterialIcon Kind="EmailOutline" Width="13" Height="13" Foreground="#60A5FA" />
-                                                        <TextBlock Text="EMAIL" FontSize="9.5" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                                    </StackPanel>
-                                                    <TextBlock Text="{Binding SelectedAccountEmail}" FontSize="11" FontWeight="SemiBold" Foreground="#60A5FA" TextTrimming="CharacterEllipsis" />
-                                                </StackPanel>
-                                            </Border>
-
-                                            <!-- Creation Date -->
-                                            <Border Grid.Column="4" Background="{DynamicResource AntigravityCardBrush}" CornerRadius="6" Padding="10,7" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1">
-                                                <StackPanel Spacing="3">
-                                                    <StackPanel Orientation="Horizontal" Spacing="4">
-                                                        <materialIcons:MaterialIcon Kind="CalendarClock" Width="13" Height="13" Foreground="#34D399" />
-                                                        <TextBlock Text="CREATION DATE" FontSize="9.5" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                                    </StackPanel>
-                                                    <TextBlock Text="{Binding SelectedAccountCreationDate}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" TextTrimming="CharacterEllipsis" />
-                                                </StackPanel>
-                                            </Border>
-
-                                            <!-- Birthdate -->
-                                            <Border Grid.Column="6" Background="{DynamicResource AntigravityCardBrush}" CornerRadius="6" Padding="10,7" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1">
-                                                <StackPanel Spacing="3">
-                                                    <StackPanel Orientation="Horizontal" Spacing="4">
-                                                        <materialIcons:MaterialIcon Kind="CakeVariantOutline" Width="13" Height="13" Foreground="#F472B6" />
-                                                        <TextBlock Text="BIRTHDATE" FontSize="9.5" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                                    </StackPanel>
-                                                    <TextBlock Text="{Binding SelectedAccountBirthdate}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" TextTrimming="CharacterEllipsis" />
-                                                </StackPanel>
-                                            </Border>
-                                        </Grid>
-                                    </Grid>
-                                </Border>
-
                                 <!-- Filter Segmented Bar & Search Box -->
-                                <Border Grid.Row="2" Margin="10,0,10,6" Padding="6,4" Background="{DynamicResource AntigravityElevatedBrush}" CornerRadius="8" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1">
+                                <Border Grid.Row="1" Margin="10,8,10,6" Padding="6,4" Background="{DynamicResource AntigravityElevatedBrush}" CornerRadius="8" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1">
                                     <Grid ColumnDefinitions="Auto, *, Auto">
                                         <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                             <!-- Filter All -->
@@ -825,7 +586,7 @@
                                 </Border>
 
                                 <!-- Modern DataGrid with Badges & Switch Persona Actions + Empty State -->
-                                <Grid Grid.Row="3">
+                                <Grid Grid.Row="2">
                                     <!-- 1. GROUPED VIEW: Profile Cards with Expand/Collapse & Child Pages Table -->
                                     <ScrollViewer
                                         IsVisible="{Binding IsGroupedView}"
@@ -874,8 +635,8 @@
                                                                         Margin="4,0,8,0" />
 
                                                                     <!-- Avatar -->
-                                                                    <Border Grid.Column="2" Width="34" Height="34" CornerRadius="17" Background="#1E3A8A" BorderBrush="#3B82F6" BorderThickness="1.5" VerticalAlignment="Center" Margin="0,0,10,0">
-                                                                        <materialIcons:MaterialIcon Kind="AccountTie" Width="20" Height="20" Foreground="#93C5FD" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                                    <Border Grid.Column="2" Width="34" Height="34" CornerRadius="6" Background="{DynamicResource AntigravityElevatedBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" VerticalAlignment="Center" Margin="0,0,10,0">
+                                                                        <materialIcons:MaterialIcon Kind="AccountTie" Width="20" Height="20" Foreground="{DynamicResource AntigravityTextBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                                                     </Border>
 
                                                                     <!-- Profile Info & Badges -->
@@ -883,21 +644,21 @@
                                                                         <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                                                                             <TextBlock Text="{Binding ProfileName}" FontWeight="Bold" FontSize="13.5" Foreground="{DynamicResource AntigravityTextBrush}" />
                                                                             <!-- Primary Profile Badge -->
-                                                                            <Border IsVisible="{Binding HasProfile}" Background="#1E3A8A" CornerRadius="4" Padding="5,1.5" BorderBrush="#3B82F6" BorderThickness="1" VerticalAlignment="Center">
+                                                                            <Border IsVisible="{Binding HasProfile}" Background="{DynamicResource AntigravityElevatedBrush}" CornerRadius="6" Padding="6,2" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" VerticalAlignment="Center">
                                                                                 <StackPanel Orientation="Horizontal" Spacing="3">
-                                                                                    <materialIcons:MaterialIcon Kind="Crown" Width="10" Height="10" Foreground="#93C5FD" />
-                                                                                    <TextBlock Text="Primary Profile" FontSize="9.5" FontWeight="Bold" Foreground="#93C5FD" />
+                                                                                    <materialIcons:MaterialIcon Kind="Crown" Width="10" Height="10" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                                                                    <TextBlock Text="Primary Profile" FontSize="9.5" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
                                                                                 </StackPanel>
                                                                             </Border>
                                                                             <!-- Device Pill -->
-                                                                            <Border Background="#1E293B" CornerRadius="4" Padding="5,1.5" BorderBrush="#475569" BorderThickness="1" VerticalAlignment="Center">
-                                                                                <TextBlock Text="{Binding DeviceName, StringFormat='Device: {0}'}" FontSize="9.5" FontWeight="SemiBold" Foreground="#CBD5E1" />
+                                                                            <Border Background="{DynamicResource AntigravityElevatedBrush}" CornerRadius="6" Padding="5,1.5" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" VerticalAlignment="Center">
+                                                                                <TextBlock Text="{Binding DeviceName, StringFormat='Device: {0}'}" FontSize="9.5" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                                                             </Border>
                                                                             <!-- Pages Count Badge -->
-                                                                            <Border Background="#312E81" CornerRadius="4" Padding="6,1.5" BorderBrush="#6366F1" BorderThickness="1" VerticalAlignment="Center">
+                                                                            <Border Background="{DynamicResource AntigravityElevatedBrush}" CornerRadius="6" Padding="6,1.5" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" VerticalAlignment="Center">
                                                                                 <StackPanel Orientation="Horizontal" Spacing="3">
-                                                                                    <materialIcons:MaterialIcon Kind="FileDocumentMultipleOutline" Width="10" Height="10" Foreground="#C7D2FE" />
-                                                                                    <TextBlock Text="{Binding PagesCount, StringFormat='{}{0} Pages'}" FontSize="9.5" FontWeight="Bold" Foreground="#C7D2FE" />
+                                                                                    <materialIcons:MaterialIcon Kind="FileDocumentMultipleOutline" Width="10" Height="10" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                                                                    <TextBlock Text="{Binding PagesCount, StringFormat='{}{0} Pages'}" FontSize="9.5" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
                                                                                 </StackPanel>
                                                                             </Border>
                                                                         </StackPanel>
@@ -984,7 +745,7 @@
                                                                                 </DataGridTemplateColumn.CellTemplate>
                                                                             </DataGridTemplateColumn>
 
-                                                                            <DataGridTextColumn Header="No" Binding="{Binding Number}" Width="36" MinWidth="32" IsReadOnly="True" />
+                                                                            <DataGridTextColumn Header="No" Binding="{Binding Number}" Width="46" MinWidth="40" IsReadOnly="True" />
 
                                                                             <DataGridTemplateColumn Header="Type" Width="78" MinWidth="70">
                                                                                 <DataGridTemplateColumn.CellTemplate>
@@ -998,13 +759,13 @@
                                                                                             Cursor="Hand"
                                                                                             ToolTip.Tip="Click to toggle between Page and Profile">
                                                                                             <Panel VerticalAlignment="Center">
-                                                                                                <Border IsVisible="{Binding IsProfile}" Background="#1E3A8A" CornerRadius="4" Padding="5,2" BorderBrush="#3B82F6" BorderThickness="1" HorizontalAlignment="Left">
+                                                                                                <Border IsVisible="{Binding IsProfile}" Background="{DynamicResource AntigravityElevatedBrush}" CornerRadius="6" Padding="6,2" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" HorizontalAlignment="Left">
                                                                                                     <StackPanel Orientation="Horizontal" Spacing="3">
-                                                                                                        <materialIcons:MaterialIcon Kind="Crown" Width="10" Height="10" Foreground="#93C5FD" />
-                                                                                                        <TextBlock Text="Profile" FontSize="9.5" FontWeight="Bold" Foreground="#93C5FD" />
+                                                                                                        <materialIcons:MaterialIcon Kind="Crown" Width="10" Height="10" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                                                                                        <TextBlock Text="Profile" FontSize="9.5" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
                                                                                                     </StackPanel>
                                                                                                 </Border>
-                                                                                                <Border IsVisible="{Binding IsPage}" Background="#064E3B" CornerRadius="4" Padding="5,2" BorderBrush="#10B981" BorderThickness="1" HorizontalAlignment="Left">
+                                                                                                <Border IsVisible="{Binding IsPage}" Background="#064E3B" CornerRadius="6" Padding="6,2" BorderBrush="#10B981" BorderThickness="1" HorizontalAlignment="Left">
                                                                                                     <StackPanel Orientation="Horizontal" Spacing="3">
                                                                                                         <materialIcons:MaterialIcon Kind="FileDocumentOutline" Width="10" Height="10" Foreground="#34D399" />
                                                                                                         <TextBlock Text="Page" FontSize="9.5" FontWeight="Bold" Foreground="#34D399" />
@@ -1126,6 +887,16 @@
                                                                             <DataGridTextColumn Header="Invite" Binding="{Binding PageInvite}" Width="65" MinWidth="50" />
                                                                             <DataGridTextColumn Header="Birthdate" Binding="{Binding Birthdate}" Width="85" MinWidth="70" />
                                                                             <DataGridTextColumn Header="Created" Binding="{Binding CreationDate}" Width="95" MinWidth="75" />
+                                                                            <DataGridTemplateColumn Header="Maturity" Width="78" MinWidth="65">
+                                                                                <DataGridTemplateColumn.CellTemplate>
+                                                                                    <DataTemplate DataType="components:FacebookPageTargetViewModel">
+                                                                                        <Border Background="{DynamicResource AntigravityElevatedBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="5,1" HorizontalAlignment="Left" VerticalAlignment="Center">
+                                                                                            <TextBlock Text="{Binding MaturityName}" FontSize="9.5" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                                                                        </Border>
+                                                                                    </DataTemplate>
+                                                                                </DataGridTemplateColumn.CellTemplate>
+                                                                            </DataGridTemplateColumn>
+                                                                            <DataGridTextColumn Header="Daily Posts" Binding="{Binding DailyPostStatus}" Width="75" MinWidth="60" />
                                                                         </DataGrid.Columns>
                                                                     </DataGrid>
 
@@ -1187,7 +958,7 @@
                                                 </DataGridTemplateColumn.CellTemplate>
                                             </DataGridTemplateColumn>
 
-                                            <DataGridTextColumn Header="No" Binding="{Binding Number}" Width="40" MinWidth="35" IsReadOnly="True" />
+                                            <DataGridTextColumn Header="No" Binding="{Binding Number}" Width="46" MinWidth="40" IsReadOnly="True" />
 
                                             <!-- Persona Type Badge Column (Clickable to toggle between Page and Profile) -->
                                             <DataGridTemplateColumn Header="Type" Width="82" MinWidth="75">
@@ -1203,14 +974,14 @@
                                                             ToolTip.Tip="Click to toggle between Page and Profile">
                                                             <Panel VerticalAlignment="Center">
                                                                 <!-- Profile Pill -->
-                                                                <Border IsVisible="{Binding IsProfile}" Background="#1E3A8A" CornerRadius="4" Padding="5,2" BorderBrush="#3B82F6" BorderThickness="1" HorizontalAlignment="Left">
+                                                                <Border IsVisible="{Binding IsProfile}" Background="{DynamicResource AntigravityElevatedBrush}" CornerRadius="6" Padding="6,2" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" HorizontalAlignment="Left">
                                                                     <StackPanel Orientation="Horizontal" Spacing="3">
-                                                                        <materialIcons:MaterialIcon Kind="Crown" Width="11" Height="11" Foreground="#93C5FD" />
-                                                                        <TextBlock Text="Profile" FontSize="10" FontWeight="Bold" Foreground="#93C5FD" />
+                                                                        <materialIcons:MaterialIcon Kind="Crown" Width="11" Height="11" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                                                        <TextBlock Text="Profile" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
                                                                     </StackPanel>
                                                                 </Border>
                                                                 <!-- Page Pill -->
-                                                                <Border IsVisible="{Binding IsPage}" Background="#064E3B" CornerRadius="4" Padding="5,2" BorderBrush="#10B981" BorderThickness="1" HorizontalAlignment="Left">
+                                                                <Border IsVisible="{Binding IsPage}" Background="#064E3B" CornerRadius="6" Padding="6,2" BorderBrush="#10B981" BorderThickness="1" HorizontalAlignment="Left">
                                                                     <StackPanel Orientation="Horizontal" Spacing="3">
                                                                         <materialIcons:MaterialIcon Kind="FileDocumentOutline" Width="11" Height="11" Foreground="#34D399" />
                                                                         <TextBlock Text="Page" FontSize="10" FontWeight="Bold" Foreground="#34D399" />
@@ -1337,6 +1108,16 @@
                                             <DataGridTextColumn Header="Invite" Binding="{Binding PageInvite}" Width="65" MinWidth="55" />
                                             <DataGridTextColumn Header="Birthdate" Binding="{Binding Birthdate}" Width="90" MinWidth="75" />
                                             <DataGridTextColumn Header="Created" Binding="{Binding CreationDate}" Width="100" MinWidth="80" />
+                                            <DataGridTemplateColumn Header="Maturity" Width="82" MinWidth="70">
+                                                <DataGridTemplateColumn.CellTemplate>
+                                                    <DataTemplate DataType="components:FacebookPageTargetViewModel">
+                                                        <Border Background="{DynamicResource AntigravityElevatedBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="5,1" HorizontalAlignment="Left" VerticalAlignment="Center">
+                                                            <TextBlock Text="{Binding MaturityName}" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </DataGridTemplateColumn.CellTemplate>
+                                            </DataGridTemplateColumn>
+                                            <DataGridTextColumn Header="Daily Posts" Binding="{Binding DailyPostStatus}" Width="80" MinWidth="65" />
                                         </DataGrid.Columns>
                                     </DataGrid>
 
@@ -1346,15 +1127,15 @@
                                             HorizontalAlignment="Stretch"
                                             VerticalAlignment="Stretch">
                                         <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="14" Margin="24">
-                                            <Border Width="64" Height="64" CornerRadius="32" Background="#1E293B" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" HorizontalAlignment="Center">
-                                                <materialIcons:MaterialIcon Kind="AccountSearchOutline" Width="32" Height="32" Foreground="#60A5FA" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                            <Border Width="64" Height="64" CornerRadius="8" Background="{DynamicResource AntigravityPanelBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" HorizontalAlignment="Center">
+                                                <materialIcons:MaterialIcon Kind="AccountSearchOutline" Width="32" Height="32" Foreground="{DynamicResource AntigravityMutedBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                             </Border>
                                             <StackPanel Spacing="4" HorizontalAlignment="Center">
                                                 <TextBlock Text="No Facebook Accounts Discovered Yet" FontWeight="Bold" FontSize="15" HorizontalAlignment="Center" Foreground="{DynamicResource AntigravityTextBrush}" />
                                                 <TextBlock Text="Extract Facebook profile UID, email, and managed pages directly from this instance's root storage."
                                                            FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" TextAlignment="Center" HorizontalAlignment="Center" />
                                             </StackPanel>
-                                            <Button Command="{Binding FetchSelectedPagesInfoCommand}" Classes="action-btn" Background="#16A34A" Foreground="White" HorizontalAlignment="Center" Padding="16,8">
+                                            <Button Command="{Binding FetchSelectedPagesInfoCommand}" IsEnabled="{Binding !IsBusy}" Classes="action-btn" Background="#16A34A" Foreground="White" HorizontalAlignment="Center" Padding="16,8">
                                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                                     <materialIcons:MaterialIcon Kind="LightningBoltOutline" Width="16" Height="16" />
                                                     <TextBlock Text="Fetch Accounts (Root Shell)" FontWeight="SemiBold" FontSize="12" />
@@ -1375,9 +1156,15 @@
                             <TextBlock Text="Saved to %AppData%/855Media/facebook_pages.json" FontSize="11" Foreground="{DynamicResource AntigravityTextMutedBrush}" VerticalAlignment="Center" />
                         </StackPanel>
 
+                        <!-- Live Status Message in Footer Center -->
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding IsBusy}">
+                            <ProgressBar IsIndeterminate="True" Width="120" Height="4" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding StatusSummary}" FontSize="11.5" FontWeight="SemiBold" Foreground="#38BDF8" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="500" />
+                        </StackPanel>
+
                         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10">
-                            <Button Command="{Binding CloseManagePagesCommand}" Content="Cancel" Classes="action-btn" Width="100" />
-                            <Button Command="{Binding SaveAndCloseManagePagesCommand}" Content="Save &amp; Close" Classes="action-btn" Background="#2563EB" Foreground="White" Width="130" />
+                            <Button Command="{Binding CloseManagePagesCommand}" Content="Cancel" Classes="action-btn btn-secondary" Width="100" />
+                            <Button Command="{Binding SaveAndCloseManagePagesCommand}" Content="Save &amp; Close" Classes="action-btn btn-primary" Width="130" />
                         </StackPanel>
                     </Grid>
                 </Grid>
@@ -1390,16 +1177,7 @@
             Background="#E0000000"
             HorizontalAlignment="Stretch"
             VerticalAlignment="Stretch">
-            <Border
-                MaxWidth="940"
-                MaxHeight="650"
-                Margin="20"
-                HorizontalAlignment="Stretch"
-                VerticalAlignment="Stretch"
-                Classes="card-panel"
-                Background="{DynamicResource AntigravityElevatedBrush}"
-                BoxShadow="0 25 70 0 #F0000000"
-                Padding="24">
+            <Border Classes="modal-window">
                 <Grid RowDefinitions="Auto, *, Auto">
                     <!-- Modal Header -->
                     <Grid Grid.Row="0" ColumnDefinitions="*, Auto" Margin="0,0,0,16">
@@ -1443,6 +1221,24 @@
                                     <TextBox Text="{Binding SelectedPageForEdit.UserUid}" Height="32" IsReadOnly="True" />
                                 </StackPanel>
                             </Grid>
+
+                            <!-- Maturity & Daily Post Limits Banner -->
+                            <Border Background="{DynamicResource AntigravityCardBrush}" CornerRadius="8" Padding="12,8" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1">
+                                <Grid ColumnDefinitions="*, *, *">
+                                    <StackPanel Grid.Column="0" Spacing="2">
+                                        <TextBlock Text="PAGE MATURITY" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        <TextBlock Text="{Binding SelectedPageForEdit.MaturityName}" FontSize="12.5" FontWeight="Bold" Foreground="#38BDF8" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Spacing="2">
+                                        <TextBlock Text="POSTS TODAY / LIMIT" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        <TextBlock Text="{Binding SelectedPageForEdit.DailyPostStatus}" FontSize="12.5" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2" Spacing="2">
+                                        <TextBlock Text="CUSTOM MAX POSTS/DAY (0 = Auto)" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        <NumericUpDown Value="{Binding SelectedPageForEdit.CustomMaxDailyPosts, Mode=TwoWay}" Minimum="0" Maximum="50" Height="30" FormatString="0" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
 
                             <!-- Three Media Columns: Reel, Image, Long Video -->
                             <Grid ColumnDefinitions="*, *, *">
@@ -1545,9 +1341,196 @@
 
                     <!-- Save & Cancel Buttons -->
                     <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10" Margin="0,16,0,0">
-                        <Button Command="{Binding CloseUpdatePageCommand}" Content="Cancel" Classes="action-btn" Width="90" />
-                        <Button Command="{Binding SavePageConfigCommand}" Content="Save" Classes="action-btn" Background="#2563EB" Foreground="White" Width="90" />
+                        <Button Command="{Binding CloseUpdatePageCommand}" Content="Cancel" Classes="action-btn btn-secondary" Width="90" />
+                        <Button Command="{Binding SavePageConfigCommand}" Content="Save" Classes="action-btn btn-primary" Width="90" />
                     </StackPanel>
+                </Grid>
+            </Border>
+        </Border>
+
+        <!-- 6. MODAL OVERLAY: AUTOMATION & WARMUP CONFIGURATION -->
+        <Border
+            IsVisible="{Binding IsConfigOpen}"
+            Background="#D0000000"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Stretch">
+            <Border Classes="modal-window">
+                <Grid RowDefinitions="Auto, *, Auto">
+                    <!-- Modal Header -->
+                    <Grid Grid.Row="0" ColumnDefinitions="*, Auto" Margin="0,0,0,14">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <materialIcons:MaterialIcon Kind="TuneVertical" Width="22" Height="22" Foreground="#818CF8" VerticalAlignment="Center" />
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="Automation Configuration &amp; Account Warmup" FontSize="17" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
+                                <TextBlock Text="Account warmup intervals, social actions, posting options, delay timers &amp; behavior" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                            </StackPanel>
+                        </StackPanel>
+                        <Button Grid.Column="1" Command="{Binding CloseConfigCommand}" Padding="6" CornerRadius="6">
+                            <materialIcons:MaterialIcon Kind="Close" Width="18" Height="18" />
+                        </Button>
+                    </Grid>
+
+                    <!-- Content Layout: Scrollable Cards Grid -->
+                    <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                        <Grid ColumnDefinitions="*, *" Margin="0,4,0,4">
+                            <!-- Card 1: ACCOUNT WARMUP & ANTI-BAN -->
+                            <Border Grid.Column="0" Classes="card-panel" Margin="0,0,8,0">
+                                <StackPanel Spacing="12">
+                                    <TextBlock Text="ACCOUNT WARMUP &amp; ANTI-BAN" Classes="section-title" />
+
+                                    <!-- Watch Video -->
+                                    <Grid ColumnDefinitions="Auto, *, Auto, *">
+                                        <CheckBox Grid.Column="0" IsChecked="{Binding IsWatchVideo}" Content="Watch Video" VerticalAlignment="Center" />
+                                        <NumericUpDown Grid.Column="1" Value="{Binding WatchVideoMin}" Minimum="10" Maximum="999" Height="30" Margin="6,0,4,0" FormatString="0" />
+                                        <TextBlock Grid.Column="2" Text="To" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        <NumericUpDown Grid.Column="3" Value="{Binding WatchVideoMax}" Minimum="10" Maximum="999" Height="30" Margin="4,0,0,0" FormatString="0" />
+                                    </Grid>
+
+                                    <!-- Market Place -->
+                                    <Grid ColumnDefinitions="Auto, *, Auto, *">
+                                        <CheckBox Grid.Column="0" IsChecked="{Binding IsMarketPlace}" Content="Market Place" VerticalAlignment="Center" />
+                                        <NumericUpDown Grid.Column="1" Value="{Binding MarketPlaceMin}" Minimum="5" Maximum="999" Height="30" Margin="6,0,4,0" FormatString="0" />
+                                        <TextBlock Grid.Column="2" Text="To" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        <NumericUpDown Grid.Column="3" Value="{Binding MarketPlaceMax}" Minimum="5" Maximum="999" Height="30" Margin="4,0,0,0" FormatString="0" />
+                                    </Grid>
+
+                                    <!-- Like Post -->
+                                    <Grid ColumnDefinitions="Auto, *, Auto, *">
+                                        <CheckBox Grid.Column="0" IsChecked="{Binding IsLikePost}" Content="Like Post" VerticalAlignment="Center" />
+                                        <NumericUpDown Grid.Column="1" Value="{Binding LikePostMin}" Minimum="1" Maximum="50" Height="30" Margin="6,0,4,0" FormatString="0" />
+                                        <TextBlock Grid.Column="2" Text="To" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        <NumericUpDown Grid.Column="3" Value="{Binding LikePostMax}" Minimum="1" Maximum="50" Height="30" Margin="4,0,0,0" FormatString="0" />
+                                    </Grid>
+
+                                    <!-- NewsFeed -->
+                                    <Grid ColumnDefinitions="Auto, *, Auto, *">
+                                        <CheckBox Grid.Column="0" IsChecked="{Binding IsNewsFeed}" Content="NewsFeed" VerticalAlignment="Center" />
+                                        <NumericUpDown Grid.Column="1" Value="{Binding NewsFeedMin}" Minimum="10" Maximum="999" Height="30" Margin="6,0,4,0" FormatString="0" />
+                                        <TextBlock Grid.Column="2" Text="To" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        <NumericUpDown Grid.Column="3" Value="{Binding NewsFeedMax}" Minimum="10" Maximum="999" Height="30" Margin="4,0,0,0" FormatString="0" />
+                                    </Grid>
+
+                                    <!-- Check In -->
+                                    <Grid ColumnDefinitions="Auto, *">
+                                        <CheckBox Grid.Column="0" IsChecked="{Binding IsCheckIn}" Content="Check In" VerticalAlignment="Center" />
+                                        <TextBox Grid.Column="1" Text="{Binding CheckInLocation}" Watermark="Location..." Height="30" Margin="6,0,0,0" />
+                                    </Grid>
+
+                                    <Grid ColumnDefinitions="*, *">
+                                        <CheckBox Grid.Column="0" IsChecked="{Binding IsReadNotification}" Content="Read Notif" />
+                                        <CheckBox Grid.Column="1" IsChecked="{Binding IsClearRecentApp}" Content="Clear Recent" />
+                                    </Grid>
+
+                                    <Separator Height="1" Background="{DynamicResource AntigravityBorderBrush}" Margin="0,4" />
+
+                                    <!-- Social Actions -->
+                                    <TextBlock Text="SOCIAL ACTIONS &amp; FRIENDS" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" />
+
+                                    <Grid ColumnDefinitions="Auto, *, Auto, *">
+                                        <CheckBox Grid.Column="0" IsChecked="{Binding AddFriendSuggest}" Content="Add Sug" VerticalAlignment="Center" />
+                                        <NumericUpDown Grid.Column="1" Value="{Binding AddFriendSuggestMin}" Minimum="0" Maximum="20" Height="30" Margin="6,0,4,0" FormatString="0" />
+                                        <TextBlock Grid.Column="2" Text="To" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        <NumericUpDown Grid.Column="3" Value="{Binding AddFriendSuggestMax}" Minimum="0" Maximum="20" Height="30" Margin="4,0,0,0" FormatString="0" />
+                                    </Grid>
+
+                                    <Grid ColumnDefinitions="Auto, *, Auto, *">
+                                        <CheckBox Grid.Column="0" IsChecked="{Binding AcceptFriends}" Content="Accept" VerticalAlignment="Center" />
+                                        <NumericUpDown Grid.Column="1" Value="{Binding AcceptFriendsMin}" Minimum="0" Maximum="20" Height="30" Margin="6,0,4,0" FormatString="0" />
+                                        <TextBlock Grid.Column="2" Text="To" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        <NumericUpDown Grid.Column="3" Value="{Binding AcceptFriendsMax}" Minimum="0" Maximum="20" Height="30" Margin="4,0,0,0" FormatString="0" />
+                                    </Grid>
+
+                                    <Grid ColumnDefinitions="Auto, *, Auto, *">
+                                        <CheckBox Grid.Column="0" IsChecked="{Binding DeleteFriendRequest}" Content="Del Req" VerticalAlignment="Center" />
+                                        <NumericUpDown Grid.Column="1" Value="{Binding DeleteFriendRequestMin}" Minimum="0" Maximum="20" Height="30" Margin="6,0,4,0" FormatString="0" />
+                                        <TextBlock Grid.Column="2" Text="To" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        <NumericUpDown Grid.Column="3" Value="{Binding DeleteFriendRequestMax}" Minimum="0" Maximum="20" Height="30" Margin="4,0,0,0" FormatString="0" />
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Card 2: POSTING CONFIG & DELAYS -->
+                            <Border Grid.Column="1" Classes="card-panel" Margin="8,0,0,0">
+                                <StackPanel Spacing="12">
+                                    <TextBlock Text="POSTING CONFIG &amp; DELAYS" Classes="section-title" />
+
+                                    <!-- Post Reel -->
+                                    <StackPanel Spacing="6">
+                                        <CheckBox IsChecked="{Binding IsPostReel}" Content="Post Reel" FontWeight="SemiBold" />
+                                        <StackPanel Orientation="Horizontal" Spacing="16" Margin="24,0,0,0">
+                                            <CheckBox IsChecked="{Binding IsDeleteReelFile}" Content="Delete File" FontSize="11.5" />
+                                            <CheckBox IsChecked="{Binding IsBackupReelFile}" Content="Backup File" FontSize="11.5" />
+                                        </StackPanel>
+                                    </StackPanel>
+
+                                    <!-- Post Picture -->
+                                    <StackPanel Spacing="6">
+                                        <CheckBox IsChecked="{Binding IsPostPicture}" Content="Post Picture" FontWeight="SemiBold" />
+                                        <StackPanel Orientation="Horizontal" Spacing="16" Margin="24,0,0,0">
+                                            <CheckBox IsChecked="{Binding IsDeletePictureFile}" Content="Delete File" FontSize="11.5" />
+                                            <CheckBox IsChecked="{Binding IsBackupPictureFile}" Content="Backup File" FontSize="11.5" />
+                                        </StackPanel>
+                                    </StackPanel>
+
+                                    <!-- Post Video -->
+                                    <StackPanel Spacing="6">
+                                        <CheckBox IsChecked="{Binding IsPostVideo}" Content="Post Video" FontWeight="SemiBold" />
+                                        <StackPanel Orientation="Horizontal" Spacing="16" Margin="24,0,0,0">
+                                            <CheckBox IsChecked="{Binding IsDeleteVideoFile}" Content="Delete File" FontSize="11.5" />
+                                            <CheckBox IsChecked="{Binding IsBackupVideoFile}" Content="Backup File" FontSize="11.5" />
+                                        </StackPanel>
+                                    </StackPanel>
+
+                                    <Separator Height="1" Background="{DynamicResource AntigravityBorderBrush}" Margin="0,4" />
+
+                                    <!-- Delays Grid -->
+                                    <Grid ColumnDefinitions="*, *" RowDefinitions="Auto, Auto, Auto, Auto" Margin="0,2,0,0">
+                                        <StackPanel Grid.Row="0" Grid.Column="0" Spacing="2" Margin="0,0,6,8">
+                                            <TextBlock Text="Delay Upload (s)" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                            <NumericUpDown Value="{Binding DelayUpload}" Minimum="1" Maximum="600" Height="30" FormatString="0" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="0" Grid.Column="1" Spacing="2" Margin="6,0,0,8">
+                                            <TextBlock Text="Delay Open App (s)" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                            <NumericUpDown Value="{Binding DelayOpenApp}" Minimum="1" Maximum="600" Height="30" FormatString="0" />
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Row="1" Grid.Column="0" Spacing="2" Margin="0,0,6,8">
+                                            <TextBlock Text="Delay After Open (s)" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                            <NumericUpDown Value="{Binding DelayAfterOpenLD}" Minimum="1" Maximum="600" Height="30" FormatString="0" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="1" Grid.Column="1" Spacing="2" Margin="6,0,0,8">
+                                            <TextBlock Text="Delay Open Each (s)" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                            <NumericUpDown Value="{Binding DelayOpenEachLD}" Minimum="1" Maximum="600" Height="30" FormatString="0" />
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Row="2" Grid.Column="0" Spacing="2" Margin="0,0,6,8">
+                                            <TextBlock Text="Delay Before Close (s)" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                            <NumericUpDown Value="{Binding DelayBeforeCloseLD}" Minimum="1" Maximum="600" Height="30" FormatString="0" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="2" Grid.Column="1" Spacing="2" Margin="6,0,0,8">
+                                            <TextBlock Text="Delay Switch Page (s)" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                            <NumericUpDown Value="{Binding DelayBeforeSwitchPage}" Minimum="1" Maximum="600" Height="30" FormatString="0" />
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <CheckBox IsChecked="{Binding CloseLDAfterAction}" Content="Close LDPlayer After Action" />
+                                    <CheckBox IsChecked="{Binding ClearCacheFBBeforeOpen}" Content="Clear Cache FB Before Open" />
+                                    <CheckBox IsChecked="{Binding AfterPostCheckCopyRight}" Content="After Post Check CopyRight" />
+                                    <CheckBox IsChecked="{Binding SwitchToProfileAfterPost}" Content="Switch To Profile After Post" />
+                                    <CheckBox IsChecked="{Binding SleepPcAfterActionDone}" Content="Sleep PC After Action Done" />
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+                    </ScrollViewer>
+
+                    <!-- Modal Footer -->
+                    <Grid Grid.Row="2" ColumnDefinitions="Auto, *, Auto" Margin="0,14,0,0">
+                        <TextBlock Grid.Column="0" Text="Saved to %AppData%/855Media/autopost_config.json" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10">
+                            <Button Command="{Binding CloseConfigCommand}" Content="Cancel" Classes="action-btn btn-secondary" Width="90" />
+                            <Button Command="{Binding SaveConfigCommand}" Content="Save Configuration" Classes="action-btn btn-primary" Width="150" />
+                        </StackPanel>
+                    </Grid>
                 </Grid>
             </Border>
         </Border>

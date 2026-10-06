@@ -29,8 +29,8 @@ public class LDPlayerService : ILDPlayerService
     [
         @"C:\LDPlayer\LDPlayer9",
         @"D:\LDPlayer\LDPlayer9",
-        @"C:\LDPlayer\LDPlayer4.0",
-        @"D:\LDPlayer\LDPlayer4.0",
+        @"C:\LDPlayer\LDPlayer14",
+        @"D:\LDPlayer\LDPlayer14",
     ];
 
     public string ResolveLdConsolePath(string? customPath = null)
@@ -732,6 +732,187 @@ public class LDPlayerService : ILDPlayerService
         return true;
     }
 
+    public async Task<bool> DeleteFileFromEmulatorAsync(
+        int index,
+        string remotePath,
+        string? customPath = null,
+        CancellationToken cancellationToken = default
+    )
+    {
+        if (string.IsNullOrWhiteSpace(remotePath))
+            return true;
+
+        try
+        {
+            if (await _atxClient.IsRunningAsync(index, cancellationToken))
+            {
+                await _atxClient.ExecuteShellAsync(
+                    index,
+                    $"rm -f \"{remotePath}\"",
+                    cancellationToken
+                );
+            }
+            else
+            {
+                await ExecuteAdbAsync(
+                    index,
+                    $"shell rm -f \"{remotePath}\"",
+                    customPath,
+                    cancellationToken
+                );
+            }
+
+            await ScanMediaFileAsync(index, remotePath, customPath, cancellationToken);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine(
+                $"[LD-{index}] Failed to delete remote file '{remotePath}': {ex.Message}"
+            );
+            return false;
+        }
+    }
+
+    public async Task<bool> WaitForFacebookUploadCompletedAsync(
+        int index,
+        string? remotePath = null,
+        TimeSpan? timeout = null,
+        string? customPath = null,
+        CancellationToken cancellationToken = default
+    )
+    {
+        var effectiveTimeout = timeout ?? TimeSpan.FromSeconds(120);
+        var startTime = DateTime.UtcNow;
+
+        // Grace period: allow Facebook Katana to start the foreground service / transcode
+        try
+        {
+            await Task.Delay(3000, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            return true;
+        }
+
+        try
+        {
+            while (
+                DateTime.UtcNow - startTime < effectiveTimeout
+                && !cancellationToken.IsCancellationRequested
+            )
+            {
+                // 1. Check if Facebook active notification indicates uploading
+                var notifDumpsys = await ExecuteAdbAsync(
+                    index,
+                    "shell dumpsys notification --noredact",
+                    customPath,
+                    cancellationToken
+                );
+
+                var isNotifActive = IsFacebookUploadNotificationActive(notifDumpsys);
+
+                // 2. Check UI hierarchy for ongoing indicators
+                var xml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
+                var isUiPosting =
+                    !string.IsNullOrWhiteSpace(xml)
+                    && (
+                        xml.Contains("Posting...", StringComparison.OrdinalIgnoreCase)
+                        || xml.Contains("Finishing up...", StringComparison.OrdinalIgnoreCase)
+                        || xml.Contains("Uploading...", StringComparison.OrdinalIgnoreCase)
+                    );
+
+                // 3. If file path is specified, check if fuser reports it still open by Facebook
+                var isFileOpen = false;
+                if (!string.IsNullOrWhiteSpace(remotePath))
+                {
+                    var fuserRes = await ExecuteAdbAsync(
+                        index,
+                        $"shell su -c 'fuser \"{remotePath}\"'",
+                        customPath,
+                        cancellationToken
+                    );
+                    isFileOpen =
+                        !string.IsNullOrWhiteSpace(fuserRes)
+                        && char.IsDigit(fuserRes.Trim().FirstOrDefault());
+                }
+
+                // If none of the indicators show ongoing upload, Facebook has finished uploading!
+                if (!isNotifActive && !isUiPosting && !isFileOpen)
+                {
+                    Debug.WriteLine($"[LD-{index}] Facebook upload completed detected.");
+                    return true;
+                }
+
+                await Task.Delay(2500, cancellationToken);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            return true;
+        }
+
+        Debug.WriteLine(
+            $"[LD-{index}] Wait for upload reached timeout ({effectiveTimeout.TotalSeconds}s)."
+        );
+        return true;
+    }
+
+    private static bool IsFacebookUploadNotificationActive(string notifDumpsys)
+    {
+        if (string.IsNullOrWhiteSpace(notifDumpsys))
+            return false;
+
+        using var reader = new StringReader(notifDumpsys);
+        string? line;
+        bool inActiveRecord = false;
+        bool isKatana = false;
+
+        while ((line = reader.ReadLine()) != null)
+        {
+            if (line.Contains("NotificationRecord("))
+            {
+                inActiveRecord = true;
+                isKatana = line.Contains("pkg=com.facebook.katana");
+                if (isKatana && line.Contains("channel=media_upload_notification_channel_id"))
+                    return true;
+            }
+            else if (inActiveRecord)
+            {
+                if (
+                    string.IsNullOrWhiteSpace(line)
+                    || line.StartsWith("  NotificationList")
+                    || line.StartsWith("  mArchive")
+                )
+                {
+                    inActiveRecord = false;
+                    isKatana = false;
+                }
+                else if (isKatana)
+                {
+                    if (
+                        line.Contains("media_upload_notification_channel_id")
+                        || (
+                            line.Contains("flags=0x6a")
+                            || line.Contains("flags=0x62")
+                            || line.Contains("flags=0x40")
+                        )
+                        || (
+                            line.Contains("Posting")
+                            || line.Contains("Uploading")
+                            || line.Contains("Finishing up")
+                        )
+                    )
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
     public async Task<bool> ShareImageToFacebookAsync(
         int index,
         string remotePath,
@@ -775,113 +956,141 @@ public class LDPlayerService : ILDPlayerService
         if (string.IsNullOrWhiteSpace(personaName))
             return false;
 
-        // 1. Check if bottom sheet is already open
-        var currentXml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
-        bool isSwitcherOpen =
-            !string.IsNullOrWhiteSpace(currentXml)
-            && (
-                currentXml.Contains("Create Facebook Page", StringComparison.OrdinalIgnoreCase)
-                || currentXml.Contains("Go to Accounts Center", StringComparison.OrdinalIgnoreCase)
-            );
+        personaName = personaName.Trim();
 
+        // 1. Inspect current screen
+        var currentXml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
+        if (string.IsNullOrWhiteSpace(currentXml))
+        {
+            await LaunchAppAsync(index, "com.facebook.katana", customPath, cancellationToken);
+            await Task.Delay(2000, cancellationToken);
+            currentXml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
+        }
+
+        // 1a. Check if already on the target persona
+        if (IsAlreadyOnTargetPersona(currentXml, personaName))
+        {
+            if (IsAccountSwitcherOpen(currentXml))
+            {
+                await PressBackAsync(index, customPath, cancellationToken);
+                await Task.Delay(800, cancellationToken);
+            }
+            return true;
+        }
+
+        // 1b. Check if direct switch button exists on the current screen (e.g. "Switch to [PageName]")
+        var directBtn = FindDirectSwitchButton(currentXml, personaName);
+        if (directBtn != null)
+        {
+            var (dcx, dcy) = ParseNodeBoundsCenter(directBtn);
+            if (dcx > 0 && dcy > 0)
+            {
+                await TapAsync(index, dcx, dcy, customPath, cancellationToken);
+                await Task.Delay(5000, cancellationToken);
+                return true;
+            }
+        }
+
+        // 2. Open Menu and then profile switcher sheet if not already open
+        bool isSwitcherOpen = IsAccountSwitcherOpen(currentXml);
         if (!isSwitcherOpen)
         {
-            await OpenDeepLinkAsync(
-                index,
-                "fb://menu",
-                "com.facebook.katana",
-                customPath,
-                cancellationToken
-            );
+            await OpenFacebookMenuFromFeedAsync(index, customPath, cancellationToken);
             await Task.Delay(2000, cancellationToken);
-            var menuXml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
+            currentXml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
 
-            if (!string.IsNullOrWhiteSpace(menuXml))
+            if (IsAlreadyOnTargetPersona(currentXml, personaName))
             {
-                if (
-                    menuXml.Contains("Create Facebook Page", StringComparison.OrdinalIgnoreCase)
-                    || menuXml.Contains("Go to Accounts Center", StringComparison.OrdinalIgnoreCase)
-                )
+                return true;
+            }
+
+            directBtn = FindDirectSwitchButton(currentXml, personaName);
+            if (directBtn != null)
+            {
+                var (dcx, dcy) = ParseNodeBoundsCenter(directBtn);
+                if (dcx > 0 && dcy > 0)
                 {
-                    currentXml = menuXml;
+                    await TapAsync(index, dcx, dcy, customPath, cancellationToken);
+                    await Task.Delay(5000, cancellationToken);
+                    return true;
                 }
-                else
-                {
-                    var coords = FindProfileSwitcherCoordinates(menuXml);
-                    if (coords.HasValue)
-                    {
-                        await TapAsync(
-                            index,
-                            coords.Value.X,
-                            coords.Value.Y,
-                            customPath,
-                            cancellationToken
-                        );
-                    }
-                    else
-                    {
-                        var (sw, sh) = ParseScreenDimensions(menuXml);
-                        await TapAsync(
-                            index,
-                            (int)(sw * 0.88),
-                            (int)(sh * 0.13),
-                            customPath,
-                            cancellationToken
-                        );
-                    }
-                    await Task.Delay(2500, cancellationToken);
-                    currentXml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
-                }
+            }
+
+            if (!IsAccountSwitcherOpen(currentXml))
+            {
+                await ClickProfileSwitcherDropdownAsync(index, customPath, cancellationToken);
+                await Task.Delay(2500, cancellationToken);
+                currentXml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
             }
         }
 
-        if (string.IsNullOrWhiteSpace(currentXml))
-            return false;
-
-        // 2. Find target persona in switcher sheet
-        try
+        // 3. Search and tap target persona in switcher sheet (with vertical swipe if off-screen)
+        for (int attempt = 0; attempt < 4; attempt++)
         {
-            var doc = XDocument.Parse(currentXml);
-            var targetNode = doc.Descendants("node")
-                .FirstOrDefault(n =>
-                {
-                    var text = n.Attribute("text")?.Value?.Trim();
-                    if (string.IsNullOrWhiteSpace(text))
-                        text = n.Attribute("content-desc")?.Value?.Trim();
-                    if (string.IsNullOrWhiteSpace(text))
-                        return false;
-                    return text.Equals(personaName, StringComparison.OrdinalIgnoreCase)
-                        || text.Contains(personaName, StringComparison.OrdinalIgnoreCase)
-                        || personaName.Contains(text, StringComparison.OrdinalIgnoreCase);
-                });
+            if (string.IsNullOrWhiteSpace(currentXml))
+                break;
 
-            if (targetNode != null)
+            var match = FindPersonaInSwitcher(currentXml, personaName);
+            if (match.HasValue)
             {
-                var (cx, cy) = ParseNodeBoundsCenter(targetNode);
-                if (cx > 0 && cy > 0)
+                var (cx, cy, isAlreadySelected) = match.Value;
+                if (isAlreadySelected)
                 {
-                    await TapAsync(index, cx, cy, customPath, cancellationToken);
-                    await Task.Delay(4000, cancellationToken);
+                    if (IsAccountSwitcherOpen(currentXml))
+                    {
+                        await PressBackAsync(index, customPath, cancellationToken);
+                        await Task.Delay(800, cancellationToken);
+                    }
+                    return true;
                 }
+
+                await TapAsync(index, cx, cy, customPath, cancellationToken);
+                await Task.Delay(5500, cancellationToken);
+
+                var verifyXml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
+                if (IsAccountSwitcherOpen(verifyXml))
+                {
+                    await PressBackAsync(index, customPath, cancellationToken);
+                    await Task.Delay(1000, cancellationToken);
+                }
+                return true;
+            }
+
+            // Target not visible in current view: scroll down in the switcher bottom sheet
+            if (attempt < 3 && IsAccountSwitcherOpen(currentXml))
+            {
+                var (sw, sh) = ParseScreenDimensions(currentXml);
+                if (sw <= 0)
+                    sw = 720;
+                if (sh <= 0)
+                    sh = 1280;
+                await SwipeAsync(
+                    index,
+                    sw / 2,
+                    (int)(sh * 0.78),
+                    sw / 2,
+                    (int)(sh * 0.40),
+                    durationMs: 400,
+                    customPath,
+                    cancellationToken
+                );
+                await Task.Delay(1500, cancellationToken);
+                currentXml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
+            }
+            else
+            {
+                break;
             }
         }
-        catch { }
 
-        // 3. Ensure switcher sheet is dismissed
-        var verifyXml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
-        if (
-            !string.IsNullOrWhiteSpace(verifyXml)
-            && (
-                verifyXml.Contains("Create Facebook Page", StringComparison.OrdinalIgnoreCase)
-                || verifyXml.Contains("Go to Accounts Center", StringComparison.OrdinalIgnoreCase)
-            )
-        )
+        // If not found or couldn't switch, dismiss open sheet so screen isn't blocked
+        if (IsAccountSwitcherOpen(currentXml))
         {
             await PressBackAsync(index, customPath, cancellationToken);
-            await Task.Delay(1000, cancellationToken);
+            await Task.Delay(800, cancellationToken);
         }
 
-        return true;
+        return false;
     }
 
     /// <summary>
@@ -1054,10 +1263,11 @@ public class LDPlayerService : ILDPlayerService
         var feedXml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
         if (!string.IsNullOrWhiteSpace(feedXml))
         {
-            // Check if already on Menu page
+            // Check if already on Menu / Drawer page
             if (
                 feedXml.Contains("Your shortcuts", StringComparison.OrdinalIgnoreCase)
                 || feedXml.Contains("Go to Accounts Center", StringComparison.OrdinalIgnoreCase)
+                || feedXml.Contains("Open profile switcher", StringComparison.OrdinalIgnoreCase)
                 || feedXml.Contains("Switch profile", StringComparison.OrdinalIgnoreCase)
                 || feedXml.Contains("Create Facebook Page", StringComparison.OrdinalIgnoreCase)
             )
@@ -1070,8 +1280,39 @@ public class LDPlayerService : ILDPlayerService
             {
                 var allNodes = doc.Descendants("node").ToList();
 
-                // 3a. Search by accessibility content-description:
-                // "Menu, tab 6 of 6", "Menu, tab 5 of 5", "Profile, tab", "Account switcher, shortcuts, and settings menu"
+                // 3a. Check for Hamburger Menu icon ☰: desc="Menu" or text="Menu" on header (x1 < 150, y1 < 250)
+                var hamburger = allNodes.FirstOrDefault(n =>
+                {
+                    var desc = n.Attribute("content-desc")?.Value?.Trim();
+                    var text = n.Attribute("text")?.Value?.Trim();
+                    var label = !string.IsNullOrWhiteSpace(desc) ? desc : text;
+                    if (!string.Equals(label, "Menu", StringComparison.OrdinalIgnoreCase))
+                        return false;
+
+                    var b = n.Attribute("bounds")?.Value;
+                    if (string.IsNullOrWhiteSpace(b))
+                        return false;
+                    var m = Regex.Match(b, @"\[(\d+),(\d+)\]\[(\d+),(\d+)\]");
+                    if (!m.Success)
+                        return false;
+                    int x1 = int.Parse(m.Groups[1].Value);
+                    int y1 = int.Parse(m.Groups[2].Value);
+                    return x1 < 150 && y1 < 250;
+                });
+
+                if (hamburger != null)
+                {
+                    var (hcx, hcy) = ParseNodeBoundsCenter(hamburger);
+                    if (hcx > 0 && hcy > 0)
+                    {
+                        await TapAsync(index, hcx, hcy, customPath, cancellationToken);
+                        await Task.Delay(2000, cancellationToken);
+                        return true;
+                    }
+                }
+
+                // 3b. Search by accessibility content-description for Tab 6:
+                // "Menu, tab 6 of 6", "Menu, tab 5 of 5", "Profile, tab 6 of 6", "Account switcher, shortcuts, and settings menu"
                 var menuTab = allNodes.FirstOrDefault(n =>
                 {
                     var desc = n.Attribute("content-desc")?.Value?.Trim();
@@ -1080,41 +1321,17 @@ public class LDPlayerService : ILDPlayerService
                     if (string.IsNullOrWhiteSpace(label))
                         return false;
 
-                    var bounds = n.Attribute("bounds")?.Value;
-                    if (string.IsNullOrWhiteSpace(bounds))
-                        return false;
-                    var m = Regex.Match(bounds, @"\[(\d+),(\d+)\]\[(\d+),(\d+)\]");
-                    if (!m.Success)
-                        return false;
-                    int y1 = int.Parse(m.Groups[2].Value);
-                    int y2 = int.Parse(m.Groups[4].Value);
-
-                    // Must be in navigation bar region (bottom or top bar)
-                    if (y1 < 900 && y2 > 250)
-                        return false;
-
                     return label.StartsWith("Menu, tab", StringComparison.OrdinalIgnoreCase)
                         || label.StartsWith("Profile, tab", StringComparison.OrdinalIgnoreCase)
                         || label.Contains(
                             "shortcuts, and settings menu",
                             StringComparison.OrdinalIgnoreCase
                         )
-                        || label.Contains("Account switcher", StringComparison.OrdinalIgnoreCase)
-                        || string.Equals(label, "Menu", StringComparison.OrdinalIgnoreCase)
-                        || (
-                            string.Equals(label, "Profile", StringComparison.OrdinalIgnoreCase)
-                            && n.Attribute("clickable")?.Value == "true"
-                        );
+                        || label.Contains("Account switcher", StringComparison.OrdinalIgnoreCase);
                 });
 
                 if (menuTab != null)
                 {
-                    if (menuTab.Attribute("selected")?.Value == "true")
-                    {
-                        // Already selected!
-                        return true;
-                    }
-
                     var (cx, cy) = ParseNodeBoundsCenter(menuTab);
                     if (cx > 0 && cy > 0)
                     {
@@ -1124,7 +1341,7 @@ public class LDPlayerService : ILDPlayerService
                     }
                 }
 
-                // 3b. Structural search in XML: Find bottom bar container and rightmost tab
+                // 3c. Structural search in XML: Find bottom bar container and rightmost tab
                 var (swDoc, shDoc) = ParseScreenDimensions(feedXml);
                 if (swDoc <= 0)
                     swDoc = 720;
@@ -1158,10 +1375,6 @@ public class LDPlayerService : ILDPlayerService
                 if (bottomTabs.Count >= 3)
                 {
                     var rightmost = bottomTabs.Last();
-                    if (rightmost.IsSelected)
-                    {
-                        return true;
-                    }
                     await TapAsync(
                         index,
                         rightmost.CenterX,
@@ -1175,15 +1388,32 @@ public class LDPlayerService : ILDPlayerService
             }
         }
 
-        // 4. Proportional fallback: bottom-right navigation bar Menu / Profile tab (approx 92% width, 95% height)
+        // 4. Proportional fallback:
         var (sw, sh) = ParseScreenDimensions(feedXml);
         if (sw <= 0)
             sw = 720;
         if (sh <= 0)
             sh = 1280;
-        int tapX = (int)(sw * 0.92);
-        int tapY = (int)(sh * 0.95);
-        await TapAsync(index, tapX, tapY, customPath, cancellationToken);
+
+        // Try top-left hamburger first (approx 8% width, 7% height, e.g. 52, 92)
+        await TapAsync(index, (int)(sw * 0.08), (int)(sh * 0.07), customPath, cancellationToken);
+        await Task.Delay(2000, cancellationToken);
+
+        var verifyMenu = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
+        if (
+            !string.IsNullOrWhiteSpace(verifyMenu)
+            && (
+                verifyMenu.Contains("Your shortcuts", StringComparison.OrdinalIgnoreCase)
+                || verifyMenu.Contains("Open profile switcher", StringComparison.OrdinalIgnoreCase)
+                || verifyMenu.Contains("Go to Accounts Center", StringComparison.OrdinalIgnoreCase)
+            )
+        )
+        {
+            return true;
+        }
+
+        // Next try top-right tab 6 (approx 92% width, 14% height, e.g. 660, 180)
+        await TapAsync(index, (int)(sw * 0.92), (int)(sh * 0.14), customPath, cancellationToken);
         await Task.Delay(2000, cancellationToken);
         return true;
     }
@@ -1224,7 +1454,7 @@ public class LDPlayerService : ILDPlayerService
                     int y2 = int.Parse(m.Groups[4].Value);
                     int x1 = int.Parse(m.Groups[1].Value);
 
-                    if (y1 >= 48 && y2 <= 280 && x1 >= 300)
+                    if (y1 >= 48 && y2 <= 350 && x1 >= 200)
                     {
                         if (
                             label.Equals("More options", StringComparison.OrdinalIgnoreCase)
@@ -1270,7 +1500,7 @@ public class LDPlayerService : ILDPlayerService
             }
         }
 
-        // Proportional fallback: upper-right of header card (approx 87% width, 18% height for chevron dropdown [v])
+        // Proportional fallback: upper-right of header card (approx 75% width, 12% height for switcher chevron [v])
         var (swMenu, shMenu) = ParseScreenDimensions(menuXml);
         if (swMenu <= 0)
             swMenu = 720;
@@ -1278,8 +1508,8 @@ public class LDPlayerService : ILDPlayerService
             shMenu = 1280;
         await TapAsync(
             index,
-            (int)(swMenu * 0.87),
-            (int)(shMenu * 0.18),
+            (int)(swMenu * 0.75),
+            (int)(shMenu * 0.12),
             customPath,
             cancellationToken
         );
@@ -1468,7 +1698,13 @@ public class LDPlayerService : ILDPlayerService
 
         // 3. Inspect hierarchy for Reel creation wizard
         var xml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
-        if (!string.IsNullOrWhiteSpace(xml))
+        if (
+            !string.IsNullOrWhiteSpace(xml)
+            && (
+                xml.Contains("Create Reel", StringComparison.OrdinalIgnoreCase)
+                || xml.Contains("Share as Reel", StringComparison.OrdinalIgnoreCase)
+            )
+        )
         {
             // If prompt asks "Share as Reel" or "Create Reel"
             await ClickElementByMatchingTextAsync(
@@ -1479,65 +1715,146 @@ public class LDPlayerService : ILDPlayerService
                 cancellationToken
             );
             await Task.Delay(2000, cancellationToken);
+            xml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
+        }
+
+        // 4. In Reel video editor screen (has "Add audio" pill, "Audio", "Edit", "Effects", "Text", "Stickers", "Next")
+        // Loop up to 4 attempts to click Next and advance to Reel Settings / Composer screen
+        for (int attempt = 0; attempt < 4; attempt++)
+        {
+            if (cancellationToken.IsCancellationRequested)
+                break;
 
             xml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
-            // In video trimmer / editor screen, look for "Next" button
-            await ClickElementByMatchingTextAsync(
+
+            // If audio picker or music search modal was accidentally opened, press Back to return to editor
+            if (
+                !string.IsNullOrWhiteSpace(xml)
+                && (
+                    xml.Contains("Search music", StringComparison.OrdinalIgnoreCase)
+                    || xml.Contains("Browse music", StringComparison.OrdinalIgnoreCase)
+                )
+            )
+            {
+                await PressBackAsync(index, customPath, cancellationToken);
+                await Task.Delay(1000, cancellationToken);
+                xml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
+            }
+
+            // Check if already advanced to Reel Settings / Composer screen
+            if (
+                !string.IsNullOrWhiteSpace(xml)
+                && (
+                    xml.Contains("Reel Settings", StringComparison.OrdinalIgnoreCase)
+                    || xml.Contains("Describe your reel", StringComparison.OrdinalIgnoreCase)
+                    || xml.Contains("Share now", StringComparison.OrdinalIgnoreCase)
+                )
+            )
+            {
+                break;
+            }
+
+            // Click Next button
+            bool nextClicked = await ClickElementByMatchingTextAsync(
                 index,
                 xml,
                 ["Next", "Continue"],
                 customPath,
                 cancellationToken
             );
-            await Task.Delay(2000, cancellationToken);
 
-            // In Reel composer: input caption if provided
-            xml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
-            if (!string.IsNullOrWhiteSpace(caption) && !string.IsNullOrWhiteSpace(xml))
+            if (!nextClicked)
             {
-                var captionNode = FindCaptionInputNode(
-                    xml,
-                    [
-                        "Describe your reel",
-                        "Write a caption",
-                        "Write a description",
-                        "Add description",
-                    ]
-                );
-                if (captionNode != null)
-                {
-                    var (cx, cy) = ParseNodeBoundsCenter(captionNode);
-                    if (cx > 0 && cy > 0)
-                    {
-                        await TapAsync(index, cx, cy, customPath, cancellationToken);
-                        await Task.Delay(800, cancellationToken);
-                        await InputTextAsync(index, caption, customPath, cancellationToken);
-                        await Task.Delay(1000, cancellationToken);
-                    }
-                }
+                // Fallback coordinate: bottom right blue Next circle (bounds ~[608,1108][704,1280] on 720x1280)
+                var (sw, sh) = ParseScreenDimensions(xml ?? "");
+                if (sw <= 0)
+                    sw = 720;
+                if (sh <= 0)
+                    sh = 1280;
+                int nx = (int)(sw * 0.91);
+                int ny = (int)(sh * 0.93);
+                await TapAsync(index, nx, ny, customPath, cancellationToken);
             }
 
-            // Click "Share now" or "Share Reel" or "Post"
-            xml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
-            var posted = await ClickElementByMatchingTextAsync(
-                index,
+            await Task.Delay(2500, cancellationToken);
+        }
+
+        // 5. In Reel composer: input caption if provided
+        xml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(caption))
+        {
+            var captionNode = FindCaptionInputNode(
                 xml,
-                ["Share now", "Share reel", "Share Reel", "Share", "Post"],
-                customPath,
-                cancellationToken
+                [
+                    "Describe your reel",
+                    "Describe this reel",
+                    "Write a caption",
+                    "Write a description",
+                    "Add description",
+                    "What's on your mind",
+                    "Say something",
+                ]
             );
-            if (!posted)
+
+            int cx = 0,
+                cy = 0;
+            if (captionNode != null)
+            {
+                (cx, cy) = ParseNodeBoundsCenter(captionNode);
+            }
+
+            if (cx <= 0 || cy <= 0)
             {
                 var (sw, sh) = ParseScreenDimensions(xml ?? "");
-                await TapAsync(
-                    index,
-                    (int)(sw * 0.85),
-                    (int)(sh * 0.95),
-                    customPath,
-                    cancellationToken
-                );
+                if (sw <= 0)
+                    sw = 720;
+                if (sh <= 0)
+                    sh = 1280;
+                cx = (int)(sw * 0.65);
+                cy = (int)(sh * 0.22);
+            }
+
+            if (cx > 0 && cy > 0)
+            {
+                await TapAsync(index, cx, cy, customPath, cancellationToken);
+                await Task.Delay(800, cancellationToken);
+
+                // Ensure ADB Keyboard is active IME before typing
+                await EnableAdbKeyboardAsync(index, customPath, cancellationToken);
+                await Task.Delay(300, cancellationToken);
+
+                await InputTextAsync(index, caption, customPath, cancellationToken);
+                await Task.Delay(1000, cancellationToken);
+
+                // Dismiss keyboard to expose "Share now" clearly
+                await PressBackAsync(index, customPath, cancellationToken);
+                await Task.Delay(600, cancellationToken);
             }
         }
+
+        // 6. Click "Share now" or "Share Reel" or "Post"
+        xml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
+        var posted = await ClickElementByMatchingTextAsync(
+            index,
+            xml,
+            ["Share now", "Share reel", "Share Reel", "Share", "Post"],
+            customPath,
+            cancellationToken
+        );
+        if (!posted)
+        {
+            var (sw, sh) = ParseScreenDimensions(xml ?? "");
+            if (sw <= 0)
+                sw = 720;
+            if (sh <= 0)
+                sh = 1280;
+            // Center of large blue button (spans ~[160,1176][688,1256] on 720x1280)
+            int sx = (int)(sw * 0.50);
+            int sy = (int)(sh * 0.95);
+            await TapAsync(index, sx, sy, customPath, cancellationToken);
+        }
+
+        await Task.Delay(3000, cancellationToken);
 
         return true;
     }
@@ -1591,18 +1908,37 @@ public class LDPlayerService : ILDPlayerService
                         "Write something",
                         "What's on your mind",
                         "Add description",
+                        "Write a caption",
                     ]
                 );
+
+                int cx = 0,
+                    cy = 0;
                 if (captionNode != null)
                 {
-                    var (cx, cy) = ParseNodeBoundsCenter(captionNode);
-                    if (cx > 0 && cy > 0)
+                    (cx, cy) = ParseNodeBoundsCenter(captionNode);
+                }
+
+                if (cx <= 0 || cy <= 0)
+                {
+                    var (sw, sh) = ParseScreenDimensions(xml);
+                    if (sw > 0 && sh > 0)
                     {
-                        await TapAsync(index, cx, cy, customPath, cancellationToken);
-                        await Task.Delay(800, cancellationToken);
-                        await InputTextAsync(index, caption, customPath, cancellationToken);
-                        await Task.Delay(1000, cancellationToken);
+                        cx = sw / 2;
+                        cy = (int)(sh * 0.25);
                     }
+                }
+
+                if (cx > 0 && cy > 0)
+                {
+                    await TapAsync(index, cx, cy, customPath, cancellationToken);
+                    await Task.Delay(1000, cancellationToken);
+
+                    await EnableAdbKeyboardAsync(index, customPath, cancellationToken);
+                    await Task.Delay(300, cancellationToken);
+
+                    await InputTextAsync(index, caption, customPath, cancellationToken);
+                    await Task.Delay(1500, cancellationToken);
                 }
             }
 
@@ -1690,18 +2026,37 @@ public class LDPlayerService : ILDPlayerService
                         "Write something",
                         "What's on your mind",
                         "Describe your video",
+                        "Write a caption",
                     ]
                 );
+
+                int cx = 0,
+                    cy = 0;
                 if (captionNode != null)
                 {
-                    var (cx, cy) = ParseNodeBoundsCenter(captionNode);
-                    if (cx > 0 && cy > 0)
+                    (cx, cy) = ParseNodeBoundsCenter(captionNode);
+                }
+
+                if (cx <= 0 || cy <= 0)
+                {
+                    var (sw, sh) = ParseScreenDimensions(xml);
+                    if (sw > 0 && sh > 0)
                     {
-                        await TapAsync(index, cx, cy, customPath, cancellationToken);
-                        await Task.Delay(800, cancellationToken);
-                        await InputTextAsync(index, caption, customPath, cancellationToken);
-                        await Task.Delay(1000, cancellationToken);
+                        cx = sw / 2;
+                        cy = (int)(sh * 0.25);
                     }
+                }
+
+                if (cx > 0 && cy > 0)
+                {
+                    await TapAsync(index, cx, cy, customPath, cancellationToken);
+                    await Task.Delay(1000, cancellationToken);
+
+                    await EnableAdbKeyboardAsync(index, customPath, cancellationToken);
+                    await Task.Delay(300, cancellationToken);
+
+                    await InputTextAsync(index, caption, customPath, cancellationToken);
+                    await Task.Delay(1500, cancellationToken);
                 }
             }
 
@@ -1738,30 +2093,64 @@ public class LDPlayerService : ILDPlayerService
         CancellationToken ct
     )
     {
+        if (await _atxClient.IsRunningAsync(index, ct))
+        {
+            foreach (var candidate in candidates)
+            {
+                if (
+                    await _atxClient.ClickElementAsync(
+                        index,
+                        text: candidate,
+                        cancellationToken: ct
+                    )
+                )
+                    return true;
+                if (
+                    await _atxClient.ClickElementAsync(
+                        index,
+                        contentDesc: candidate,
+                        cancellationToken: ct
+                    )
+                )
+                    return true;
+            }
+        }
+
         if (string.IsNullOrWhiteSpace(xml))
             return false;
 
         try
         {
-            var doc = XDocument.Parse(xml);
-            foreach (var candidate in candidates)
+            var docs = SafeParseXmlDocuments(xml);
+            foreach (var doc in docs)
             {
-                var match = doc.Descendants("node")
-                    .FirstOrDefault(n =>
-                    {
-                        var text = n.Attribute("text")?.Value?.Trim();
-                        var desc = n.Attribute("content-desc")?.Value?.Trim();
-                        return string.Equals(text, candidate, StringComparison.OrdinalIgnoreCase)
-                            || string.Equals(desc, candidate, StringComparison.OrdinalIgnoreCase);
-                    });
-
-                if (match != null)
+                foreach (var candidate in candidates)
                 {
-                    var (cx, cy) = ParseNodeBoundsCenter(match);
-                    if (cx > 0 && cy > 0)
+                    var match = doc.Descendants("node")
+                        .FirstOrDefault(n =>
+                        {
+                            var text = n.Attribute("text")?.Value?.Trim();
+                            var desc = n.Attribute("content-desc")?.Value?.Trim();
+                            return string.Equals(
+                                    text,
+                                    candidate,
+                                    StringComparison.OrdinalIgnoreCase
+                                )
+                                || string.Equals(
+                                    desc,
+                                    candidate,
+                                    StringComparison.OrdinalIgnoreCase
+                                );
+                        });
+
+                    if (match != null)
                     {
-                        await TapAsync(index, cx, cy, customPath, ct);
-                        return true;
+                        var (cx, cy) = ParseNodeBoundsCenter(match);
+                        if (cx > 0 && cy > 0)
+                        {
+                            await TapAsync(index, cx, cy, customPath, ct);
+                            return true;
+                        }
                     }
                 }
             }
@@ -1796,9 +2185,40 @@ public class LDPlayerService : ILDPlayerService
                     return match;
             }
 
+            // Look for explicit edit text or autocomplete views
+            var editNode = nodes.FirstOrDefault(n =>
+            {
+                var cls = n.Attribute("class")?.Value ?? "";
+                return cls.Contains("EditText", StringComparison.OrdinalIgnoreCase)
+                    || cls.Contains("AutoCompleteTextView", StringComparison.OrdinalIgnoreCase)
+                    || cls.Contains("TextInput", StringComparison.OrdinalIgnoreCase);
+            });
+            if (editNode != null)
+                return editNode;
+
+            // Look for resource-id containing caption or description
+            var resNode = nodes.FirstOrDefault(n =>
+            {
+                var res = n.Attribute("resource-id")?.Value ?? "";
+                return res.Contains("caption", StringComparison.OrdinalIgnoreCase)
+                    || res.Contains("description", StringComparison.OrdinalIgnoreCase)
+                    || res.Contains("composer_text", StringComparison.OrdinalIgnoreCase)
+                    || res.Contains("text_input", StringComparison.OrdinalIgnoreCase);
+            });
+            if (resNode != null)
+                return resNode;
+
+            // Fallback: any focusable view in the upper half of screen
             return nodes.FirstOrDefault(n =>
-                (n.Attribute("class")?.Value ?? "").Contains("EditText")
-            );
+            {
+                var focusable = string.Equals(
+                    n.Attribute("focusable")?.Value,
+                    "true",
+                    StringComparison.OrdinalIgnoreCase
+                );
+                var (x, y) = ParseNodeBoundsCenter(n);
+                return focusable && y > 100 && y < 750;
+            });
         }
         catch
         {
@@ -3524,11 +3944,14 @@ public class LDPlayerService : ILDPlayerService
                 if (string.IsNullOrWhiteSpace(label))
                     continue;
 
-                if (
-                    label.StartsWith("Switch to ", StringComparison.OrdinalIgnoreCase)
-                    || label.StartsWith("Switch into ", StringComparison.OrdinalIgnoreCase)
-                    || label.Equals("Switch profile", StringComparison.OrdinalIgnoreCase)
-                )
+                bool isSwitchPhrase =
+                    label.Contains("switch into", StringComparison.OrdinalIgnoreCase)
+                    || label.Contains("switch to", StringComparison.OrdinalIgnoreCase)
+                    || label.Contains("switch profile", StringComparison.OrdinalIgnoreCase)
+                    || label.StartsWith("Switch to ", StringComparison.OrdinalIgnoreCase)
+                    || label.StartsWith("Switch into ", StringComparison.OrdinalIgnoreCase);
+
+                if (isSwitchPhrase)
                 {
                     if (!string.IsNullOrWhiteSpace(targetProfileName))
                     {
@@ -3542,6 +3965,160 @@ public class LDPlayerService : ILDPlayerService
                 }
             }
         }
+        return null;
+    }
+
+    public static bool IsAccountSwitcherOpen(string? xml)
+    {
+        if (string.IsNullOrWhiteSpace(xml))
+            return false;
+
+        return xml.Contains("Create Facebook Page", StringComparison.OrdinalIgnoreCase)
+            || xml.Contains("Go to Accounts Center", StringComparison.OrdinalIgnoreCase)
+            || xml.Contains("Go to Meta Account settings", StringComparison.OrdinalIgnoreCase)
+            || xml.Contains("Meta Account settings", StringComparison.OrdinalIgnoreCase)
+            || (
+                xml.Contains("Dismiss", StringComparison.OrdinalIgnoreCase)
+                && xml.Contains("Page", StringComparison.OrdinalIgnoreCase)
+            );
+    }
+
+    public static bool IsAlreadyOnTargetPersona(string? xml, string personaName)
+    {
+        if (string.IsNullOrWhiteSpace(xml) || string.IsNullOrWhiteSpace(personaName))
+            return false;
+
+        // If in switcher sheet, check if target persona is marked selected
+        if (IsAccountSwitcherOpen(xml))
+        {
+            var match = FindPersonaInSwitcher(xml, personaName);
+            return match.HasValue && match.Value.IsSelected;
+        }
+
+        // Check if top header card contains personaName
+        var docs = SafeParseXmlDocuments(xml);
+        foreach (var doc in docs)
+        {
+            var nodes = doc.Descendants("node").ToList();
+            var activeHeaderNode = nodes.FirstOrDefault(n =>
+            {
+                var text = n.Attribute("text")?.Value?.Trim();
+                var desc = n.Attribute("content-desc")?.Value?.Trim();
+                var label = !string.IsNullOrWhiteSpace(text) ? text : desc;
+                if (string.IsNullOrWhiteSpace(label))
+                    return false;
+
+                var (cx, cy) = ParseNodeBoundsCenter(n);
+                if (cy > 0 && cy < 350)
+                {
+                    if (
+                        string.Equals(label, personaName, StringComparison.OrdinalIgnoreCase)
+                        || label.Equals(
+                            $"{personaName}, see your profile",
+                            StringComparison.OrdinalIgnoreCase
+                        )
+                        || label.StartsWith($"{personaName},", StringComparison.OrdinalIgnoreCase)
+                    )
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            });
+
+            if (activeHeaderNode != null)
+                return true;
+        }
+
+        return false;
+    }
+
+    public static (int X, int Y, bool IsSelected)? FindPersonaInSwitcher(
+        string? switcherXml,
+        string personaName
+    )
+    {
+        if (string.IsNullOrWhiteSpace(switcherXml) || string.IsNullOrWhiteSpace(personaName))
+            return null;
+
+        var docs = SafeParseXmlDocuments(switcherXml);
+        foreach (var doc in docs)
+        {
+            var allNodes = doc.Descendants("node").ToList();
+            var candidates =
+                new List<(
+                    XElement Node,
+                    string Label,
+                    bool IsExact,
+                    bool IsSelected,
+                    int X,
+                    int Y
+                )>();
+
+            foreach (var node in allNodes)
+            {
+                var text = node.Attribute("text")?.Value?.Trim();
+                var desc = node.Attribute("content-desc")?.Value?.Trim();
+                var label = !string.IsNullOrWhiteSpace(text) ? text : desc;
+                if (string.IsNullOrWhiteSpace(label))
+                    continue;
+
+                // Skip non-persona items
+                if (
+                    IsIgnoredSwitcherHeaderOrAction(label)
+                    || IsNotificationSubtitle(label)
+                    || string.Equals(label, "Page", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(label, "Page profile", StringComparison.OrdinalIgnoreCase)
+                )
+                {
+                    continue;
+                }
+
+                bool isExact = string.Equals(
+                    label,
+                    personaName,
+                    StringComparison.OrdinalIgnoreCase
+                );
+                bool isMatch =
+                    isExact
+                    || label.StartsWith(personaName, StringComparison.OrdinalIgnoreCase)
+                    || label.Contains(personaName, StringComparison.OrdinalIgnoreCase)
+                    || personaName.Contains(label, StringComparison.OrdinalIgnoreCase);
+
+                if (!isMatch)
+                    continue;
+
+                var (cx, cy) = ParseNodeBoundsCenter(node);
+                if (cx <= 0 || cy <= 0)
+                    continue;
+
+                // Check if marked selected="true"
+                bool isSelected =
+                    node.Attribute("selected")?.Value == "true"
+                    || node.Ancestors("node")
+                        .Take(4)
+                        .Any(a => a.Attribute("selected")?.Value == "true");
+
+                candidates.Add((node, label, isExact, isSelected, cx, cy));
+            }
+
+            if (candidates.Count > 0)
+            {
+                var best = candidates.FirstOrDefault(c => c.IsExact);
+                if (best.Node == null)
+                {
+                    best = candidates.FirstOrDefault(c =>
+                        c.Label.StartsWith(personaName, StringComparison.OrdinalIgnoreCase)
+                    );
+                    if (best.Node == null)
+                    {
+                        best = candidates[0];
+                    }
+                }
+                return (best.X, best.Y, best.IsSelected);
+            }
+        }
+
         return null;
     }
 
@@ -4163,15 +4740,22 @@ public class LDPlayerService : ILDPlayerService
 
         if (await _atxClient.IsRunningAsync(index, cancellationToken))
         {
-            return await _atxClient.InputTextAsync(index, text, cancellationToken);
+            var atxSent = await _atxClient.InputTextAsync(index, text, cancellationToken);
+            if (atxSent)
+                return true;
         }
 
-        // ADB Fallback: If text contains non-ASCII characters, newlines, or quotes, use ADBKeyboard Base64
-        bool requiresAdbKeyboard = text.Any(c =>
-            c > 127 || c == '\n' || c == '\r' || c == '"' || c == '\''
-        );
-        if (requiresAdbKeyboard)
+        // Check & enable ADB Keyboard for full Unicode/Emoji/linebreaks support
+        bool isInstalled = await IsAdbKeyboardInstalledAsync(index, customPath, cancellationToken);
+        if (!isInstalled)
         {
+            await InstallAdbKeyboardAsync(index, null, customPath, cancellationToken);
+            isInstalled = await IsAdbKeyboardInstalledAsync(index, customPath, cancellationToken);
+        }
+
+        if (isInstalled)
+        {
+            await EnableAdbKeyboardAsync(index, customPath, cancellationToken);
             var sent = await InputTextAdbKeyboardAsync(
                 index,
                 text,
@@ -4183,8 +4767,27 @@ public class LDPlayerService : ILDPlayerService
                 return true;
         }
 
-        var escaped = text.Replace(" ", "%s").Replace("\"", "\\\"").Replace("'", "\\'");
-        await ExecuteAdbAsync(index, $"shell input text {escaped}", customPath, cancellationToken);
+        // Fallback: ADB shell input text (safe escaping for special characters)
+        var escaped = text.Replace("\\", "\\\\")
+            .Replace("\"", "\\\"")
+            .Replace("'", "\\'")
+            .Replace(" ", "%s")
+            .Replace("#", "\\#")
+            .Replace("&", "\\&")
+            .Replace("(", "\\(")
+            .Replace(")", "\\)")
+            .Replace("<", "\\<")
+            .Replace(">", "\\>")
+            .Replace(";", "\\;")
+            .Replace("|", "\\|")
+            .Replace("$", "\\$");
+
+        await ExecuteAdbAsync(
+            index,
+            $"shell input text \"{escaped}\"",
+            customPath,
+            cancellationToken
+        );
         return true;
     }
 
@@ -4206,6 +4809,9 @@ public class LDPlayerService : ILDPlayerService
             );
         }
 
+        // Ensure ADB Keyboard is active IME before broadcasting
+        await EnableAdbKeyboardAsync(index, customPath, cancellationToken);
+
         if (clearFirst)
         {
             await ClearTextAdbKeyboardAsync(index, customPath, cancellationToken);
@@ -4221,7 +4827,8 @@ public class LDPlayerService : ILDPlayerService
             customPath,
             cancellationToken
         );
-        return !string.IsNullOrWhiteSpace(output);
+        return !string.IsNullOrWhiteSpace(output)
+            && !output.Contains("Error", StringComparison.OrdinalIgnoreCase);
     }
 
     public async Task<bool> ClearTextAdbKeyboardAsync(
@@ -4345,7 +4952,7 @@ public class LDPlayerService : ILDPlayerService
 
         var output = await ExecuteAdbAsync(
             index,
-            $"shell ime enable {AdbKeyboardConstants.ImeComponent} && ime set {AdbKeyboardConstants.ImeComponent}",
+            $"shell ime enable {AdbKeyboardConstants.ImeComponent} && ime set {AdbKeyboardConstants.ImeComponent} && settings put secure default_input_method {AdbKeyboardConstants.ImeComponent}",
             customPath,
             cancellationToken
         );

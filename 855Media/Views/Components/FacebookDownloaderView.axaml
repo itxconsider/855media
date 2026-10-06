@@ -72,7 +72,7 @@
                     Background="{DynamicResource AntigravityBackgroundBrush}"
                     BorderBrush="{DynamicResource AntigravityBorderBrush}"
                     BorderThickness="1"
-                    CornerRadius="18">
+                    CornerRadius="6">
                     <Grid ColumnDefinitions="Auto,*,Auto">
                         <materialIcons:MaterialIcon
                             Grid.Column="0"
@@ -100,6 +100,7 @@
                             Width="36"
                             Height="34"
                             Padding="0"
+                            CornerRadius="0,6,6,0"
                             Command="{Binding NavigateCommand}"
                             Theme="{DynamicResource MaterialFlatButton}"
                             ToolTip.Tip="Go">
@@ -117,7 +118,7 @@
                     <!--  Auto-Scrape Button  -->
                     <Button
                         Command="{Binding ToggleScrapingCommand}"
-                        CornerRadius="16"
+                        CornerRadius="8"
                         Padding="12,6"
                         Theme="{DynamicResource MaterialFlatButton}"
                         ToolTip.Tip="Automatically scrolls the page and collects high-resolution album photos">
@@ -144,14 +145,13 @@
                     <!--  Import Photos Button  -->
                     <Button
                         Command="{Binding ImportPhotosCommand}"
-                        Background="{DynamicResource AntigravityAccentBrush}"
-                        Foreground="{DynamicResource AntigravityAccentForegroundBrush}"
-                        CornerRadius="16"
+                        Classes="btn-primary"
+                        CornerRadius="8"
                         Padding="14,6"
                         Theme="{DynamicResource MaterialFlatButton}"
                         ToolTip.Tip="Import all detected photos on this page into 855Media download queue">
                         <StackPanel Orientation="Horizontal" Spacing="6">
-                            <materialIcons:MaterialIcon Width="16" Height="16" Foreground="{DynamicResource AntigravityAccentForegroundBrush}" Kind="Download" />
+                            <materialIcons:MaterialIcon Width="16" Height="16" Kind="Download" />
                             <TextBlock
                                 Text="{Binding DetectedPhotosCount, StringFormat='Import ({0})'}"
                                 VerticalAlignment="Center"
@@ -209,7 +209,7 @@
                     Background="{DynamicResource AntigravityBackgroundBrush}"
                     BorderBrush="{DynamicResource AntigravityBorderBrush}"
                     BorderThickness="1"
-                    CornerRadius="18"
+                    CornerRadius="6"
                     FontSize="13"
                     Padding="14,0"
                     Text="{Binding Query}"
@@ -220,13 +220,12 @@
                     Margin="8,0,0,0"
                     Height="36"
                     Padding="14,0"
-                    Background="{DynamicResource AntigravityAccentBrush}"
+                    Classes="btn-primary"
                     Command="{Binding ProcessQueryCommand}"
-                    CornerRadius="18"
-                    Foreground="{DynamicResource AntigravityAccentForegroundBrush}"
+                    CornerRadius="8"
                     Theme="{DynamicResource MaterialFlatButton}">
                     <StackPanel Orientation="Horizontal" Spacing="6">
-                        <materialIcons:MaterialIcon Width="16" Height="16" Foreground="{DynamicResource AntigravityAccentForegroundBrush}" Kind="Download" />
+                        <materialIcons:MaterialIcon Width="16" Height="16" Kind="Download" />
                         <TextBlock Text="Download" VerticalAlignment="Center" FontSize="13" FontWeight="Bold" />
                     </StackPanel>
                 </Button>
@@ -236,8 +235,9 @@
                     Margin="8,0,0,0"
                     Height="36"
                     Padding="12,0"
+                    Classes="btn-secondary"
                     Command="{Binding AutoFetchInBrowserCommand}"
-                    CornerRadius="18"
+                    CornerRadius="8"
                     Theme="{DynamicResource MaterialFlatButton}"
                     ToolTip.Tip="Launch external Chrome browser with extension helper">
                     <StackPanel Orientation="Horizontal" Spacing="6">

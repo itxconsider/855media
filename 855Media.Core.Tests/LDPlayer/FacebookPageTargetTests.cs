@@ -147,4 +147,147 @@ public class FacebookPageTargetTests : IDisposable
         Assert.Equal(0, target.PictureCount);
         Assert.Equal("0", target.FileInGroup);
     }
+
+    [Fact]
+    public void AutoPostTaskItem_StatusChange_FiresPropertyChanged()
+    {
+        var task = new AutoPostTaskItem { Status = "Queued" };
+        string? changedProp = null;
+        task.PropertyChanged += (_, e) => changedProp = e.PropertyName;
+
+        task.Status = "In Progress";
+
+        Assert.Equal("Status", changedProp);
+        Assert.Equal("In Progress", task.Status);
+    }
+
+    [Theory]
+    [InlineData("Joined Facebook in October 2021", 2021, 10, 1)]
+    [InlineData("Account created: January 15, 2024", 2024, 1, 15)]
+    [InlineData("Member since July 2023", 2023, 7, 1)]
+    [InlineData("Joined 2020", 2020, 1, 1)]
+    [InlineData("2024-05-10", 2024, 5, 10)]
+    public void TryParseCreationDate_ValidFormats_ReturnsCorrectDate(
+        string input,
+        int expectedYear,
+        int expectedMonth,
+        int expectedDay
+    )
+    {
+        var parsed = FacebookPageTarget.TryParseCreationDate(input);
+        Assert.NotNull(parsed);
+        Assert.Equal(expectedYear, parsed.Value.Year);
+        Assert.Equal(expectedMonth, parsed.Value.Month);
+        Assert.Equal(expectedDay, parsed.Value.Day);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("Not Set")]
+    [InlineData("Not Discovered")]
+    [InlineData("N/A")]
+    public void TryParseCreationDate_InvalidOrUnset_ReturnsNull(string? input)
+    {
+        var parsed = FacebookPageTarget.TryParseCreationDate(input);
+        Assert.Null(parsed);
+    }
+
+    [Fact]
+    public void GetPageMaturity_AgedAccount_ReturnsMature()
+    {
+        var target = new FacebookPageTarget
+        {
+            CreationDate = DateTime.Now.AddDays(-120).ToString("yyyy-MM-dd"),
+        };
+        Assert.Equal(PageMaturityLevel.Mature, target.GetPageMaturity());
+        Assert.Equal(10, target.GetMaxDailyPostsLimit());
+    }
+
+    [Fact]
+    public void GetPageMaturity_DevelopingAccount_ReturnsGrowing()
+    {
+        var target = new FacebookPageTarget
+        {
+            CreationDate = DateTime.Now.AddDays(-50).ToString("yyyy-MM-dd"),
+        };
+        Assert.Equal(PageMaturityLevel.Growing, target.GetPageMaturity());
+        Assert.Equal(5, target.GetMaxDailyPostsLimit());
+    }
+
+    [Fact]
+    public void GetPageMaturity_BrandNewAccount_ReturnsNew()
+    {
+        var target = new FacebookPageTarget
+        {
+            CreationDate = DateTime.Now.AddDays(-10).ToString("yyyy-MM-dd"),
+        };
+        Assert.Equal(PageMaturityLevel.New, target.GetPageMaturity());
+        Assert.Equal(3, target.GetMaxDailyPostsLimit());
+    }
+
+    [Fact]
+    public void GetPageMaturity_MissingCreationDate_FallsBackToFollowersAndContent()
+    {
+        var matureByFollowers = new FacebookPageTarget
+        {
+            CreationDate = "Not Set",
+            Followers = 600,
+        };
+        Assert.Equal(PageMaturityLevel.Mature, matureByFollowers.GetPageMaturity());
+
+        var growingByPosts = new FacebookPageTarget
+        {
+            CreationDate = "",
+            ReelsCount = 8,
+            VideosCount = 4,
+        };
+        Assert.Equal(PageMaturityLevel.Growing, growingByPosts.GetPageMaturity());
+
+        var brandNew = new FacebookPageTarget
+        {
+            CreationDate = "",
+            Followers = 5,
+            ReelsCount = 1,
+        };
+        Assert.Equal(PageMaturityLevel.New, brandNew.GetPageMaturity());
+    }
+
+    [Fact]
+    public void CustomMaxDailyPosts_OverridesMaturityLimit()
+    {
+        var target = new FacebookPageTarget
+        {
+            CreationDate = DateTime.Now.AddDays(-10).ToString("yyyy-MM-dd"), // New -> default 3
+            CustomMaxDailyPosts = 12,
+        };
+        Assert.Equal(12, target.GetMaxDailyPostsLimit());
+    }
+
+    [Fact]
+    public void DailyPostsTracking_RecordsAndCalculatesLimitsCorrectly()
+    {
+        var target = new FacebookPageTarget
+        {
+            CreationDate = DateTime.Now.AddDays(-10).ToString("yyyy-MM-dd"), // New -> limit 3
+        };
+
+        Assert.Equal(0, target.GetPostsToday());
+        Assert.False(target.HasReachedDailyLimit());
+
+        target.RecordPostToday();
+        target.RecordPostToday();
+        Assert.Equal(2, target.GetPostsToday());
+        Assert.False(target.HasReachedDailyLimit());
+
+        target.RecordPostToday();
+        Assert.Equal(3, target.GetPostsToday());
+        Assert.True(target.HasReachedDailyLimit());
+
+        // Yesterday's posts shouldn't count today
+        target.LastPostDate = DateTime.Today.AddDays(-1).ToString("yyyy-MM-dd");
+        Assert.Equal(0, target.GetPostsToday());
+        Assert.False(target.HasReachedDailyLimit());
+    }
 }

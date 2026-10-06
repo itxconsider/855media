@@ -1,4 +1,4 @@
-<UserControl
+﻿<UserControl
     x:Class="_855Media.Views.Components.VideoUpscalerView"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -17,7 +17,7 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Foreground" Value="{DynamicResource AntigravityMutedBrush}" />
             <Setter Property="Padding" Value="14,6" />
-            <Setter Property="CornerRadius" Value="16" />
+            <Setter Property="CornerRadius" Value="8" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="FontSize" Value="12.5" />
             <Setter Property="Focusable" Value="False" />
@@ -37,12 +37,13 @@
                 <Setter Property="RenderTransform" Value="scale(0.97)" />
             </Style>
             <Style Selector="^.active">
-                <Setter Property="Background" Value="{DynamicResource AntigravityAccentBrush}" />
-                <Setter Property="Foreground" Value="{DynamicResource AntigravityAccentForegroundBrush}" />
+                <Setter Property="Background" Value="#FFFFFF" />
+                <Setter Property="Foreground" Value="#000000" />
+                <Setter Property="FontWeight" Value="Bold" />
             </Style>
             <Style Selector="^.active:pointerover">
-                <Setter Property="Background" Value="{DynamicResource AntigravityAccentBrush}" />
-                <Setter Property="Foreground" Value="{DynamicResource AntigravityAccentForegroundBrush}" />
+                <Setter Property="Background" Value="#FFFFFF" />
+                <Setter Property="Foreground" Value="#000000" />
                 <Setter Property="RenderTransform" Value="scale(1.02)" />
             </Style>
         </Style>
@@ -50,7 +51,7 @@
         <!-- Quick Toggle Pill / Chip Style -->
         <Style Selector="CheckBox.quick-chip">
             <Setter Property="Padding" Value="10,4" />
-            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="CornerRadius" Value="6" />
             <Setter Property="FontSize" Value="12" />
             <Setter Property="FontWeight" Value="SemiBold" />
         </Style>
@@ -96,7 +97,7 @@
                             Background="{DynamicResource AntigravityElevatedBrush}"
                             BorderBrush="{DynamicResource AntigravityBorderBrush}"
                             BorderThickness="1"
-                            CornerRadius="10"
+                            CornerRadius="6"
                             Padding="7,2"
                             VerticalAlignment="Center">
                             <TextBlock
@@ -115,7 +116,7 @@
                         Background="#0DFFFFFF"
                         BorderBrush="{DynamicResource AntigravityBorderBrush}"
                         BorderThickness="1"
-                        CornerRadius="20"
+                        CornerRadius="6"
                         Padding="12,5"
                         Margin="8,0"
                         ToolTip.Tip="Real-time GPU, VRAM, and CPU telemetry">
@@ -185,7 +186,7 @@
                                     Command="{Binding OpenOutputFolderCommand}"
                                     Theme="{DynamicResource MaterialFlatButton}"
                                     Padding="4,2"
-                                    CornerRadius="4"
+                                    CornerRadius="6"
                                     ToolTip.Tip="Open Folder">
                                     <materialIcons:MaterialIcon Kind="FolderOpenOutline" Width="14" Height="14" Foreground="{DynamicResource AntigravityAccentBrush}" />
                                 </Button>
@@ -195,7 +196,7 @@
                                     Command="{Binding SelectOutputDirectoryCommand}"
                                     Theme="{DynamicResource MaterialFlatButton}"
                                     Padding="4,2"
-                                    CornerRadius="4"
+                                    CornerRadius="6"
                                     ToolTip.Tip="Change Folder">
                                     <materialIcons:MaterialIcon Kind="FolderEditOutline" Width="14" Height="14" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                 </Button>
@@ -489,7 +490,7 @@
                         Margin="0,0,16,0"
                         Padding="12"
                         Background="#0DFFFFFF"
-                        CornerRadius="10"
+                        CornerRadius="8"
                         BorderBrush="{DynamicResource AntigravityBorderBrush}"
                         BorderThickness="1">
                         <StackPanel Spacing="8">
@@ -596,7 +597,7 @@
                                         LargeChange="0.05"
                                         VerticalAlignment="Center" />
                                     <TextBlock Grid.Column="2" Text="Graded" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityAccentBrush}" VerticalAlignment="Center" />
-                                    <Border Grid.Column="3" Margin="8,0,0,0" Padding="6,2" CornerRadius="4" Background="#1FFFFFFF">
+                                    <Border Grid.Column="3" Margin="8,0,0,0" Padding="6,2" CornerRadius="6" Background="#1FFFFFFF">
                                         <TextBlock Text="{Binding SplitDividerRatio, StringFormat='{}{0:P0}'}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" />
                                     </Border>
                                 </Grid>
@@ -652,7 +653,7 @@
                                     <Border
                                         IsVisible="{Binding ShowHistogram}"
                                         Background="#E60A0D14"
-                                        CornerRadius="4"
+                                        CornerRadius="6"
                                         Height="55"
                                         ClipToBounds="True">
                                         <Grid>
@@ -683,7 +684,7 @@
                         Grid.Column="1"
                         Padding="14,12"
                         Background="#0DFFFFFF"
-                        CornerRadius="10"
+                        CornerRadius="8"
                         BorderBrush="{DynamicResource AntigravityBorderBrush}"
                         BorderThickness="1">
                         <ScrollViewer MaxHeight="290" VerticalScrollBarVisibility="Auto">
@@ -863,7 +864,7 @@
                         ColumnSpacing="14">
 
                     <!-- Card 1: Audio Processing Mode & Playback Speed -->
-                    <Border Grid.Column="0" Background="#0DFFFFFF" CornerRadius="10" Padding="14" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1">
+                    <Border Grid.Column="0" Background="#0DFFFFFF" CornerRadius="8" Padding="14" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1">
                         <StackPanel Spacing="10">
                             <TextBlock Text="AUDIO &amp; SPEED" FontSize="12" FontWeight="Bold" LetterSpacing="0.5" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
 
@@ -893,19 +894,19 @@
                                     </ComboBox.ItemTemplate>
                                 </ComboBox>
                                 <Grid ColumnDefinitions="*,*,*,*,*" ColumnSpacing="4">
-                                    <Button Grid.Column="0" Command="{Binding SetPlaybackSpeedCommand}" CommandParameter="0.75" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="4" ToolTip.Tip="0.75x Slow Motion">
+                                    <Button Grid.Column="0" Command="{Binding SetPlaybackSpeedCommand}" CommandParameter="0.75" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="6" ToolTip.Tip="0.75x Slow Motion">
                                         <TextBlock Text="0.75x" FontSize="12" HorizontalAlignment="Center" />
                                     </Button>
-                                    <Button Grid.Column="1" Command="{Binding SetPlaybackSpeedCommand}" CommandParameter="1.0" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="4" ToolTip.Tip="1.0x Normal Speed">
+                                    <Button Grid.Column="1" Command="{Binding SetPlaybackSpeedCommand}" CommandParameter="1.0" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="6" ToolTip.Tip="1.0x Normal Speed">
                                         <TextBlock Text="1x" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" HorizontalAlignment="Center" />
                                     </Button>
-                                    <Button Grid.Column="2" Command="{Binding SetPlaybackSpeedCommand}" CommandParameter="1.25" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="4" ToolTip.Tip="1.25x Speed">
+                                    <Button Grid.Column="2" Command="{Binding SetPlaybackSpeedCommand}" CommandParameter="1.25" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="6" ToolTip.Tip="1.25x Speed">
                                         <TextBlock Text="1.25x" FontSize="12" HorizontalAlignment="Center" />
                                     </Button>
-                                    <Button Grid.Column="3" Command="{Binding SetPlaybackSpeedCommand}" CommandParameter="1.5" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="4" ToolTip.Tip="1.5x Speed">
+                                    <Button Grid.Column="3" Command="{Binding SetPlaybackSpeedCommand}" CommandParameter="1.5" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="6" ToolTip.Tip="1.5x Speed">
                                         <TextBlock Text="1.5x" FontSize="12" HorizontalAlignment="Center" />
                                     </Button>
-                                    <Button Grid.Column="4" Command="{Binding SetPlaybackSpeedCommand}" CommandParameter="2.0" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="4" ToolTip.Tip="2.0x Double Speed">
+                                    <Button Grid.Column="4" Command="{Binding SetPlaybackSpeedCommand}" CommandParameter="2.0" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="6" ToolTip.Tip="2.0x Double Speed">
                                         <TextBlock Text="2x" FontSize="12" HorizontalAlignment="Center" />
                                     </Button>
                                 </Grid>
@@ -914,7 +915,7 @@
                     </Border>
 
                     <!-- Card 2: Aspect Ratio & Smart Framing -->
-                    <Border Grid.Column="1" Background="#0DFFFFFF" CornerRadius="10" Padding="14" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1">
+                    <Border Grid.Column="1" Background="#0DFFFFFF" CornerRadius="8" Padding="14" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1">
                         <StackPanel Spacing="10">
                             <TextBlock Text="ASPECT &amp; SMART REFRAME" FontSize="12" FontWeight="Bold" LetterSpacing="0.5" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
 
@@ -952,16 +953,16 @@
                                 <Slider Value="{Binding MicroZoomPercent}" Minimum="1.0" Maximum="20.0" TickFrequency="0.5" IsSnapToTickEnabled="True" />
 
                                 <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="4">
-                                    <Button Grid.Column="0" Command="{Binding SetMicroZoomPercentCommand}" CommandParameter="3.0" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="24" CornerRadius="4" ToolTip.Tip="0.97x (3% Crop)">
+                                    <Button Grid.Column="0" Command="{Binding SetMicroZoomPercentCommand}" CommandParameter="3.0" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="24" CornerRadius="6" ToolTip.Tip="0.97x (3% Crop)">
                                         <TextBlock Text="0.97x" FontSize="11" HorizontalAlignment="Center" />
                                     </Button>
-                                    <Button Grid.Column="1" Command="{Binding SetMicroZoomPercentCommand}" CommandParameter="5.0" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="24" CornerRadius="4" ToolTip.Tip="0.95x (5% Crop)">
+                                    <Button Grid.Column="1" Command="{Binding SetMicroZoomPercentCommand}" CommandParameter="5.0" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="24" CornerRadius="6" ToolTip.Tip="0.95x (5% Crop)">
                                         <TextBlock Text="0.95x" FontSize="11" HorizontalAlignment="Center" />
                                     </Button>
-                                    <Button Grid.Column="2" Command="{Binding SetMicroZoomPercentCommand}" CommandParameter="10.0" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="24" CornerRadius="4" ToolTip.Tip="0.90x Focus (10% Zoom - Recommended)">
+                                    <Button Grid.Column="2" Command="{Binding SetMicroZoomPercentCommand}" CommandParameter="10.0" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="24" CornerRadius="6" ToolTip.Tip="0.90x Focus (10% Zoom - Recommended)">
                                         <TextBlock Text="0.90x" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" HorizontalAlignment="Center" />
                                     </Button>
-                                    <Button Grid.Column="3" Command="{Binding SetMicroZoomPercentCommand}" CommandParameter="15.0" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="24" CornerRadius="4" ToolTip.Tip="0.85x (15% Crop)">
+                                    <Button Grid.Column="3" Command="{Binding SetMicroZoomPercentCommand}" CommandParameter="15.0" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="24" CornerRadius="6" ToolTip.Tip="0.85x (15% Crop)">
                                         <TextBlock Text="0.85x" FontSize="11" HorizontalAlignment="Center" />
                                     </Button>
                                 </Grid>
@@ -979,7 +980,7 @@
                     </Border>
 
                     <!-- Card 3: Camera EXIF Metadata -->
-                    <Border Grid.Column="2" Background="#0DFFFFFF" CornerRadius="10" Padding="14" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1">
+                    <Border Grid.Column="2" Background="#0DFFFFFF" CornerRadius="8" Padding="14" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1">
                         <StackPanel Spacing="10">
                             <TextBlock Text="METADATA &amp; EXIF" FontSize="12" FontWeight="Bold" LetterSpacing="0.5" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
 
@@ -1013,7 +1014,7 @@
                         ColumnSpacing="14">
 
                     <!-- Card 1: Video Splitting -->
-                    <Border Grid.Column="0" Background="#0DFFFFFF" CornerRadius="10" Padding="14" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1">
+                    <Border Grid.Column="0" Background="#0DFFFFFF" CornerRadius="8" Padding="14" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1">
                         <StackPanel Spacing="10">
                             <TextBlock Text="VIDEO SPLITTING" FontSize="12" FontWeight="Bold" LetterSpacing="0.5" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
 
@@ -1043,27 +1044,27 @@
 
                                     <!-- Stepper with decrement / increment -->
                                     <Grid ColumnDefinitions="32,*,32" ColumnSpacing="6">
-                                        <Button Grid.Column="0" Command="{Binding DecrementSplitPartCountCommand}" Theme="{DynamicResource MaterialFlatButton}" Padding="0" CornerRadius="4" Height="30" ToolTip.Tip="Decrease parts">
+                                        <Button Grid.Column="0" Command="{Binding DecrementSplitPartCountCommand}" Theme="{DynamicResource MaterialFlatButton}" Padding="0" CornerRadius="6" Height="30" ToolTip.Tip="Decrease parts">
                                             <TextBlock Text="−" FontSize="15" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                         </Button>
                                         <NumericUpDown Grid.Column="1" Value="{Binding CustomSplitPartCount}" Minimum="2" Maximum="50" Increment="1" FormatString="0" Height="30" FontSize="13" HorizontalAlignment="Stretch" VerticalAlignment="Center" />
-                                        <Button Grid.Column="2" Command="{Binding IncrementSplitPartCountCommand}" Theme="{DynamicResource MaterialFlatButton}" Padding="0" CornerRadius="4" Height="30" ToolTip.Tip="Increase parts">
+                                        <Button Grid.Column="2" Command="{Binding IncrementSplitPartCountCommand}" Theme="{DynamicResource MaterialFlatButton}" Padding="0" CornerRadius="6" Height="30" ToolTip.Tip="Increase parts">
                                             <TextBlock Text="+" FontSize="15" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                         </Button>
                                     </Grid>
 
                                     <!-- Quick Preset Buttons -->
                                     <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="4">
-                                        <Button Grid.Column="0" Command="{Binding SetSplitPartCountCommand}" CommandParameter="2" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="4">
+                                        <Button Grid.Column="0" Command="{Binding SetSplitPartCountCommand}" CommandParameter="2" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="6">
                                             <TextBlock Text="2 Pts" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" />
                                         </Button>
-                                        <Button Grid.Column="1" Command="{Binding SetSplitPartCountCommand}" CommandParameter="3" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="4">
+                                        <Button Grid.Column="1" Command="{Binding SetSplitPartCountCommand}" CommandParameter="3" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="6">
                                             <TextBlock Text="3 Pts" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" />
                                         </Button>
-                                        <Button Grid.Column="2" Command="{Binding SetSplitPartCountCommand}" CommandParameter="4" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="4">
+                                        <Button Grid.Column="2" Command="{Binding SetSplitPartCountCommand}" CommandParameter="4" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="6">
                                             <TextBlock Text="4 Pts" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" />
                                         </Button>
-                                        <Button Grid.Column="3" Command="{Binding SetSplitPartCountCommand}" CommandParameter="5" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="4">
+                                        <Button Grid.Column="3" Command="{Binding SetSplitPartCountCommand}" CommandParameter="5" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="6">
                                             <TextBlock Text="5 Pts" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" />
                                         </Button>
                                     </Grid>
@@ -1078,27 +1079,27 @@
 
                                     <!-- Stepper with decrement / increment -->
                                     <Grid ColumnDefinitions="32,*,32" ColumnSpacing="6">
-                                        <Button Grid.Column="0" Command="{Binding DecrementSplitDurationCommand}" Theme="{DynamicResource MaterialFlatButton}" Padding="0" CornerRadius="4" Height="30" ToolTip.Tip="-10 Seconds">
+                                        <Button Grid.Column="0" Command="{Binding DecrementSplitDurationCommand}" Theme="{DynamicResource MaterialFlatButton}" Padding="0" CornerRadius="6" Height="30" ToolTip.Tip="-10 Seconds">
                                             <TextBlock Text="−" FontSize="15" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                         </Button>
                                         <NumericUpDown Grid.Column="1" Value="{Binding CustomSplitSegmentDurationSeconds}" Minimum="5" Maximum="7200" Increment="10" FormatString="0" Height="30" FontSize="13" HorizontalAlignment="Stretch" VerticalAlignment="Center" />
-                                        <Button Grid.Column="2" Command="{Binding IncrementSplitDurationCommand}" Theme="{DynamicResource MaterialFlatButton}" Padding="0" CornerRadius="4" Height="30" ToolTip.Tip="+10 Seconds">
+                                        <Button Grid.Column="2" Command="{Binding IncrementSplitDurationCommand}" Theme="{DynamicResource MaterialFlatButton}" Padding="0" CornerRadius="6" Height="30" ToolTip.Tip="+10 Seconds">
                                             <TextBlock Text="+" FontSize="15" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                         </Button>
                                     </Grid>
 
                                     <!-- Quick Preset Buttons for Social Media -->
                                     <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="4">
-                                        <Button Grid.Column="0" Command="{Binding SetSplitDurationCommand}" CommandParameter="60" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="4">
+                                        <Button Grid.Column="0" Command="{Binding SetSplitDurationCommand}" CommandParameter="60" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="6">
                                             <TextBlock Text="60s" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" />
                                         </Button>
-                                        <Button Grid.Column="1" Command="{Binding SetSplitDurationCommand}" CommandParameter="90" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="4">
+                                        <Button Grid.Column="1" Command="{Binding SetSplitDurationCommand}" CommandParameter="90" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="6">
                                             <TextBlock Text="90s" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" />
                                         </Button>
-                                        <Button Grid.Column="2" Command="{Binding SetSplitDurationCommand}" CommandParameter="180" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="4">
+                                        <Button Grid.Column="2" Command="{Binding SetSplitDurationCommand}" CommandParameter="180" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="6">
                                             <TextBlock Text="3 min" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" />
                                         </Button>
-                                        <Button Grid.Column="3" Command="{Binding SetSplitDurationCommand}" CommandParameter="300" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="4">
+                                        <Button Grid.Column="3" Command="{Binding SetSplitDurationCommand}" CommandParameter="300" Theme="{DynamicResource MaterialFlatButton}" Padding="0" Height="26" CornerRadius="6">
                                             <TextBlock Text="5 min" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" />
                                         </Button>
                                     </Grid>
@@ -1135,7 +1136,7 @@
                     </Border>
 
                     <!-- Card 2: Hardware Acceleration & Concurrency -->
-                    <Border Grid.Column="1" Background="#0DFFFFFF" CornerRadius="10" Padding="14" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1">
+                    <Border Grid.Column="1" Background="#0DFFFFFF" CornerRadius="8" Padding="14" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1">
                         <StackPanel Spacing="10">
                             <TextBlock Text="HARDWARE ACCELERATION" FontSize="12" FontWeight="Bold" LetterSpacing="0.5" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
 
@@ -1152,7 +1153,7 @@
                     </Border>
 
                     <!-- Card 3: Scratch Drive & Filters -->
-                    <Border Grid.Column="2" Background="#0DFFFFFF" CornerRadius="10" Padding="14" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1">
+                    <Border Grid.Column="2" Background="#0DFFFFFF" CornerRadius="8" Padding="14" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1">
                         <StackPanel Spacing="10">
                             <TextBlock Text="STORAGE &amp; FILTERS" FontSize="12" FontWeight="Bold" LetterSpacing="0.5" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
 
@@ -1320,12 +1321,12 @@
                     BorderBrush="{DynamicResource AntigravityBorderBrush}"
                     BorderThickness="1"
                     BoxShadow="0 8 32 0 #25000000"
-                    CornerRadius="18">
+                    CornerRadius="8">
                     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="14">
                         <Border
                             Width="72"
                             Height="72"
-                            CornerRadius="22"
+                            CornerRadius="8"
                             Background="{DynamicResource AntigravityElevatedBrush}"
                             BorderBrush="{DynamicResource AntigravityBorderBrush}"
                             BorderThickness="1"
@@ -1348,22 +1349,19 @@
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="12" Margin="0,8,0,0">
                             <Button
                                 Command="{Binding AddFilesCommand}"
-                                Background="{DynamicResource AntigravityAccentBrush}"
-                                Foreground="{DynamicResource AntigravityAccentForegroundBrush}"
-                                CornerRadius="20"
+                                Classes="btn-primary"
+                                CornerRadius="8"
                                 Padding="20,10"
                                 Theme="{DynamicResource MaterialFlatButton}">
                                 <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
-                                    <materialIcons:MaterialIcon Kind="VideoPlusOutline" Width="17" Height="17" Foreground="{DynamicResource AntigravityAccentForegroundBrush}" VerticalAlignment="Center" />
-                                    <TextBlock Text="Browse Videos" FontSize="13" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentForegroundBrush}" VerticalAlignment="Center" />
+                                    <materialIcons:MaterialIcon Kind="VideoPlusOutline" Width="17" Height="17" VerticalAlignment="Center" />
+                                    <TextBlock Text="Browse Videos" FontSize="13" FontWeight="Bold" VerticalAlignment="Center" />
                                 </StackPanel>
                             </Button>
                             <Button
                                 Command="{Binding AddFolderCommand}"
-                                Background="{DynamicResource AntigravityElevatedBrush}"
-                                BorderBrush="{DynamicResource AntigravityBorderBrush}"
-                                BorderThickness="1"
-                                CornerRadius="20"
+                                Classes="btn-secondary"
+                                CornerRadius="8"
                                 Padding="18,10"
                                 Theme="{DynamicResource MaterialFlatButton}">
                                 <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center">
@@ -1448,14 +1446,14 @@
                                                 Background="#20FFFFFF"
                                                 BorderBrush="#40FFFFFF"
                                                 BorderThickness="1"
-                                                CornerRadius="4"
+                                                CornerRadius="6"
                                                 Padding="5,1"
                                                 VerticalAlignment="Center">
                                                 <TextBlock Text="{Binding PartBadge}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
                                             </Border>
                                         </StackPanel>
                                         <StackPanel Orientation="Horizontal" Spacing="6">
-                                            <Border Background="#14FFFFFF" CornerRadius="4" Padding="6,2">
+                                            <Border Background="#14FFFFFF" CornerRadius="6" Padding="6,2">
                                                 <TextBlock Text="{Binding InputResolution}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                             </Border>
                                             <TextBlock Text="•" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
@@ -1477,7 +1475,7 @@
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate DataType="upscaling:UpscaleJob">
                                     <StackPanel VerticalAlignment="Center" Spacing="3" Margin="6,0">
-                                        <Border Padding="6,2" CornerRadius="4" HorizontalAlignment="Left" Background="#20FFFFFF" BorderBrush="#30FFFFFF" BorderThickness="1">
+                                        <Border Padding="6,2" CornerRadius="6" HorizontalAlignment="Left" Background="#20FFFFFF" BorderBrush="#30FFFFFF" BorderThickness="1">
                                             <TextBlock Text="{Binding TargetResolution}" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource AntigravityAccentBrush}" />
                                         </Border>
                                         <TextBlock Text="{Binding Codec}" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
@@ -1492,31 +1490,31 @@
                                 <DataTemplate DataType="upscaling:UpscaleJob">
                                     <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" Margin="6,0">
                                         <!-- Graded -->
-                                        <Border IsVisible="{Binding ColorGrading.HasActiveGrading}" Padding="5,2" CornerRadius="4" Background="{DynamicResource AntigravityElevatedBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" ToolTip.Tip="Color Graded">
+                                        <Border IsVisible="{Binding ColorGrading.HasActiveGrading}" Padding="5,2" CornerRadius="6" Background="{DynamicResource AntigravityElevatedBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" ToolTip.Tip="Color Graded">
                                             <TextBlock Text="GRADE" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
                                         </Border>
                                         <!-- Facial Clarity -->
-                                        <Border IsVisible="{Binding EnableFacialClarity}" Padding="5,2" CornerRadius="4" Background="{DynamicResource AntigravityElevatedBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" ToolTip.Tip="Facial Clarity Active">
+                                        <Border IsVisible="{Binding EnableFacialClarity}" Padding="5,2" CornerRadius="6" Background="{DynamicResource AntigravityElevatedBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" ToolTip.Tip="Facial Clarity Active">
                                             <TextBlock Text="FACE" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
                                         </Border>
                                         <!-- Aspect Ratio (9:16, 1:1, 21:9) -->
                                         <Border IsVisible="{Binding TargetAspectRatio, Converter={x:Static converters:EqualityConverter.IsNotEqual}, ConverterParameter=Original}"
-                                                Padding="5,2" CornerRadius="4" Background="{DynamicResource AntigravityElevatedBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1"
+                                                Padding="5,2" CornerRadius="6" Background="{DynamicResource AntigravityElevatedBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1"
                                                 ToolTip.Tip="{Binding TargetAspectRatio, Converter={x:Static converters:EnumDisplayNameConverter.Instance}}">
                                             <TextBlock Text="{Binding TargetAspectRatio, Converter={x:Static converters:EnumDisplayNameConverter.Instance}}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
                                         </Border>
                                         <!-- Playback Speed (if != 1.0) -->
                                         <Border IsVisible="{Binding PlaybackSpeed, Converter={x:Static converters:EqualityConverter.IsNotEqual}, ConverterParameter=1}"
-                                                Padding="5,2" CornerRadius="4" Background="{DynamicResource AntigravityElevatedBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1"
+                                                Padding="5,2" CornerRadius="6" Background="{DynamicResource AntigravityElevatedBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1"
                                                 ToolTip.Tip="{Binding PlaybackSpeed, StringFormat='{}{0:0.##}x Playback Speed'}">
                                             <TextBlock Text="{Binding PlaybackSpeed, StringFormat='{}{0:0.#}x'}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
                                         </Border>
                                         <!-- Split -->
-                                        <Border IsVisible="{Binding HasPartBadge}" Padding="5,2" CornerRadius="4" Background="{DynamicResource AntigravityElevatedBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" ToolTip.Tip="{Binding PartBadge}">
+                                        <Border IsVisible="{Binding HasPartBadge}" Padding="5,2" CornerRadius="6" Background="{DynamicResource AntigravityElevatedBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" ToolTip.Tip="{Binding PartBadge}">
                                             <TextBlock Text="{Binding PartBadge}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
                                         </Border>
                                         <!-- Denoise -->
-                                        <Border IsVisible="{Binding EnableDenoise}" Padding="5,2" CornerRadius="4" Background="{DynamicResource AntigravityElevatedBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" ToolTip.Tip="Denoise Active">
+                                        <Border IsVisible="{Binding EnableDenoise}" Padding="5,2" CornerRadius="6" Background="{DynamicResource AntigravityElevatedBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" ToolTip.Tip="Denoise Active">
                                             <TextBlock Text="DENOISE" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
                                         </Border>
                                     </StackPanel>
@@ -1528,7 +1526,7 @@
                         <DataGridTemplateColumn Header="Status" Width="100">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate DataType="upscaling:UpscaleJob">
-                                    <Border Padding="8,3" CornerRadius="12" HorizontalAlignment="Left" VerticalAlignment="Center" Background="#14FFFFFF">
+                                    <Border Padding="8,3" CornerRadius="6" HorizontalAlignment="Left" VerticalAlignment="Center" Background="#14FFFFFF">
                                         <TextBlock Text="{Binding Status}" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
                                     </Border>
                                 </DataTemplate>
@@ -1672,7 +1670,7 @@
                 Background="{DynamicResource AntigravityPanelBrush}"
                 BorderBrush="{DynamicResource AntigravityBorderBrush}"
                 BorderThickness="1"
-                CornerRadius="14">
+                CornerRadius="8">
                 <Grid RowDefinitions="Auto,*,Auto">
                     <!-- Header -->
                     <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,14">

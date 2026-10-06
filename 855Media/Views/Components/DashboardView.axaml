@@ -1,4 +1,4 @@
-<UserControl
+﻿<UserControl
     x:Class="_855Media.Views.Components.DashboardView"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -39,7 +39,7 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Foreground" Value="{DynamicResource AntigravityMutedBrush}" />
             <Setter Property="Padding" Value="14,7" />
-            <Setter Property="CornerRadius" Value="20" />
+            <Setter Property="CornerRadius" Value="8" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="FontSize" Value="12.5" />
             <Setter Property="Focusable" Value="False" />
@@ -54,7 +54,7 @@
                 </Transitions>
             </Setter>
             <Style Selector="^:pointerover">
-                <Setter Property="Background" Value="{DynamicResource MusePillHoverBrush}" />
+                <Setter Property="Background" Value="{DynamicResource AntigravityElevatedBrush}" />
                 <Setter Property="Foreground" Value="{DynamicResource AntigravityTextBrush}" />
                 <Setter Property="RenderTransform" Value="scale(1.02)" />
             </Style>
@@ -62,15 +62,15 @@
                 <Setter Property="RenderTransform" Value="scale(0.97)" />
             </Style>
             <Style Selector="^.active">
-                <Setter Property="Background" Value="{DynamicResource MusePillActiveBrush}" />
-                <Setter Property="BorderBrush" Value="{DynamicResource MusePillBorderBrush}" />
-                <Setter Property="Foreground" Value="{DynamicResource MusePillActiveForegroundBrush}" />
+                <Setter Property="Background" Value="#FFFFFF" />
+                <Setter Property="BorderBrush" Value="#FFFFFF" />
+                <Setter Property="Foreground" Value="#000000" />
                 <Setter Property="FontWeight" Value="Bold" />
             </Style>
             <Style Selector="^.active:pointerover">
-                <Setter Property="Background" Value="{DynamicResource MusePillActiveBrush}" />
-                <Setter Property="BorderBrush" Value="{DynamicResource MusePillBorderBrush}" />
-                <Setter Property="Foreground" Value="{DynamicResource MusePillActiveForegroundBrush}" />
+                <Setter Property="Background" Value="#E4E4E7" />
+                <Setter Property="BorderBrush" Value="#E4E4E7" />
+                <Setter Property="Foreground" Value="#000000" />
                 <Setter Property="RenderTransform" Value="scale(1.02)" />
             </Style>
         </Style>
@@ -86,7 +86,7 @@
             <Setter Property="Background" Value="{DynamicResource MusePillHoverBrush}" />
             <Setter Property="Foreground" Value="{DynamicResource AntigravityMutedBrush}" />
             <Setter Property="Padding" Value="14,6" />
-            <Setter Property="CornerRadius" Value="16" />
+            <Setter Property="CornerRadius" Value="6" />
             <Setter Property="FontSize" Value="12" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="BorderThickness" Value="1" />
@@ -109,15 +109,15 @@
                 <Setter Property="RenderTransform" Value="scale(0.97)" />
             </Style>
             <Style Selector="^.active">
-                <Setter Property="Background" Value="{DynamicResource MusePillActiveBrush}" />
-                <Setter Property="BorderBrush" Value="{DynamicResource MusePillBorderBrush}" />
-                <Setter Property="Foreground" Value="{DynamicResource MusePillActiveForegroundBrush}" />
+                <Setter Property="Background" Value="#FFFFFF" />
+                <Setter Property="BorderBrush" Value="#FFFFFF" />
+                <Setter Property="Foreground" Value="#000000" />
             </Style>
         </Style>
 
         <Style Selector="Button.icon-tool-btn">
             <Setter Property="Padding" Value="8" />
-            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="CornerRadius" Value="6" />
             <Setter Property="Background" Value="{DynamicResource MuseCloseBtnBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource AntigravityBorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
@@ -156,7 +156,7 @@
                         <Border
                             Width="34"
                             Height="34"
-                            CornerRadius="10"
+                            CornerRadius="8"
                             Background="{DynamicResource AntigravityElevatedBrush}"
                             BorderBrush="{DynamicResource AntigravityBorderBrush}"
                             BorderThickness="1"
@@ -183,7 +183,7 @@
                                     Background="{DynamicResource AntigravityElevatedBrush}"
                                     BorderBrush="{DynamicResource AntigravityBorderBrush}"
                                     BorderThickness="1"
-                                    CornerRadius="10"
+                                    CornerRadius="6"
                                     Padding="6,1"
                                     VerticalAlignment="Center">
                                     <TextBlock
@@ -208,7 +208,7 @@
                         Background="{DynamicResource AntigravityElevatedBrush}"
                         BorderBrush="{DynamicResource AntigravityBorderBrush}"
                         BorderThickness="1"
-                        CornerRadius="24"
+                        CornerRadius="8"
                         BoxShadow="0 4 20 0 #30000000"
                         Padding="4,4">
                         <StackPanel Orientation="Horizontal" Spacing="4">
@@ -274,7 +274,7 @@
                                         Background="{DynamicResource AntigravityElevatedBrush}"
                                         BorderBrush="{DynamicResource AntigravityBorderBrush}"
                                         BorderThickness="1"
-                                        CornerRadius="10"
+                                        CornerRadius="6"
                                         Margin="2,0,0,0"
                                         Padding="6,1">
                                         <TextBlock
@@ -314,7 +314,7 @@
                         <!-- Global Hardware Check & Diagnostics Pill -->
                         <Button
                             Padding="8,4"
-                            CornerRadius="16"
+                            CornerRadius="8"
                             Background="#12FFFFFF"
                             BorderBrush="{DynamicResource AntigravityBorderBrush}"
                             BorderThickness="1"
@@ -326,7 +326,7 @@
                                         Width="500"
                                         Padding="18"
                                         Background="{DynamicResource AntigravityElevatedBrush}"
-                                        CornerRadius="14"
+                                        CornerRadius="8"
                                         BorderBrush="#383842"
                                         BorderThickness="1"
                                         BoxShadow="0 18 50 0 #F8000000">
@@ -357,7 +357,7 @@
                                             <Separator Height="1" Background="{DynamicResource AntigravityBorderBrush}" />
 
                                             <!-- Live System Specs & Telemetry Card -->
-                                            <Border Background="{DynamicResource AntigravityCardBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="14">
+                                            <Border Background="{DynamicResource AntigravityCardBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="14">
                                                 <StackPanel Spacing="10">
                                                     <!-- GPU & CPU Header -->
                                                     <Grid ColumnDefinitions="*,*">
@@ -380,22 +380,22 @@
                                                         <StackPanel Grid.Column="0" Spacing="3" HorizontalAlignment="Center">
                                                             <TextBlock Text="CPU" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" HorizontalAlignment="Center" />
                                                             <TextBlock Text="{Binding CpuUsagePercent, StringFormat='{}{0:0}%'}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" HorizontalAlignment="Center" />
-                                                            <ProgressBar Value="{Binding CpuUsagePercent}" Minimum="0" Maximum="100" Width="68" Height="6" CornerRadius="3" Background="{DynamicResource AntigravityBorderBrush}" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                                            <ProgressBar Value="{Binding CpuUsagePercent}" Minimum="0" Maximum="100" Width="68" Height="6" CornerRadius="6" Background="{DynamicResource AntigravityBorderBrush}" Foreground="{DynamicResource AntigravityTextBrush}" />
                                                         </StackPanel>
                                                         <StackPanel Grid.Column="1" Spacing="3" HorizontalAlignment="Center">
                                                             <TextBlock Text="RAM" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" HorizontalAlignment="Center" />
                                                             <TextBlock Text="{Binding RamUsagePercent, StringFormat='{}{0:0}%'}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" HorizontalAlignment="Center" />
-                                                            <ProgressBar Value="{Binding RamUsagePercent}" Minimum="0" Maximum="100" Width="68" Height="6" CornerRadius="3" Background="{DynamicResource AntigravityBorderBrush}" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                                            <ProgressBar Value="{Binding RamUsagePercent}" Minimum="0" Maximum="100" Width="68" Height="6" CornerRadius="6" Background="{DynamicResource AntigravityBorderBrush}" Foreground="{DynamicResource AntigravityTextBrush}" />
                                                         </StackPanel>
                                                         <StackPanel Grid.Column="2" Spacing="3" HorizontalAlignment="Center">
                                                             <TextBlock Text="GPU" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" HorizontalAlignment="Center" />
                                                             <TextBlock Text="{Binding GpuUsagePercent, StringFormat='{}{0:0}%'}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" HorizontalAlignment="Center" />
-                                                            <ProgressBar Value="{Binding GpuUsagePercent}" Minimum="0" Maximum="100" Width="68" Height="6" CornerRadius="3" Background="{DynamicResource AntigravityBorderBrush}" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                                            <ProgressBar Value="{Binding GpuUsagePercent}" Minimum="0" Maximum="100" Width="68" Height="6" CornerRadius="6" Background="{DynamicResource AntigravityBorderBrush}" Foreground="{DynamicResource AntigravityTextBrush}" />
                                                         </StackPanel>
                                                         <StackPanel Grid.Column="3" Spacing="3" HorizontalAlignment="Center">
                                                             <TextBlock Text="VRAM" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" HorizontalAlignment="Center" />
                                                             <TextBlock Text="{Binding VramUsagePercent, StringFormat='{}{0:0}%'}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" HorizontalAlignment="Center" />
-                                                            <ProgressBar Value="{Binding VramUsagePercent}" Minimum="0" Maximum="100" Width="68" Height="6" CornerRadius="3" Background="{DynamicResource AntigravityBorderBrush}" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                                            <ProgressBar Value="{Binding VramUsagePercent}" Minimum="0" Maximum="100" Width="68" Height="6" CornerRadius="6" Background="{DynamicResource AntigravityBorderBrush}" Foreground="{DynamicResource AntigravityTextBrush}" />
                                                         </StackPanel>
                                                     </Grid>
                                                 </StackPanel>
@@ -406,7 +406,7 @@
 
                                             <StackPanel Spacing="10">
                                                 <!-- Module 1: Media Downloader -->
-                                                <Border Background="{DynamicResource AntigravityCardBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="12">
+                                                <Border Background="{DynamicResource AntigravityCardBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
                                                     <Grid ColumnDefinitions="Auto,*,Auto">
                                                         <materialIcons:MaterialIcon Grid.Column="0" Kind="DownloadBox" Width="24" Height="24" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" Margin="0,0,12,0" />
                                                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
@@ -421,7 +421,7 @@
                                                 </Border>
 
                                                 <!-- Module 2: Video Editor -->
-                                                <Border Background="{DynamicResource AntigravityCardBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="12">
+                                                <Border Background="{DynamicResource AntigravityCardBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
                                                     <Grid ColumnDefinitions="Auto,*,Auto">
                                                         <materialIcons:MaterialIcon Grid.Column="0" Kind="AutoFix" Width="24" Height="24" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" Margin="0,0,12,0" />
                                                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
@@ -436,7 +436,7 @@
                                                 </Border>
 
                                                 <!-- Module 3: Dub Pro -->
-                                                <Border Background="{DynamicResource AntigravityCardBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="10" Padding="12">
+                                                <Border Background="{DynamicResource AntigravityCardBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
                                                     <Grid ColumnDefinitions="Auto,*,Auto">
                                                         <materialIcons:MaterialIcon Grid.Column="0" Kind="AccountVoice" Width="24" Height="24" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" Margin="0,0,12,0" />
                                                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
@@ -498,7 +498,7 @@
                                 <Border
                                     Width="6"
                                     Height="6"
-                                    CornerRadius="3"
+                                    CornerRadius="6"
                                     Background="{DynamicResource AntigravityTextBrush}"
                                     VerticalAlignment="Center" />
                             </StackPanel>
@@ -867,7 +867,7 @@
                                                             Grid.Row="0"
                                                             Height="88"
                                                             ClipToBounds="True"
-                                                            CornerRadius="5">
+                                                            CornerRadius="6">
                                                             <Image
                                                                 Stretch="UniformToFill"
                                                                 asyncImageLoader:ImageLoader.Source="{Binding Video, Converter={x:Static converters:VideoToLowestQualityThumbnailUrlStringConverter.Instance}}" />
@@ -1029,7 +1029,7 @@
                     <!-- Left: Real-time Hardware Metrics Pills (CPU, RAM, GPU, VRAM, Temp) -->
                     <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
                         <!-- CPU Usage Capsule -->
-                        <Border Background="{DynamicResource AntigravityElevatedBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="14" Padding="10,4" ToolTip.Tip="Real-time CPU Utilization">
+                        <Border Background="{DynamicResource AntigravityElevatedBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="10,4" ToolTip.Tip="Real-time CPU Utilization">
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <materialIcons:MaterialIcon Kind="Cpu64Bit" Width="14" Height="14" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                 <TextBlock Text="CPU" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
@@ -1039,7 +1039,7 @@
                                     Maximum="100"
                                     Width="44"
                                     Height="5"
-                                    CornerRadius="3"
+                                    CornerRadius="6"
                                     Background="{DynamicResource AntigravityBorderBrush}"
                                     Foreground="{DynamicResource AntigravityTextBrush}"
                                     VerticalAlignment="Center" />
@@ -1048,7 +1048,7 @@
                         </Border>
 
                         <!-- RAM Usage Capsule -->
-                        <Border Background="{DynamicResource AntigravityElevatedBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="14" Padding="10,4" ToolTip.Tip="System Physical RAM Usage">
+                        <Border Background="{DynamicResource AntigravityElevatedBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="10,4" ToolTip.Tip="System Physical RAM Usage">
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <materialIcons:MaterialIcon Kind="Memory" Width="14" Height="14" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                 <TextBlock Text="RAM" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
@@ -1058,7 +1058,7 @@
                                     Maximum="100"
                                     Width="44"
                                     Height="5"
-                                    CornerRadius="3"
+                                    CornerRadius="6"
                                     Background="{DynamicResource AntigravityBorderBrush}"
                                     Foreground="{DynamicResource AntigravityTextBrush}"
                                     VerticalAlignment="Center" />
@@ -1067,7 +1067,7 @@
                         </Border>
 
                         <!-- GPU Usage Capsule -->
-                        <Border Background="{DynamicResource AntigravityElevatedBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="14" Padding="10,4" ToolTip.Tip="{Binding GpuNameShort, StringFormat='GPU Compute Utilization ({0})'}">
+                        <Border Background="{DynamicResource AntigravityElevatedBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="10,4" ToolTip.Tip="{Binding GpuNameShort, StringFormat='GPU Compute Utilization ({0})'}">
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <materialIcons:MaterialIcon Kind="ExpansionCardVariant" Width="14" Height="14" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                 <TextBlock Text="GPU" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
@@ -1077,7 +1077,7 @@
                                     Maximum="100"
                                     Width="44"
                                     Height="5"
-                                    CornerRadius="3"
+                                    CornerRadius="6"
                                     Background="{DynamicResource AntigravityBorderBrush}"
                                     Foreground="{DynamicResource AntigravityTextBrush}"
                                     VerticalAlignment="Center" />
@@ -1087,7 +1087,7 @@
                         </Border>
 
                         <!-- VRAM Usage Capsule -->
-                        <Border Background="{DynamicResource AntigravityElevatedBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="14" Padding="10,4" ToolTip.Tip="Dedicated GPU Video Memory (VRAM)">
+                        <Border Background="{DynamicResource AntigravityElevatedBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="10,4" ToolTip.Tip="Dedicated GPU Video Memory (VRAM)">
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <materialIcons:MaterialIcon Kind="Memory" Width="14" Height="14" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                 <TextBlock Text="VRAM" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
@@ -1097,7 +1097,7 @@
                                     Maximum="100"
                                     Width="44"
                                     Height="5"
-                                    CornerRadius="3"
+                                    CornerRadius="6"
                                     Background="{DynamicResource AntigravityBorderBrush}"
                                     Foreground="{DynamicResource AntigravityTextBrush}"
                                     VerticalAlignment="Center" />
@@ -1106,7 +1106,7 @@
                         </Border>
 
                         <!-- GPU Temp Capsule -->
-                        <Border Background="{DynamicResource AntigravityElevatedBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="14" Padding="10,4" IsVisible="{Binding HasGpuTemp}" ToolTip.Tip="GPU Core Temperature">
+                        <Border Background="{DynamicResource AntigravityElevatedBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" CornerRadius="6" Padding="10,4" IsVisible="{Binding HasGpuTemp}" ToolTip.Tip="GPU Core Temperature">
                             <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
                                 <materialIcons:MaterialIcon Kind="Thermometer" Width="14" Height="14" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                 <TextBlock Text="{Binding GpuTemperatureC, StringFormat='{}{0}°C'}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
@@ -1119,7 +1119,7 @@
                         <Button
                             Command="{Binding CopyHardwareDiagnosticsCommand}"
                             Padding="10,5"
-                            CornerRadius="14"
+                            CornerRadius="6"
                             Classes="icon-tool-btn"
                             ToolTip.Tip="Copy Complete Hardware &amp; Module Diagnostics Report to Clipboard">
                             <StackPanel Orientation="Horizontal" Spacing="6">
@@ -1133,7 +1133,7 @@
                             Background="{DynamicResource AntigravityElevatedBrush}"
                             BorderBrush="{DynamicResource AntigravityBorderBrush}"
                             BorderThickness="1"
-                            CornerRadius="14"
+                            CornerRadius="6"
                             Padding="10,5"
                             ToolTip.Tip="Hardware Tensor Cores Detected &amp; Ready for Ultra-Fast Super-Resolution">
                             <StackPanel Orientation="Horizontal" Spacing="5">

@@ -1,4 +1,4 @@
-﻿<UserControl
+<UserControl
     x:Class="_855Media.Views.Dialogs.MessageBoxView"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -42,6 +42,7 @@
                 Command="{Binding CloseCommand}"
                 IsDefault="True"
                 IsVisible="{Binding IsDefaultButtonVisible}"
+                Classes="btn-primary"
                 Theme="{DynamicResource MaterialOutlineButton}"
                 ToolTip.Tip="{Binding DefaultButtonText}">
                 <Button.CommandParameter>
@@ -60,6 +61,7 @@
                 Command="{Binding CloseCommand}"
                 IsCancel="True"
                 IsVisible="{Binding IsCancelButtonVisible}"
+                Classes="btn-secondary"
                 Theme="{DynamicResource MaterialOutlineButton}"
                 ToolTip.Tip="{Binding CancelButtonText}">
                 <TextBlock

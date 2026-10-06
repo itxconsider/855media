@@ -180,10 +180,10 @@ public class AtxAgentClient : IDisposable
         if (string.IsNullOrEmpty(text))
             return true;
 
-        // If text contains non-ASCII characters (e.g. Khmer, Cyrillic, Chinese, Emoji), newlines, or quotes,
+        // If text contains non-ASCII characters (e.g. Khmer, Cyrillic, Chinese, Emoji), newlines, quotes, or hashtags,
         // use ADBKeyboard Base64 broadcast for 100% lossless delivery
         bool requiresAdbKeyboard = text.Any(c =>
-            c > 127 || c == '\n' || c == '\r' || c == '"' || c == '\''
+            c > 127 || c == '\n' || c == '\r' || c == '"' || c == '\'' || c == '#'
         );
         if (requiresAdbKeyboard)
         {
@@ -214,6 +214,9 @@ public class AtxAgentClient : IDisposable
         CancellationToken cancellationToken = default
     )
     {
+        // Ensure ADBKeyboard is enabled and selected as the active IME
+        await EnableAdbKeyboardAsync(deviceIndex, cancellationToken);
+
         if (clearFirst)
         {
             await ClearTextAdbKeyboardAsync(deviceIndex, cancellationToken);
@@ -319,7 +322,7 @@ public class AtxAgentClient : IDisposable
     {
         return await ExecuteShellAsync(
             deviceIndex,
-            $"ime enable {AdbKeyboardConstants.ImeComponent} && ime set {AdbKeyboardConstants.ImeComponent}",
+            $"ime enable {AdbKeyboardConstants.ImeComponent} && ime set {AdbKeyboardConstants.ImeComponent} && settings put secure default_input_method {AdbKeyboardConstants.ImeComponent}",
             cancellationToken
         );
     }

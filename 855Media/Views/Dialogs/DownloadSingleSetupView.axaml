@@ -99,7 +99,7 @@
                                     Padding="6,1"
                                     BorderBrush="{DynamicResource MaterialDividerBrush}"
                                     BorderThickness="1"
-                                    CornerRadius="8"
+                                    CornerRadius="6"
                                     IsVisible="{Binding IsVideoUpscaled}">
                                     <TextBlock
                                         FontSize="11"
@@ -147,6 +147,7 @@
                 Command="{Binding ConfirmCommand}"
                 Content="{Binding LocalizationManager.DownloadButton}"
                 IsDefault="True"
+                Classes="btn-primary"
                 Theme="{DynamicResource MaterialOutlineButton}" />
 
             <!--  Cancel  -->
@@ -155,6 +156,7 @@
                 Command="{Binding CloseCommand}"
                 Content="{Binding LocalizationManager.CancelButton}"
                 IsCancel="True"
+                Classes="btn-secondary"
                 Theme="{DynamicResource MaterialOutlineButton}" />
         </UniformGrid>
     </Grid>

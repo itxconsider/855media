@@ -47,7 +47,7 @@
                                 Padding="8,3"
                                 HorizontalAlignment="Left"
                                 Background="{DynamicResource AntigravityAccentBrush}"
-                                CornerRadius="12">
+                                CornerRadius="6">
                                 <TextBlock
                                     FontSize="11"
                                     FontWeight="Bold"
@@ -158,6 +158,7 @@
                 <Button
                     Command="{Binding CloseDialogCommand}"
                     IsCancel="True"
+                    Classes="btn-secondary"
                     Theme="{DynamicResource MaterialOutlineButton}">
                     <TextBlock Text="Close" />
                 </Button>
@@ -166,6 +167,7 @@
                 <Button
                     Command="{Binding ActivateCommand}"
                     IsEnabled="{Binding !IsBusy}"
+                    Classes="btn-primary"
                     Theme="{DynamicResource MaterialButton}">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <materialIcons:MaterialIcon Width="16" Height="16" Kind="Check" />

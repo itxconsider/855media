@@ -84,6 +84,7 @@
             Content="{Binding LocalizationManager.CloseButton}"
             IsCancel="True"
             IsDefault="True"
+            Classes="btn-secondary"
             Theme="{DynamicResource MaterialOutlineButton}" />
     </Grid>
 </UserControl>

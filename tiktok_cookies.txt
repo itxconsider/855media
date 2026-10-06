@@ -30,11 +30,11 @@
 .www.tiktok.com	TRUE	/	FALSE	0	passport_fe_beating_status	true
 .www.tiktok.com	TRUE	/	TRUE	1814641940	tiktok_webapp_theme	dark
 .www.tiktok.com	TRUE	/	TRUE	1814641940	tiktok_webapp_theme_source	auto
-.youtube.com	TRUE	/	TRUE	1791291783	GPS	1
+.youtube.com	TRUE	/	TRUE	1791311663	GPS	1
 .youtube.com	TRUE	/	FALSE	0	PREF	hl=en&tz=UTC
 .youtube.com	TRUE	/	TRUE	0	SOCS	CAI
-.youtube.com	TRUE	/	TRUE	1806841985	VISITOR_INFO1_LIVE	VEmSwDY0x-M
-.youtube.com	TRUE	/	TRUE	1806841985	VISITOR_PRIVACY_METADATA	CgJLSBIEGgAgKw%3D%3D
+.youtube.com	TRUE	/	TRUE	1806861979	VISITOR_INFO1_LIVE	VEmSwDY0x-M
+.youtube.com	TRUE	/	TRUE	1806861979	VISITOR_PRIVACY_METADATA	CgJLSBIEGgAgKw%3D%3D
 .youtube.com	TRUE	/	TRUE	0	YSC	4W3XXYwn0dE
 .youtube.com	TRUE	/	TRUE	1806520286	__Secure-BUCKET	CKQD
 .youtube.com	TRUE	/	TRUE	1806832751	__Secure-ROLLOUT_TOKEN	CKqi7umPstbPmAEQvuDg5uKLlwMYutuD55CllwM%3D

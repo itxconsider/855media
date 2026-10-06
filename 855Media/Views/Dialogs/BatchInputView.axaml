@@ -1,4 +1,4 @@
-﻿<UserControl
+<UserControl
     x:Class="_855Media.Views.Dialogs.BatchInputView"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -47,6 +47,7 @@
             <!--  Cancel  -->
             <Button
                 Command="{Binding CloseCommand}"
+                Classes="btn-secondary"
                 Theme="{DynamicResource MaterialOutlineButton}"
                 Content="{Binding LocalizationManager.CancelButton}" />
 
@@ -54,9 +55,8 @@
             <Button
                 Command="{Binding CloseCommand}"
                 IsDefault="True"
+                Classes="btn-primary"
                 Theme="{DynamicResource MaterialFlatButton}"
-                Background="{DynamicResource AntigravityAccentBrush}"
-                Foreground="{DynamicResource AntigravityAccentForegroundBrush}"
                 Content="IMPORT">
                 <Button.CommandParameter>
                     <system:Boolean>True</system:Boolean>

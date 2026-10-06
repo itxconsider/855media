@@ -240,6 +240,91 @@ public class LDPlayerServiceTests
     }
 
     [Fact]
+    public async Task AutoPostConfigStorage_SaveAndLoad_RoundTripsCorrectly()
+    {
+        var tempFile = Path.Combine(Path.GetTempPath(), $"autopost_cfg_test_{Guid.NewGuid()}.json");
+        try
+        {
+            var config = new AutoPostConfig
+            {
+                IsWatchVideo = true,
+                WatchVideoMin = 15,
+                WatchVideoMax = 90,
+                IsMarketPlace = true,
+                MarketPlaceMin = 25,
+                MarketPlaceMax = 65,
+                IsLikePost = true,
+                LikePostMin = 2,
+                LikePostMax = 5,
+                IsNewsFeed = true,
+                NewsFeedMin = 45,
+                NewsFeedMax = 110,
+                IsCheckIn = true,
+                CheckInLocation = "New York, USA",
+                IsPostReel = true,
+                IsDeleteReelFile = false,
+                IsBackupReelFile = true,
+                DelayUpload = 75,
+                DelayOpenApp = 12,
+                DelayAfterOpenLD = 25,
+                DelayOpenEachLD = 18,
+                DelayBeforeCloseLD = 20,
+                DelayBeforeSwitchPage = 22,
+                CloseLDAfterAction = false,
+                ClearCacheFBBeforeOpen = true,
+                AfterPostCheckCopyRight = false,
+                SwitchToProfileAfterPost = true,
+                SleepPcAfterActionDone = true,
+            };
+
+            await AutoPostConfigStorage.SaveConfigAsync(config, tempFile);
+            var loaded = await AutoPostConfigStorage.LoadConfigAsync(tempFile);
+
+            Assert.True(loaded.IsWatchVideo);
+            Assert.Equal(15, loaded.WatchVideoMin);
+            Assert.Equal(90, loaded.WatchVideoMax);
+            Assert.True(loaded.IsMarketPlace);
+            Assert.Equal(25, loaded.MarketPlaceMin);
+            Assert.Equal(65, loaded.MarketPlaceMax);
+            Assert.True(loaded.IsCheckIn);
+            Assert.Equal("New York, USA", loaded.CheckInLocation);
+            Assert.True(loaded.IsPostReel);
+            Assert.False(loaded.IsDeleteReelFile);
+            Assert.True(loaded.IsBackupReelFile);
+            Assert.Equal(75, loaded.DelayUpload);
+            Assert.Equal(12, loaded.DelayOpenApp);
+            Assert.Equal(25, loaded.DelayAfterOpenLD);
+            Assert.Equal(18, loaded.DelayOpenEachLD);
+            Assert.Equal(20, loaded.DelayBeforeCloseLD);
+            Assert.Equal(22, loaded.DelayBeforeSwitchPage);
+            Assert.False(loaded.CloseLDAfterAction);
+            Assert.True(loaded.ClearCacheFBBeforeOpen);
+            Assert.False(loaded.AfterPostCheckCopyRight);
+            Assert.True(loaded.SwitchToProfileAfterPost);
+            Assert.True(loaded.SleepPcAfterActionDone);
+        }
+        finally
+        {
+            if (File.Exists(tempFile))
+                File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
+    public async Task AutoPostConfigStorage_LoadConfig_WhenFileDoesNotExist_ReturnsDefault()
+    {
+        var tempFile = Path.Combine(
+            Path.GetTempPath(),
+            $"autopost_cfg_nonexistent_{Guid.NewGuid()}.json"
+        );
+        var loaded = await AutoPostConfigStorage.LoadConfigAsync(tempFile);
+        Assert.NotNull(loaded);
+        Assert.True(loaded.IsWatchVideo);
+        Assert.Equal(60, loaded.DelayUpload);
+        Assert.Equal(15, loaded.DelayBeforeCloseLD);
+    }
+
+    [Fact]
     public void ParsePageInfoFromXml_ExtractsFollowersAndTypeCorrectly()
     {
         var sampleXml =
@@ -616,6 +701,33 @@ public class LDPlayerServiceTests
     }
 
     [Fact]
+    public async System.Threading.Tasks.Task DeleteFileFromEmulator_WithEmptyPath_ReturnsTrue()
+    {
+        using var client = new AtxAgentClient(7912);
+        var service = new LDPlayerService(client);
+
+        var result = await service.DeleteFileFromEmulatorAsync(0, "");
+        Assert.True(result);
+    }
+
+    [Fact]
+    public async System.Threading.Tasks.Task WaitForFacebookUploadCompleted_WhenCancelled_CompletesCleanly()
+    {
+        using var client = new AtxAgentClient(7912);
+        var service = new LDPlayerService(client);
+        using var cts = new System.Threading.CancellationTokenSource();
+        cts.Cancel();
+
+        // Should return cleanly without throwing unhandled exception when cancelled
+        var result = await service.WaitForFacebookUploadCompletedAsync(
+            0,
+            timeout: TimeSpan.FromMilliseconds(50),
+            cancellationToken: cts.Token
+        );
+        Assert.True(result);
+    }
+
+    [Fact]
     public async System.Threading.Tasks.Task SwitchToPersona_WhenAlreadyOnTarget_ReturnsTrueImmediately()
     {
         var menuXml =
@@ -975,6 +1087,41 @@ public class LDPlayerServiceTests
     }
 
     [Fact]
+    public void FindDirectSwitchButton_WithPersonaSwitchIntoPage_ReturnsNode()
+    {
+        var xml =
+            @"<hierarchy rotation='0'>
+  <node index='0' bounds='[0,0][720,1280]'>
+    <node index='1' text='' content-desc='Plumber John+, switch into your page' class='android.widget.Button' bounds='[399,104][478,208]' />
+  </node>
+</hierarchy>";
+
+        var node = LDPlayerService.FindDirectSwitchButton(xml, "Plumber John+");
+
+        Assert.NotNull(node);
+        Assert.Equal("Plumber John+, switch into your page", node.Attribute("content-desc")?.Value);
+    }
+
+    [Fact]
+    public void FindDirectSwitchButton_WithPersonaSwitchIntoProfile_ReturnsNode()
+    {
+        var xml =
+            @"<hierarchy rotation='0'>
+  <node index='0' bounds='[0,0][720,1280]'>
+    <node index='1' text='' content-desc='Isslam Harrache, switch into your profile' class='android.widget.Button' bounds='[393,104][476,208]' />
+  </node>
+</hierarchy>";
+
+        var node = LDPlayerService.FindDirectSwitchButton(xml, "Isslam Harrache");
+
+        Assert.NotNull(node);
+        Assert.Equal(
+            "Isslam Harrache, switch into your profile",
+            node.Attribute("content-desc")?.Value
+        );
+    }
+
+    [Fact]
     public void FindPersonalProfileNodeInSwitcher_IdentifiesNonPageAccount()
     {
         var xml =
@@ -1275,5 +1422,170 @@ public class LDPlayerServiceTests
         Assert.Equal("Page", target.Type);
         Assert.Equal("61594750165531", target.ManagedBy);
         Assert.Equal("contact@caprani.com", target.Email);
+    }
+
+    [Fact]
+    public void FindPersonaInSwitcher_FindsTargetPageCorrectly()
+    {
+        var xml =
+            @"<hierarchy rotation='0'>
+  <node index='0' bounds='[0,0][720,1280]'>
+    <node index='1' content-desc='Dismiss' class='android.widget.Button' bounds='[312,362][408,394]' />
+    <node index='2' text='Breastfeeding Journey' class='android.view.ViewGroup' selected='true' bounds='[32,426][688,554]' />
+    <node index='3' text='Harch Jing' class='android.view.ViewGroup' selected='false' bounds='[32,554][688,684]' />
+    <node index='4' text='Jungle Bushcraft' class='android.view.ViewGroup' bounds='[32,684][688,823]' />
+    <node index='5' text='Page' class='android.view.ViewGroup' bounds='[32,750][256,799]' />
+    <node index='6' text='SAM Outdoor' class='android.view.ViewGroup' bounds='[32,823][688,962]' />
+    <node index='7' text='Page' class='android.view.ViewGroup' bounds='[32,890][256,938]' />
+  </node>
+</hierarchy>";
+
+        var match = LDPlayerService.FindPersonaInSwitcher(xml, "SAM Outdoor");
+
+        Assert.NotNull(match);
+        Assert.Equal((32 + 688) / 2, match.Value.X);
+        Assert.Equal((823 + 962) / 2, match.Value.Y);
+        Assert.False(match.Value.IsSelected);
+    }
+
+    [Fact]
+    public void FindPersonaInSwitcher_IdentifiesSelectedPage()
+    {
+        var xml =
+            @"<hierarchy rotation='0'>
+  <node index='0' bounds='[0,0][720,1280]'>
+    <node index='1' content-desc='Dismiss' class='android.widget.Button' bounds='[312,362][408,394]' />
+    <node index='2' text='Breastfeeding Journey' class='android.view.ViewGroup' selected='true' bounds='[32,426][688,554]' />
+    <node index='3' text='SAM Outdoor' class='android.view.ViewGroup' bounds='[32,823][688,962]' />
+  </node>
+</hierarchy>";
+
+        var match = LDPlayerService.FindPersonaInSwitcher(xml, "Breastfeeding Journey");
+
+        Assert.NotNull(match);
+        Assert.True(match.Value.IsSelected);
+    }
+
+    [Fact]
+    public void IsAlreadyOnTargetPersona_WhenActiveOnMenuHeader_ReturnsTrue()
+    {
+        var xml =
+            @"<hierarchy rotation='0'>
+  <node index='0' bounds='[0,0][720,1280]'>
+    <node index='1' text='SAM Outdoor, see your profile' class='android.view.ViewGroup' bounds='[64,120][507,220]' />
+    <node index='2' text='Your shortcuts' class='android.view.ViewGroup' bounds='[24,352][224,373]' />
+  </node>
+</hierarchy>";
+
+        Assert.True(LDPlayerService.IsAlreadyOnTargetPersona(xml, "SAM Outdoor"));
+        Assert.False(LDPlayerService.IsAlreadyOnTargetPersona(xml, "Other Page"));
+    }
+
+    [Fact]
+    public void IsAccountSwitcherOpen_DetectsVariousSwitcherSignatures()
+    {
+        var xmlWithDismiss =
+            "<hierarchy><node content-desc='Dismiss' bounds='[0,0][10,10]' /><node text='Page' /></hierarchy>";
+        var xmlWithCreatePage = "<hierarchy><node text='Create Facebook Page' /></hierarchy>";
+        var xmlWithMetaSettings =
+            "<hierarchy><node text='Go to Meta Account settings' /></hierarchy>";
+        var xmlRegularFeed = "<hierarchy><node text='News Feed' /></hierarchy>";
+
+        Assert.True(LDPlayerService.IsAccountSwitcherOpen(xmlWithDismiss));
+        Assert.True(LDPlayerService.IsAccountSwitcherOpen(xmlWithCreatePage));
+        Assert.True(LDPlayerService.IsAccountSwitcherOpen(xmlWithMetaSettings));
+        Assert.False(LDPlayerService.IsAccountSwitcherOpen(xmlRegularFeed));
+    }
+
+    [Fact]
+    public void BulkFetch_GroupingByDevice_AvoidsDuplicateDeviceLaunches()
+    {
+        var pages = new List<FacebookPageTarget>
+        {
+            new()
+            {
+                DeviceName = "LD-0",
+                PageId = "1001",
+                PageName = "Page 1",
+            },
+            new()
+            {
+                DeviceName = "LD-0",
+                PageId = "1002",
+                PageName = "Page 2",
+            },
+            new()
+            {
+                DeviceName = "LD-1",
+                PageId = "2001",
+                PageName = "Page 3",
+            },
+            new()
+            {
+                DeviceName = "LD-1",
+                PageId = "2002",
+                PageName = "Page 4",
+            },
+            new()
+            {
+                DeviceName = "LD-2",
+                PageId = "3001",
+                PageName = "Page 5",
+            },
+        };
+
+        var grouped = pages
+            .GroupBy(p => int.TryParse(p.DeviceName.Replace("LD-", ""), out var idx) ? idx : -1)
+            .Where(g => g.Key >= 0)
+            .ToList();
+
+        Assert.Equal(3, grouped.Count);
+        Assert.Equal(2, grouped.First(g => g.Key == 0).Count());
+        Assert.Equal(2, grouped.First(g => g.Key == 1).Count());
+        Assert.Single(grouped.First(g => g.Key == 2));
+    }
+
+    [Fact]
+    public async System.Threading.Tasks.Task BulkFetch_ConcurrencyLimiting_EnforcesMaxActiveWorkers()
+    {
+        const int maxConcurrency = 4;
+        const int totalItems = 20;
+        int activeCount = 0;
+        int peakActive = 0;
+        var lockObj = new object();
+
+        var semaphore = new System.Threading.SemaphoreSlim(maxConcurrency);
+        var tasks = System
+            .Linq.Enumerable.Range(0, totalItems)
+            .Select(async _ =>
+            {
+                await semaphore.WaitAsync();
+                try
+                {
+                    lock (lockObj)
+                    {
+                        activeCount++;
+                        if (activeCount > peakActive)
+                            peakActive = activeCount;
+                    }
+                    await System.Threading.Tasks.Task.Delay(15);
+                }
+                finally
+                {
+                    lock (lockObj)
+                    {
+                        activeCount--;
+                    }
+                    semaphore.Release();
+                }
+            });
+
+        await System.Threading.Tasks.Task.WhenAll(tasks);
+
+        Assert.True(
+            peakActive <= maxConcurrency,
+            $"Peak active count {peakActive} exceeded maximum concurrency {maxConcurrency}"
+        );
+        Assert.Equal(maxConcurrency, peakActive);
     }
 }

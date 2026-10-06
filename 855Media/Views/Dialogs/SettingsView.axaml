@@ -70,7 +70,7 @@
             <Setter Property="Width" Value="32" />
             <Setter Property="Height" Value="32" />
             <Setter Property="Padding" Value="0" />
-            <Setter Property="CornerRadius" Value="16" />
+            <Setter Property="CornerRadius" Value="6" />
             <Setter Property="Background" Value="{DynamicResource MuseCloseBtnBrush}" />
             <Setter Property="Foreground" Value="{DynamicResource AntigravityTextBrush}" />
             <Setter Property="BorderThickness" Value="0" />
@@ -92,7 +92,7 @@
         Background="{DynamicResource AntigravityPanelBrush}"
         BorderBrush="{DynamicResource AntigravityBorderBrush}"
         BorderThickness="1"
-        CornerRadius="16"
+        CornerRadius="8"
         ClipToBounds="True">
         <Grid ColumnDefinitions="220,*">
             <!-- Left Sidebar Navigation -->
@@ -292,7 +292,7 @@
 
                             <!-- Muse Rounded Card Container -->
                             <Border
-                                CornerRadius="14"
+                                CornerRadius="8"
                                 Background="{DynamicResource AntigravityCardBrush}"
                                 BorderBrush="{DynamicResource AntigravityBorderBrush}"
                                 BorderThickness="1"
@@ -353,7 +353,7 @@
                             <TextBlock FontSize="13" Foreground="{DynamicResource AntigravityMutedBrush}" Text="Customize your interface appearance, language preferences, and update behavior." />
 
                             <Border
-                                CornerRadius="14"
+                                CornerRadius="8"
                                 Background="{DynamicResource AntigravityCardBrush}"
                                 BorderBrush="{DynamicResource AntigravityBorderBrush}"
                                 BorderThickness="1"
@@ -421,7 +421,7 @@
                             <TextBlock FontSize="13" Foreground="{DynamicResource AntigravityMutedBrush}" Text="Connect AI models for context-aware movie dubbing and Khmer subtitle translation." />
 
                             <Border
-                                CornerRadius="14"
+                                CornerRadius="8"
                                 Background="{DynamicResource AntigravityCardBrush}"
                                 BorderBrush="{DynamicResource AntigravityBorderBrush}"
                                 BorderThickness="1"
@@ -473,7 +473,7 @@
                             <TextBlock FontSize="13" Foreground="{DynamicResource AntigravityMutedBrush}" Text="Manage your software license status, machine activation, and entitlements." />
 
                             <Border
-                                CornerRadius="14"
+                                CornerRadius="8"
                                 Background="{DynamicResource AntigravityCardBrush}"
                                 BorderBrush="{DynamicResource AntigravityBorderBrush}"
                                 BorderThickness="1"
@@ -491,7 +491,7 @@
                                             VerticalAlignment="Center"
                                             Padding="10,4"
                                             Background="{DynamicResource AntigravityAccentBrush}"
-                                            CornerRadius="12">
+                                            CornerRadius="6">
                                             <TextBlock
                                                 FontSize="11"
                                                 FontWeight="Bold"
@@ -529,7 +529,7 @@
                             <TextBlock FontSize="13" Foreground="{DynamicResource AntigravityMutedBrush}" Text="Configure storage rules, download parallelism, and file naming templates." />
 
                             <Border
-                                CornerRadius="14"
+                                CornerRadius="8"
                                 Background="{DynamicResource AntigravityCardBrush}"
                                 BorderBrush="{DynamicResource AntigravityBorderBrush}"
                                 BorderThickness="1"
@@ -612,7 +612,7 @@
                             <TextBlock FontSize="13" Foreground="{DynamicResource AntigravityMutedBrush}" Text="Fine-tune audio demuxing, vocal separation, and subtitle track injection." />
 
                             <Border
-                                CornerRadius="14"
+                                CornerRadius="8"
                                 Background="{DynamicResource AntigravityCardBrush}"
                                 BorderBrush="{DynamicResource AntigravityBorderBrush}"
                                 BorderThickness="1"
@@ -690,7 +690,7 @@
                             <TextBlock FontSize="13" Foreground="{DynamicResource AntigravityMutedBrush}" Text="External encoders, FFmpeg binaries, and device hardware settings." />
 
                             <Border
-                                CornerRadius="14"
+                                CornerRadius="8"
                                 Background="{DynamicResource AntigravityCardBrush}"
                                 BorderBrush="{DynamicResource AntigravityBorderBrush}"
                                 BorderThickness="1"
@@ -735,7 +735,7 @@
                             <TextBlock FontSize="13" Foreground="{DynamicResource AntigravityMutedBrush}" Text="Get assistance, read documentation, or contribute to 855Media." />
 
                             <Border
-                                CornerRadius="14"
+                                CornerRadius="8"
                                 Background="{DynamicResource AntigravityCardBrush}"
                                 BorderBrush="{DynamicResource AntigravityBorderBrush}"
                                 BorderThickness="1"
