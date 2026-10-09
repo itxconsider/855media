@@ -19,14 +19,18 @@ namespace _855Media.ViewModels.Components;
 public partial class AutoPostViewModel : ViewModelBase
 {
     private readonly ILDPlayerService _ldPlayerService;
+    private readonly IFacebookAutoPostService? _autoPostService;
+    private readonly IFacebookFeedEngagementService? _feedEngagementService;
     private readonly DialogManager _dialogManager;
     private readonly SnackbarManager _snackbarManager;
     private readonly LocalizationManager _localizationManager;
     private readonly SettingsService _settingsService;
+    private readonly AtxAgentClient? _atxClient;
 
     private CancellationTokenSource? _batchCts;
     private CancellationTokenSource? _fetchCts;
     private readonly SemaphoreSlim _bootGate = new(1, 1);
+    private readonly SemaphoreSlim _pageSaveGate = new(1, 1);
 
     // --- LDPlayer Configuration ---
     [ObservableProperty]
@@ -1000,18 +1004,60 @@ public partial class AutoPostViewModel : ViewModelBase
         DialogManager dialogManager,
         SnackbarManager snackbarManager,
         LocalizationManager localizationManager,
-        SettingsService settingsService
+        SettingsService settingsService,
+        IFacebookAutoPostService? autoPostService = null,
+        IFacebookFeedEngagementService? feedEngagementService = null,
+        AtxAgentClient? atxClient = null
     )
     {
         _ldPlayerService = ldPlayerService;
+        _autoPostService = autoPostService;
+        _feedEngagementService = feedEngagementService;
         _dialogManager = dialogManager;
         _snackbarManager = snackbarManager;
         _localizationManager = localizationManager;
         _settingsService = settingsService;
+        _atxClient = atxClient;
+        if (_atxClient != null)
+            _atxClient.TapObserved += OnAtxTapObserved;
 
         // Populate sample page data matching user's active configuration (885media, etc.)
         InitializeDefaultPages();
         InitializeSampleTasks();
+    }
+
+    private void OnAtxTapObserved(AtxTapEvent tapEvent)
+    {
+        if (!IsBusy)
+            return;
+
+        var state = tapEvent.Success ? "tapped" : "tap failed";
+        var message =
+            $"{tapEvent.Timestamp:HH:mm:ss} LD-{tapEvent.DeviceIndex} ATX {state}: "
+            + $"'{tapEvent.Target}' at ({tapEvent.X}, {tapEvent.Y})";
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (IsBusy)
+                StatusSummary = message;
+        });
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing && _atxClient != null)
+        {
+            _atxClient.TapObserved -= OnAtxTapObserved;
+            _atxClient.IsTapTracingEnabled = false;
+        }
+
+        base.Dispose(disposing);
+    }
+
+    partial void OnIsBusyChanged(bool value)
+    {
+        if (_atxClient != null)
+            _atxClient.IsTapTracingEnabled = value;
     }
 
     public override async Task InitializeAsync()
@@ -1349,7 +1395,9 @@ public partial class AutoPostViewModel : ViewModelBase
             }
 
             // 1. Boot emulator
-            worker.Status = "Booting LDPlayer...";
+            worker.Status = SurfsharkVpnMonitor.IsConnected()
+                ? "Booting LDPlayer..."
+                : "Waiting for Surfshark VPN...";
             await _ldPlayerService.LaunchInstanceAsync(worker.Index, LdFolder, ct);
             worker.IsAndroidStarted = true;
 
@@ -1371,6 +1419,25 @@ public partial class AutoPostViewModel : ViewModelBase
             var postBootDelay = Math.Max(20, config.DelayAfterOpen);
             worker.Status = $"{worker.FbClone}: Waiting {postBootDelay}s after LD start...";
             await Task.Delay(TimeSpan.FromSeconds(postBootDelay), ct);
+
+            // 2.1 Verify Facebook Account is Active before warmup or posting
+            worker.Status = $"{worker.FbClone}: Verifying active Facebook account...";
+            var (isAccountActive, activeAccountName, inactiveReason) =
+                await _ldPlayerService.VerifyFacebookAccountActiveAsync(worker.Index, LdFolder, ct);
+
+            if (!isAccountActive)
+            {
+                worker.Status = $"{worker.FbClone}: Inactive/Logged Out ({inactiveReason})";
+                _snackbarManager.Notify(
+                    $"LD-{worker.Index} ({worker.FbClone}): Facebook account is inactive or requires login ({inactiveReason})."
+                );
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(activeAccountName))
+            {
+                worker.Status = $"{worker.FbClone}: Account active: '{activeAccountName}'";
+            }
 
             // Ensure switched to personal profile before starting account warm up
             hasWarmupAction =
@@ -1543,29 +1610,17 @@ public partial class AutoPostViewModel : ViewModelBase
                     var remaining = totalDuration - elapsed;
                     worker.Status = $"{worker.FbClone}: NewsFeed ({remaining}s)";
 
-                    // Safe human swipe path avoiding center media overlay targets
-                    int startX = Random.Shared.Next(330, 410);
-                    int endX = startX + Random.Shared.Next(-20, 21);
-                    int startY = Random.Shared.Next(750, 920);
-                    int scrollDistance = Random.Shared.Next(340, 520);
-                    int endY = Math.Max(240, startY - scrollDistance);
-                    int durationMs = Random.Shared.Next(480, 680);
-
-                    await _ldPlayerService.SwipeAsync(
+                    // Authentic human finger scroll with natural momentum fling and biomechanical thumb arc
+                    var dwellMs = await _ldPlayerService.ScrollNewsFeedLikeHumanAsync(
                         worker.Index,
-                        startX,
-                        startY,
-                        endX,
-                        endY,
-                        durationMs,
                         LdFolder,
                         ct
                     );
                     scrollCount++;
 
-                    var pauseSeconds = Random.Shared.Next(4, 8);
-                    await Task.Delay(TimeSpan.FromSeconds(pauseSeconds), ct);
-                    elapsed += pauseSeconds;
+                    var waitSpan = TimeSpan.FromMilliseconds(dwellMs);
+                    await Task.Delay(waitSpan, ct);
+                    elapsed += (int)Math.Max(1, Math.Round(waitSpan.TotalSeconds));
 
                     if (
                         likesGiven < targetLikes
@@ -1585,7 +1640,7 @@ public partial class AutoPostViewModel : ViewModelBase
                     }
 
                     // Check and recover if an accidental sheet/viewer was opened
-                    if (scrollCount % 3 == 0 && !ct.IsCancellationRequested)
+                    if (scrollCount % 5 == 0 && !ct.IsCancellationRequested)
                     {
                         await _ldPlayerService.EnsureOnFeedAsync(worker.Index, LdFolder, ct);
                     }
@@ -1622,36 +1677,38 @@ public partial class AutoPostViewModel : ViewModelBase
                     var remaining = totalDuration - elapsed;
                     worker.Status = $"{worker.FbClone}: Watching Video ({remaining}s)";
 
-                    var watchTime = Random.Shared.Next(10, 20);
+                    var watchTime = Random.Shared.Next(5, 11);
                     var waitChunk = Math.Min(watchTime, remaining);
-                    await Task.Delay(TimeSpan.FromSeconds(waitChunk), ct);
-                    elapsed += waitChunk;
 
-                    if (!ct.IsCancellationRequested)
+                    // Watch the current video for a portion before interacting
+                    int preInteractDelay = Math.Max(2, waitChunk / 2);
+                    await Task.Delay(TimeSpan.FromSeconds(preInteractDelay), ct);
+
+                    // Like current video if enabled (done while playing, before scrolling away)
+                    if (
+                        config.LikePost
+                        && Random.Shared.Next(0, 4) == 0
+                        && !ct.IsCancellationRequested
+                    )
                     {
-                        var durationMs = Random.Shared.Next(400, 560);
-                        int startX = Random.Shared.Next(330, 390);
-                        int endX = startX + Random.Shared.Next(-15, 16);
-                        // Swipe up to next video/reel
-                        await _ldPlayerService.SwipeAsync(
+                        await _ldPlayerService.LikeCurrentVideoPostAsync(
                             worker.Index,
-                            startX,
-                            950,
-                            endX,
-                            240,
-                            durationMs,
                             LdFolder,
                             ct
                         );
+                    }
 
-                        if (config.LikePost && Random.Shared.Next(0, 4) == 0)
-                        {
-                            await _ldPlayerService.LikeCurrentVideoPostAsync(
-                                worker.Index,
-                                LdFolder,
-                                ct
-                            );
-                        }
+                    int remainingChunk = waitChunk - preInteractDelay;
+                    if (remainingChunk > 0)
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(remainingChunk), ct);
+                    }
+                    elapsed += waitChunk;
+
+                    if (!ct.IsCancellationRequested && elapsed < totalDuration)
+                    {
+                        // Authentic vertical transition specifically tuned for video/reels feeds
+                        await _ldPlayerService.ScrollToNextVideoAsync(worker.Index, LdFolder, ct);
                     }
                 }
 
@@ -1760,12 +1817,25 @@ public partial class AutoPostViewModel : ViewModelBase
                         )
                     )
                     {
+                        var matchingGlobalPage = Pages.FirstOrDefault(p =>
+                            string.Equals(p.PageName, qpName, StringComparison.OrdinalIgnoreCase)
+                            || (!string.IsNullOrWhiteSpace(p.PageId) && p.PageId == qpName)
+                        );
+                        var taskForPage = queuedTasksForWorker.FirstOrDefault(t =>
+                            string.Equals(t.Page, qpName, StringComparison.OrdinalIgnoreCase)
+                        );
+
                         var virtualPage = new FacebookPageTargetViewModel(
                             new FacebookPageTarget
                             {
-                                PageName = qpName,
+                                PageName = matchingGlobalPage?.PageName ?? qpName,
+                                PageId = !string.IsNullOrWhiteSpace(matchingGlobalPage?.PageId)
+                                    ? matchingGlobalPage.PageId
+                                    : taskForPage?.PageId ?? string.Empty,
                                 DeviceName = worker.Name,
-                                Type = "Page",
+                                Type =
+                                    matchingGlobalPage?.Type
+                                    ?? (taskForPage?.IsProfile == true ? "Profile" : "Page"),
                             }
                         );
                         queuedPages.Add(virtualPage);
@@ -1815,7 +1885,21 @@ public partial class AutoPostViewModel : ViewModelBase
 
                     bool hasQueuedForPage = Tasks.Any(t =>
                         t.Status == "Queued"
-                        && t.Page.Equals(page.PageName, StringComparison.OrdinalIgnoreCase)
+                        && (
+                            string.Equals(
+                                t.Page?.Trim(),
+                                page.PageName?.Trim(),
+                                StringComparison.OrdinalIgnoreCase
+                            )
+                            || (
+                                !string.IsNullOrWhiteSpace(page.PageId)
+                                && string.Equals(
+                                    t.Page?.Trim(),
+                                    page.PageId?.Trim(),
+                                    StringComparison.OrdinalIgnoreCase
+                                )
+                            )
+                        )
                         && (
                             t.DeviceName.Equals(worker.Name, StringComparison.OrdinalIgnoreCase)
                             || t.DeviceName.Equals(
@@ -1857,28 +1941,33 @@ public partial class AutoPostViewModel : ViewModelBase
                         continue;
                     }
 
-                    // Switch persona to page
+                    // Switch persona to page/profile
                     if (!string.IsNullOrWhiteSpace(page.PageName))
                     {
-                        worker.Status = $"{worker.FbClone}: Switching to Page '{page.PageName}'...";
-                        var switched = await _ldPlayerService.SwitchToPersonaAsync(
-                            worker.Index,
-                            page.PageName,
-                            LdFolder,
-                            ct
-                        );
+                        var switched = await EnsureTargetPersonaActiveAsync(worker, page, ct);
                         if (!switched)
                         {
                             worker.Status =
-                                $"{worker.FbClone}: Error: Could not switch to Page '{page.PageName}'. Skipping posts for this page.";
+                                $"{worker.FbClone}: Error: Could not switch to {(page.IsProfile ? "Profile" : "Page")} '{page.PageName}'. Skipping posts for this target.";
 
-                            // Mark queued tasks for this page as failed so they don't get posted to personal profile
+                            // Mark queued tasks for this page as failed so they don't get posted to wrong persona
                             var pageTasks = Tasks
                                 .Where(t =>
                                     t.Status == "Queued"
-                                    && t.Page.Equals(
-                                        page.PageName,
-                                        StringComparison.OrdinalIgnoreCase
+                                    && (
+                                        string.Equals(
+                                            t.Page?.Trim(),
+                                            page.PageName?.Trim(),
+                                            StringComparison.OrdinalIgnoreCase
+                                        )
+                                        || (
+                                            !string.IsNullOrWhiteSpace(page.PageId)
+                                            && string.Equals(
+                                                t.Page?.Trim(),
+                                                page.PageId?.Trim(),
+                                                StringComparison.OrdinalIgnoreCase
+                                            )
+                                        )
                                     )
                                     && (
                                         t.DeviceName.Equals(
@@ -1898,7 +1987,7 @@ public partial class AutoPostViewModel : ViewModelBase
                                 .ToList();
                             foreach (var pt in pageTasks)
                             {
-                                pt.Status = "Failed (Page Switch Error)";
+                                pt.Status = "Failed (Target Page Switch Error)";
                             }
                             continue;
                         }
@@ -1932,21 +2021,28 @@ public partial class AutoPostViewModel : ViewModelBase
                 // If SwitchToProfileAfterPost is enabled, switch back to personal profile
                 if (SwitchToProfileAfterPost && !ct.IsCancellationRequested)
                 {
-                    var profilePage = devicePages.FirstOrDefault(p =>
-                        p.Type.Equals("Profile", StringComparison.OrdinalIgnoreCase)
-                    );
-                    var profileName = profilePage?.PageName;
-                    if (!string.IsNullOrWhiteSpace(profileName))
-                    {
-                        worker.Status =
-                            $"{worker.FbClone}: Switching back to profile '{profileName}'...";
-                        await _ldPlayerService.SwitchToPersonaAsync(
-                            worker.Index,
-                            profileName,
-                            LdFolder,
-                            ct
+                    var profilePage =
+                        devicePages.FirstOrDefault(p =>
+                            p.Type.Equals("Profile", StringComparison.OrdinalIgnoreCase)
+                        )
+                        ?? Pages.FirstOrDefault(p =>
+                            (
+                                p.DeviceName.Equals(worker.Name, StringComparison.OrdinalIgnoreCase)
+                                || p.DeviceName.Equals(
+                                    $"LD-{worker.Index}",
+                                    StringComparison.OrdinalIgnoreCase
+                                )
+                            ) && p.Type.Equals("Profile", StringComparison.OrdinalIgnoreCase)
                         );
-                    }
+                    var profileName = profilePage?.PageName;
+                    worker.Status =
+                        $"{worker.FbClone}: Switching back to profile '{profileName ?? "Personal"}'...";
+                    await _ldPlayerService.EnsureSwitchedToPersonalProfileAsync(
+                        worker.Index,
+                        profileName,
+                        LdFolder,
+                        ct
+                    );
                 }
             }
 
@@ -2050,6 +2146,71 @@ public partial class AutoPostViewModel : ViewModelBase
         public int DelayBeforeSwitchPage { get; init; }
     }
 
+    private async Task<bool> EnsureTargetPersonaActiveAsync(
+        LDInstanceItemViewModel worker,
+        FacebookPageTargetViewModel page,
+        CancellationToken ct
+    )
+    {
+        if (string.IsNullOrWhiteSpace(page.PageName))
+            return true;
+
+        try
+        {
+            // 1. Fast check: is the active persona already the target persona?
+            var xml = await _ldPlayerService.DumpUiHierarchyAsync(worker.Index, LdFolder, ct);
+            if (LDPlayerService.IsAlreadyOnTargetPersona(xml, page.PageName))
+            {
+                return true;
+            }
+
+            // 2. Not active or unconfirmed, route persona switch
+            worker.Status =
+                $"{worker.FbClone}: Verifying & switching to {(page.IsProfile ? "Profile" : "Page")} '{page.PageName}'...";
+            bool switched =
+                page.Model != null
+                    ? await _ldPlayerService.SwitchToPersonaAsync(
+                        worker.Index,
+                        page.Model,
+                        LdFolder,
+                        ct
+                    )
+                    : (
+                        page.IsProfile
+                            ? await _ldPlayerService.EnsureSwitchedToPersonalProfileAsync(
+                                worker.Index,
+                                page.PageName,
+                                LdFolder,
+                                ct
+                            )
+                            : await _ldPlayerService.SwitchToPersonaAsync(
+                                worker.Index,
+                                page.PageName,
+                                !string.IsNullOrWhiteSpace(page.PageId)
+                                    ? page.PageId
+                                    : page.PersonaUid,
+                                LdFolder,
+                                ct
+                            )
+                    );
+
+            if (switched)
+            {
+                await Task.Delay(1500, ct);
+            }
+            return switched;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            worker.Status = $"{worker.FbClone}: Persona verification failed: {ex.Message}";
+            return false;
+        }
+    }
+
     private async Task ExecutePostReelForPageAsync(
         LDInstanceItemViewModel worker,
         FacebookPageTargetViewModel page,
@@ -2066,7 +2227,21 @@ public partial class AutoPostViewModel : ViewModelBase
                     || t.DeviceName.Equals($"LD-{worker.Index}", StringComparison.OrdinalIgnoreCase)
                     || t.DeviceName.Equals(page.DeviceName, StringComparison.OrdinalIgnoreCase)
                 )
-                && t.Page.Equals(page.PageName, StringComparison.OrdinalIgnoreCase)
+                && (
+                    string.Equals(
+                        t.Page?.Trim(),
+                        page.PageName?.Trim(),
+                        StringComparison.OrdinalIgnoreCase
+                    )
+                    || (
+                        !string.IsNullOrWhiteSpace(page.PageId)
+                        && string.Equals(
+                            t.Page?.Trim(),
+                            page.PageId?.Trim(),
+                            StringComparison.OrdinalIgnoreCase
+                        )
+                    )
+                )
             )
             .ToList();
 
@@ -2093,6 +2268,14 @@ public partial class AutoPostViewModel : ViewModelBase
                 }
 
                 queuedTask.Status = "In Progress";
+                if (!await EnsureTargetPersonaActiveAsync(worker, page, ct))
+                {
+                    queuedTask.Status = "Failed (Target Page Switch Error)";
+                    worker.Status =
+                        $"[{page.PageName}] Could not switch to target page. Skipping Reel: {Path.GetFileName(queuedTask.FilePath)}";
+                    continue;
+                }
+
                 var qFileName = Path.GetFileName(queuedTask.FilePath);
                 var qCaption = !string.IsNullOrWhiteSpace(queuedTask.Title)
                     ? queuedTask.Title
@@ -2215,6 +2398,13 @@ public partial class AutoPostViewModel : ViewModelBase
             page.UseTitleFromTextFile
         );
 
+        if (!await EnsureTargetPersonaActiveAsync(worker, page, ct))
+        {
+            worker.Status =
+                $"[{page.PageName}] Could not switch to target page. Skipping folder Reel post.";
+            return;
+        }
+
         worker.Status = $"Posting Reel: {fileName} to '{page.PageName}'...";
         var success = await _ldPlayerService.PostReelToFacebookAsync(
             worker.Index,
@@ -2279,7 +2469,21 @@ public partial class AutoPostViewModel : ViewModelBase
                     || t.DeviceName.Equals($"LD-{worker.Index}", StringComparison.OrdinalIgnoreCase)
                     || t.DeviceName.Equals(page.DeviceName, StringComparison.OrdinalIgnoreCase)
                 )
-                && t.Page.Equals(page.PageName, StringComparison.OrdinalIgnoreCase)
+                && (
+                    string.Equals(
+                        t.Page?.Trim(),
+                        page.PageName?.Trim(),
+                        StringComparison.OrdinalIgnoreCase
+                    )
+                    || (
+                        !string.IsNullOrWhiteSpace(page.PageId)
+                        && string.Equals(
+                            t.Page?.Trim(),
+                            page.PageId?.Trim(),
+                            StringComparison.OrdinalIgnoreCase
+                        )
+                    )
+                )
             )
             .ToList();
 
@@ -2306,6 +2510,14 @@ public partial class AutoPostViewModel : ViewModelBase
                 }
 
                 queuedTask.Status = "In Progress";
+                if (!await EnsureTargetPersonaActiveAsync(worker, page, ct))
+                {
+                    queuedTask.Status = "Failed (Target Page Switch Error)";
+                    worker.Status =
+                        $"[{page.PageName}] Could not switch to target page. Skipping Picture: {Path.GetFileName(queuedTask.FilePath)}";
+                    continue;
+                }
+
                 var qFileName = Path.GetFileName(queuedTask.FilePath);
                 var qCaption = !string.IsNullOrWhiteSpace(queuedTask.Title)
                     ? queuedTask.Title
@@ -2425,6 +2637,13 @@ public partial class AutoPostViewModel : ViewModelBase
         var fileName = Path.GetFileName(imageFile);
         var caption = ResolveCaptionForMedia(imageFile, page.TitleImage, page.UseTitleFromTextFile);
 
+        if (!await EnsureTargetPersonaActiveAsync(worker, page, ct))
+        {
+            worker.Status =
+                $"[{page.PageName}] Could not switch to target page. Skipping folder Picture post.";
+            return;
+        }
+
         worker.Status = $"Posting Picture: {fileName} to '{page.PageName}'...";
         var success = await _ldPlayerService.PostPictureToFacebookAsync(
             worker.Index,
@@ -2490,7 +2709,21 @@ public partial class AutoPostViewModel : ViewModelBase
                     || t.DeviceName.Equals($"LD-{worker.Index}", StringComparison.OrdinalIgnoreCase)
                     || t.DeviceName.Equals(page.DeviceName, StringComparison.OrdinalIgnoreCase)
                 )
-                && t.Page.Equals(page.PageName, StringComparison.OrdinalIgnoreCase)
+                && (
+                    string.Equals(
+                        t.Page?.Trim(),
+                        page.PageName?.Trim(),
+                        StringComparison.OrdinalIgnoreCase
+                    )
+                    || (
+                        !string.IsNullOrWhiteSpace(page.PageId)
+                        && string.Equals(
+                            t.Page?.Trim(),
+                            page.PageId?.Trim(),
+                            StringComparison.OrdinalIgnoreCase
+                        )
+                    )
+                )
             )
             .ToList();
 
@@ -2517,6 +2750,14 @@ public partial class AutoPostViewModel : ViewModelBase
                 }
 
                 queuedTask.Status = "In Progress";
+                if (!await EnsureTargetPersonaActiveAsync(worker, page, ct))
+                {
+                    queuedTask.Status = "Failed (Target Page Switch Error)";
+                    worker.Status =
+                        $"[{page.PageName}] Could not switch to target page. Skipping Video: {Path.GetFileName(queuedTask.FilePath)}";
+                    continue;
+                }
+
                 var qFileName = Path.GetFileName(queuedTask.FilePath);
                 var qCaption = !string.IsNullOrWhiteSpace(queuedTask.Title)
                     ? queuedTask.Title
@@ -2639,6 +2880,13 @@ public partial class AutoPostViewModel : ViewModelBase
             page.TitleVideoLong,
             page.UseTitleFromTextFile
         );
+
+        if (!await EnsureTargetPersonaActiveAsync(worker, page, ct))
+        {
+            worker.Status =
+                $"[{page.PageName}] Could not switch to target page. Skipping folder Video post.";
+            return;
+        }
 
         worker.Status = $"Posting Video: {fileName} to '{page.PageName}'...";
         var success = await _ldPlayerService.PostVideoToFacebookAsync(
@@ -2948,6 +3196,8 @@ public partial class AutoPostViewModel : ViewModelBase
             RunThread = cfg.RunThread;
         AutoSortLDPlayer = cfg.AutoSortLDPlayer;
         ShowOnlyOpen = cfg.ShowOnlyOpen;
+
+        _ldPlayerService.ApplyDiscoveryDelayConfig(cfg);
     }
 
     [RelayCommand]
@@ -3216,20 +3466,35 @@ public partial class AutoPostViewModel : ViewModelBase
     {
         try
         {
-            var models = Pages
-                .Select(p =>
-                {
-                    p.SyncToModel();
-                    return p.Model;
-                })
-                .ToList();
-
-            await FacebookPageStorage.SavePagesAsync(models);
+            var models = await PersistPagesSnapshotAsync();
             _snackbarManager.Notify($"Saved {models.Count} pages to configuration.");
         }
         catch (Exception ex)
         {
             _snackbarManager.Notify($"Failed to save pages: {ex.Message}");
+        }
+    }
+
+    private async Task<List<FacebookPageTarget>> PersistPagesSnapshotAsync()
+    {
+        await _pageSaveGate.WaitAsync();
+        try
+        {
+            var models = await Dispatcher.UIThread.InvokeAsync(() =>
+                Pages
+                    .Select(p =>
+                    {
+                        p.SyncToModel();
+                        return p.Model;
+                    })
+                    .ToList()
+            );
+            await FacebookPageStorage.SavePagesAsync(models);
+            return models;
+        }
+        finally
+        {
+            _pageSaveGate.Release();
         }
     }
 
@@ -3260,6 +3525,93 @@ public partial class AutoPostViewModel : ViewModelBase
         }
     }
 
+    private async Task ReplaceDevicePagesInTableAsync(
+        LDInstanceItemViewModel target,
+        FacebookAccountDetails accountDetails
+    )
+    {
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            var toRemove = Pages
+                .Where(p =>
+                    p.DeviceName.Equals(target.Name, StringComparison.OrdinalIgnoreCase)
+                    || p.DeviceName.Equals($"LD-{target.Index}", StringComparison.OrdinalIgnoreCase)
+                )
+                .ToList();
+
+            foreach (var oldPage in toRemove)
+                Pages.Remove(oldPage);
+
+            var profileTarget = new FacebookPageTarget
+            {
+                IsSelected = true,
+                DeviceName = target.Name,
+                AppClone = target.FbClone,
+                PageId = accountDetails.Uid,
+                PersonaUid = accountDetails.Uid,
+                UserUid = accountDetails.Uid,
+                PageName = accountDetails.Name,
+                Email = accountDetails.Email,
+                Birthdate = accountDetails.Birthdate,
+                CreationDate = accountDetails.CreationDate,
+                Location = accountDetails.Location,
+                Hometown = accountDetails.Hometown,
+                Work = accountDetails.Work,
+                Education = accountDetails.Education,
+                RelationshipStatus = accountDetails.RelationshipStatus,
+                Type = "Profile",
+                ManagedBy = accountDetails.Name,
+            };
+            Pages.Add(new FacebookPageTargetViewModel(profileTarget, Pages.Count + 1));
+
+            foreach (var page in accountDetails.Pages)
+            {
+                var pageTarget = new FacebookPageTarget
+                {
+                    IsSelected = false,
+                    DeviceName = target.Name,
+                    AppClone = target.FbClone,
+                    PageId = page.PageId,
+                    PersonaUid = !string.IsNullOrWhiteSpace(page.PersonaUid)
+                        ? page.PersonaUid
+                        : page.PageId,
+                    UserUid = accountDetails.Uid,
+                    PageName = page.PageName,
+                    Email = accountDetails.Email,
+                    Birthdate = accountDetails.Birthdate,
+                    CreationDate = accountDetails.CreationDate,
+                    Location = page.Location,
+                    Hometown = page.Hometown,
+                    Work = page.Work,
+                    Education = page.Education,
+                    RelationshipStatus = page.RelationshipStatus,
+                    Type = "Page",
+                    Followers = page.Followers,
+                    Reach = page.Reach,
+                    ReelsCount = page.ReelsCount,
+                    VideosCount = page.VideosCount,
+                    Notifications = page.Notifications,
+                    ManagedBy = !string.IsNullOrWhiteSpace(page.ManagedBy)
+                        ? page.ManagedBy
+                        : accountDetails.Name,
+                };
+                Pages.Add(new FacebookPageTargetViewModel(pageTarget, Pages.Count + 1));
+            }
+
+            RefreshDisplayedManagePages();
+
+            if (SelectedManageInstance == target)
+            {
+                SelectedAccountName = accountDetails.Name;
+                SelectedAccountUid = accountDetails.Uid;
+                SelectedAccountEmail = accountDetails.Email;
+                SelectedAccountBirthdate = accountDetails.Birthdate;
+                SelectedAccountCreationDate = accountDetails.CreationDate;
+                IsSelectedAccountActive = true;
+            }
+        });
+    }
+
     private async Task<bool> ProcessSingleDeviceFetchAsync(
         LDInstanceItemViewModel target,
         bool autoCloseIfBooted,
@@ -3270,23 +3622,26 @@ public partial class AutoPostViewModel : ViewModelBase
             return false;
 
         target.Status = "Checking Status...";
-        bool wasRunning = false;
+        // Ask LDPlayer whether the instance is running before issuing an ADB
+        // command. ADB can block when ldconsole adb targets a stopped instance,
+        // leaving the row stuck at "Checking Status..." without ever launching it.
+        bool wasRunning;
         try
         {
-            wasRunning = await _ldPlayerService.WaitForBootCompletedAsync(
-                target.Index,
-                TimeSpan.FromSeconds(2),
-                LdFolder,
-                ct
+            var instances = await _ldPlayerService.GetInstancesAsync(LdFolder, ct);
+            wasRunning = instances.Any(instance =>
+                instance.Index == target.Index && instance.IsAndroidStarted
             );
         }
         catch (OperationCanceledException)
         {
             throw;
         }
-        catch
+        catch (Exception ex)
         {
-            wasRunning = false;
+            target.Status = "Status Check Failed";
+            StatusSummary = $"Could not check {target.Name} in LDPlayer: {ex.Message}";
+            return false;
         }
 
         try
@@ -3299,9 +3654,23 @@ public partial class AutoPostViewModel : ViewModelBase
                 try
                 {
                     ct.ThrowIfCancellationRequested();
-                    target.Status = "Booting...";
-                    StatusSummary = $"Booting {target.Name} (Index {target.Index})...";
-                    await _ldPlayerService.LaunchInstanceAsync(target.Index, LdFolder, ct);
+                    var vpnConnected = SurfsharkVpnMonitor.IsConnected();
+                    target.Status = vpnConnected ? "Booting..." : "Waiting for Surfshark VPN...";
+                    StatusSummary = vpnConnected
+                        ? $"Booting {target.Name} (Index {target.Index})..."
+                        : $"Waiting for Surfshark VPN before booting {target.Name}...";
+                    var launched = await _ldPlayerService.LaunchInstanceAsync(
+                        target.Index,
+                        LdFolder,
+                        ct
+                    );
+                    if (!launched)
+                    {
+                        target.Status = "Launch Failed";
+                        StatusSummary =
+                            $"Could not launch {target.Name} (Index {target.Index}) via LDPlayer.";
+                        return false;
+                    }
 
                     var staggerSec = Math.Clamp(DelayOpenEachLD > 0 ? DelayOpenEachLD : 3, 2, 8);
                     await Task.Delay(TimeSpan.FromSeconds(staggerSec), ct);
@@ -3310,33 +3679,45 @@ public partial class AutoPostViewModel : ViewModelBase
                 {
                     _bootGate.Release();
                 }
-
-                var booted = await _ldPlayerService.WaitForBootCompletedAsync(
-                    target.Index,
-                    TimeSpan.FromSeconds(45),
-                    LdFolder,
-                    ct
-                );
-
-                if (!booted)
-                {
-                    target.Status = "Boot Failed";
-                    StatusSummary = $"Failed to boot {target.Name} within 45s.";
-                    return false;
-                }
-
-                await Task.Delay(2000, ct);
             }
+
+            var booted = await _ldPlayerService.WaitForBootCompletedAsync(
+                target.Index,
+                TimeSpan.FromSeconds(45),
+                LdFolder,
+                ct
+            );
+
+            if (!booted)
+            {
+                target.Status = "Boot Failed";
+                StatusSummary = $"Failed to boot {target.Name} within 45s.";
+                return false;
+            }
+
+            if (!wasRunning)
+                await Task.Delay(2000, ct);
 
             ct.ThrowIfCancellationRequested();
             target.Status = "Extracting Account...";
+            StatusSummary = $"Reading Facebook account and Page IDs from {target.Name}...";
             FacebookAccountDetails? accountDetails = null;
             try
             {
                 accountDetails = await _ldPlayerService.ExtractFacebookAccountDetailsAsync(
                     target.Index,
                     LdFolder,
-                    ct
+                    ct,
+                    async rootShellDetails =>
+                    {
+                        await ReplaceDevicePagesInTableAsync(target, rootShellDetails);
+                        await PersistPagesSnapshotAsync();
+
+                        var rootItemCount = rootShellDetails.Pages.Count + 1;
+                        target.Status = $"{rootItemCount} Items (Root Saved)";
+                        StatusSummary =
+                            $"{target.Name}: root-shell data saved; starting Bloks lookups...";
+                    }
                 );
             }
             catch (OperationCanceledException)
@@ -3351,93 +3732,8 @@ public partial class AutoPostViewModel : ViewModelBase
 
             if (accountDetails != null)
             {
-                await Dispatcher.UIThread.InvokeAsync(() =>
-                {
-                    // Remove existing pages for this device
-                    var toRemove = Pages
-                        .Where(p =>
-                            p.DeviceName.Equals(target.Name, StringComparison.OrdinalIgnoreCase)
-                            || p.DeviceName.Equals(
-                                $"LD-{target.Index}",
-                                StringComparison.OrdinalIgnoreCase
-                            )
-                        )
-                        .ToList();
-
-                    foreach (var oldPage in toRemove)
-                    {
-                        Pages.Remove(oldPage);
-                    }
-
-                    // Add User Profile
-                    var profileTarget = new FacebookPageTarget
-                    {
-                        IsSelected = true,
-                        DeviceName = target.Name,
-                        AppClone = target.FbClone,
-                        PageId = accountDetails.Uid,
-                        PersonaUid = accountDetails.Uid,
-                        UserUid = accountDetails.Uid,
-                        PageName = accountDetails.Name,
-                        Email = accountDetails.Email,
-                        Birthdate = accountDetails.Birthdate,
-                        CreationDate = accountDetails.CreationDate,
-                        Location = accountDetails.Location,
-                        Hometown = accountDetails.Hometown,
-                        Work = accountDetails.Work,
-                        Education = accountDetails.Education,
-                        RelationshipStatus = accountDetails.RelationshipStatus,
-                        Type = "Profile",
-                        ManagedBy = accountDetails.Name,
-                    };
-                    Pages.Add(new FacebookPageTargetViewModel(profileTarget, Pages.Count + 1));
-
-                    // Add Pages
-                    foreach (var page in accountDetails.Pages)
-                    {
-                        var pageTarget = new FacebookPageTarget
-                        {
-                            IsSelected = false,
-                            DeviceName = target.Name,
-                            AppClone = target.FbClone,
-                            PageId = page.PageId,
-                            PersonaUid = !string.IsNullOrWhiteSpace(page.PersonaUid)
-                                ? page.PersonaUid
-                                : page.PageId,
-                            UserUid = accountDetails.Uid,
-                            PageName = page.PageName,
-                            Email = accountDetails.Email,
-                            Birthdate = accountDetails.Birthdate,
-                            CreationDate = accountDetails.CreationDate,
-                            Location = page.Location,
-                            Hometown = page.Hometown,
-                            Work = page.Work,
-                            Education = page.Education,
-                            RelationshipStatus = page.RelationshipStatus,
-                            Type = "Page",
-                            Followers = page.Followers,
-                            Reach = page.Reach,
-                            ReelsCount = page.ReelsCount,
-                            Notifications = page.Notifications,
-                            ManagedBy = !string.IsNullOrWhiteSpace(page.ManagedBy)
-                                ? page.ManagedBy
-                                : accountDetails.Name,
-                        };
-                        Pages.Add(new FacebookPageTargetViewModel(pageTarget, Pages.Count + 1));
-                    }
-
-                    RefreshDisplayedManagePages();
-
-                    if (SelectedManageInstance == target)
-                    {
-                        SelectedAccountName = accountDetails.Name;
-                        SelectedAccountUid = accountDetails.Uid;
-                        SelectedAccountEmail = accountDetails.Email;
-                        SelectedAccountBirthdate = accountDetails.Birthdate;
-                        SelectedAccountCreationDate = accountDetails.CreationDate;
-                        IsSelectedAccountActive = true;
-                    }
-                });
+                await ReplaceDevicePagesInTableAsync(target, accountDetails);
+                await PersistPagesSnapshotAsync();
 
                 var totalItems = accountDetails.Pages.Count + 1;
                 if (autoCloseIfBooted && (!wasRunning || CloseLDAfterAction))
@@ -3590,11 +3886,29 @@ public partial class AutoPostViewModel : ViewModelBase
 
         try
         {
-            var ok = await _ldPlayerService.SwitchToPersonaAsync(
-                deviceIndex,
-                targetPage.PageName,
-                LdFolder
-            );
+            var ok =
+                targetPage.Model != null
+                    ? await _ldPlayerService.SwitchToPersonaAsync(
+                        deviceIndex,
+                        targetPage.Model,
+                        LdFolder
+                    )
+                    : (
+                        targetPage.IsProfile
+                            ? await _ldPlayerService.EnsureSwitchedToPersonalProfileAsync(
+                                deviceIndex,
+                                targetPage.PageName,
+                                LdFolder
+                            )
+                            : await _ldPlayerService.SwitchToPersonaAsync(
+                                deviceIndex,
+                                targetPage.PageName,
+                                !string.IsNullOrWhiteSpace(targetPage.PageId)
+                                    ? targetPage.PageId
+                                    : targetPage.PersonaUid,
+                                LdFolder
+                            )
+                    );
             if (ok)
             {
                 if (targetPage.IsProfile)
@@ -3660,7 +3974,7 @@ public partial class AutoPostViewModel : ViewModelBase
             IsBusy = true;
             try
             {
-                var ok = await _ldPlayerService.SwitchToPersonaAsync(
+                var ok = await _ldPlayerService.EnsureSwitchedToPersonalProfileAsync(
                     deviceIndex,
                     SelectedAccountName,
                     LdFolder
@@ -3906,9 +4220,14 @@ public partial class AutoPostViewModel : ViewModelBase
                             try
                             {
                                 pageCt.ThrowIfCancellationRequested();
+                                var vpnConnected = SurfsharkVpnMonitor.IsConnected();
                                 if (targetInst != null)
-                                    targetInst.Status = "Booting...";
-                                StatusSummary = $"Booting LD-{deviceIndex}...";
+                                    targetInst.Status = vpnConnected
+                                        ? "Booting..."
+                                        : "Waiting for Surfshark VPN...";
+                                StatusSummary = vpnConnected
+                                    ? $"Booting LD-{deviceIndex}..."
+                                    : $"Waiting for Surfshark VPN before booting LD-{deviceIndex}...";
                                 await _ldPlayerService.LaunchInstanceAsync(
                                     deviceIndex,
                                     LdFolder,
@@ -4282,6 +4601,8 @@ public partial class AutoPostViewModel : ViewModelBase
                         App = page.AppClone,
                         Type = postType,
                         Page = page.PageName,
+                        PageId = page.PageId ?? string.Empty,
+                        IsProfile = page.IsProfile,
                         Status = "Queued",
                     };
 

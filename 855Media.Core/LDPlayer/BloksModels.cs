@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
@@ -165,7 +166,7 @@ public static class BloksConstants
 
     // Known Bloks host activities in com.facebook.katana
     public const string BloksNativeShellActivity =
-        "com.facebook.bloks.hosted.activity.BloksNativeShellActivity";
+        "com.facebook.bloks.facebook.nativeshell.FbBloksNativeShellActivity";
     public const string BloksHostedActivity =
         "com.facebook.bloks.hosted.activity.BloksHostedActivity";
     public const string BloksHostedFragmentActivity =
@@ -192,6 +193,8 @@ public static class BloksConstants
     public static readonly string[] KnownBloksActivities =
     [
         BloksNativeShellActivity,
+        "com.bloks.foa.screen.genericcontainer.BloksScreenQueryGenericContainerActivity",
+        "com.bloks.foa.screen.genericcontainer.BloksScreenQueryGenericContainerTransparentActivity",
         BloksHostedActivity,
         BloksHostedFragmentActivity,
         FbBloksActivity,
@@ -200,6 +203,21 @@ public static class BloksConstants
         "BloksHostedFragmentActivity",
         "com.facebook.bloks",
     ];
+
+    public static string CreateBloksScreenQueryUri(
+        string appId,
+        Dictionary<string, string>? serverParameters = null
+    )
+    {
+        var payload = JsonSerializer.Serialize(
+            new
+            {
+                server_params = serverParameters ?? new Dictionary<string, string>(),
+                client_input_params = new Dictionary<string, string>(),
+            }
+        );
+        return $"fb://bloks_screen_query?app_id={Uri.EscapeDataString(appId)}&bloks_screen_params={Uri.EscapeDataString(payload)}";
+    }
 
     public static bool IsKnownBloksActivity(string? activityName)
     {

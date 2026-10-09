@@ -280,7 +280,7 @@
                                         Command="{Binding FetchSelectedPagesInfoCommand}"
                                         IsEnabled="{Binding !IsBusy}"
                                         Classes="action-btn btn-success"
-                                        ToolTip.Tip="Fast extraction of Facebook UID, email, access token &amp; managed pages from selected LDPlayer via Root Shell (instant, no UI dump)">
+                                        ToolTip.Tip="Read account and Page UIDs through ADB root, then use targeted profile and Bloks lookups for dates and Page details">
                                         <StackPanel Orientation="Horizontal" Spacing="6">
                                             <materialIcons:MaterialIcon Kind="LightningBoltOutline" Width="16" Height="16" />
                                             <TextBlock Text="Fetch Accounts (Root Shell)" FontWeight="SemiBold" />

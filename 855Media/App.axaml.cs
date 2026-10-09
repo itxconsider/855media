@@ -54,7 +54,16 @@ public class App : Application, IDisposable
         services.AddSingleton<VideoQueueManager>();
         services.AddSingleton<HardwareMonitorService>();
         services.AddSingleton<AtxAgentClient>();
-        services.AddSingleton<ILDPlayerService, LDPlayerService>();
+        services.AddSingleton<ILDPlayerService>(sp => new LDPlayerService(
+            sp.GetService<AtxAgentClient>()
+        ));
+        services.AddSingleton<IFacebookPersonaSwitcherService, FacebookPersonaSwitcherService>();
+        services.AddSingleton<IFacebookAutoPostService, FacebookAutoPostService>();
+        services.AddSingleton<IFacebookFeedEngagementService, FacebookFeedEngagementService>();
+        services.AddSingleton<IFacebookBloksService, FacebookBloksService>();
+        services.AddSingleton<IFacebookAccountDiscoveryService, FacebookAccountDiscoveryService>();
+        services.AddSingleton<IAdbKeyboardService, AdbKeyboardService>();
+        services.AddSingleton<ILDPlayerUiAutomationService, LDPlayerUiAutomationService>();
 
         // View models
         services.AddTransient<MainViewModel>();

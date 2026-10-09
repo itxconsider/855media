@@ -163,6 +163,41 @@ public interface ILDPlayerService
         CancellationToken cancellationToken = default
     );
 
+    /// <summary>
+    /// Switches to the target persona represented by a FacebookPageTarget.
+    /// If target is a Page, utilizes Tier 1 deep-link switching with its PageId/PersonaUid.
+    /// If target is a Profile, routes to EnsureSwitchedToPersonalProfileAsync.
+    /// </summary>
+    Task<bool> SwitchToPersonaAsync(
+        int index,
+        FacebookPageTarget target,
+        string? customPath = null,
+        CancellationToken cancellationToken = default
+    );
+
+    /// <summary>
+    /// Switches to a persona by name, optionally specifying pageId to enable Tier 1 deep-link switching.
+    /// </summary>
+    Task<bool> SwitchToPersonaAsync(
+        int index,
+        string personaName,
+        string? pageId,
+        string? customPath = null,
+        CancellationToken cancellationToken = default
+    );
+
+    /// <summary>
+    /// Direct deep-link switch pipeline to manage a Facebook Page by its numeric PageId,
+    /// bypassing navigation bar, menu, and switcher sheet variations.
+    /// </summary>
+    Task<bool> SwitchToPageByIdAsync(
+        int index,
+        string pageName,
+        string pageId,
+        string? customPath = null,
+        CancellationToken cancellationToken = default
+    );
+
     Task<bool> EnsureSwitchedToPersonalProfileAsync(
         int index,
         string? targetProfileName = null,
@@ -195,7 +230,29 @@ public interface ILDPlayerService
         CancellationToken cancellationToken = default
     );
 
+    /// <summary>
+    /// Performs an authentic, human-like finger scroll transition on the Facebook newsfeed.
+    /// Emulates natural thumb flick kinetics (smooth momentum glide / fling transition), reading drags,
+    /// micro-adjustments, thumb arc curvature/drift, and returns the recommended dwell time in ms.
+    /// </summary>
+    Task<int> ScrollNewsFeedLikeHumanAsync(
+        int index,
+        string? customPath = null,
+        CancellationToken cancellationToken = default
+    );
+
     Task<bool> LikeCurrentVideoPostAsync(
+        int index,
+        string? customPath = null,
+        CancellationToken cancellationToken = default
+    );
+
+    /// <summary>
+    /// Performs an upward swipe gesture specifically tuned for video/reels feeds to advance to the next video,
+    /// ensuring any blocking comment overlays or modal sheets are dismissed and swiping with sufficient travel
+    /// and duration to reliably trigger ViewPager page switching without snapping back.
+    /// </summary>
+    Task<bool> ScrollToNextVideoAsync(
         int index,
         string? customPath = null,
         CancellationToken cancellationToken = default
@@ -253,8 +310,39 @@ public interface ILDPlayerService
     Task<FacebookAccountDetails?> ExtractFacebookAccountDetailsAsync(
         int index,
         string? customPath = null,
+        CancellationToken cancellationToken = default,
+        Func<FacebookAccountDetails, Task>? rootShellCompleted = null
+    );
+
+    /// <summary>
+    /// Verifies whether Facebook has an active, logged-in session on the emulator instance.
+    /// Checks root session database / shared_prefs and inspects UI hierarchy to detect
+    /// login prompts, expired sessions, or checkpoints.
+    /// </summary>
+    Task<(
+        bool IsActive,
+        string? AccountName,
+        string? StatusReason
+    )> VerifyFacebookAccountActiveAsync(
+        int index,
+        string? customPath = null,
         CancellationToken cancellationToken = default
     );
+
+    /// <summary>
+    /// Applies custom delay configuration to the Facebook account discovery service.
+    /// </summary>
+    void ApplyDiscoveryDelayConfig(FacebookDiscoveryDelayConfig config);
+
+    /// <summary>
+    /// Applies discovery delay configuration derived from AutoPostConfig.
+    /// </summary>
+    void ApplyDiscoveryDelayConfig(AutoPostConfig config);
+
+    /// <summary>
+    /// Applies discovery delay configuration derived from LDSettings.
+    /// </summary>
+    void ApplyDiscoveryDelayConfig(LDSettings settings);
 
     Task<bool> EnsureAtxAgentRunningAsync(
         int index,
@@ -456,6 +544,16 @@ public interface ILDPlayerService
     /// (/data/data/com.facebook.katana/) via root shell (LightSharedPreferences, prefs_db, cache).
     /// </summary>
     Task<List<FacebookAccountInfo>> ExtractFacebookAccountsFromRootShellAsync(
+        int index,
+        string packageName = "com.facebook.katana",
+        string? customPath = null,
+        CancellationToken cancellationToken = default
+    );
+
+    /// <summary>
+    /// Fallback direct in-memory extraction of Facebook accounts via ADB root shell commands without pushing scripts.
+    /// </summary>
+    Task<List<FacebookAccountInfo>> ExtractFacebookAccountsDirectFromRootAdbAsync(
         int index,
         string packageName = "com.facebook.katana",
         string? customPath = null,

@@ -336,6 +336,8 @@ public class AutoPostTaskItem : INotifyPropertyChanged
     public string ShareToGroup { get; set; } = string.Empty;
     public string Comment { get; set; } = string.Empty;
     public string Page { get; set; } = string.Empty;
+    public string PageId { get; set; } = string.Empty;
+    public bool IsProfile { get; set; }
 
     public string Status
     {
@@ -431,7 +433,7 @@ public class FacebookAccountInfo
         {
             DeviceName = deviceName,
             AppClone = appClone,
-            PageId = !string.IsNullOrWhiteSpace(PageId) ? PageId : Uid,
+            PageId = this.PageId,
             PersonaUid = !string.IsNullOrWhiteSpace(Uid) ? Uid : PageId,
             UserUid = !string.IsNullOrWhiteSpace(UserUid) ? UserUid : Uid,
             PageName = Name,
@@ -447,7 +449,7 @@ public class FacebookAccountInfo
     {
         return new FacebookPageInfo
         {
-            PageId = !string.IsNullOrWhiteSpace(PageId) ? PageId : Uid,
+            PageId = this.PageId,
             PersonaUid = !string.IsNullOrWhiteSpace(Uid) ? Uid : PageId,
             UserUid = !string.IsNullOrWhiteSpace(UserUid) ? UserUid : Uid,
             PageName = Name,

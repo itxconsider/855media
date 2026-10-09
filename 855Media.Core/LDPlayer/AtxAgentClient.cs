@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -12,6 +13,16 @@ using System.Xml.Linq;
 
 namespace _855Media.Core.LDPlayer;
 
+public sealed record AtxTapEvent(
+    DateTimeOffset Timestamp,
+    int DeviceIndex,
+    int X,
+    int Y,
+    string Target,
+    string Bounds,
+    bool Success
+);
+
 /// <summary>
 /// High-performance HTTP client for OpenATX on-device daemon (atx-agent).
 /// Communicates over HTTP port 7912 (forwarded to localhost) for single-digit ms UI hierarchy dumps,
@@ -22,6 +33,16 @@ public class AtxAgentClient : IDisposable
     private readonly HttpClient _httpClient;
     private readonly int _basePort;
     private bool _disposed;
+
+    /// <summary>
+    /// Raised after an ATX tap with the best matching accessibility element at that point.
+    /// </summary>
+    public event Action<AtxTapEvent>? TapObserved;
+
+    /// <summary>
+    /// Enables hierarchy inspection for taps so their accessibility target can be reported.
+    /// </summary>
+    public bool IsTapTracingEnabled { get; set; }
 
     public const int DefaultBasePort = 7912;
 
@@ -110,7 +131,96 @@ public class AtxAgentClient : IDisposable
         CancellationToken cancellationToken = default
     )
     {
-        return await ExecuteShellAsync(deviceIndex, $"input tap {x} {y}", cancellationToken);
+        string target = "Unlabeled UI point";
+        string bounds = string.Empty;
+        if (IsTapTracingEnabled && TapObserved != null)
+        {
+            var hierarchy = await DumpHierarchyAsync(deviceIndex, cancellationToken);
+            (target, bounds) = DescribeElementAtPoint(hierarchy, x, y);
+        }
+
+        var success = await ExecuteShellAsync(deviceIndex, $"input tap {x} {y}", cancellationToken);
+        if (IsTapTracingEnabled && TapObserved is { } tapObserved)
+        {
+            var tapEvent = new AtxTapEvent(
+                DateTimeOffset.Now,
+                deviceIndex,
+                x,
+                y,
+                target,
+                bounds,
+                success
+            );
+            Debug.WriteLine(
+                $"[ATX][LD-{deviceIndex}] Tap {(success ? "sent" : "failed")}: {target} at ({x},{y}) bounds={bounds}"
+            );
+            tapObserved.Invoke(tapEvent);
+        }
+
+        return success;
+    }
+
+    private static (string Target, string Bounds) DescribeElementAtPoint(
+        string? hierarchy,
+        int x,
+        int y
+    )
+    {
+        if (string.IsNullOrWhiteSpace(hierarchy))
+            return ("UI hierarchy unavailable", string.Empty);
+
+        try
+        {
+            var doc = XDocument.Parse(hierarchy);
+            var candidates = doc.Descendants("node")
+                .Select(node =>
+                {
+                    var boundsText = node.Attribute("bounds")?.Value ?? string.Empty;
+                    var match = Regex.Match(boundsText, @"\[(\d+),(\d+)\]\[(\d+),(\d+)\]");
+                    if (!match.Success)
+                        return null;
+
+                    var left = int.Parse(match.Groups[1].Value);
+                    var top = int.Parse(match.Groups[2].Value);
+                    var right = int.Parse(match.Groups[3].Value);
+                    var bottom = int.Parse(match.Groups[4].Value);
+                    if (x < left || x > right || y < top || y > bottom)
+                        return null;
+
+                    var text = node.Attribute("text")?.Value?.Trim();
+                    var description = node.Attribute("content-desc")?.Value?.Trim();
+                    var resourceId = node.Attribute("resource-id")?.Value?.Trim();
+                    var className = node.Attribute("class")?.Value?.Trim();
+                    var label =
+                        !string.IsNullOrWhiteSpace(description) ? description
+                        : !string.IsNullOrWhiteSpace(text) ? text
+                        : !string.IsNullOrWhiteSpace(resourceId) ? resourceId
+                        : className ?? "Unlabeled element";
+                    var clickable = string.Equals(
+                        node.Attribute("clickable")?.Value,
+                        "true",
+                        StringComparison.OrdinalIgnoreCase
+                    );
+                    var area = (long)(right - left) * (bottom - top);
+                    return new
+                    {
+                        Label = label,
+                        Bounds = boundsText,
+                        Clickable = clickable,
+                        Area = area,
+                    };
+                })
+                .Where(candidate => candidate != null)
+                .OrderByDescending(candidate => candidate!.Clickable)
+                .ThenBy(candidate => candidate!.Area)
+                .ToList();
+
+            if (candidates.Count > 0)
+                return (candidates[0]!.Label, candidates[0]!.Bounds);
+        }
+        catch { }
+
+        return ("No accessibility node at point", string.Empty);
     }
 
     public async Task<bool> SwipeAsync(
@@ -996,24 +1106,8 @@ public class AtxAgentClient : IDisposable
         CancellationToken cancellationToken = default
     )
     {
-        var uri = $"fb://bloks?app_id={Uri.EscapeDataString(bloksAppId)}";
-        if (parameters != null && parameters.Count > 0)
-        {
-            var jsonParams = JsonSerializer.Serialize(parameters);
-            uri += $"&params={Uri.EscapeDataString(jsonParams)}";
-        }
-
-        var started = await OpenDeepLinkAsync(deviceIndex, uri, packageName, cancellationToken);
-        if (!started)
-        {
-            started = await ExecuteShellAsync(
-                deviceIndex,
-                $"am start -n {packageName}/{BloksConstants.BloksNativeShellActivity} --es app_id \"{bloksAppId}\" -f 0x14000000",
-                cancellationToken
-            );
-        }
-
-        return started;
+        var uri = BloksConstants.CreateBloksScreenQueryUri(bloksAppId, parameters);
+        return await OpenDeepLinkAsync(deviceIndex, uri, packageName, cancellationToken);
     }
 
     /// <summary>
@@ -1124,7 +1218,7 @@ public class AtxAgentClient : IDisposable
             caseInsensitive,
             cancellationToken
         );
-        if (elem == null || (elem.CenterX <= 0 && elem.CenterY <= 0))
+        if (elem == null || elem.CenterX <= 0 || elem.CenterY <= 0)
             return false;
 
         return await TapAsync(deviceIndex, elem.CenterX, elem.CenterY, cancellationToken);
