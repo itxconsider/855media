@@ -122,6 +122,9 @@ public class FacebookPageTargetTests : IDisposable
 
         var target = new FacebookPageTarget
         {
+            ReelsCount = 40,
+            VideosCount = 12,
+            PictureCount = 25,
             VideoReelPath = reelsDir,
             VideoLongPath = videosDir,
             ImagePath = picturesDir,
@@ -130,9 +133,12 @@ public class FacebookPageTargetTests : IDisposable
 
         target.RefreshMediaCounts();
 
-        Assert.Equal(2, target.ReelsCount);
-        Assert.Equal(1, target.VideosCount);
-        Assert.Equal(3, target.PictureCount);
+        Assert.Equal(40, target.ReelsCount);
+        Assert.Equal(12, target.VideosCount);
+        Assert.Equal(25, target.PictureCount);
+        Assert.Equal(2, target.UploadReelsCount);
+        Assert.Equal(1, target.UploadVideosCount);
+        Assert.Equal(3, target.UploadPictureCount);
         Assert.Equal("1", target.FileInGroup);
     }
 
@@ -163,6 +169,7 @@ public class FacebookPageTargetTests : IDisposable
 
     [Theory]
     [InlineData("Joined Facebook in October 2021", 2021, 10, 1)]
+    [InlineData("Joined Facebook September 2026", 2026, 9, 1)]
     [InlineData("Account created: January 15, 2024", 2024, 1, 15)]
     [InlineData("Member since July 2023", 2023, 7, 1)]
     [InlineData("Joined 2020", 2020, 1, 1)]
@@ -228,14 +235,15 @@ public class FacebookPageTargetTests : IDisposable
     }
 
     [Fact]
-    public void GetPageMaturity_MissingCreationDate_FallsBackToFollowersAndContent()
+    public void GetPageMaturity_MissingCreationDate_DoesNotInferAgeFromFollowersOrContent()
     {
         var matureByFollowers = new FacebookPageTarget
         {
             CreationDate = "Not Set",
             Followers = 600,
         };
-        Assert.Equal(PageMaturityLevel.Mature, matureByFollowers.GetPageMaturity());
+        Assert.Equal(PageMaturityLevel.Unknown, matureByFollowers.GetPageMaturity());
+        Assert.Equal(3, matureByFollowers.GetMaxDailyPostsLimit());
 
         var growingByPosts = new FacebookPageTarget
         {
@@ -243,7 +251,7 @@ public class FacebookPageTargetTests : IDisposable
             ReelsCount = 8,
             VideosCount = 4,
         };
-        Assert.Equal(PageMaturityLevel.Growing, growingByPosts.GetPageMaturity());
+        Assert.Equal(PageMaturityLevel.Unknown, growingByPosts.GetPageMaturity());
 
         var brandNew = new FacebookPageTarget
         {
@@ -251,7 +259,52 @@ public class FacebookPageTargetTests : IDisposable
             Followers = 5,
             ReelsCount = 1,
         };
-        Assert.Equal(PageMaturityLevel.New, brandNew.GetPageMaturity());
+        Assert.Equal(PageMaturityLevel.Unknown, brandNew.GetPageMaturity());
+    }
+
+    [Fact]
+    public void GetPageMaturity_FutureCreationDate_DoesNotLabelAccountNew()
+    {
+        var target = new FacebookPageTarget
+        {
+            CreationDate = DateTime.Today.AddDays(1).ToString("yyyy-MM-dd"),
+        };
+        Assert.Equal(PageMaturityLevel.Unknown, target.GetPageMaturity());
+        Assert.Equal(3, target.GetMaxDailyPostsLimit());
+    }
+
+    [Theory]
+    [InlineData("Joined Facebook September 2026", "2026-10-09", PageMaturityLevel.New)]
+    [InlineData("Joined Facebook September 2026", "2026-10-29", PageMaturityLevel.New)]
+    [InlineData("Joined Facebook September 2026", "2026-10-30", PageMaturityLevel.Growing)]
+    [InlineData("Joined Facebook June 2026", "2026-09-27", PageMaturityLevel.Growing)]
+    [InlineData("Joined Facebook June 2026", "2026-09-28", PageMaturityLevel.Mature)]
+    [InlineData("Joined Facebook October 2026", "2026-10-09", PageMaturityLevel.New)]
+    [InlineData("Joined Facebook 2026", "2026-10-09", PageMaturityLevel.New)]
+    [InlineData("Joined Facebook 2025", "2026-01-29", PageMaturityLevel.New)]
+    [InlineData("Joined Facebook 2025", "2026-01-30", PageMaturityLevel.Growing)]
+    [InlineData("Joined Facebook 2025", "2026-03-30", PageMaturityLevel.Growing)]
+    [InlineData("Joined Facebook 2025", "2026-03-31", PageMaturityLevel.Mature)]
+    [InlineData("Joined Facebook September 9, 2026", "2026-10-09", PageMaturityLevel.Growing)]
+    [InlineData("2026-09-09", "2026-10-09", PageMaturityLevel.Growing)]
+    [InlineData("Joined Facebook November 2026", "2026-10-09", PageMaturityLevel.Unknown)]
+    public void GetPageMaturity_ImpreciseDates_UseMinimumPossibleAge(
+        string created,
+        string today,
+        PageMaturityLevel expected
+    )
+    {
+        var target = new FacebookPageTarget { CreationDate = created };
+        Assert.Equal(
+            expected,
+            target.GetPageMaturity(
+                DateTime.ParseExact(
+                    today,
+                    "yyyy-MM-dd",
+                    System.Globalization.CultureInfo.InvariantCulture
+                )
+            )
+        );
     }
 
     [Fact]

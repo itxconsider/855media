@@ -1,6 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
+using System.ComponentModel;
 using System.Linq;
 using _855Media.Core.LDPlayer;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -8,7 +9,7 @@ using CommunityToolkit.Mvvm.Input;
 
 namespace _855Media.ViewModels.Components;
 
-public partial class FacebookProfileGroupViewModel : ObservableObject
+public partial class FacebookProfileGroupViewModel : ObservableObject, IDisposable
 {
     [ObservableProperty]
     private FacebookPageTargetViewModel? _profile;
@@ -39,11 +40,26 @@ public partial class FacebookProfileGroupViewModel : ObservableObject
 
     private bool _isUpdatingSelection;
 
+    public void Dispose()
+    {
+        Pages.CollectionChanged -= OnPagesCollectionChanged;
+        if (Profile != null)
+        {
+            Profile.SelectionChanged -= OnItemSelectionChanged;
+            Profile.PropertyChanged -= OnProfilePropertyChanged;
+        }
+        foreach (var page in Pages)
+            page.SelectionChanged -= OnItemSelectionChanged;
+    }
+
     public ObservableCollection<FacebookPageTargetViewModel> Pages { get; } = [];
 
     public int PagesCount => Pages.Count;
     public bool HasPages => Pages.Count > 0;
     public bool HasProfile => Profile != null;
+    public bool HasBirthdate => !string.IsNullOrWhiteSpace(Birthdate);
+    public bool HasCreationDate => !string.IsNullOrWhiteSpace(CreationDate);
+    public bool HasProfileDates => HasBirthdate || HasCreationDate;
 
     public FacebookProfileGroupViewModel()
     {
@@ -103,10 +119,53 @@ public partial class FacebookProfileGroupViewModel : ObservableObject
     )
     {
         if (oldValue != null)
+        {
             oldValue.SelectionChanged -= OnItemSelectionChanged;
+            oldValue.PropertyChanged -= OnProfilePropertyChanged;
+        }
         if (newValue != null)
+        {
             newValue.SelectionChanged += OnItemSelectionChanged;
+            newValue.PropertyChanged += OnProfilePropertyChanged;
+        }
+        OnPropertyChanged(nameof(HasProfile));
         UpdateSelectionState();
+    }
+
+    private void OnProfilePropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (Profile == null)
+            return;
+        switch (e.PropertyName)
+        {
+            case nameof(FacebookPageTargetViewModel.Birthdate):
+                Birthdate = Profile.Birthdate;
+                break;
+            case nameof(FacebookPageTargetViewModel.CreationDate):
+                CreationDate = Profile.CreationDate;
+                break;
+            case nameof(FacebookPageTargetViewModel.PageName):
+                ProfileName = Profile.PageName;
+                break;
+            case nameof(FacebookPageTargetViewModel.UserUid):
+                UserUid = Profile.UserUid;
+                break;
+            case nameof(FacebookPageTargetViewModel.Email):
+                Email = Profile.Email;
+                break;
+        }
+    }
+
+    partial void OnBirthdateChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasBirthdate));
+        OnPropertyChanged(nameof(HasProfileDates));
+    }
+
+    partial void OnCreationDateChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasCreationDate));
+        OnPropertyChanged(nameof(HasProfileDates));
     }
 
     [RelayCommand]

@@ -23,4 +23,16 @@
   <ItemGroup>
     <ProjectReference Include="..\855Media.Core\855Media.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Content
+      Include="..\docs\fixtures\pflow-screentime\*.xml"
+      Link="Fixtures\PFlowScreenTime\%(Filename)%(Extension)"
+      CopyToOutputDirectory="PreserveNewest"
+    />
+    <Content
+      Include="..\docs\fixtures\pflow-login\ld74-facebook-581-*.xml"
+      Link="Fixtures\PFlowLogin\%(Filename)%(Extension)"
+      CopyToOutputDirectory="PreserveNewest"
+    />
+  </ItemGroup>
 </Project>

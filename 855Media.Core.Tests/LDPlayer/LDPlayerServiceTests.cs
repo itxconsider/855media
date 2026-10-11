@@ -45,17 +45,17 @@ public class LDPlayerServiceTests
     }
 
     [Fact]
-    public void LDAccountWarmupSettings_Ranges_AreValid()
+    public void ScreenTimeSetting_Ranges_AreValid()
     {
-        var warmup = new LDAccountWarmupSettings();
+        var warmup = new ScreenTimeSetting();
 
         Assert.True(warmup.WatchVideo);
-        Assert.Equal(250, warmup.WatchVideoMin);
-        Assert.Equal(400, warmup.WatchVideoMax);
-        Assert.True(warmup.NewsFeed);
-        Assert.Equal(250, warmup.NewsFeedMin);
-        Assert.Equal(400, warmup.NewsFeedMax);
-        Assert.True(warmup.LikePost);
+        Assert.Equal(60, warmup.WatchVideoMin);
+        Assert.Equal(120, warmup.WatchVideoMax);
+        Assert.False(warmup.NewsFeed);
+        Assert.Equal(60, warmup.NewsFeedMin);
+        Assert.Equal(120, warmup.NewsFeedMax);
+        Assert.False(warmup.LikePost);
         Assert.Equal(1, warmup.LikePostMin);
         Assert.Equal(3, warmup.LikePostMax);
     }
@@ -83,9 +83,9 @@ public class LDPlayerServiceTests
     }
 
     [Fact]
-    public void LDAccountWarmupSettings_SupportsSingleActionSelection()
+    public void ScreenTimeSetting_SupportsSingleActionSelection()
     {
-        var settings = new LDAccountWarmupSettings
+        var settings = new ScreenTimeSetting
         {
             WatchVideo = true,
             NewsFeed = false,
@@ -180,7 +180,7 @@ public class LDPlayerServiceTests
     }
 
     [Fact]
-    public async Task FacebookPageStorage_SaveAndLoad_RoundTripsDataCorrectly()
+    public async Task PFlowPageStorage_SaveAndLoad_RoundTripsDataCorrectly()
     {
         var tempFile = Path.Combine(Path.GetTempPath(), $"fb_pages_test_{Guid.NewGuid()}.json");
         try
@@ -198,8 +198,8 @@ public class LDPlayerServiceTests
                 },
             };
 
-            await FacebookPageStorage.SavePagesAsync(pages, tempFile);
-            var loaded = await FacebookPageStorage.LoadPagesAsync(tempFile);
+            await PFlowPageStorage.SavePagesAsync(pages, tempFile);
+            var loaded = await PFlowPageStorage.LoadPagesAsync(tempFile);
 
             Assert.Single(loaded);
             Assert.Equal("885media", loaded[0].PageName);
@@ -214,7 +214,7 @@ public class LDPlayerServiceTests
     }
 
     [Fact]
-    public async Task FacebookPageStorage_LoadPages_WhenFileDoesNotExistOrIsEmpty_ReturnsEmptyList()
+    public async Task PFlowPageStorage_LoadPages_WhenFileDoesNotExistOrIsEmpty_ReturnsEmptyList()
     {
         var tempFile = Path.Combine(
             Path.GetTempPath(),
@@ -222,14 +222,14 @@ public class LDPlayerServiceTests
         );
         try
         {
-            var nonExistentLoaded = await FacebookPageStorage.LoadPagesAsync(tempFile);
+            var nonExistentLoaded = await PFlowPageStorage.LoadPagesAsync(tempFile);
             Assert.Empty(nonExistentLoaded);
 
             await File.WriteAllTextAsync(tempFile, "[]");
-            var emptyLoaded = await FacebookPageStorage.LoadPagesAsync(tempFile);
+            var emptyLoaded = await PFlowPageStorage.LoadPagesAsync(tempFile);
             Assert.Empty(emptyLoaded);
 
-            var defaults = FacebookPageStorage.GetDefaultPages();
+            var defaults = PFlowPageStorage.GetDefaultPages();
             Assert.Empty(defaults);
         }
         finally
@@ -662,19 +662,9 @@ public class LDPlayerServiceTests
             var cleared = await service.ClearFacebookCacheAsync(0);
             Assert.True(cleared);
 
-            // Test fast app stop
-            var stopped = await service.StopFacebookAppAsync(0);
-            Assert.True(stopped);
+            // StopFacebookApp uses direct device ADB; it is outside this HTTP-only mock test.
 
-            // Test navigation keys
-            var home = await service.PressHomeAsync(0);
-            Assert.True(home);
-
-            var back = await service.PressBackAsync(0);
-            Assert.True(back);
-
-            var recent = await service.PressRecentAppsAsync(0);
-            Assert.True(recent);
+            // Navigation keys also use direct ADB and require a device-command mock.
 
             // Test is app running
             var running = await service.IsAppRunningAsync(0, "com.facebook.katana");
@@ -711,20 +701,20 @@ public class LDPlayerServiceTests
     }
 
     [Fact]
-    public async System.Threading.Tasks.Task WaitForFacebookUploadCompleted_WhenCancelled_CompletesCleanly()
+    public async System.Threading.Tasks.Task WaitForFacebookUploadCompleted_WhenCancelled_Throws()
     {
         using var client = new AtxAgentClient(7912);
         var service = new LDPlayerService(client);
         using var cts = new System.Threading.CancellationTokenSource();
         cts.Cancel();
 
-        // Should return cleanly without throwing unhandled exception when cancelled
-        var result = await service.WaitForFacebookUploadCompletedAsync(
-            0,
-            timeout: TimeSpan.FromMilliseconds(50),
-            cancellationToken: cts.Token
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            service.WaitForFacebookUploadCompletedAsync(
+                0,
+                timeout: TimeSpan.FromMilliseconds(50),
+                cancellationToken: cts.Token
+            )
         );
-        Assert.True(result);
     }
 
     [Fact]

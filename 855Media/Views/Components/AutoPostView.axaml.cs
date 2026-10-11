@@ -1,4 +1,6 @@
 using System;
+using System.Linq;
+using _855Media.ViewModels.Components;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -13,6 +15,13 @@ public partial class AutoPostView : UserControl
     {
         InitializeComponent();
 
+        var manageGrid = this.FindControl<DataGrid>("ManageDeviceDataGrid");
+        manageGrid?.AddHandler(
+            PointerPressedEvent,
+            OnManageDevicePointerPressed,
+            RoutingStrategies.Tunnel
+        );
+
         var dataGrid = this.FindControl<DataGrid>("WorkerDataGrid");
         if (dataGrid != null)
         {
@@ -22,6 +31,18 @@ public partial class AutoPostView : UserControl
                 RoutingStrategies.Tunnel | RoutingStrategies.Bubble
             );
         }
+    }
+
+    private void OnManageDevicePointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (sender is not DataGrid grid || !e.GetCurrentPoint(grid).Properties.IsRightButtonPressed)
+            return;
+        var row = (e.Source as Control)
+            ?.GetVisualAncestors()
+            .OfType<DataGridRow>()
+            .FirstOrDefault();
+        // Resolve the row actually right-clicked, never a previously selected different LD.
+        grid.SelectedItem = row?.DataContext as LDInstanceItemViewModel;
     }
 
     private void OnWorkerDataGridPointerWheelChanged(object? sender, PointerWheelEventArgs e)

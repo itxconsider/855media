@@ -49,12 +49,14 @@ public class App : Application, IDisposable
         services.AddSingleton<HistoryService>();
         services.AddSingleton<ExtensionInstallerService>();
         services.AddSingleton<LocalBridgeServer>();
-        services.AddSingleton<FacebookBrowserLauncher>();
+        services.AddSingleton<PFlowBrowserLauncher>();
         services.AddSingleton<VideoUpscaleService>();
         services.AddSingleton<VideoQueueManager>();
         services.AddSingleton<HardwareMonitorService>();
         services.AddSingleton<AtxAgentClient>();
         services.AddSingleton<ILDPlayerService, LDPlayerService>();
+
+        services.AddSingleton<IScreenTimeService, ScreenTimeService>();
 
         // View models
         services.AddTransient<MainViewModel>();

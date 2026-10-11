@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
@@ -171,8 +172,15 @@ public static class BloksConstants
     public const string BloksHostedFragmentActivity =
         "com.facebook.bloks.hosted.activity.BloksHostedFragmentActivity";
     public const string FbBloksActivity = "com.facebook.katana.activity.FbBloksActivity";
+    public const string FbBloksNativeShellActivity =
+        "com.facebook.bloks.facebook.nativeshell.FbBloksNativeShellActivity";
+    public const string BloksScreenQueryActivity =
+        "com.bloks.foa.screen.genericcontainer.BloksScreenQueryGenericContainerActivity";
+    public const string BloksScreenQueryTransparentActivity =
+        "com.bloks.foa.screen.genericcontainer.BloksScreenQueryGenericContainerTransparentActivity";
 
-    // Known Bloks App IDs
+    // Candidate Bloks App IDs. The installed Facebook version must be checked
+    // before using an internal query as a production data source.
     public const string AccountsCenterAppId = "com.bloks.www.fx.settings.modular.screen";
     public const string ProfilesAppId = "com.bloks.www.fx.settings.profiles";
     public const string PersonalDetailsAppId = "com.bloks.www.fx.settings.personal.details";
@@ -195,6 +203,9 @@ public static class BloksConstants
         BloksHostedActivity,
         BloksHostedFragmentActivity,
         FbBloksActivity,
+        FbBloksNativeShellActivity,
+        BloksScreenQueryActivity,
+        BloksScreenQueryTransparentActivity,
         "BloksNativeShellActivity",
         "BloksHostedActivity",
         "BloksHostedFragmentActivity",
@@ -209,4 +220,130 @@ public static class BloksConstants
             activityName.Contains(k, StringComparison.OrdinalIgnoreCase)
         );
     }
+
+    public static string CreateBloksScreenQueryUri(
+        string appId,
+        IReadOnlyDictionary<string, string>? serverParameters = null
+    )
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(appId);
+        var payload = JsonSerializer.Serialize(
+            new
+            {
+                server_params = serverParameters ?? new Dictionary<string, string>(),
+                client_input_params = new Dictionary<string, string>(),
+            }
+        );
+        return $"fb://bloks_screen_query?app_id={Uri.EscapeDataString(appId)}&bloks_screen_params={Uri.EscapeDataString(payload)}";
+    }
+}
+
+public enum BloksQueryScreenState
+{
+    AwaitingContent,
+    NotBloks,
+    Unchanged,
+    DemoShell,
+    Error,
+    Ready,
+}
+
+/// <summary>
+/// Checks navigation only. Callers must still verify the requested identity and
+/// destination fields before saving any data from an internal screen query.
+/// </summary>
+public static class BloksQueryScreenValidator
+{
+    public static BloksQueryScreenState Inspect(
+        BloksScreenInfo? screen,
+        BloksScreenInfo? previousScreen = null
+    )
+    {
+        if (screen == null || string.IsNullOrWhiteSpace(screen.RawXml))
+            return BloksQueryScreenState.AwaitingContent;
+
+        var labels = ContentLabels(screen).ToList();
+        if (labels.Count == 0)
+            return BloksQueryScreenState.AwaitingContent;
+
+        var examples = labels.Count(label =>
+            label.Contains("Screen Query Example", StringComparison.OrdinalIgnoreCase)
+            || label.Contains("Screen Query With Preloaded", StringComparison.OrdinalIgnoreCase)
+            || label.Contains("Open Screen Query", StringComparison.OrdinalIgnoreCase)
+            || label.Contains("Company Design System", StringComparison.OrdinalIgnoreCase)
+        );
+        if (
+            examples >= 2
+            || (
+                examples > 0
+                && labels.Any(label =>
+                    label.Equals("Bloks Native Shell", StringComparison.OrdinalIgnoreCase)
+                )
+            )
+        )
+            return BloksQueryScreenState.DemoShell;
+
+        var failures = new[]
+        {
+            "Something went wrong",
+            "Unable to load",
+            "Couldn't load",
+            "Could not load",
+            "Query failed",
+            "Unsupported query",
+            "Invalid app_id",
+            "Invalid app id",
+        };
+        if (
+            labels.Any(label =>
+                failures.Any(failure => label.Contains(failure, StringComparison.OrdinalIgnoreCase))
+            )
+        )
+            return BloksQueryScreenState.Error;
+
+        if (!screen.IsBloksActive)
+            return BloksQueryScreenState.NotBloks;
+
+        if (
+            previousScreen != null
+            && screen.CurrentActivity.Equals(
+                previousScreen.CurrentActivity,
+                StringComparison.Ordinal
+            )
+            && ContentLabels(screen)
+                .SequenceEqual(ContentLabels(previousScreen), StringComparer.Ordinal)
+        )
+            return BloksQueryScreenState.Unchanged;
+
+        // A title and navigation controls can appear before query content loads.
+        // Loading placeholders must disappear before the caller inspects fields.
+        var loadingLabels = new[]
+        {
+            "Loading",
+            "Loading...",
+            "Loading…",
+            "Please wait",
+            "Please wait...",
+            "Please wait…",
+        };
+        var navigationLabels = new[] { "Back", "Navigate up", "Close", "More options" };
+        if (
+            labels.Any(label => loadingLabels.Contains(label, StringComparer.OrdinalIgnoreCase))
+            || labels.Count(label =>
+                !navigationLabels.Contains(label, StringComparer.OrdinalIgnoreCase)
+            ) < 2
+        )
+            return BloksQueryScreenState.AwaitingContent;
+
+        return BloksQueryScreenState.Ready;
+    }
+
+    private static IEnumerable<string> ContentLabels(BloksScreenInfo screen) =>
+        screen
+            .VisibleTexts.Concat(screen.ContentDescriptions)
+            .Where(label => !string.IsNullOrWhiteSpace(label))
+            .Select(label => Regex.Replace(label.Trim(), @"\s+", " "))
+            .Where(label => !Regex.IsMatch(label, @"^\d{1,2}:\d{2}$"))
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(label => label, StringComparer.Ordinal);
 }

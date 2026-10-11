@@ -3,8 +3,10 @@
     <AssemblyName>855Media.Core</AssemblyName>
     <Product>855Media.Core</Product>
   </PropertyGroup>
-
   <ItemGroup>
+    <PackageReference Include="MailKit" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" />
+    <PackageReference Include="Microsoft.Data.Sqlite" />
     <PackageReference Include="AngleSharp" />
     <PackageReference Include="PowerKit" />
     <PackageReference Include="Gress" />
@@ -13,7 +15,6 @@
     <PackageReference Include="YoutubeExplode" />
     <PackageReference Include="YoutubeExplode.Converter" />
   </ItemGroup>
-
   <ItemGroup>
     <InternalsVisibleTo Include="855Media.Core.Tests" />
   </ItemGroup>

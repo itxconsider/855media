@@ -6,16 +6,28 @@ using System.Linq;
 
 namespace _855Media.Core.LDPlayer;
 
+public sealed class RootShellUnavailableException : InvalidOperationException
+{
+    public RootShellUnavailableException(string message)
+        : base(message) { }
+}
+
 public enum PageMaturityLevel
 {
     New,
     Growing,
     Mature,
+    Unknown,
 }
 
 public class FacebookPageTarget
 {
+    public PFlowAccountBinding? AccountBinding { get; set; }
     public bool IsSelected { get; set; } = true;
+
+    // Root cache is a candidate only. False blocks posting until a live Page switch succeeds.
+    public bool? LivePageAccessVerified { get; set; }
+
     public string DeviceName { get; set; } = string.Empty;
     public string AppClone { get; set; } = "FB-01";
     public string PageId { get; set; } = string.Empty;
@@ -29,7 +41,12 @@ public class FacebookPageTarget
     public int PictureCount { get; set; }
     public string FileInGroup { get; set; } = string.Empty;
     public int Followers { get; set; }
+    public bool FollowersKnown { get; set; }
+    public bool ReelsCountKnown { get; set; }
+    public bool VideosCountKnown { get; set; }
+    public bool PictureCountKnown { get; set; }
     public string Reach { get; set; } = string.Empty;
+    public string Views { get; set; } = string.Empty;
     public string PageInvite { get; set; } = string.Empty;
 
     // Account Details
@@ -48,6 +65,7 @@ public class FacebookPageTarget
 
     // Per-page Media Config
     public bool UseTitleFromTextFile { get; set; }
+    public bool UseCaptionFromFilename { get; set; }
     public string TitleVideoReel { get; set; } = string.Empty;
     public string TitleVideoReelMode { get; set; } = "Replace All";
     public string VideoReelPath { get; set; } = string.Empty;
@@ -72,6 +90,50 @@ public class FacebookPageTarget
     public int PostsTodayCount { get; set; } = 0;
     public string LastPostDate { get; set; } = string.Empty;
     public int CustomMaxDailyPosts { get; set; } = 0; // 0 = automatic by maturity
+
+    // Facebook totals and files waiting to be uploaded are separate values.
+    // Local folder contents must not change the discovered account statistics.
+    [System.Text.Json.Serialization.JsonIgnore]
+    public int UploadReelsCount { get; private set; }
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public int UploadVideosCount { get; private set; }
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public int UploadPictureCount { get; private set; }
+
+    public FacebookPageTarget CreateSnapshot() => (FacebookPageTarget)MemberwiseClone();
+
+    public bool MatchesIdentity(
+        string deviceName,
+        string appClone,
+        string ownerUid,
+        string personaUid,
+        string pageId,
+        bool isProfile,
+        string? deviceAlias = null
+    ) =>
+        (
+            DeviceName.Equals(deviceName, StringComparison.OrdinalIgnoreCase)
+            || (
+                !string.IsNullOrWhiteSpace(deviceAlias)
+                && DeviceName.Equals(deviceAlias, StringComparison.OrdinalIgnoreCase)
+            )
+        )
+        && AppClone.Equals(appClone, StringComparison.OrdinalIgnoreCase)
+        && IsPrimaryProfile == isProfile
+        && !string.IsNullOrWhiteSpace(ownerUid)
+        && UserUid.Equals(ownerUid, StringComparison.Ordinal)
+        && (
+            (
+                !string.IsNullOrWhiteSpace(personaUid)
+                && PersonaUid.Equals(personaUid, StringComparison.Ordinal)
+            )
+            || (
+                !string.IsNullOrWhiteSpace(pageId)
+                && PageId.Equals(pageId, StringComparison.Ordinal)
+            )
+        );
 
     public int GetPostsToday()
     {
@@ -190,12 +252,18 @@ public class FacebookPageTarget
         return null;
     }
 
-    public PageMaturityLevel GetPageMaturity()
+    public PageMaturityLevel GetPageMaturity() => GetPageMaturity(DateTime.Today);
+
+    internal PageMaturityLevel GetPageMaturity(DateTime today)
     {
+        today = today.Date;
         var created = TryParseCreationDate(CreationDate);
-        if (created.HasValue)
+        if (created.HasValue && created.Value.Date <= today)
         {
-            var ageDays = (DateTime.Now - created.Value).TotalDays;
+            var latestPossibleCreation = GetLatestPossibleCreationDate(CreationDate, created.Value);
+            if (latestPossibleCreation > today)
+                latestPossibleCreation = today;
+            var ageDays = (today - latestPossibleCreation).TotalDays;
             if (ageDays >= 90)
                 return PageMaturityLevel.Mature;
             if (ageDays >= 30)
@@ -203,18 +271,45 @@ public class FacebookPageTarget
             return PageMaturityLevel.New;
         }
 
-        // Fallback based on content counts and followers
-        int totalContent = ReelsCount + VideosCount + PictureCount;
-        if (Followers >= 500 || totalContent >= 30)
-        {
-            return PageMaturityLevel.Mature;
-        }
-        if (Followers >= 50 || totalContent >= 10)
-        {
-            return PageMaturityLevel.Growing;
-        }
+        // Neither follower totals nor files waiting to be uploaded establish
+        // when Facebook created the account. Keep the age explicitly unknown.
+        return PageMaturityLevel.Unknown;
+    }
 
-        return PageMaturityLevel.New;
+    private static DateTime GetLatestPossibleCreationDate(string text, DateTime parsed)
+    {
+        const string month =
+            @"(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?";
+        var options = System.Text.RegularExpressions.RegexOptions.IgnoreCase;
+        var hasExplicitDay = System.Text.RegularExpressions.Regex.IsMatch(
+            text,
+            @"\b"
+                + month
+                + @"\s+\d{1,2}(?:st|nd|rd|th)?,?\s+\d{4}\b"
+                + @"|\b\d{1,2}(?:st|nd|rd|th)?\s+"
+                + month
+                + @"\s+\d{4}\b"
+                + @"|\b(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{4})\b",
+            options
+        );
+        if (hasExplicitDay)
+            return parsed.Date;
+
+        var hasMonthAndYear = System.Text.RegularExpressions.Regex.IsMatch(
+            text,
+            @"\b" + month + @"\s+\d{4}\b|\b(?:\d{1,2}[-/]\d{4}|\d{4}[-/]\d{1,2})\b",
+            options
+        );
+        if (hasMonthAndYear)
+            return new DateTime(
+                parsed.Year,
+                parsed.Month,
+                DateTime.DaysInMonth(parsed.Year, parsed.Month)
+            );
+
+        // A displayed year establishes no month or day. Use the last possible
+        // date so the daily limit never increases from an assumed January 1.
+        return new DateTime(parsed.Year, 12, 31);
     }
 
     public static int GetMaturityDailyLimit(PageMaturityLevel maturity) =>
@@ -223,6 +318,7 @@ public class FacebookPageTarget
             PageMaturityLevel.New => 3,
             PageMaturityLevel.Growing => 5,
             PageMaturityLevel.Mature => 10,
+            PageMaturityLevel.Unknown => 3,
             _ => 3,
         };
 
@@ -242,9 +338,9 @@ public class FacebookPageTarget
 
     public void RefreshMediaCounts()
     {
-        ReelsCount = CountMediaFiles(VideoReelPath, [".mp4", ".mov", ".webm"]);
-        VideosCount = CountMediaFiles(VideoLongPath, [".mp4", ".mkv", ".mov"]);
-        PictureCount = CountMediaFiles(ImagePath, [".jpg", ".jpeg", ".png", ".webp"]);
+        UploadReelsCount = CountMediaFiles(VideoReelPath, [".mp4", ".mov", ".webm"]);
+        UploadVideosCount = CountMediaFiles(VideoLongPath, [".mp4", ".mkv", ".mov"]);
+        UploadPictureCount = CountMediaFiles(ImagePath, [".jpg", ".jpeg", ".png", ".webp"]);
 
         int groupCount =
             CountMediaFiles(GroupReelPath, [".mp4", ".mov", ".webm"])
@@ -335,6 +431,8 @@ public class AutoPostTaskItem : INotifyPropertyChanged
     public string Type { get; set; } = "Reel";
     public string ShareToGroup { get; set; } = string.Empty;
     public string Comment { get; set; } = string.Empty;
+    public string PageId { get; set; } = string.Empty;
+    public bool IsProfile { get; set; }
     public string Page { get; set; } = string.Empty;
 
     public string Status
@@ -360,6 +458,7 @@ public class AutoPostTaskItem : INotifyPropertyChanged
 
 public class FacebookPageInfo
 {
+    public bool? LivePageAccessVerified { get; set; }
     public string PageId { get; set; } = string.Empty;
     public string PersonaUid { get; set; } = string.Empty;
     public string UserUid { get; set; } = string.Empty;
@@ -367,8 +466,14 @@ public class FacebookPageInfo
     public string Type { get; set; } = "Page";
     public int Followers { get; set; }
     public string Reach { get; set; } = string.Empty;
+    public string Views { get; set; } = string.Empty;
     public int ReelsCount { get; set; }
     public int VideosCount { get; set; }
+    public int PictureCount { get; set; }
+    public bool FollowersKnown { get; set; }
+    public bool ReelsCountKnown { get; set; }
+    public bool VideosCountKnown { get; set; }
+    public bool PictureCountKnown { get; set; }
     public string Email { get; set; } = string.Empty;
     public string Birthdate { get; set; } = string.Empty;
     public string CreationDate { get; set; } = string.Empty;
@@ -406,6 +511,77 @@ public class FacebookAccountDetails
     public string RelationshipStatus { get; set; } = string.Empty;
     public bool SwitchedToProfile { get; set; }
     public List<FacebookPageInfo> Pages { get; set; } = [];
+
+    // Root data can be saved even when UI identity selection fails.
+    public bool IdentitySwitchFailed =>
+        !SwitchedToProfile || Pages.Any(p => p.LivePageAccessVerified == false);
+    public string FetchStatus =>
+        IdentitySwitchFailed
+            ? "Data fetched; identity switch failed. Review the selected LD."
+            : "Account and Pages fetched; identity switches confirmed.";
+
+    /// <summary>
+    /// Retain stable Page identities for this same account when a fresh cache
+    /// snapshot omits them. Each identity still requires the normal UI switch
+    /// verification before any new Page details are accepted.
+    /// </summary>
+    public int RetainSavedPageIdentities(
+        IEnumerable<FacebookPageTarget> savedRows,
+        string deviceName,
+        string appClone,
+        string? deviceAlias = null
+    )
+    {
+        if (!IsStableId(Uid))
+            return 0;
+
+        var retained = 0;
+        foreach (var saved in savedRows)
+        {
+            var sameDevice =
+                saved.DeviceName.Equals(deviceName, StringComparison.OrdinalIgnoreCase)
+                || (
+                    !string.IsNullOrWhiteSpace(deviceAlias)
+                    && saved.DeviceName.Equals(deviceAlias, StringComparison.OrdinalIgnoreCase)
+                );
+            if (
+                !sameDevice
+                || !saved.AppClone.Equals(appClone, StringComparison.OrdinalIgnoreCase)
+                || saved.IsPrimaryProfile
+                || !saved.UserUid.Equals(Uid, StringComparison.Ordinal)
+                || !IsStableId(saved.PageId)
+                || !IsStableId(saved.PersonaUid)
+                || saved.PersonaUid.Equals(Uid, StringComparison.Ordinal)
+                || Pages.Any(page =>
+                    page.PageId.Equals(saved.PageId, StringComparison.Ordinal)
+                    || page.PersonaUid.Equals(saved.PersonaUid, StringComparison.Ordinal)
+                )
+            )
+                continue;
+
+            // Only restore the identity. Old values remain on the existing
+            // table model; they must not be counted as fresh UI discoveries.
+            Pages.Add(
+                new FacebookPageInfo
+                {
+                    PageId = saved.PageId,
+                    PersonaUid = saved.PersonaUid,
+                    UserUid = Uid,
+                    PageName = saved.PageName,
+                    ManagedBy = saved.ManagedBy,
+                    Type = "Page",
+                }
+            );
+            retained++;
+        }
+        return retained;
+    }
+
+    private static bool IsStableId(string? value) =>
+        !string.IsNullOrWhiteSpace(value)
+        && value.Length is >= 5 and <= 32
+        && value.All(character => character is >= '0' and <= '9')
+        && value.Any(character => character != '0');
 }
 
 /// <summary>

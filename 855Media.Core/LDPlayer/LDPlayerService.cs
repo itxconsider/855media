@@ -13,7 +13,7 @@ using _855Media.Core.Utils;
 
 namespace _855Media.Core.LDPlayer;
 
-public class LDPlayerService : ILDPlayerService
+public partial class LDPlayerService : ILDPlayerService
 {
     private readonly AtxAgentClient _atxClient;
 
@@ -200,6 +200,13 @@ public class LDPlayerService : ILDPlayerService
         return exitCode == 0;
     }
 
+    public static bool IsKeyboardBroadcastCommand(string shellCommand) =>
+        Regex.IsMatch(
+            shellCommand.Trim(),
+            @"^am\s+broadcast\b.*\bADB_(?:INPUT|CLEAR|EDITOR)_",
+            RegexOptions.IgnoreCase
+        );
+
     public async Task<string> ExecuteAdbAsync(
         int index,
         string adbCommand,
@@ -207,17 +214,41 @@ public class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
+        if (
+            adbCommand.StartsWith("shell ", StringComparison.OrdinalIgnoreCase)
+            && (
+                IsKeyboardBroadcastCommand(adbCommand[6..])
+                || Regex.IsMatch(adbCommand[6..], @"^input\s", RegexOptions.IgnoreCase)
+            )
+        )
+            return await ExecuteDirectDeviceAdbAsync(
+                index,
+                adbCommand,
+                customPath,
+                cancellationToken
+            );
+
         // 1. Fast path: If non-input shell command and atx-agent is running, execute via OpenATX HTTP (~5ms)
         // NOTE: Touch/input injection commands (input tap, swipe, keyevent, text) MUST run via real ADB
         // because atx-agent lacks INJECT_EVENTS permissions on Android emulators and fails silently.
         if (adbCommand.StartsWith("shell ", StringComparison.OrdinalIgnoreCase))
         {
             var shellCmd = adbCommand[6..].Trim();
-            bool isInputInjection = shellCmd.StartsWith(
-                "input ",
-                StringComparison.OrdinalIgnoreCase
-            );
-            if (!isInputInjection && await _atxClient.IsRunningAsync(index, cancellationToken))
+            if (Regex.IsMatch(shellCmd, @"^su(?:\s|$)", RegexOptions.IgnoreCase))
+                return await ExecuteDirectDeviceAdbAsync(
+                    index,
+                    adbCommand,
+                    customPath,
+                    cancellationToken,
+                    rootCommand: true
+                );
+            // Root commands must use ADB's shell identity. ATX runs in a
+            // different process context and can wait for a separate su grant
+            // after boot, exhausting discovery's timeout without any output.
+            if (
+                CanExecuteThroughAtxShell(shellCmd)
+                && await _atxClient.IsRunningAsync(index, cancellationToken)
+            )
             {
                 var (ok, output) = await _atxClient.ExecuteShellWithOutputAsync(
                     index,
@@ -231,51 +262,60 @@ public class LDPlayerService : ILDPlayerService
             }
         }
 
-        // 2. Standard fallback: Run via ldconsole.exe adb
-        var ldConsole = ResolveLdConsolePath(customPath);
-        var (exitCode, stdout, stderr) = await RunProcessAsync(
-            ldConsole,
-            $"adb --index {index} --command \"{adbCommand}\"",
-            cancellationToken
+        // ldconsole can silently discard host commands such as `forward`,
+        // and truncate output. Use the same device serial for input and dumps.
+        return await ExecuteDirectDeviceAdbAsync(index, adbCommand, customPath, cancellationToken);
+    }
+
+    internal static bool CanExecuteThroughAtxShell(string shellCommand) =>
+        !Regex.IsMatch(
+            shellCommand.Trim(),
+            @"^(?:input|su|run-as)(?:\s|$)",
+            RegexOptions.IgnoreCase
         );
 
-        var result = !string.IsNullOrWhiteSpace(stdout) ? stdout : stderr;
+    private async Task<string> ExecuteDirectDeviceAdbAsync(
+        int index,
+        string adbCommand,
+        string? customPath,
+        CancellationToken cancellationToken,
+        bool rootCommand = false
+    )
+    {
+        var adbPath = Path.Combine(
+            Path.GetDirectoryName(ResolveLdConsolePath(customPath))!,
+            "adb.exe"
+        );
+        string Failure(string message)
+        {
+            if (rootCommand)
+                throw new RootShellUnavailableException(message);
+            return $"error: {message}";
+        }
+        if (!File.Exists(adbPath))
+            return Failure($"ADB was not found at {adbPath}.");
 
-        // 3. Direct ADB fallback if ldconsole adb reports device not found / error
-        if (
-            result.Contains("device", StringComparison.OrdinalIgnoreCase)
-            && (
-                result.Contains("not found", StringComparison.OrdinalIgnoreCase)
-                || result.Contains("offline", StringComparison.OrdinalIgnoreCase)
-            )
+        // ldconsole truncates binary LightSharedPreferences output. Read it
+        // through adb.exe itself so account names and delegate IDs survive.
+        foreach (
+            var serial in new[] { $"emulator-{5554 + index * 2}", $"127.0.0.1:{5555 + index * 2}" }
         )
         {
-            var ldDir = Path.GetDirectoryName(ldConsole);
-            var directAdb = Path.Combine(ldDir ?? @"C:\LDPlayer\LDPlayer9", "adb.exe");
-            if (File.Exists(directAdb))
-            {
-                string serial = $"127.0.0.1:{5555 + index * 2}";
-                var (dExit, dOut, dErr) = await RunProcessAsync(
-                    directAdb,
-                    $"-s {serial} {adbCommand}",
-                    cancellationToken
-                );
-                if (dExit == 0 || !string.IsNullOrWhiteSpace(dOut))
-                {
-                    return !string.IsNullOrWhiteSpace(dOut) ? dOut : dErr;
-                }
-
-                string emuSerial = $"emulator-{5554 + index * 2}";
-                var (eExit, eOut, eErr) = await RunProcessAsync(
-                    directAdb,
-                    $"-s {emuSerial} {adbCommand}",
-                    cancellationToken
-                );
-                return !string.IsNullOrWhiteSpace(eOut) ? eOut : eErr;
-            }
+            var (exitCode, stdout, stderr) = await RunProcessAsync(
+                adbPath,
+                $"-s {serial} {adbCommand}",
+                cancellationToken
+            );
+            var output = !string.IsNullOrWhiteSpace(stdout) ? stdout : stderr;
+            if (exitCode == 0)
+                return output;
+            if (
+                !output.Contains("not found", StringComparison.OrdinalIgnoreCase)
+                && !output.Contains("offline", StringComparison.OrdinalIgnoreCase)
+            )
+                return Failure($"ADB command failed on LD-{index}: {output.Trim()}");
         }
-
-        return result;
+        return Failure($"ADB could not reach LD-{index}; wait for Android to boot.");
     }
 
     public async Task<bool> ClearFacebookCacheAsync(
@@ -311,20 +351,13 @@ public class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
-        if (await _atxClient.IsRunningAsync(index, cancellationToken))
-        {
-            var ok = await _atxClient.StopAppAsync(index, "com.facebook.katana", cancellationToken);
-            if (ok)
-                return true;
-        }
-
-        var res = await ExecuteAdbAsync(
+        var res = await ExecuteDirectDeviceAdbAsync(
             index,
             "shell am force-stop com.facebook.katana",
             customPath,
             cancellationToken
         );
-        return true;
+        return IsSuccessfulInputCommand(res);
     }
 
     public async Task<bool> PushFileToEmulatorAsync(
@@ -374,7 +407,7 @@ public class LDPlayerService : ILDPlayerService
                 customPath,
                 cancellationToken
             );
-            if (res.Contains('1'))
+            if (string.Equals(res.Trim(), "1", StringComparison.Ordinal))
             {
                 // Automatically ensure atx-agent daemon is active upon boot for fast automation
                 _ = Task.Run(
@@ -403,6 +436,17 @@ public class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
+        if (
+            packageName.StartsWith("com.facebook.", StringComparison.OrdinalIgnoreCase)
+            && !await WaitForFacebookReadyAsync(
+                index,
+                TimeSpan.FromSeconds(120),
+                customPath,
+                cancellationToken
+            )
+        )
+            return false;
+
         if (await _atxClient.IsRunningAsync(index, cancellationToken))
         {
             var ok = await _atxClient.StartAppAsync(index, packageName, cancellationToken);
@@ -410,24 +454,14 @@ public class LDPlayerService : ILDPlayerService
                 return true;
         }
 
-        var ldConsole = ResolveLdConsolePath(customPath);
-        var (exitCode, _, _) = await RunProcessAsync(
-            ldConsole,
-            $"runapp --index {index} --packagename {packageName}",
+        var output = await ExecuteDirectDeviceAdbAsync(
+            index,
+            $"shell monkey -p {packageName} -c android.intent.category.LAUNCHER 1",
+            customPath,
             cancellationToken
         );
-
-        if (exitCode != 0)
-        {
-            // Fallback: adb monkey launcher
-            await ExecuteAdbAsync(
-                index,
-                $"shell monkey -p {packageName} -c android.intent.category.LAUNCHER 1",
-                customPath,
-                cancellationToken
-            );
-        }
-        return true;
+        return IsSuccessfulInputCommand(output)
+            && !output.Contains("No activities found", StringComparison.OrdinalIgnoreCase);
     }
 
     public async Task<bool> OpenDeepLinkAsync(
@@ -438,6 +472,17 @@ public class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
+        if (
+            packageName.StartsWith("com.facebook.", StringComparison.OrdinalIgnoreCase)
+            && !await WaitForFacebookReadyAsync(
+                index,
+                TimeSpan.FromSeconds(120),
+                customPath,
+                cancellationToken
+            )
+        )
+            return false;
+
         if (await _atxClient.IsRunningAsync(index, cancellationToken))
         {
             var ok = await _atxClient.OpenDeepLinkAsync(
@@ -473,11 +518,8 @@ public class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
-        // 1. Check if already running on forwarded port
-        if (await _atxClient.IsRunningAsync(index, cancellationToken))
-            return true;
-
-        // 2. Setup port forward: local port -> device 7912
+        // Bind this port to the requested instance before accepting a daemon.
+        // A stale forward must not return another instance's hierarchy.
         int targetPort = _atxClient.GetDevicePort(index);
         await ExecuteAdbAsync(
             index,
@@ -497,7 +539,7 @@ public class LDPlayerService : ILDPlayerService
             cancellationToken
         );
 
-        if (checkFile.Contains("1"))
+        if (string.Equals(checkFile.Trim(), "1", StringComparison.Ordinal))
         {
             await ExecuteAdbAsync(
                 index,
@@ -615,28 +657,13 @@ public class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
-        if (await _atxClient.IsRunningAsync(index, cancellationToken))
-        {
-            var ok = await _atxClient.SwipeAsync(
-                index,
-                startX,
-                startY,
-                endX,
-                endY,
-                durationMs,
-                cancellationToken
-            );
-            if (ok)
-                return true;
-        }
-
-        await ExecuteAdbAsync(
+        var output = await ExecuteAdbAsync(
             index,
             $"shell input swipe {startX} {startY} {endX} {endY} {durationMs}",
             customPath,
             cancellationToken
         );
-        return true;
+        return IsSuccessfulInputCommand(output);
     }
 
     public async Task<bool> TapAsync(
@@ -647,14 +674,24 @@ public class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
+        var tapHierarchy = _atxClient.IsTapTracingEnabled
+            ? await DumpUiHierarchyAsync(index, customPath, cancellationToken)
+            : null;
+
         // Execute input tap via ADB (AID_SHELL privileges required for touch injection on emulators)
-        var result = await ExecuteAdbAsync(
+        var output = await ExecuteAdbAsync(
             index,
             $"shell input tap {x} {y}",
             customPath,
             cancellationToken
         );
-        return true;
+        var success = !Regex.IsMatch(
+            output,
+            @"SecurityException|Permission Denial|(?:^|\n)\s*error:|device.*(?:not found|offline)|no devices/emulators|/system/bin/sh:.*(?:not found|syntax error)",
+            RegexOptions.IgnoreCase
+        );
+        _atxClient.ReportTapObserved(index, x, y, tapHierarchy, "ADB", success);
+        return success;
     }
 
     public async Task<bool> SendKeyAsync(
@@ -664,20 +701,14 @@ public class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
-        if (await _atxClient.IsRunningAsync(index, cancellationToken))
-        {
-            var ok = await _atxClient.SendKeyAsync(index, keyCode, cancellationToken);
-            if (ok)
-                return true;
-        }
-
-        await ExecuteAdbAsync(
+        // Key injection needs the same ADB shell privileges as touch injection.
+        var output = await ExecuteAdbAsync(
             index,
             $"shell input keyevent {keyCode}",
             customPath,
             cancellationToken
         );
-        return true;
+        return IsSuccessfulInputCommand(output);
     }
 
     public async Task<bool> ScanMediaFileAsync(
@@ -687,20 +718,19 @@ public class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
-        if (await _atxClient.IsRunningAsync(index, cancellationToken))
-        {
-            var ok = await _atxClient.ScanMediaFileAsync(index, remotePath, cancellationToken);
-            if (ok)
-                return true;
-        }
-
-        var res = await ExecuteAdbAsync(
+        if (
+            await _atxClient.IsRunningAsync(index, cancellationToken)
+            && await _atxClient.ScanMediaFileAsync(index, remotePath, cancellationToken)
+        )
+            return true;
+        cancellationToken.ThrowIfCancellationRequested();
+        var output = await ExecuteAdbAsync(
             index,
-            $"shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d \"file://{remotePath}\"",
+            "shell " + PFlowMediaIntent.ScanCommand(remotePath),
             customPath,
             cancellationToken
         );
-        return true;
+        return PFlowMediaIntent.ScanAcknowledged(output);
     }
 
     public async Task<bool> ShareVideoToFacebookAsync(
@@ -711,25 +741,22 @@ public class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
-        if (await _atxClient.IsRunningAsync(index, cancellationToken))
-        {
-            var ok = await _atxClient.ShareVideoAsync(
-                index,
-                remotePath,
-                packageName,
-                cancellationToken
-            );
-            if (ok)
-                return true;
-        }
-
-        var res = await ExecuteAdbAsync(
+        var command = PFlowMediaIntent.ShareCommand(remotePath, packageName, false);
+        if (command == null)
+            return false;
+        if (
+            await _atxClient.IsRunningAsync(index, cancellationToken)
+            && await _atxClient.ShareVideoAsync(index, remotePath, packageName, cancellationToken)
+        )
+            return true;
+        cancellationToken.ThrowIfCancellationRequested();
+        var output = await ExecuteAdbAsync(
             index,
-            $"shell am start -a android.intent.action.SEND -t \"video/mp4\" --eu android.intent.extra.STREAM \"file://{remotePath}\" -p {packageName}",
+            "shell " + command,
             customPath,
             cancellationToken
         );
-        return true;
+        return PFlowMediaIntent.ShareStarted(output);
     }
 
     public async Task<bool> DeleteFileFromEmulatorAsync(
@@ -774,89 +801,21 @@ public class LDPlayerService : ILDPlayerService
         }
     }
 
-    public async Task<bool> WaitForFacebookUploadCompletedAsync(
+    // Upload inactivity is progress only; P-Flow requires separate publication evidence.
+    public Task<bool> WaitForFacebookUploadCompletedAsync(
         int index,
         string? remotePath = null,
         TimeSpan? timeout = null,
         string? customPath = null,
         CancellationToken cancellationToken = default
-    )
-    {
-        var effectiveTimeout = timeout ?? TimeSpan.FromSeconds(120);
-        var startTime = DateTime.UtcNow;
-
-        // Grace period: allow Facebook Katana to start the foreground service / transcode
-        try
-        {
-            await Task.Delay(3000, cancellationToken);
-        }
-        catch (OperationCanceledException)
-        {
-            return true;
-        }
-
-        try
-        {
-            while (
-                DateTime.UtcNow - startTime < effectiveTimeout
-                && !cancellationToken.IsCancellationRequested
-            )
-            {
-                // 1. Check if Facebook active notification indicates uploading
-                var notifDumpsys = await ExecuteAdbAsync(
-                    index,
-                    "shell dumpsys notification --noredact",
-                    customPath,
-                    cancellationToken
-                );
-
-                var isNotifActive = IsFacebookUploadNotificationActive(notifDumpsys);
-
-                // 2. Check UI hierarchy for ongoing indicators
-                var xml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
-                var isUiPosting =
-                    !string.IsNullOrWhiteSpace(xml)
-                    && (
-                        xml.Contains("Posting...", StringComparison.OrdinalIgnoreCase)
-                        || xml.Contains("Finishing up...", StringComparison.OrdinalIgnoreCase)
-                        || xml.Contains("Uploading...", StringComparison.OrdinalIgnoreCase)
-                    );
-
-                // 3. If file path is specified, check if fuser reports it still open by Facebook
-                var isFileOpen = false;
-                if (!string.IsNullOrWhiteSpace(remotePath))
-                {
-                    var fuserRes = await ExecuteAdbAsync(
-                        index,
-                        $"shell su -c 'fuser \"{remotePath}\"'",
-                        customPath,
-                        cancellationToken
-                    );
-                    isFileOpen =
-                        !string.IsNullOrWhiteSpace(fuserRes)
-                        && char.IsDigit(fuserRes.Trim().FirstOrDefault());
-                }
-
-                // If none of the indicators show ongoing upload, Facebook has finished uploading!
-                if (!isNotifActive && !isUiPosting && !isFileOpen)
-                {
-                    Debug.WriteLine($"[LD-{index}] Facebook upload completed detected.");
-                    return true;
-                }
-
-                await Task.Delay(2500, cancellationToken);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            return true;
-        }
-
-        Debug.WriteLine(
-            $"[LD-{index}] Wait for upload reached timeout ({effectiveTimeout.TotalSeconds}s)."
+    ) =>
+        new PFlowAutoPostService(this, _atxClient).WaitForUploadCompletedAsync(
+            index,
+            remotePath,
+            timeout,
+            customPath,
+            cancellationToken
         );
-        return true;
-    }
 
     private static bool IsFacebookUploadNotificationActive(string notifDumpsys)
     {
@@ -921,29 +880,22 @@ public class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
-        if (await _atxClient.IsRunningAsync(index, cancellationToken))
-        {
-            var ok = await _atxClient.ShareImageAsync(
-                index,
-                remotePath,
-                packageName,
-                cancellationToken
-            );
-            if (ok)
-                return true;
-        }
-
-        var mimeType = remotePath.EndsWith(".png", StringComparison.OrdinalIgnoreCase)
-            ? "image/png"
-            : "image/jpeg";
-
-        await ExecuteAdbAsync(
+        var command = PFlowMediaIntent.ShareCommand(remotePath, packageName, true);
+        if (command == null)
+            return false;
+        if (
+            await _atxClient.IsRunningAsync(index, cancellationToken)
+            && await _atxClient.ShareImageAsync(index, remotePath, packageName, cancellationToken)
+        )
+            return true;
+        cancellationToken.ThrowIfCancellationRequested();
+        var output = await ExecuteAdbAsync(
             index,
-            $"shell am start -a android.intent.action.SEND -t \"{mimeType}\" --eu android.intent.extra.STREAM \"file://{remotePath}\" -p {packageName}",
+            "shell " + command,
             customPath,
             cancellationToken
         );
-        return true;
+        return PFlowMediaIntent.ShareStarted(output);
     }
 
     public async Task<bool> SwitchToPersonaAsync(
@@ -975,7 +927,12 @@ public class LDPlayerService : ILDPlayerService
                 await PressBackAsync(index, customPath, cancellationToken);
                 await Task.Delay(800, cancellationToken);
             }
-            return true;
+            return await WaitForPersonaActiveAsync(
+                index,
+                personaName,
+                customPath,
+                cancellationToken
+            );
         }
 
         // 1b. Check if direct switch button exists on the current screen (e.g. "Switch to [PageName]")
@@ -986,8 +943,12 @@ public class LDPlayerService : ILDPlayerService
             if (dcx > 0 && dcy > 0)
             {
                 await TapAsync(index, dcx, dcy, customPath, cancellationToken);
-                await Task.Delay(5000, cancellationToken);
-                return true;
+                return await WaitForPersonaActiveAsync(
+                    index,
+                    personaName,
+                    customPath,
+                    cancellationToken
+                );
             }
         }
 
@@ -1001,7 +962,12 @@ public class LDPlayerService : ILDPlayerService
 
             if (IsAlreadyOnTargetPersona(currentXml, personaName))
             {
-                return true;
+                return await WaitForPersonaActiveAsync(
+                    index,
+                    personaName,
+                    customPath,
+                    cancellationToken
+                );
             }
 
             directBtn = FindDirectSwitchButton(currentXml, personaName);
@@ -1011,14 +977,23 @@ public class LDPlayerService : ILDPlayerService
                 if (dcx > 0 && dcy > 0)
                 {
                     await TapAsync(index, dcx, dcy, customPath, cancellationToken);
-                    await Task.Delay(5000, cancellationToken);
-                    return true;
+                    return await WaitForPersonaActiveAsync(
+                        index,
+                        personaName,
+                        customPath,
+                        cancellationToken
+                    );
                 }
             }
 
             if (!IsAccountSwitcherOpen(currentXml))
             {
-                await ClickProfileSwitcherDropdownAsync(index, customPath, cancellationToken);
+                await ClickProfileSwitcherDropdownAsync(
+                    index,
+                    personaName,
+                    customPath,
+                    cancellationToken
+                );
                 await Task.Delay(2500, cancellationToken);
                 currentXml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
             }
@@ -1041,7 +1016,12 @@ public class LDPlayerService : ILDPlayerService
                         await PressBackAsync(index, customPath, cancellationToken);
                         await Task.Delay(800, cancellationToken);
                     }
-                    return true;
+                    return await WaitForPersonaActiveAsync(
+                        index,
+                        personaName,
+                        customPath,
+                        cancellationToken
+                    );
                 }
 
                 await TapAsync(index, cx, cy, customPath, cancellationToken);
@@ -1053,7 +1033,12 @@ public class LDPlayerService : ILDPlayerService
                     await PressBackAsync(index, customPath, cancellationToken);
                     await Task.Delay(1000, cancellationToken);
                 }
-                return true;
+                return await WaitForPersonaActiveAsync(
+                    index,
+                    personaName,
+                    customPath,
+                    cancellationToken
+                );
             }
 
             // Target not visible in current view: scroll down in the switcher bottom sheet
@@ -1093,129 +1078,38 @@ public class LDPlayerService : ILDPlayerService
         return false;
     }
 
-    /// <summary>
-    /// Executes the user-requested 10-step profile switch sequence:
-    /// 3. Open Facebook app (com.facebook.katana)
-    /// 4. Open News Feed (fb://feed)
-    /// 5. Find and click Facebook menu (top-left hamburger button ≡ or menu tab)
-    /// 6. Click dropdown profile list (header card switcher/chevron)
-    /// 7. Bloks/UI query personal profile account (distinguishes personal profile from Pages)
-    /// 8. Switch to account
-    /// 9. Delay 5s after switch
-    /// 10. Clear Facebook app (force-stop and clear cache)
-    /// </summary>
-    public async Task<bool> EnsureSwitchedToPersonalProfileAsync(
+    private async Task<bool> WaitForPersonaActiveAsync(
+        int index,
+        string personaName,
+        string? customPath,
+        CancellationToken cancellationToken
+    )
+    {
+        for (var attempt = 0; attempt < 12; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var xml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
+            if (IsAlreadyOnTargetPersona(xml, personaName))
+                return true;
+            await Task.Delay(TimeSpan.FromMilliseconds(750), cancellationToken);
+        }
+
+        return false;
+    }
+
+    /// <summary>Verify the native personal identity once and retain the Facebook session.</summary>
+    public Task<bool> EnsureSwitchedToPersonalProfileAsync(
         int index,
         string? targetProfileName = null,
         string? customPath = null,
         CancellationToken cancellationToken = default
-    )
-    {
-        // 3. Open Facebook app
-        await LaunchAppAsync(index, "com.facebook.katana", customPath, cancellationToken);
-        await Task.Delay(4000, cancellationToken);
-
-        // 4. Open News Feed
-        await OpenDeepLinkAsync(
-            index,
-            "fb://feed",
-            "com.facebook.katana",
-            customPath,
-            cancellationToken
-        );
-        await Task.Delay(3000, cancellationToken);
-
-        // 5. Find Facebook menu
-        bool menuOpened = await OpenFacebookMenuFromFeedAsync(index, customPath, cancellationToken);
-        if (!menuOpened)
-        {
-            await OpenDeepLinkAsync(
-                index,
-                "fb://menu",
-                "com.facebook.katana",
-                customPath,
-                cancellationToken
-            );
-        }
-        await Task.Delay(3000, cancellationToken);
-
-        // 6. Click dropdown profile list
-        bool switcherOpened = await ClickProfileSwitcherDropdownAsync(
-            index,
-            customPath,
-            cancellationToken
-        );
-        await Task.Delay(2500, cancellationToken);
-
-        // 7. Bloks query profile account
-        var targetCoords = await QueryPersonalProfileInSwitcherAsync(
+    ) =>
+        new PFlowPersonaSwitcherService(this, _atxClient).EnsureSwitchedToPersonalProfileAsync(
             index,
             targetProfileName,
             customPath,
             cancellationToken
         );
-
-        // If not found on first attempt, retry once after 1s (in case switcher was animating open)
-        if (!targetCoords.HasValue)
-        {
-            await Task.Delay(1000, cancellationToken);
-            targetCoords = await QueryPersonalProfileInSwitcherAsync(
-                index,
-                targetProfileName,
-                customPath,
-                cancellationToken
-            );
-        }
-
-        bool switched = false;
-        if (targetCoords.HasValue && targetCoords.Value.X > 0 && targetCoords.Value.Y > 0)
-        {
-            // 8. Switch to account - tap Amanda Troxiron directly on the name
-            int tapX = targetCoords.Value.X;
-            int tapY = targetCoords.Value.Y;
-
-            // Primary tap directly on the target profile text
-            await TapAsync(index, tapX, tapY, customPath, cancellationToken);
-            await Task.Delay(400, cancellationToken);
-
-            // Also tap the avatar icon area (X=100) to ensure touch triggers whether avatar or row is listening
-            if (tapX > 150)
-            {
-                await TapAsync(index, 100, tapY, customPath, cancellationToken);
-            }
-
-            switched = true;
-        }
-        else
-        {
-            // Check if already on the personal profile
-            var switcherXml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
-            if (!string.IsNullOrWhiteSpace(switcherXml))
-            {
-                var bloksScreen = AtxAgentClient.ParseBloksHierarchy(switcherXml, null);
-                if (
-                    AtxAgentClient.IsPersonalProfileAlreadySelectedInBloks(
-                        bloksScreen,
-                        targetProfileName
-                    )
-                )
-                {
-                    switched = true;
-                }
-            }
-        }
-
-        // 9. After switch delay 5s
-        await Task.Delay(5000, cancellationToken);
-
-        // 10. After clear (force-stop Facebook app and clear cache)
-        await StopFacebookAppAsync(index, customPath, cancellationToken);
-        await Task.Delay(1000, cancellationToken);
-        await ClearFacebookCacheAsync(index, customPath, cancellationToken);
-        await Task.Delay(1000, cancellationToken);
-
-        return switched;
-    }
 
     /// <summary>
     /// Step 5: Finds and clicks the Facebook Menu / Profile tab on the navigation bar.
@@ -1230,8 +1124,29 @@ public class LDPlayerService : ILDPlayerService
     {
         // 1. Check if already on the Menu page via Bloks
         var bloksScreen = await DumpBloksScreenAsync(index, customPath, cancellationToken);
+        // Feed content can appear before the navigation bar after a persona switch.
+        // Wait for the actual Menu/Profile control instead of failing on that first dump.
+        for (var navigationWait = 0; navigationWait < 20; navigationWait++)
+        {
+            if (
+                bloksScreen != null
+                && (
+                    AtxAgentClient.IsMenuPageInBloks(bloksScreen)
+                    || AtxAgentClient.FindMenuTabInBloks(bloksScreen).HasValue
+                )
+            )
+                break;
+            await Task.Delay(400, cancellationToken);
+            bloksScreen = await DumpBloksScreenAsync(index, customPath, cancellationToken);
+        }
         if (bloksScreen != null && AtxAgentClient.IsMenuPageInBloks(bloksScreen))
         {
+            await PFlowFetchTrace.WriteAsync(
+                index,
+                "menu.screen.already-open",
+                PFlowFetchTrace.SummarizeScreen(bloksScreen),
+                cancellationToken
+            );
             return true;
         }
 
@@ -1244,9 +1159,21 @@ public class LDPlayerService : ILDPlayerService
                 if (bloksTab.Value.IsSelected)
                 {
                     // Already on Menu tab (highlighted by blue selection bar)
+                    await PFlowFetchTrace.WriteAsync(
+                        index,
+                        "menu.tab.already-selected",
+                        $"x={bloksTab.Value.X}; y={bloksTab.Value.Y}",
+                        cancellationToken
+                    );
                     return true;
                 }
 
+                await PFlowFetchTrace.WriteAsync(
+                    index,
+                    "menu.tab.tap-bloks",
+                    $"x={bloksTab.Value.X}; y={bloksTab.Value.Y}; selected={bloksTab.Value.IsSelected}",
+                    cancellationToken
+                );
                 await TapAsync(
                     index,
                     bloksTab.Value.X,
@@ -1375,6 +1302,12 @@ public class LDPlayerService : ILDPlayerService
                 if (bottomTabs.Count >= 3)
                 {
                     var rightmost = bottomTabs.Last();
+                    await PFlowFetchTrace.WriteAsync(
+                        index,
+                        "menu.tab.tap-rightmost",
+                        $"x={rightmost.CenterX}; y={rightmost.CenterY}; selected={rightmost.IsSelected}; candidates={bottomTabs.Count}",
+                        cancellationToken
+                    );
                     await TapAsync(
                         index,
                         rightmost.CenterX,
@@ -1388,34 +1321,18 @@ public class LDPlayerService : ILDPlayerService
             }
         }
 
-        // 4. Proportional fallback:
-        var (sw, sh) = ParseScreenDimensions(feedXml);
-        if (sw <= 0)
-            sw = 720;
-        if (sh <= 0)
-            sh = 1280;
-
-        // Try top-left hamburger first (approx 8% width, 7% height, e.g. 52, 92)
-        await TapAsync(index, (int)(sw * 0.08), (int)(sh * 0.07), customPath, cancellationToken);
-        await Task.Delay(2000, cancellationToken);
-
-        var verifyMenu = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
-        if (
-            !string.IsNullOrWhiteSpace(verifyMenu)
-            && (
-                verifyMenu.Contains("Your shortcuts", StringComparison.OrdinalIgnoreCase)
-                || verifyMenu.Contains("Open profile switcher", StringComparison.OrdinalIgnoreCase)
-                || verifyMenu.Contains("Go to Accounts Center", StringComparison.OrdinalIgnoreCase)
-            )
-        )
-        {
-            return true;
-        }
-
-        // Next try top-right tab 6 (approx 92% width, 14% height, e.g. 660, 180)
-        await TapAsync(index, (int)(sw * 0.92), (int)(sh * 0.14), customPath, cancellationToken);
-        await Task.Delay(2000, cancellationToken);
-        return true;
+        await PFlowFetchTrace.WriteAsync(
+            index,
+            "menu.tab.not-found",
+            PFlowFetchTrace.SummarizeScreen(
+                AtxAgentClient.ParseBloksHierarchy(
+                    feedXml,
+                    await GetCurrentFocusedActivityAsync(index, customPath, cancellationToken)
+                )
+            ),
+            cancellationToken
+        );
+        return false;
     }
 
     /// <summary>
@@ -1423,6 +1340,7 @@ public class LDPlayerService : ILDPlayerService
     /// </summary>
     public async Task<bool> ClickProfileSwitcherDropdownAsync(
         int index,
+        string? profileName = null,
         string? customPath = null,
         CancellationToken cancellationToken = default
     )
@@ -1430,6 +1348,67 @@ public class LDPlayerService : ILDPlayerService
         var menuXml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
         if (!string.IsNullOrWhiteSpace(menuXml))
         {
+            // When we know which signed-in profile should be active, bind the
+            // tap to its own header row. Generic "profile/account" nodes and
+            // fixed coordinates can land on a public profile or cover photo.
+            if (!string.IsNullOrWhiteSpace(profileName))
+            {
+                var headerButton = FindProfileHeaderSwitcherButton(menuXml, profileName);
+                if (headerButton != null)
+                {
+                    var (headerX, headerY) = ParseNodeBoundsCenter(headerButton);
+                    if (headerX > 0 && headerY > 0)
+                    {
+                        await PFlowFetchTrace.WriteAsync(
+                            index,
+                            "switcher.dropdown.tap-profile-header",
+                            $"x={headerX}; y={headerY}",
+                            cancellationToken
+                        );
+                        await TapAsync(index, headerX, headerY, customPath, cancellationToken);
+                        return true;
+                    }
+                }
+            }
+
+            var hierarchyText = string.Join(
+                " ",
+                SafeParseXmlDocuments(menuXml)
+                    .SelectMany(doc => doc.Descendants("node"))
+                    .Select(node =>
+                        $"{node.Attribute("text")?.Value} {node.Attribute("content-desc")?.Value}"
+                    )
+            );
+            var isOwnProfileScreen =
+                hierarchyText.Contains("Edit profile", StringComparison.OrdinalIgnoreCase)
+                || hierarchyText.Contains(
+                    "Professional dashboard",
+                    StringComparison.OrdinalIgnoreCase
+                )
+                || hierarchyText.Contains("Add to story", StringComparison.OrdinalIgnoreCase);
+            if (
+                isOwnProfileScreen
+                || AtxAgentClient.IsMenuPageInBloks(AtxAgentClient.ParseBloksHierarchy(menuXml))
+            )
+            {
+                var activeHeaderButton = FindProfileHeaderSwitcherButton(menuXml, null);
+                if (activeHeaderButton != null)
+                {
+                    var (activeX, activeY) = ParseNodeBoundsCenter(activeHeaderButton);
+                    if (activeX > 0 && activeY > 0)
+                    {
+                        await PFlowFetchTrace.WriteAsync(
+                            index,
+                            "switcher.dropdown.tap-active-profile-header",
+                            $"x={activeX}; y={activeY}",
+                            cancellationToken
+                        );
+                        await TapAsync(index, activeX, activeY, customPath, cancellationToken);
+                        return true;
+                    }
+                }
+            }
+
             var docs = SafeParseXmlDocuments(menuXml);
             foreach (var doc in docs)
             {
@@ -1479,41 +1458,26 @@ public class LDPlayerService : ILDPlayerService
                     var (cx, cy) = ParseNodeBoundsCenter(dropdownNode);
                     if (cx > 0 && cy > 0)
                     {
+                        await PFlowFetchTrace.WriteAsync(
+                            index,
+                            "switcher.dropdown.tap-labeled-control",
+                            $"x={cx}; y={cy}",
+                            cancellationToken
+                        );
                         await TapAsync(index, cx, cy, customPath, cancellationToken);
                         return true;
                     }
                 }
-
-                // 2. Check general switcher coordinates
-                var switcherCoords = FindProfileSwitcherCoordinates(menuXml);
-                if (switcherCoords.HasValue)
-                {
-                    await TapAsync(
-                        index,
-                        switcherCoords.Value.X,
-                        switcherCoords.Value.Y,
-                        customPath,
-                        cancellationToken
-                    );
-                    return true;
-                }
             }
         }
 
-        // Proportional fallback: upper-right of header card (approx 75% width, 12% height for switcher chevron [v])
-        var (swMenu, shMenu) = ParseScreenDimensions(menuXml);
-        if (swMenu <= 0)
-            swMenu = 720;
-        if (shMenu <= 0)
-            shMenu = 1280;
-        await TapAsync(
+        await PFlowFetchTrace.WriteAsync(
             index,
-            (int)(swMenu * 0.75),
-            (int)(shMenu * 0.12),
-            customPath,
+            "switcher.dropdown.not-found",
+            $"profileNameKnown={!string.IsNullOrWhiteSpace(profileName)}; {PFlowFetchTrace.SummarizeScreen(AtxAgentClient.ParseBloksHierarchy(menuXml, null))}",
             cancellationToken
         );
-        return true;
+        return false;
     }
 
     /// <summary>
@@ -1661,429 +1625,51 @@ public class LDPlayerService : ILDPlayerService
         return false;
     }
 
-    public async Task<bool> PostReelToFacebookAsync(
+    // Legacy signatures lack a verified target/history boundary. P-Flow owns publication.
+    public Task<bool> PostReelToFacebookAsync(
         int index,
         string localVideoPath,
         string? caption = null,
         string? customPath = null,
         CancellationToken cancellationToken = default
-    )
-    {
-        if (!File.Exists(localVideoPath))
-            return false;
-
-        var fileName = Path.GetFileName(localVideoPath);
-        var remotePath = $"/sdcard/DCIM/Camera/{fileName}";
-
-        // 1. Push reel video to emulator & scan media
-        await PushFileToEmulatorAsync(
+    ) =>
+        new PFlowAutoPostService(this, _atxClient).PostReelAsync(
             index,
             localVideoPath,
-            remotePath,
+            caption,
             customPath,
             cancellationToken
         );
-        await ScanMediaFileAsync(index, remotePath, customPath, cancellationToken);
-        await Task.Delay(2000, cancellationToken);
 
-        // 2. Share via SEND intent
-        await ShareVideoToFacebookAsync(
-            index,
-            remotePath,
-            "com.facebook.katana",
-            customPath,
-            cancellationToken
-        );
-        await Task.Delay(3500, cancellationToken);
-
-        // 3. Inspect hierarchy for Reel creation wizard
-        var xml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
-        if (
-            !string.IsNullOrWhiteSpace(xml)
-            && (
-                xml.Contains("Create Reel", StringComparison.OrdinalIgnoreCase)
-                || xml.Contains("Share as Reel", StringComparison.OrdinalIgnoreCase)
-            )
-        )
-        {
-            // If prompt asks "Share as Reel" or "Create Reel"
-            await ClickElementByMatchingTextAsync(
-                index,
-                xml,
-                ["Create Reel", "Reel", "Share as Reel"],
-                customPath,
-                cancellationToken
-            );
-            await Task.Delay(2000, cancellationToken);
-            xml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
-        }
-
-        // 4. In Reel video editor screen (has "Add audio" pill, "Audio", "Edit", "Effects", "Text", "Stickers", "Next")
-        // Loop up to 4 attempts to click Next and advance to Reel Settings / Composer screen
-        for (int attempt = 0; attempt < 4; attempt++)
-        {
-            if (cancellationToken.IsCancellationRequested)
-                break;
-
-            xml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
-
-            // If audio picker or music search modal was accidentally opened, press Back to return to editor
-            if (
-                !string.IsNullOrWhiteSpace(xml)
-                && (
-                    xml.Contains("Search music", StringComparison.OrdinalIgnoreCase)
-                    || xml.Contains("Browse music", StringComparison.OrdinalIgnoreCase)
-                )
-            )
-            {
-                await PressBackAsync(index, customPath, cancellationToken);
-                await Task.Delay(1000, cancellationToken);
-                xml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
-            }
-
-            // Check if already advanced to Reel Settings / Composer screen
-            if (
-                !string.IsNullOrWhiteSpace(xml)
-                && (
-                    xml.Contains("Reel Settings", StringComparison.OrdinalIgnoreCase)
-                    || xml.Contains("Describe your reel", StringComparison.OrdinalIgnoreCase)
-                    || xml.Contains("Share now", StringComparison.OrdinalIgnoreCase)
-                )
-            )
-            {
-                break;
-            }
-
-            // Click Next button
-            bool nextClicked = await ClickElementByMatchingTextAsync(
-                index,
-                xml,
-                ["Next", "Continue"],
-                customPath,
-                cancellationToken
-            );
-
-            if (!nextClicked)
-            {
-                // Fallback coordinate: bottom right blue Next circle (bounds ~[608,1108][704,1280] on 720x1280)
-                var (sw, sh) = ParseScreenDimensions(xml ?? "");
-                if (sw <= 0)
-                    sw = 720;
-                if (sh <= 0)
-                    sh = 1280;
-                int nx = (int)(sw * 0.91);
-                int ny = (int)(sh * 0.93);
-                await TapAsync(index, nx, ny, customPath, cancellationToken);
-            }
-
-            await Task.Delay(2500, cancellationToken);
-        }
-
-        // 5. In Reel composer: input caption if provided
-        xml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
-        if (!string.IsNullOrWhiteSpace(caption))
-        {
-            var captionNode = FindCaptionInputNode(
-                xml,
-                [
-                    "Describe your reel",
-                    "Describe this reel",
-                    "Write a caption",
-                    "Write a description",
-                    "Add description",
-                    "What's on your mind",
-                    "Say something",
-                ]
-            );
-
-            int cx = 0,
-                cy = 0;
-            if (captionNode != null)
-            {
-                (cx, cy) = ParseNodeBoundsCenter(captionNode);
-            }
-
-            if (cx <= 0 || cy <= 0)
-            {
-                var (sw, sh) = ParseScreenDimensions(xml ?? "");
-                if (sw <= 0)
-                    sw = 720;
-                if (sh <= 0)
-                    sh = 1280;
-                cx = (int)(sw * 0.65);
-                cy = (int)(sh * 0.22);
-            }
-
-            if (cx > 0 && cy > 0)
-            {
-                await TapAsync(index, cx, cy, customPath, cancellationToken);
-                await Task.Delay(800, cancellationToken);
-
-                // Ensure ADB Keyboard is active IME before typing
-                await EnableAdbKeyboardAsync(index, customPath, cancellationToken);
-                await Task.Delay(300, cancellationToken);
-
-                await InputTextAsync(index, caption, customPath, cancellationToken);
-                await Task.Delay(1000, cancellationToken);
-
-                // Dismiss keyboard to expose "Share now" clearly
-                await PressBackAsync(index, customPath, cancellationToken);
-                await Task.Delay(600, cancellationToken);
-            }
-        }
-
-        // 6. Click "Share now" or "Share Reel" or "Post"
-        xml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
-        var posted = await ClickElementByMatchingTextAsync(
-            index,
-            xml,
-            ["Share now", "Share reel", "Share Reel", "Share", "Post"],
-            customPath,
-            cancellationToken
-        );
-        if (!posted)
-        {
-            var (sw, sh) = ParseScreenDimensions(xml ?? "");
-            if (sw <= 0)
-                sw = 720;
-            if (sh <= 0)
-                sh = 1280;
-            // Center of large blue button (spans ~[160,1176][688,1256] on 720x1280)
-            int sx = (int)(sw * 0.50);
-            int sy = (int)(sh * 0.95);
-            await TapAsync(index, sx, sy, customPath, cancellationToken);
-        }
-
-        await Task.Delay(3000, cancellationToken);
-
-        return true;
-    }
-
-    public async Task<bool> PostPictureToFacebookAsync(
+    public Task<bool> PostPictureToFacebookAsync(
         int index,
         string localImagePath,
         string? caption = null,
         string? customPath = null,
         CancellationToken cancellationToken = default
-    )
-    {
-        if (!File.Exists(localImagePath))
-            return false;
-
-        var fileName = Path.GetFileName(localImagePath);
-        var remotePath = $"/sdcard/DCIM/Camera/{fileName}";
-
-        // 1. Push image to emulator & scan media
-        await PushFileToEmulatorAsync(
+    ) =>
+        new PFlowAutoPostService(this, _atxClient).PostPictureAsync(
             index,
             localImagePath,
-            remotePath,
+            caption,
             customPath,
             cancellationToken
         );
-        await ScanMediaFileAsync(index, remotePath, customPath, cancellationToken);
-        await Task.Delay(2000, cancellationToken);
 
-        // 2. Share image to Facebook Katana via SEND intent
-        await ShareImageToFacebookAsync(
-            index,
-            remotePath,
-            "com.facebook.katana",
-            customPath,
-            cancellationToken
-        );
-        await Task.Delay(3500, cancellationToken);
-
-        // 3. Inspect post composer screen
-        var xml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
-        if (!string.IsNullOrWhiteSpace(xml))
-        {
-            // In post composer: input caption if provided
-            if (!string.IsNullOrWhiteSpace(caption))
-            {
-                var captionNode = FindCaptionInputNode(
-                    xml,
-                    [
-                        "Say something about this photo",
-                        "Write something",
-                        "What's on your mind",
-                        "Add description",
-                        "Write a caption",
-                    ]
-                );
-
-                int cx = 0,
-                    cy = 0;
-                if (captionNode != null)
-                {
-                    (cx, cy) = ParseNodeBoundsCenter(captionNode);
-                }
-
-                if (cx <= 0 || cy <= 0)
-                {
-                    var (sw, sh) = ParseScreenDimensions(xml);
-                    if (sw > 0 && sh > 0)
-                    {
-                        cx = sw / 2;
-                        cy = (int)(sh * 0.25);
-                    }
-                }
-
-                if (cx > 0 && cy > 0)
-                {
-                    await TapAsync(index, cx, cy, customPath, cancellationToken);
-                    await Task.Delay(1000, cancellationToken);
-
-                    await EnableAdbKeyboardAsync(index, customPath, cancellationToken);
-                    await Task.Delay(300, cancellationToken);
-
-                    await InputTextAsync(index, caption, customPath, cancellationToken);
-                    await Task.Delay(1500, cancellationToken);
-                }
-            }
-
-            // Click "POST" / "Post" / "Share" / "Publish"
-            xml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
-            var posted = await ClickElementByMatchingTextAsync(
-                index,
-                xml,
-                ["POST", "Post", "Share", "Publish"],
-                customPath,
-                cancellationToken
-            );
-            if (!posted)
-            {
-                var (sw, sh) = ParseScreenDimensions(xml ?? "");
-                await TapAsync(
-                    index,
-                    (int)(sw * 0.90),
-                    (int)(sh * 0.06),
-                    customPath,
-                    cancellationToken
-                );
-            }
-        }
-
-        return true;
-    }
-
-    public async Task<bool> PostVideoToFacebookAsync(
+    public Task<bool> PostVideoToFacebookAsync(
         int index,
         string localVideoPath,
         string? caption = null,
         string? customPath = null,
         CancellationToken cancellationToken = default
-    )
-    {
-        if (!File.Exists(localVideoPath))
-            return false;
-
-        var fileName = Path.GetFileName(localVideoPath);
-        var remotePath = $"/sdcard/DCIM/Camera/{fileName}";
-
-        // 1. Push video to emulator & scan media
-        await PushFileToEmulatorAsync(
+    ) =>
+        new PFlowAutoPostService(this, _atxClient).PostVideoAsync(
             index,
             localVideoPath,
-            remotePath,
+            caption,
             customPath,
             cancellationToken
         );
-        await ScanMediaFileAsync(index, remotePath, customPath, cancellationToken);
-        await Task.Delay(2000, cancellationToken);
-
-        // 2. Share video to Facebook Katana via SEND intent
-        await ShareVideoToFacebookAsync(
-            index,
-            remotePath,
-            "com.facebook.katana",
-            customPath,
-            cancellationToken
-        );
-        await Task.Delay(3500, cancellationToken);
-
-        // 3. Inspect post composer screen
-        var xml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
-        if (!string.IsNullOrWhiteSpace(xml))
-        {
-            // If prompted whether to share as Reel or Post to Feed
-            await ClickElementByMatchingTextAsync(
-                index,
-                xml,
-                ["Post to Feed", "Feed", "Post as Video", "Post"],
-                customPath,
-                cancellationToken
-            );
-            await Task.Delay(2000, cancellationToken);
-
-            xml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
-            if (!string.IsNullOrWhiteSpace(caption) && !string.IsNullOrWhiteSpace(xml))
-            {
-                var captionNode = FindCaptionInputNode(
-                    xml,
-                    [
-                        "Say something about this video",
-                        "Write something",
-                        "What's on your mind",
-                        "Describe your video",
-                        "Write a caption",
-                    ]
-                );
-
-                int cx = 0,
-                    cy = 0;
-                if (captionNode != null)
-                {
-                    (cx, cy) = ParseNodeBoundsCenter(captionNode);
-                }
-
-                if (cx <= 0 || cy <= 0)
-                {
-                    var (sw, sh) = ParseScreenDimensions(xml);
-                    if (sw > 0 && sh > 0)
-                    {
-                        cx = sw / 2;
-                        cy = (int)(sh * 0.25);
-                    }
-                }
-
-                if (cx > 0 && cy > 0)
-                {
-                    await TapAsync(index, cx, cy, customPath, cancellationToken);
-                    await Task.Delay(1000, cancellationToken);
-
-                    await EnableAdbKeyboardAsync(index, customPath, cancellationToken);
-                    await Task.Delay(300, cancellationToken);
-
-                    await InputTextAsync(index, caption, customPath, cancellationToken);
-                    await Task.Delay(1500, cancellationToken);
-                }
-            }
-
-            // Click "POST" / "Post" / "Share" / "Publish"
-            xml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
-            var posted = await ClickElementByMatchingTextAsync(
-                index,
-                xml,
-                ["POST", "Post", "Share", "Publish", "Share now"],
-                customPath,
-                cancellationToken
-            );
-            if (!posted)
-            {
-                var (sw, sh) = ParseScreenDimensions(xml ?? "");
-                await TapAsync(
-                    index,
-                    (int)(sw * 0.90),
-                    (int)(sh * 0.06),
-                    customPath,
-                    cancellationToken
-                );
-            }
-        }
-
-        return true;
-    }
 
     private async Task<bool> ClickElementByMatchingTextAsync(
         int index,
@@ -2093,28 +1679,7 @@ public class LDPlayerService : ILDPlayerService
         CancellationToken ct
     )
     {
-        if (await _atxClient.IsRunningAsync(index, ct))
-        {
-            foreach (var candidate in candidates)
-            {
-                if (
-                    await _atxClient.ClickElementAsync(
-                        index,
-                        text: candidate,
-                        cancellationToken: ct
-                    )
-                )
-                    return true;
-                if (
-                    await _atxClient.ClickElementAsync(
-                        index,
-                        contentDesc: candidate,
-                        cancellationToken: ct
-                    )
-                )
-                    return true;
-            }
-        }
+        // Read the hierarchy through ATX, but inject touches through real ADB.
 
         if (string.IsNullOrWhiteSpace(xml))
             return false;
@@ -2232,23 +1797,31 @@ public class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
+        // Port forwards disappear when Android/ADB restarts. Repair the
+        // connection before interpreting a missing hierarchy as missing data.
+        if (!await _atxClient.IsRunningAsync(index, cancellationToken))
+            await EnsureAtxAgentRunningAsync(index, customPath, cancellationToken);
         // 1. Fast path: Query atx-agent on-device daemon via HTTP (~15ms)
         var atxDump = await _atxClient.DumpHierarchyAsync(index, cancellationToken);
         if (
             !string.IsNullOrWhiteSpace(atxDump)
-            && atxDump.Contains("<hierarchy", StringComparison.OrdinalIgnoreCase)
+            && atxDump.Contains("<node", StringComparison.OrdinalIgnoreCase)
         )
         {
             return atxDump;
         }
 
         // 2. Standard ADB fallback path (~2.5s)
-        await ExecuteAdbAsync(
+        var dumpResult = await ExecuteAdbAsync(
             index,
             "shell uiautomator dump /sdcard/window_dump.xml",
             customPath,
             cancellationToken
         );
+
+        // Never read an older window dump when the current dump failed.
+        if (!dumpResult.Contains("dumped", StringComparison.OrdinalIgnoreCase))
+            return null;
 
         var xmlContent = await ExecuteAdbAsync(
             index,
@@ -2315,34 +1888,103 @@ public class LDPlayerService : ILDPlayerService
             // Extract follower / like / reach stats
             // Matches: "1.2K followers", "120 likes", "530 reels", "1.2M views"
             var followerRegex = new Regex(
-                @"([\d,.]+\s*[KMBkmb]?)\s*(followers|following|likes|fans)",
+                @"(?:(?<value>[\d,.]+\s*[KMBkmb]?)\s*(?<label>followers|fans)\b|\b(?<labelAfter>followers|fans)\s*[:·]?\s*(?<valueAfter>[\d,.]+\s*[KMBkmb]?))",
                 RegexOptions.IgnoreCase
             );
             var reachRegex = new Regex(
-                @"([\d,.]+\s*[KMBkmb]?)\s*(views|reach|post reach|talking about this)",
+                @"(?:(?<value>[\d,.]+\s*[KMBkmb]?)\s*(?<label>post reach|reach)\b|\b(?<labelAfter>post reach|reach)\s*[:·]?\s*(?<valueAfter>[\d,.]+\s*[KMBkmb]?))",
                 RegexOptions.IgnoreCase
             );
-            var reelsRegex = new Regex(@"(\d+)\s*(reels|videos|posts)", RegexOptions.IgnoreCase);
+            var reelsRegex = new Regex(
+                @"(?:([\d,.]+\s*[KMB]?)\s*reels\b|\breels\s*[:·]?\s*([\d,.]+\s*[KMB]?))",
+                RegexOptions.IgnoreCase
+            );
+            var videosRegex = new Regex(
+                @"(?:([\d,.]+\s*[KMB]?)\s*videos\b|\bvideos\s*[:·]?\s*([\d,.]+\s*[KMB]?))",
+                RegexOptions.IgnoreCase
+            );
+            var picturesRegex = new Regex(
+                @"(?:([\d,.]+\s*[KMB]?)\s*(?:photos|pictures)\b|\b(?:photos|pictures)\s*[:·]?\s*([\d,.]+\s*[KMB]?))",
+                RegexOptions.IgnoreCase
+            );
+            var joinedVisibleText = string.Join(" ", texts);
+            var metricTexts = nodes
+                .Where(node => !IsIndexedNavigationNode(node))
+                .SelectMany(node =>
+                    new[] { node.Attribute("text")?.Value, node.Attribute("content-desc")?.Value }
+                )
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => value!.Trim())
+                .ToHashSet();
 
+            // Bloks often renders a metric label and its value as adjacent
+            // accessibility nodes, so parse both individual nodes and the
+            // combined screen text.
             foreach (var t in texts)
             {
+                var createdMatch = Regex.Match(
+                    t,
+                    @"(?:Page\s+)?(?:created|joined|created on)\s*[:·,]?\s*((?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}|\d{1,2}\s+(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{4})",
+                    RegexOptions.IgnoreCase
+                );
+                if (createdMatch.Success && string.IsNullOrWhiteSpace(info.CreationDate))
+                    info.CreationDate = createdMatch.Groups[1].Value.Trim();
+                if (!metricTexts.Contains(t))
+                    continue;
+
                 var fm = followerRegex.Match(t);
-                if (fm.Success && info.Followers == 0)
+                if (fm.Success && !info.FollowersKnown)
                 {
-                    info.Followers = ParseCountString(fm.Groups[1].Value);
+                    var value = fm.Groups["value"].Success
+                        ? fm.Groups["value"].Value
+                        : fm.Groups["valueAfter"].Value;
+                    info.Followers = ParseCountString(value);
+                    info.FollowersKnown = true;
                 }
 
                 var rm = reachRegex.Match(t);
                 if (rm.Success && string.IsNullOrEmpty(info.Reach))
                 {
-                    info.Reach = $"{rm.Groups[1].Value} Views";
+                    var value = rm.Groups["value"].Success
+                        ? rm.Groups["value"].Value
+                        : rm.Groups["valueAfter"].Value;
+                    var label = rm.Groups["label"].Success
+                        ? rm.Groups["label"].Value
+                        : rm.Groups["labelAfter"].Value;
+                    info.Reach = $"{value} {label}";
                 }
 
                 var reelMatch = reelsRegex.Match(t);
-                if (reelMatch.Success && info.ReelsCount == 0)
+                if (reelMatch.Success && !info.ReelsCountKnown)
                 {
-                    if (int.TryParse(reelMatch.Groups[1].Value, out var c))
-                        info.ReelsCount = c;
+                    info.ReelsCount = ParseCountString(
+                        reelMatch.Groups[1].Success
+                            ? reelMatch.Groups[1].Value
+                            : reelMatch.Groups[2].Value
+                    );
+                    info.ReelsCountKnown = true;
+                }
+
+                var videoMatch = videosRegex.Match(t);
+                if (videoMatch.Success && !info.VideosCountKnown)
+                {
+                    info.VideosCount = ParseCountString(
+                        videoMatch.Groups[1].Success
+                            ? videoMatch.Groups[1].Value
+                            : videoMatch.Groups[2].Value
+                    );
+                    info.VideosCountKnown = true;
+                }
+
+                var pictureMatch = picturesRegex.Match(t);
+                if (pictureMatch.Success && !info.PictureCountKnown)
+                {
+                    info.PictureCount = ParseCountString(
+                        pictureMatch.Groups[1].Success
+                            ? pictureMatch.Groups[1].Value
+                            : pictureMatch.Groups[2].Value
+                    );
+                    info.PictureCountKnown = true;
                 }
 
                 // Check Type
@@ -2361,6 +2003,61 @@ public class LDPlayerService : ILDPlayerService
                 {
                     info.Type = "Page";
                 }
+            }
+
+            // Page Transparency often exposes the label and value as separate
+            // accessibility nodes ("Date created" / "Aug 12, 2020"). Join the
+            // hierarchy text so that split labels and abbreviated month names parse.
+            if (string.IsNullOrWhiteSpace(info.CreationDate))
+            {
+                const string month =
+                    @"(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?";
+                var joinedCreatedMatch = Regex.Match(
+                    joinedVisibleText,
+                    $@"(?:page\s+)?(?:date\s+created|creation\s+date|page\s+created|created(?:\s+(?:on|in))?|joined(?:\s+(?:Facebook\s+)?(?:in\s+)?(?:on\s+)?)?)\s*[:·,]?\s*({month}\s+\d{{1,2}},?\s+\d{{4}}|\d{{1,2}}\s+{month}\s+\d{{4}}|{month}\s+\d{{4}}|(?:19|20)\d{{2}})",
+                    RegexOptions.IgnoreCase
+                );
+                if (joinedCreatedMatch.Success)
+                    info.CreationDate = joinedCreatedMatch.Groups[1].Value.Trim();
+            }
+
+            var hierarchy = AtxAgentClient.ParseBloksHierarchy(xml);
+            info.Birthdate = ExtractHierarchyFieldValue(
+                hierarchy,
+                ["Birthday", "Date of birth", "Birth date"]
+            );
+            if (FacebookPageTarget.TryParseCreationDate(info.CreationDate) == null)
+                info.CreationDate = ExtractJoinedDate(hierarchy);
+
+            // Counts on dashboard cards are often separate label/value nodes.
+            // Pair nodes by their row/card bounds rather than concatenating the
+            // entire screen, which can attach a neighbouring card's number.
+            var followers = ExtractHierarchyMetric(hierarchy, ["Followers", "Fans"]);
+            if (followers != null)
+            {
+                info.Followers = ParseCountString(followers);
+                info.FollowersKnown = true;
+            }
+            var reach = ExtractHierarchyMetric(hierarchy, ["Reach", "Post reach"]);
+            if (reach != null)
+                info.Reach = $"{reach} reach";
+            var reels = ExtractHierarchyMetric(hierarchy, ["Reels"]);
+            if (reels != null)
+            {
+                info.ReelsCount = ParseCountString(reels);
+                info.ReelsCountKnown = true;
+            }
+            var videos = ExtractHierarchyMetric(hierarchy, ["Videos"]);
+            if (videos != null)
+            {
+                info.VideosCount = ParseCountString(videos);
+                info.VideosCountKnown = true;
+            }
+            var pictures = ExtractHierarchyMetric(hierarchy, ["Photos", "Pictures"]);
+            if (pictures != null)
+            {
+                info.PictureCount = ParseCountString(pictures);
+                info.PictureCountKnown = true;
             }
 
             // Extract page name: Look for prominent text node near top
@@ -2443,39 +2140,20 @@ public class LDPlayerService : ILDPlayerService
                 return devInfo;
             }
         }
-        catch { }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (RootShellUnavailableException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[LD-{index}] Root-shell device discovery failed: {ex.Message}");
+        }
 
-        // 2. Legacy fallback: Query shared_prefs for user UID / name on rooted LDPlayer
-        var prefsOutput = await ExecuteAdbAsync(
-            index,
-            "shell grep -rohE '(\"user_id\":\\s*\"[0-9]+\"|\"name\":\\s*\"[^\"]+\"|[0-9]{14,16})' /data/data/com.facebook.katana/shared_prefs/ 2>/dev/null",
-            customPath,
-            cancellationToken
-        );
-
-        // 2. Open User Profile via deep link
-        await OpenDeepLinkAsync(
-            index,
-            "fb://profile",
-            "com.facebook.katana",
-            customPath,
-            cancellationToken
-        );
-        await Task.Delay(2500, cancellationToken);
-        var profileXml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
-
-        // 3. Open Pages tab via deep link
-        await OpenDeepLinkAsync(
-            index,
-            "fb://pages",
-            "com.facebook.katana",
-            customPath,
-            cancellationToken
-        );
-        await Task.Delay(3000, cancellationToken);
-        var pagesXml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
-
-        return ParseDeviceAccountAndPagesFromXml(profileXml, pagesXml, prefsOutput, index);
+        return null;
     }
 
     public static FacebookDeviceAccountInfo ParseDeviceAccountAndPagesFromXml(
@@ -2620,463 +2298,152 @@ public class LDPlayerService : ILDPlayerService
     public async Task<FacebookAccountDetails?> ExtractFacebookAccountDetailsAsync(
         int index,
         string? customPath = null,
-        CancellationToken cancellationToken = default
+        CancellationToken cancellationToken = default,
+        Func<FacebookAccountDetails, Task>? rootShellCompleted = null,
+        Func<string, Task>? progress = null
     )
     {
-        // 0. Fast path: Direct extraction from rooted storage via LightSharedPreferences & prefs_db
+        await PFlowFetchTrace.WriteAsync(
+            index,
+            "root-shell.begin",
+            "Reading Facebook profile and Page records.",
+            cancellationToken
+        );
+        if (progress != null)
+            await progress("Root shell: reading the personal account and managed Page records.");
+
+        List<FacebookAccountInfo> rootAccounts;
         try
         {
-            var rootAccounts = await ExtractFacebookAccountsFromRootShellAsync(
+            rootAccounts = await ExtractFacebookAccountsFromRootShellAsync(
                 index,
                 "com.facebook.katana",
                 customPath,
                 cancellationToken
             );
-
-            if (rootAccounts.Count > 0)
-            {
-                var primaryProfile =
-                    rootAccounts.FirstOrDefault(a =>
-                        a.IsActive
-                        || string.Equals(a.Type, "Profile", StringComparison.OrdinalIgnoreCase)
-                    ) ?? rootAccounts.FirstOrDefault();
-
-                if (primaryProfile != null)
-                {
-                    var details = new FacebookAccountDetails
-                    {
-                        DeviceName = $"LD-{index}",
-                        Name = primaryProfile.Name,
-                        Uid = !string.IsNullOrEmpty(primaryProfile.UserUid)
-                            ? primaryProfile.UserUid
-                            : primaryProfile.Uid,
-                        Email = primaryProfile.Email,
-                        SwitchedToProfile = true,
-                    };
-
-                    foreach (
-                        var pageAcc in rootAccounts.Where(a =>
-                            string.Equals(a.Type, "Page", StringComparison.OrdinalIgnoreCase)
-                        )
-                    )
-                    {
-                        details.Pages.Add(
-                            new FacebookPageInfo
-                            {
-                                PageId = pageAcc.PageId,
-                                PersonaUid = !string.IsNullOrWhiteSpace(pageAcc.Uid)
-                                    ? pageAcc.Uid
-                                    : pageAcc.PageId,
-                                UserUid = details.Uid,
-                                PageName = pageAcc.Name,
-                                Type = "Page",
-                                Email = pageAcc.Email,
-                                ManagedBy = details.Name,
-                            }
-                        );
-                    }
-
-                    return details;
-                }
-            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (RootShellUnavailableException)
+        {
+            await PFlowFetchTrace.WriteAsync(
+                index,
+                "root-shell.unavailable",
+                "Root access or Facebook storage could not be read.",
+                cancellationToken
+            );
+            throw;
         }
         catch (Exception ex)
         {
-            Debug.WriteLine(
-                $"[LD-{index}] Root shell account extraction failed, falling back to UI dump: {ex.Message}"
-            );
-        }
-
-        // 1. Legacy fallback: Ensure OpenATX daemon is forwarded & active for fast ~15ms hierarchy inspection
-        await EnsureAtxAgentRunningAsync(index, customPath, cancellationToken);
-
-        // 2. Launch Facebook Katana and ensure it's in foreground
-        await LaunchAppAsync(index, "com.facebook.katana", customPath, cancellationToken);
-        await Task.Delay(2500, cancellationToken);
-
-        // 3. Check if Profile Switcher bottom sheet is already open
-        var currentXml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
-        bool isSwitcherOpen =
-            !string.IsNullOrWhiteSpace(currentXml)
-            && (
-                currentXml.Contains("Create Facebook Page", StringComparison.OrdinalIgnoreCase)
-                || currentXml.Contains("Go to Accounts Center", StringComparison.OrdinalIgnoreCase)
-            );
-
-        // If not open, navigate to Menu tab and tap switcher chevron dynamically
-        if (!isSwitcherOpen)
-        {
-            await OpenDeepLinkAsync(
+            await PFlowFetchTrace.WriteAsync(
                 index,
-                "fb://menu",
-                "com.facebook.katana",
-                customPath,
+                "root-shell.error",
+                $"{ex.GetType().Name}: {ex.Message}",
                 cancellationToken
             );
-            await Task.Delay(2000, cancellationToken);
-            var menuXml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
-
-            if (!string.IsNullOrWhiteSpace(menuXml))
-            {
-                if (
-                    menuXml.Contains("Create Facebook Page", StringComparison.OrdinalIgnoreCase)
-                    || menuXml.Contains("Go to Accounts Center", StringComparison.OrdinalIgnoreCase)
-                )
-                {
-                    currentXml = menuXml;
-                    isSwitcherOpen = true;
-                }
-                else
-                {
-                    // Find switcher chevron or user card switcher tap coordinates dynamically
-                    var coords = FindProfileSwitcherCoordinates(menuXml);
-                    if (coords.HasValue)
-                    {
-                        await TapAsync(
-                            index,
-                            coords.Value.X,
-                            coords.Value.Y,
-                            customPath,
-                            cancellationToken
-                        );
-                    }
-                    else
-                    {
-                        // Proportional fallback based on screen bounds
-                        var (menuW, menuH) = ParseScreenDimensions(menuXml);
-                        int tapX = (int)(menuW * 0.88);
-                        int tapY = (int)(menuH * 0.13); // User card header row
-                        await TapAsync(index, tapX, tapY, customPath, cancellationToken);
-                    }
-                    await Task.Delay(2500, cancellationToken);
-                    currentXml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
-                }
-            }
+            Debug.WriteLine($"[LD-{index}] Root-shell account extraction failed: {ex.Message}");
+            return null;
         }
 
-        var switcherXml = currentXml;
-        bool switched = false;
-
-        // 3. Switch to personal profile if present in switcher sheet
-        if (!string.IsNullOrWhiteSpace(switcherXml))
+        if (rootAccounts.Count == 0)
         {
-            try
-            {
-                var doc = XDocument.Parse(switcherXml);
-                var allNodes = doc.Descendants("node").ToList();
-
-                XElement? profileNode = null;
-                for (int i = 0; i < allNodes.Count; i++)
-                {
-                    var text = allNodes[i].Attribute("text")?.Value?.Trim();
-                    if (string.IsNullOrWhiteSpace(text))
-                        text = allNodes[i].Attribute("content-desc")?.Value?.Trim();
-
-                    if (string.IsNullOrWhiteSpace(text) || text.Length < 2)
-                        continue;
-
-                    if (IsIgnoredSwitcherHeaderOrAction(text) || IsNotificationSubtitle(text))
-                    {
-                        continue;
-                    }
-
-                    // Check if subsequent node within lookahead has text "Page"
-                    bool isPage = false;
-                    for (int j = i + 1; j < allNodes.Count && j <= i + 12; j++)
-                    {
-                        var nextText = allNodes[j].Attribute("text")?.Value?.Trim();
-                        if (string.IsNullOrWhiteSpace(nextText))
-                            nextText = allNodes[j].Attribute("content-desc")?.Value?.Trim();
-
-                        if (string.IsNullOrWhiteSpace(nextText))
-                            continue;
-
-                        if (string.Equals(nextText, "Page", StringComparison.OrdinalIgnoreCase))
-                        {
-                            isPage = true;
-                            break;
-                        }
-
-                        if (IsNotificationSubtitle(nextText))
-                        {
-                            continue;
-                        }
-
-                        if (IsIgnoredSwitcherHeaderOrAction(nextText))
-                        {
-                            break;
-                        }
-
-                        break;
-                    }
-
-                    if (!isPage)
-                    {
-                        var bounds = allNodes[i].Attribute("bounds")?.Value;
-                        if (!string.IsNullOrWhiteSpace(bounds))
-                        {
-                            var match = Regex.Match(bounds, @"\[(\d+),(\d+)\]\[(\d+),(\d+)\]");
-                            if (
-                                match.Success
-                                && int.TryParse(match.Groups[2].Value, out int top)
-                                && top < 250
-                            )
-                            {
-                                profileNode ??= allNodes[i];
-                                continue;
-                            }
-                        }
-
-                        profileNode = allNodes[i];
-                        break;
-                    }
-                }
-
-                if (profileNode != null)
-                {
-                    var (cx, cy) = ParseNodeBoundsCenter(profileNode);
-                    if (cx > 0 && cy > 0)
-                    {
-                        await TapAsync(index, cx, cy, customPath, cancellationToken);
-                        await Task.Delay(3500, cancellationToken);
-                        switched = true;
-                    }
-                }
-            }
-            catch { }
+            await PFlowFetchTrace.WriteAsync(
+                index,
+                "root-shell.empty",
+                "No account or Page records were found.",
+                cancellationToken
+            );
+            Debug.WriteLine(
+                $"[LD-{index}] Root-shell discovery returned no account or Page UIDs; UI scraping is disabled."
+            );
+            return null;
         }
 
-        // 4. Clear Facebook app after switch to profile (kill, clear cache, and fresh restart)
-        if (switched)
-        {
-            await Task.Delay(1500, cancellationToken);
-            await StopFacebookAppAsync(index, customPath, cancellationToken);
-            await Task.Delay(1000, cancellationToken);
-            await ClearFacebookCacheAsync(index, customPath, cancellationToken);
-            await Task.Delay(1000, cancellationToken);
-            await LaunchAppAsync(index, "com.facebook.katana", customPath, cancellationToken);
-            await Task.Delay(3000, cancellationToken);
-        }
-        else
-        {
-            // Dismiss the bottom sheet switcher UI so screen is clean
-            var checkSheetXml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
-            if (
-                !string.IsNullOrWhiteSpace(checkSheetXml)
-                && (
-                    checkSheetXml.Contains(
-                        "Create Facebook Page",
-                        StringComparison.OrdinalIgnoreCase
-                    )
-                    || checkSheetXml.Contains(
-                        "Go to Accounts Center",
-                        StringComparison.OrdinalIgnoreCase
-                    )
-                )
-            )
-            {
-                await PressBackAsync(index, customPath, cancellationToken); // KEYCODE_BACK
-                await Task.Delay(1200, cancellationToken);
-            }
-        }
-
-        // 5. Navigate to Profile page to extract profile details and creation date
-        await OpenDeepLinkAsync(
-            index,
-            "fb://profile",
-            "com.facebook.katana",
-            customPath,
-            cancellationToken
+        var profileAccount = rootAccounts.FirstOrDefault(a =>
+            string.Equals(a.Type, "Profile", StringComparison.OrdinalIgnoreCase)
         );
-        await Task.Delay(2500, cancellationToken);
-        var profileXml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
+        var userUid =
+            !string.IsNullOrWhiteSpace(profileAccount?.UserUid) ? profileAccount.UserUid
+            : !string.IsNullOrWhiteSpace(profileAccount?.Uid) ? profileAccount.Uid
+            : rootAccounts
+                .Select(a => a.UserUid)
+                .FirstOrDefault(uid => !string.IsNullOrWhiteSpace(uid))
+                ?? string.Empty;
 
-        // 5.1 Check for 3-dots "More profile settings" button to retrieve verified UID and Name
-        string? settingsXml = null;
-        string? settingsSwipedXml = null;
-        var settingsBtn =
-            FindNodeByContentDesc(profileXml, "More profile settings")
-            ?? FindNodeByContentDesc(profileXml, "profile settings");
-        if (settingsBtn != null)
+        var details = new FacebookAccountDetails
         {
-            var (bx, by) = ParseNodeBoundsCenter(settingsBtn);
-            if (bx > 0 && by > 0)
-            {
-                await TapAsync(index, bx, by, customPath, cancellationToken);
-                await Task.Delay(1500, cancellationToken);
-                settingsXml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
+            DeviceName = $"LD-{index}",
+            Name = profileAccount?.Name ?? string.Empty,
+            Uid = userUid,
+            Email = profileAccount?.Email ?? string.Empty,
+        };
 
-                // If settings link not yet in view, swipe down once in settings
-                if (
-                    string.IsNullOrWhiteSpace(settingsXml)
-                    || !settingsXml.Contains("profile.php?id=", StringComparison.OrdinalIgnoreCase)
-                )
-                {
-                    var (swW, swH) = ParseScreenDimensions(settingsXml);
-                    int sX = swW > 0 ? swW / 2 : 360;
-                    int sY1 = swH > 0 ? (int)(swH * 0.75) : 900;
-                    int sY2 = swH > 0 ? (int)(swH * 0.25) : 300;
-                    await SwipeAsync(index, sX, sY1, sX, sY2, 300, customPath, cancellationToken);
-                    await Task.Delay(1200, cancellationToken);
-                    settingsSwipedXml = await DumpUiHierarchyAsync(
-                        index,
-                        customPath,
-                        cancellationToken
-                    );
-                }
-
-                // Return back to Profile page
-                await PressBackAsync(index, customPath, cancellationToken);
-                await Task.Delay(1000, cancellationToken);
-            }
-        }
-
-        // 6. Scroll down on Profile page to reveal "Personal details" (Birthdate, Location, Joined date, Work, Education)
-        var (profW, profH) = ParseScreenDimensions(profileXml);
-        int startX = profW > 0 ? profW / 2 : 360;
-        int startY = profH > 0 ? (int)(profH * 0.75) : 900;
-        int endY = profH > 0 ? (int)(profH * 0.25) : 300;
-
-        // First swipe down
-        await SwipeAsync(index, startX, startY, startX, endY, 350, customPath, cancellationToken);
-        await Task.Delay(1800, cancellationToken);
-        var scrolledXml1 = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
-
-        // If birthdate or personal details not yet in view, perform a second swipe down
-        string? scrolledXml2 = null;
-        if (
-            string.IsNullOrWhiteSpace(scrolledXml1)
-            || (
-                !scrolledXml1.Contains("Personal details", StringComparison.OrdinalIgnoreCase)
-                && !Regex.IsMatch(
-                    scrolledXml1,
-                    @"\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},\s+\d{4}\b",
-                    RegexOptions.IgnoreCase
-                )
+        foreach (
+            var pageAccount in rootAccounts.Where(a =>
+                string.Equals(a.Type, "Page", StringComparison.OrdinalIgnoreCase)
             )
         )
         {
-            await SwipeAsync(
-                index,
-                startX,
-                startY,
-                startX,
-                endY,
-                350,
-                customPath,
-                cancellationToken
-            );
-            await Task.Delay(1500, cancellationToken);
-            scrolledXml2 = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
-        }
+            var personaUid = !string.IsNullOrWhiteSpace(pageAccount.Uid)
+                ? pageAccount.Uid
+                : pageAccount.PageId;
+            if (
+                string.IsNullOrWhiteSpace(personaUid)
+                || string.Equals(personaUid, userUid, StringComparison.Ordinal)
+                || details.Pages.Any(p =>
+                    string.Equals(p.PersonaUid, personaUid, StringComparison.Ordinal)
+                )
+            )
+                continue;
 
-        var combinedProfileXml =
-            $"{profileXml}\n{settingsXml}\n{settingsSwipedXml}\n{scrolledXml1}\n{scrolledXml2}";
-
-        // Check if there is an "About" or "See more about yourself" / "About info" node to tap
-        var aboutNode = FindAboutInfoNode(combinedProfileXml);
-        string? aboutXml = null;
-        if (aboutNode != null)
-        {
-            var (ax, ay) = ParseNodeBoundsCenter(aboutNode);
-            if (ax > 0 && ay > 0)
-            {
-                await TapAsync(index, ax, ay, customPath, cancellationToken);
-                await Task.Delay(2000, cancellationToken);
-                aboutXml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
-                await PressBackAsync(index, customPath, cancellationToken);
-                await Task.Delay(1000, cancellationToken);
-            }
-        }
-
-        // 7. Query Facebook app data for UID, email, birthdate, name (do not query system AccountManager / dumpsys account)
-        var lightPrefsDump = await ExecuteAdbAsync(
-            index,
-            "shell su -c \"cat /data/data/com.facebook.katana/app_light_prefs/com.facebook.katana/user_id 2>/dev/null; cat /data/data/com.facebook.katana/app_light_prefs/com.facebook.katana/authentication 2>/dev/null; cat /data/data/com.facebook.katana/app_light_prefs/com.facebook.katana/logged_in_user 2>/dev/null\" || cat /data/data/com.facebook.katana/app_light_prefs/com.facebook.katana/user_id 2>/dev/null",
-            customPath,
-            cancellationToken
-        );
-
-        var prefsDump = await ExecuteAdbAsync(
-            index,
-            "shell su -c \"grep -rohE '(\\\"user_id\\\":\\s*\\\"[0-9]+\\\"|\\\"uid\\\":\\s*\\\"[0-9]+\\\"|\\\"userId\\\":\\s*\\\"[0-9]+\\\"|\\\"name\\\":\\s*\\\"[^\\\"]+\\\"|\\\"email\\\":\\s*\\\"[^\\\"]+\\\"|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}|[0-9]{14,16})' /data/data/com.facebook.katana/shared_prefs/ 2>/dev/null\" || grep -rohE '(\"user_id\":\\s*\"[0-9]+\"|\"uid\":\\s*\"[0-9]+\"|\"userId\":\\s*\"[0-9]+\"|\"name\":\\s*\"[^\"]+\"|\"email\":\\s*\"[^\"]+\"|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}|[0-9]{14,16})' /data/data/com.facebook.katana/shared_prefs/ 2>/dev/null",
-            customPath,
-            cancellationToken
-        );
-
-        var dbDump = await ExecuteAdbAsync(
-            index,
-            "shell su -c \"sqlite3 /data/data/com.facebook.katana/databases/properties.db \\\"SELECT key, value FROM properties WHERE key LIKE '%email%' OR key LIKE '%birth%' OR key LIKE '%user%' OR key LIKE '%create%'\\\" 2>/dev/null\" || sqlite3 /data/data/com.facebook.katana/databases/properties.db \"SELECT key, value FROM properties WHERE key LIKE '%email%' OR key LIKE '%birth%' OR key LIKE '%user%' OR key LIKE '%create%'\" 2>/dev/null",
-            customPath,
-            cancellationToken
-        );
-
-        var combinedDumps = $"{lightPrefsDump}\n{prefsDump}";
-
-        var result = ParseFacebookAccountDetails(
-            switcherXml,
-            aboutXml,
-            combinedProfileXml,
-            combinedDumps,
-            dbDump,
-            index
-        );
-        result.SwitchedToProfile = switched;
-
-        // If Email, Birthdate, Name, or Uid are still missing or placeholder, try extracting directly from Bloks Native Shell
-        bool needsBloks =
-            string.IsNullOrEmpty(result.Email)
-            || result.Email == "Private / Hidden"
-            || string.IsNullOrEmpty(result.Birthdate)
-            || result.Birthdate == "Private / Hidden"
-            || string.IsNullOrEmpty(result.Uid)
-            || string.IsNullOrEmpty(result.Name)
-            || result.Name.StartsWith("Facebook User", StringComparison.OrdinalIgnoreCase);
-
-        if (needsBloks)
-        {
-            try
-            {
-                var bloksInfo = await ExtractBloksAccountInfoAsync(
-                    index,
-                    customPath,
-                    cancellationToken
-                );
-                if (bloksInfo != null)
+            details.Pages.Add(
+                new FacebookPageInfo
                 {
-                    if (
-                        (string.IsNullOrEmpty(result.Email) || result.Email == "Private / Hidden")
-                        && !string.IsNullOrEmpty(bloksInfo.Email)
-                    )
-                        result.Email = bloksInfo.Email;
-
-                    if (
-                        (
-                            string.IsNullOrEmpty(result.Birthdate)
-                            || result.Birthdate == "Private / Hidden"
-                        ) && !string.IsNullOrEmpty(bloksInfo.Birthday)
-                    )
-                        result.Birthdate = bloksInfo.Birthday;
-
-                    if (string.IsNullOrEmpty(result.Uid) && !string.IsNullOrEmpty(bloksInfo.UserId))
-                        result.Uid = bloksInfo.UserId;
-
-                    if (
-                        (
-                            string.IsNullOrEmpty(result.Name)
-                            || result.Name.StartsWith(
-                                "Facebook User",
-                                StringComparison.OrdinalIgnoreCase
-                            )
-                        ) && !string.IsNullOrEmpty(bloksInfo.Name)
-                    )
-                        result.Name = bloksInfo.Name;
+                    PageId = pageAccount.PageId,
+                    PersonaUid = personaUid,
+                    UserUid = userUid,
+                    PageName = pageAccount.Name,
+                    Type = "Page",
+                    Email = pageAccount.Email,
+                    ManagedBy = details.Name,
                 }
-            }
-            catch { }
+            );
         }
 
-        return result;
+        if (progress != null)
+        {
+            await progress(
+                $"Root shell: found the personal account and {details.Pages.Count} managed Page(s)."
+            );
+        }
+
+        await PFlowFetchTrace.WriteAsync(
+            index,
+            "root-shell.complete",
+            $"profileFound={!string.IsNullOrWhiteSpace(details.Uid)}; pageCount={details.Pages.Count}",
+            cancellationToken
+        );
+
+        // Publish root-shell rows as soon as they are parsed, before any slower enrichment.
+        if (rootShellCompleted != null)
+        {
+            await PFlowFetchTrace.WriteAsync(
+                index,
+                "root-shell.callback.begin",
+                cancellationToken: cancellationToken
+            );
+            await rootShellCompleted(details);
+            await PFlowFetchTrace.WriteAsync(
+                index,
+                "root-shell.callback.complete",
+                cancellationToken: cancellationToken
+            );
+        }
+
+        return details;
     }
 
     public static bool IsIgnoredSwitcherHeaderOrAction(string text)
@@ -3995,6 +3362,23 @@ public class LDPlayerService : ILDPlayerService
             return match.HasValue && match.Value.IsSelected;
         }
 
+        // Facebook can show a managed Page to its owner while the personal profile
+        // remains active. That visitor view is not a successful persona switch.
+        if (
+            xml.Contains("Admin quick access", StringComparison.OrdinalIgnoreCase)
+            || xml.Contains("Switch into your page", StringComparison.OrdinalIgnoreCase)
+            || xml.Contains("Switch into", StringComparison.OrdinalIgnoreCase)
+        )
+        {
+            return false;
+        }
+
+        // A visitor can see the Page name in its public header while an
+        // "Admin quick access / switch to [Page]" action is still present.
+        // That screen is not proof that Facebook has switched personas.
+        if (FindDirectSwitchButton(xml, personaName) != null)
+            return false;
+
         // Check if top header card contains personaName
         var docs = SafeParseXmlDocuments(xml);
         foreach (var doc in docs)
@@ -4081,9 +3465,18 @@ public class LDPlayerService : ILDPlayerService
                 );
                 bool isMatch =
                     isExact
-                    || label.StartsWith(personaName, StringComparison.OrdinalIgnoreCase)
-                    || label.Contains(personaName, StringComparison.OrdinalIgnoreCase)
-                    || personaName.Contains(label, StringComparison.OrdinalIgnoreCase);
+                    || IsPageTitleMatch(
+                        NormalizeHierarchyText(label),
+                        NormalizeHierarchyText(personaName)
+                    )
+                    || (
+                        label.Length >= 5
+                        && (label.EndsWith('…') || label.EndsWith("...", StringComparison.Ordinal))
+                        && personaName.StartsWith(
+                            label.TrimEnd('…', '.'),
+                            StringComparison.OrdinalIgnoreCase
+                        )
+                    );
 
                 if (!isMatch)
                     continue;
@@ -4092,19 +3485,43 @@ public class LDPlayerService : ILDPlayerService
                 if (cx <= 0 || cy <= 0)
                     continue;
 
-                // Check if marked selected="true"
+                // Inspect one bounded row. A common parent can contain all
+                // personas and its selected checkmark belongs to only one row.
+                var nameBounds = ParseAccessibilityBounds(node);
+                var row = node.Ancestors("node")
+                    .FirstOrDefault(a =>
+                    {
+                        var bounds = ParseAccessibilityBounds(a);
+                        return bounds.Height > 0
+                            && bounds.Height <= 200
+                            && bounds.Top <= nameBounds.Top
+                            && bounds.Bottom >= nameBounds.Bottom;
+                    });
+                var selectedNodes =
+                    row != null
+                        ? row.DescendantsAndSelf("node")
+                        : allNodes.Where(other =>
+                        {
+                            var bounds = ParseAccessibilityBounds(other);
+                            return bounds.Height > 0
+                                && bounds.Height <= 120
+                                && Math.Abs((bounds.Top + bounds.Bottom) / 2 - cy) <= 45;
+                        });
                 bool isSelected =
-                    node.Attribute("selected")?.Value == "true"
-                    || node.Ancestors("node")
-                        .Take(4)
-                        .Any(a => a.Attribute("selected")?.Value == "true");
+                    IsAccessibilityNodeSelected(node)
+                    || selectedNodes.Any(IsAccessibilityNodeSelected);
 
                 candidates.Add((node, label, isExact, isSelected, cx, cy));
             }
 
             if (candidates.Count > 0)
             {
-                var best = candidates.FirstOrDefault(c => c.IsExact);
+                // On a bottom sheet the dimmed profile's header can carry the
+                // same name. Prefer the row in the sheet below that header.
+                var best = candidates
+                    .Where(c => c.IsExact)
+                    .OrderByDescending(c => c.Y)
+                    .FirstOrDefault();
                 if (best.Node == null)
                 {
                     best = candidates.FirstOrDefault(c =>
@@ -4519,22 +3936,28 @@ public class LDPlayerService : ILDPlayerService
         try
         {
             var docs = SafeParseXmlDocuments(xml);
+            var maxRight = 0;
+            var maxBottom = 0;
             foreach (var doc in docs)
             {
-                var root = doc.Root?.Element("node") ?? doc.Root;
-                if (root != null)
+                foreach (var node in doc.Descendants("node"))
                 {
-                    var bounds = root.Attribute("bounds")?.Value;
-                    if (!string.IsNullOrWhiteSpace(bounds))
-                    {
-                        var m = Regex.Match(bounds, @"\[0,0\]\[(\d+),(\d+)\]");
-                        if (m.Success)
-                        {
-                            return (int.Parse(m.Groups[1].Value), int.Parse(m.Groups[2].Value));
-                        }
-                    }
+                    var nodeBounds = node.Attribute("bounds")?.Value;
+                    if (string.IsNullOrWhiteSpace(nodeBounds))
+                        continue;
+                    var nodeMatch = Regex.Match(nodeBounds, @"\[(\d+),(\d+)\]\[(\d+),(\d+)\]");
+                    if (!nodeMatch.Success)
+                        continue;
+                    maxRight = Math.Max(maxRight, int.Parse(nodeMatch.Groups[3].Value));
+                    maxBottom = Math.Max(maxBottom, int.Parse(nodeMatch.Groups[4].Value));
                 }
             }
+            // Use the extent of the entire hierarchy. The first root child is
+            // often only a card/feed viewport (e.g. y=0..350), not the full
+            // device; treating it as screen height caused content buttons to
+            // be mistaken for the bottom Profile tab.
+            if (maxRight > 0 && maxBottom > 0)
+                return (maxRight, maxBottom);
         }
         catch { }
 
@@ -4628,16 +4051,7 @@ public class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
-        if (await _atxClient.IsRunningAsync(index, cancellationToken))
-        {
-            var ok = await _atxClient.ClickElementAsync(
-                index,
-                text: text,
-                cancellationToken: cancellationToken
-            );
-            if (ok)
-                return true;
-        }
+        // Read the hierarchy through ATX, but inject touches through real ADB.
 
         var xml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
         if (string.IsNullOrWhiteSpace(xml))
@@ -4660,16 +4074,7 @@ public class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
-        if (await _atxClient.IsRunningAsync(index, cancellationToken))
-        {
-            var ok = await _atxClient.ClickElementAsync(
-                index,
-                resourceId: resourceId,
-                cancellationToken: cancellationToken
-            );
-            if (ok)
-                return true;
-        }
+        // Read the hierarchy through ATX, but inject touches through real ADB.
 
         var xml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
         if (string.IsNullOrWhiteSpace(xml))
@@ -4699,16 +4104,7 @@ public class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
-        if (await _atxClient.IsRunningAsync(index, cancellationToken))
-        {
-            var ok = await _atxClient.ClickElementAsync(
-                index,
-                contentDesc: contentDesc,
-                cancellationToken: cancellationToken
-            );
-            if (ok)
-                return true;
-        }
+        // Read the hierarchy through ATX, but inject touches through real ADB.
 
         var xml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
         if (string.IsNullOrWhiteSpace(xml))
@@ -5035,10 +4431,6 @@ public class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
-        if (await _atxClient.IsRunningAsync(index, cancellationToken))
-        {
-            return await _atxClient.PressHomeAsync(index, cancellationToken);
-        }
         return await SendKeyAsync(index, 3, customPath, cancellationToken);
     }
 
@@ -5048,10 +4440,6 @@ public class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
-        if (await _atxClient.IsRunningAsync(index, cancellationToken))
-        {
-            return await _atxClient.PressBackAsync(index, cancellationToken);
-        }
         return await SendKeyAsync(index, 4, customPath, cancellationToken);
     }
 
@@ -5061,11 +4449,87 @@ public class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
-        if (await _atxClient.IsRunningAsync(index, cancellationToken))
-        {
-            return await _atxClient.PressRecentAppsAsync(index, cancellationToken);
-        }
         return await SendKeyAsync(index, 187, customPath, cancellationToken);
+    }
+
+    public async Task<bool> ClearRecentAppsAsync(
+        int index,
+        string? customPath = null,
+        CancellationToken cancellationToken = default,
+        Func<string, Task>? progress = null
+    )
+    {
+        if (progress != null)
+            await progress("Clearing recent apps and stopping Facebook.");
+
+        var cleared = false;
+        var stopped = false;
+        try
+        {
+            await PressHomeAsync(index, customPath, cancellationToken);
+            if (await PressRecentAppsAsync(index, customPath, cancellationToken))
+            {
+                // Recents animates asynchronously; inspect its own controls
+                // and resource IDs, rather than an arbitrary Facebook label.
+                for (var attempt = 0; attempt < 4; attempt++)
+                {
+                    await Task.Delay(650, cancellationToken);
+                    var xml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
+                    var button = FindRecentAppsClearTarget(xml);
+                    if (button != null)
+                    {
+                        var (x, y) = ParseNodeBoundsCenter(button);
+                        if (await TapAsync(index, x, y, customPath, cancellationToken))
+                        {
+                            await Task.Delay(650, cancellationToken);
+                            var after = await DumpUiHierarchyAsync(
+                                index,
+                                customPath,
+                                cancellationToken
+                            );
+                            cleared =
+                                !string.IsNullOrWhiteSpace(after)
+                                && FindRecentAppsClearTarget(after) == null;
+                        }
+                        break;
+                    }
+                    // Some launchers put Clear all beyond the first card.
+                    if (
+                        attempt >= 1
+                        && xml?.Contains("launcher", StringComparison.OrdinalIgnoreCase) == true
+                    )
+                    {
+                        var (width, height) = ParseScreenDimensions(xml);
+                        if (width > 0 && height > 0)
+                            await SwipeAsync(
+                                index,
+                                width / 4,
+                                height / 2,
+                                width * 3 / 4,
+                                height / 2,
+                                300,
+                                customPath,
+                                cancellationToken
+                            );
+                    }
+                }
+            }
+        }
+        finally
+        {
+            // Always stop Facebook, including when Recents has no clear button.
+            // This does not clear app data or the saved account session.
+            await PressHomeAsync(index, customPath, cancellationToken);
+            stopped = await StopFacebookAppAsync(index, customPath, cancellationToken);
+        }
+        var message =
+            !stopped ? "Cleanup incomplete: Facebook could not be stopped."
+            : cleared ? "Recent apps cleared; Facebook stopped."
+            : "Facebook stopped; Recents clear-all was unavailable or could not be confirmed.";
+        await PFlowFetchTrace.WriteAsync(index, "cleanup.complete", message, cancellationToken);
+        if (progress != null)
+            await progress(message);
+        return cleared;
     }
 
     public async Task<AtxDeviceInfo?> GetAtxDeviceInfoAsync(
@@ -5191,24 +4655,22 @@ public class LDPlayerService : ILDPlayerService
     {
         if (await _atxClient.IsRunningAsync(index, cancellationToken))
         {
-            return await _atxClient.GetCurrentFocusedActivityAsync(index, cancellationToken);
+            var activity = await _atxClient.GetCurrentFocusedActivityAsync(
+                index,
+                cancellationToken
+            );
+            if (!string.IsNullOrWhiteSpace(activity))
+                return activity;
         }
 
         var output = await ExecuteAdbAsync(
             index,
-            "shell dumpsys window | grep -E \"mCurrentFocus|mFocusedApp\"",
+            "shell dumpsys window windows",
             customPath,
             cancellationToken
         );
 
-        if (!string.IsNullOrWhiteSpace(output))
-        {
-            var match = Regex.Match(output, @"([a-zA-Z0-9._]+/[a-zA-Z0-9._]+)");
-            if (match.Success)
-                return match.Groups[1].Value;
-        }
-
-        return null;
+        return AtxAgentClient.ParseFocusedActivity(output);
     }
 
     public async Task<bool> IsBloksNativeShellActiveAsync(
@@ -5240,38 +4702,56 @@ public class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
-        if (await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (string.IsNullOrWhiteSpace(bloksAppId))
+            return false;
+
+        var previousScreen = await DumpBloksScreenAsync(index, customPath, cancellationToken);
+        var uri = BloksConstants.CreateBloksScreenQueryUri(bloksAppId, parameters);
+        await PFlowFetchTrace.WriteAsync(
+            index,
+            "bloks.query.begin",
+            $"appId={bloksAppId}; parameterKeys=[{string.Join(",", parameters?.Keys ?? Enumerable.Empty<string>())}]",
+            cancellationToken
+        );
+        if (!await OpenDeepLinkAsync(index, uri, packageName, customPath, cancellationToken))
         {
-            return await _atxClient.OpenBloksNativeShellAsync(
+            await PFlowFetchTrace.WriteAsync(
                 index,
-                bloksAppId,
-                parameters,
-                packageName,
+                "bloks.query.intent-failed",
+                $"appId={bloksAppId}",
                 cancellationToken
             );
+            return false;
         }
 
-        var uri = $"fb://bloks?app_id={Uri.EscapeDataString(bloksAppId)}";
-        if (parameters != null && parameters.Count > 0)
+        BloksScreenInfo? screen = null;
+        var state = BloksQueryScreenState.AwaitingContent;
+        for (var attempt = 0; attempt < 12; attempt++)
         {
-            var jsonParams = JsonSerializer.Serialize(parameters);
-            uri += $"&params={Uri.EscapeDataString(jsonParams)}";
+            cancellationToken.ThrowIfCancellationRequested();
+            screen = await DumpBloksScreenAsync(index, customPath, cancellationToken);
+            state = BloksQueryScreenValidator.Inspect(screen, previousScreen);
+            if (state == BloksQueryScreenState.Ready)
+            {
+                await PFlowFetchTrace.WriteAsync(
+                    index,
+                    "bloks.query.opened",
+                    PFlowFetchTrace.SummarizeScreen(screen),
+                    cancellationToken
+                );
+                return true;
+            }
+            if (state is BloksQueryScreenState.DemoShell or BloksQueryScreenState.Error)
+                break;
+            await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken);
         }
-
-        var ok = await OpenDeepLinkAsync(index, uri, packageName, customPath, cancellationToken);
-        if (!ok)
-        {
-            var output = await ExecuteAdbAsync(
-                index,
-                $"shell am start -n {packageName}/{BloksConstants.BloksNativeShellActivity} --es app_id \"{bloksAppId}\" -f 0x14000000",
-                customPath,
-                cancellationToken
-            );
-            ok =
-                !string.IsNullOrWhiteSpace(output)
-                && !output.Contains("Error", StringComparison.OrdinalIgnoreCase);
-        }
-        return ok;
+        await PFlowFetchTrace.WriteAsync(
+            index,
+            "bloks.query.rejected",
+            $"appId={bloksAppId}; reason={state}; {PFlowFetchTrace.SummarizeScreen(screen)}",
+            cancellationToken
+        );
+        return false;
     }
 
     public async Task<bool> OpenBloksAccountsCenterAsync(
@@ -5363,17 +4843,6 @@ public class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
-        if (await _atxClient.IsRunningAsync(index, cancellationToken))
-        {
-            return await _atxClient.ClickBloksElementAsync(
-                index,
-                textOrDesc,
-                partialMatch,
-                caseInsensitive,
-                cancellationToken
-            );
-        }
-
         var screen = await DumpBloksScreenAsync(index, customPath, cancellationToken);
         var elem = screen?.FindElement(textOrDesc, partialMatch, caseInsensitive);
         if (elem != null && (elem.CenterX > 0 || elem.CenterY > 0))
@@ -5485,82 +4954,2083 @@ public class LDPlayerService : ILDPlayerService
         return info;
     }
 
+    private async Task<bool> OpenAccountSwitcherFromAuthenticatedMenuAsync(
+        int index,
+        string profileName,
+        string? customPath,
+        CancellationToken cancellationToken,
+        Func<string, Task>? progress = null
+    )
+    {
+        await PFlowFetchTrace.WriteAsync(
+            index,
+            "switcher.open.begin",
+            "Opening Feed then authenticated Menu.",
+            cancellationToken
+        );
+        // Do not deep-link to the personal UID before opening the switcher:
+        // when a Page persona is active, that URI opens the personal profile
+        // as a visitor and the profile-header chevron is absent. Open the
+        // authenticated Feed/Menu first, where Facebook exposes the account
+        // switcher for the currently active persona.
+        await OpenDeepLinkAsync(
+            index,
+            "fb://feed",
+            BloksConstants.KatanaPackage,
+            customPath,
+            cancellationToken
+        );
+        var readiness = await WaitForAuthenticatedFacebookScreenAsync(
+            index,
+            customPath,
+            cancellationToken,
+            progress
+        );
+        if (!readiness.Ready)
+            return false;
+        var xml = readiness.Xml;
+        var activity = readiness.Activity;
+        await PFlowFetchTrace.WriteAsync(
+            index,
+            "switcher.feed.loaded",
+            $"activity={activity}; accountSwitcherAlreadyOpen={IsAccountSwitcherOpen(xml)}",
+            cancellationToken
+        );
+        if (!IsAccountSwitcherOpen(xml))
+        {
+            var initialScreen = AtxAgentClient.ParseBloksHierarchy(xml, activity);
+            if (IsFacebookLoginGate(activity, initialScreen))
+            {
+                await PFlowFetchTrace.WriteAsync(
+                    index,
+                    "switcher.login-required",
+                    PFlowFetchTrace.SummarizeScreen(initialScreen),
+                    cancellationToken
+                );
+                return false;
+            }
+
+            var menuOpened = await OpenFacebookMenuFromFeedAsync(
+                index,
+                customPath,
+                cancellationToken
+            );
+            await Task.Delay(900, cancellationToken);
+            xml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
+            activity = await GetCurrentFocusedActivityAsync(index, customPath, cancellationToken);
+            await PFlowFetchTrace.WriteAsync(
+                index,
+                "switcher.menu.result",
+                $"menuActionReported={menuOpened}; activity={activity}; switcherOpen={IsAccountSwitcherOpen(xml)}; {PFlowFetchTrace.SummarizeScreen(AtxAgentClient.ParseBloksHierarchy(xml, activity))}",
+                cancellationToken
+            );
+        }
+
+        for (var attempt = 0; attempt < 3 && !IsAccountSwitcherOpen(xml); attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            activity = await GetCurrentFocusedActivityAsync(index, customPath, cancellationToken);
+            var screen = AtxAgentClient.ParseBloksHierarchy(xml, activity);
+            if (IsFacebookLoginGate(activity, screen))
+            {
+                await PFlowFetchTrace.WriteAsync(
+                    index,
+                    "switcher.login-required",
+                    PFlowFetchTrace.SummarizeScreen(screen),
+                    cancellationToken
+                );
+                return false;
+            }
+
+            var dropdownTapped = await ClickProfileSwitcherDropdownAsync(
+                index,
+                profileName,
+                customPath,
+                cancellationToken
+            );
+            if (!dropdownTapped)
+            {
+                var menuToolbar = FindAuthenticatedMenuToolbarTarget(screen);
+                if (menuToolbar != null && !AtxAgentClient.IsMenuPageInBloks(screen))
+                {
+                    if (progress != null)
+                        await progress(
+                            "Opening the current profile's Menu to access its account switcher."
+                        );
+                    await PFlowFetchTrace.WriteAsync(
+                        index,
+                        "switcher.current-profile.menu.tap",
+                        $"x={menuToolbar.CenterX}; y={menuToolbar.CenterY}",
+                        cancellationToken
+                    );
+                    await TapAsync(
+                        index,
+                        menuToolbar.CenterX,
+                        menuToolbar.CenterY,
+                        customPath,
+                        cancellationToken
+                    );
+                    await Task.Delay(900, cancellationToken);
+                    dropdownTapped = await ClickProfileSwitcherDropdownAsync(
+                        index,
+                        null,
+                        customPath,
+                        cancellationToken
+                    );
+                }
+            }
+            if (!dropdownTapped)
+            {
+                await PFlowFetchTrace.WriteAsync(
+                    index,
+                    "switcher.dropdown.not-actionable",
+                    PFlowFetchTrace.SummarizeScreen(screen),
+                    cancellationToken
+                );
+                return false;
+            }
+            // Facebook first draws a mostly empty bottom sheet. Do not tap
+            // the profile dropdown again while the sheet is loading.
+            var switcherWait = Stopwatch.StartNew();
+            var switcherReady = false;
+            var nextProgressSeconds = 0;
+            await PFlowFetchTrace.WriteAsync(
+                index,
+                "switcher.dropdown.wait",
+                "Dropdown tapped; waiting up to 45 seconds for the populated account switcher.",
+                cancellationToken
+            );
+            while (switcherWait.Elapsed < TimeSpan.FromSeconds(45))
+            {
+                await Task.Delay(350, cancellationToken);
+                xml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
+                if (IsProfileSwitcherPopulated(xml, profileName))
+                {
+                    switcherReady = true;
+                    break;
+                }
+                var seconds = (int)switcherWait.Elapsed.TotalSeconds;
+                if (seconds >= nextProgressSeconds)
+                {
+                    var message =
+                        $"Waiting for Facebook account switcher {Math.Min(seconds, 45)}s/45s.";
+                    if (progress != null)
+                        await progress(message);
+                    await PFlowFetchTrace.WriteAsync(
+                        index,
+                        "switcher.dropdown.loading",
+                        message,
+                        cancellationToken
+                    );
+                    nextProgressSeconds = seconds + 5;
+                }
+            }
+            await PFlowFetchTrace.WriteAsync(
+                index,
+                switcherReady ? "switcher.dropdown.ready" : "switcher.dropdown.timeout",
+                $"waitMs={switcherWait.ElapsedMilliseconds}; requestedRowVisible={FindPersonaInSwitcher(xml, profileName).HasValue}",
+                cancellationToken
+            );
+            if (!switcherReady)
+                return false;
+        }
+
+        for (var attempt = 0; attempt < 12; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            await Task.Delay(350, cancellationToken);
+            xml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
+            var persona = FindPersonaInSwitcher(xml, profileName);
+            if (IsAccountSwitcherOpen(xml) && !persona.HasValue)
+                persona = await FindPersonaInSwitcherWithScrollingAsync(
+                    index,
+                    profileName,
+                    customPath,
+                    cancellationToken
+                );
+            if (IsAccountSwitcherOpen(xml) && persona.HasValue)
+            {
+                await PFlowFetchTrace.WriteAsync(
+                    index,
+                    "switcher.open.success",
+                    $"requestedPersonaFound=true; selected={persona.Value.IsSelected}",
+                    cancellationToken
+                );
+                return true;
+            }
+        }
+
+        activity = await GetCurrentFocusedActivityAsync(index, customPath, cancellationToken);
+        var failedScreen = AtxAgentClient.ParseBloksHierarchy(xml, activity);
+        await PFlowFetchTrace.WriteAsync(
+            index,
+            "switcher.open.failed",
+            $"activity={activity}; accountSwitcherOpen={IsAccountSwitcherOpen(xml)}; nameFoundInHierarchy={FindPersonaInSwitcher(xml, profileName).HasValue}; {PFlowFetchTrace.SummarizeScreen(failedScreen)}",
+            cancellationToken
+        );
+        return false;
+    }
+
+    private async Task<(int X, int Y, bool IsSelected)?> FindPersonaInSwitcherWithScrollingAsync(
+        int index,
+        string personaName,
+        string? customPath,
+        CancellationToken cancellationToken
+    )
+    {
+        for (var attempt = 0; attempt < 6; attempt++)
+        {
+            var xml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
+            if (!IsAccountSwitcherOpen(xml))
+                return null;
+            var match = FindPersonaInSwitcher(xml, personaName);
+            if (match.HasValue)
+                return match;
+            var (width, height) = ParseScreenDimensions(xml);
+            await PFlowFetchTrace.WriteAsync(
+                index,
+                "switcher.find.scroll",
+                $"requested={personaName}; attempt={attempt + 1}/6",
+                cancellationToken
+            );
+            await SwipeAsync(
+                index,
+                width / 2,
+                (int)(height * 0.80),
+                width / 2,
+                (int)(height * 0.55),
+                durationMs: 350,
+                customPath,
+                cancellationToken
+            );
+            await Task.Delay(400, cancellationToken);
+            var afterSwipe = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
+            var afterMatch = FindPersonaInSwitcher(afterSwipe, personaName);
+            if (afterMatch.HasValue)
+                return afterMatch;
+            if (string.Equals(xml, afterSwipe, StringComparison.Ordinal))
+                return null;
+        }
+        return null;
+    }
+
+    public static bool IsProfileSwitcherPopulated(string? xml, string personaName) =>
+        IsAccountSwitcherOpen(xml) && FindPersonaInSwitcher(xml, personaName).HasValue;
+
+    public static BloksElement? FindAuthenticatedMenuToolbarTarget(BloksScreenInfo screen)
+    {
+        var width = screen.AllElements.Select(e => e.Bounds.Right).DefaultIfEmpty(720).Max();
+        var height = screen.AllElements.Select(e => e.Bounds.Bottom).DefaultIfEmpty(1280).Max();
+        return screen.AllElements.FirstOrDefault(element =>
+            element.Enabled
+            && element.Clickable
+            && element.Matches("Menu", partialMatch: false)
+            && element.CenterX < width * 0.22
+            && element.CenterY < height * 0.22
+        );
+    }
+
+    private async Task<(
+        bool Ready,
+        string? Xml,
+        string? Activity
+    )> WaitForAuthenticatedFacebookScreenAsync(
+        int index,
+        string? customPath,
+        CancellationToken cancellationToken,
+        Func<string, Task>? progress = null
+    )
+    {
+        var elapsed = Stopwatch.StartNew();
+        string? xml = null;
+        string? activity = null;
+        BloksScreenInfo? screen = null;
+        await PFlowFetchTrace.WriteAsync(
+            index,
+            "switcher.feed.wait",
+            "Waiting up to 45 seconds for the authenticated Feed/Menu hierarchy after launch.",
+            cancellationToken
+        );
+        var nextUpdate = TimeSpan.Zero;
+        var feedRevealAttempts = 0;
+        while (elapsed.Elapsed < TimeSpan.FromSeconds(45))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            xml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
+            activity = await GetCurrentFocusedActivityAsync(index, customPath, cancellationToken);
+            screen = AtxAgentClient.ParseBloksHierarchy(xml, activity);
+            if (IsAuthenticatedFacebookSurface(screen))
+            {
+                await PFlowFetchTrace.WriteAsync(
+                    index,
+                    "switcher.feed.ready",
+                    $"waitMs={elapsed.ElapsedMilliseconds}; activity={activity}; {PFlowFetchTrace.SummarizeScreen(screen)}",
+                    cancellationToken
+                );
+                return (true, xml, activity);
+            }
+            if (IsFacebookLoginGate(activity, screen))
+                break;
+            // A restored, scrolled Feed can hide both header and tab bar.
+            // Reveal them from observed Feed content before declaring timeout.
+            if (
+                feedRevealAttempts < 3
+                && screen.AllElements.Any(e => e.Matches("Story tray", partialMatch: false))
+            )
+            {
+                var (width, height) = ParseScreenDimensions(xml);
+                if (width > 0 && height > 0)
+                {
+                    feedRevealAttempts++;
+                    if (progress != null)
+                        await progress("Revealing Facebook's hidden navigation bar.");
+                    await PFlowFetchTrace.WriteAsync(
+                        index,
+                        "switcher.feed.reveal-navigation",
+                        $"attempt={feedRevealAttempts}/3",
+                        cancellationToken
+                    );
+                    await SwipeAsync(
+                        index,
+                        width / 2,
+                        height / 3,
+                        width / 2,
+                        height * 3 / 4,
+                        350,
+                        customPath,
+                        cancellationToken
+                    );
+                    await Task.Delay(500, cancellationToken);
+                    continue;
+                }
+            }
+            if (elapsed.Elapsed >= nextUpdate)
+            {
+                if (progress != null)
+                    await progress(
+                        $"Waiting for Facebook's authenticated screen {(int)elapsed.Elapsed.TotalSeconds}s/45s."
+                    );
+                nextUpdate = elapsed.Elapsed + TimeSpan.FromSeconds(5);
+            }
+            await Task.Delay(400, cancellationToken);
+        }
+
+        var loginRequired = IsFacebookLoginGate(activity, screen);
+        await PFlowFetchTrace.WriteAsync(
+            index,
+            loginRequired ? "switcher.login-required" : "switcher.feed.timeout",
+            $"waitMs={elapsed.ElapsedMilliseconds}; activity={activity}; confirmedLoginForm={loginRequired}; {PFlowFetchTrace.SummarizeScreen(screen)}",
+            cancellationToken
+        );
+        return (false, xml, activity);
+    }
+
+    private static bool IsAuthenticatedFacebookSurface(BloksScreenInfo? screen)
+    {
+        if (screen == null)
+            return false;
+        var labels = screen.VisibleTexts.Concat(screen.ContentDescriptions).ToList();
+        return IsAccountSwitcherOpen(screen.RawXml)
+            || labels.Any(label =>
+                label.Contains("What's on your mind", StringComparison.OrdinalIgnoreCase)
+                || label.Contains("What’s on your mind", StringComparison.OrdinalIgnoreCase)
+                || label.Equals("Go to profile", StringComparison.OrdinalIgnoreCase)
+                || label.StartsWith("Profile, tab", StringComparison.OrdinalIgnoreCase)
+                || label.StartsWith("Menu, tab", StringComparison.OrdinalIgnoreCase)
+                || label.Equals("Your shortcuts", StringComparison.OrdinalIgnoreCase)
+                || label.Equals("Edit profile", StringComparison.OrdinalIgnoreCase)
+                || label.Equals("Professional dashboard", StringComparison.OrdinalIgnoreCase)
+            );
+    }
+
+    public static bool IsFacebookLoginGate(string? activity, BloksScreenInfo? screen)
+    {
+        // LoginActivity is also used while a saved session is being restored.
+        // Only visible login controls establish that sign-in is required.
+        if (screen == null || IsAuthenticatedFacebookSurface(screen))
+            return false;
+
+        var visibleText = string.Join(" ", screen.VisibleTexts.Concat(screen.ContentDescriptions));
+        return visibleText.Contains("Log into Facebook", StringComparison.OrdinalIgnoreCase)
+            || visibleText.Contains("Log in to Facebook", StringComparison.OrdinalIgnoreCase)
+            || (
+                Regex.IsMatch(visibleText, @"\blog\s*in\b", RegexOptions.IgnoreCase)
+                && (
+                    visibleText.Contains("Password", StringComparison.OrdinalIgnoreCase)
+                    || visibleText.Contains("Forgot password", StringComparison.OrdinalIgnoreCase)
+                    || visibleText.Contains(
+                        "Log into another account",
+                        StringComparison.OrdinalIgnoreCase
+                    )
+                    || visibleText.Contains(
+                        "Create new Facebook account",
+                        StringComparison.OrdinalIgnoreCase
+                    )
+                )
+            );
+    }
+
+    public static XElement? FindProfileHeaderSwitcherButton(string? xml, string? profileName = null)
+    {
+        if (string.IsNullOrWhiteSpace(xml))
+            return null;
+
+        var (screenWidth, screenHeight) = ParseScreenDimensions(xml);
+        if (screenWidth <= 0)
+            screenWidth = 720;
+
+        foreach (var doc in SafeParseXmlDocuments(xml))
+        {
+            var nodes = doc.Descendants("node").ToList();
+            var isMenuScreen = AtxAgentClient.IsMenuPageInBloks(
+                AtxAgentClient.ParseBloksHierarchy(xml)
+            );
+            var nameNodes = nodes
+                .Where(node =>
+                {
+                    var text = node.Attribute("text")?.Value?.Trim();
+                    var desc = node.Attribute("content-desc")?.Value?.Trim();
+                    var label = !string.IsNullOrWhiteSpace(text) ? text : desc;
+                    if (string.IsNullOrWhiteSpace(label))
+                        return false;
+                    if (profileName == null)
+                    {
+                        var (_, cy) = ParseNodeBoundsCenter(node);
+                        return cy > 80
+                            && cy < screenHeight * 0.70
+                            && (
+                                isMenuScreen
+                                || nodes.Any(other =>
+                                {
+                                    var (_, counterY) = ParseNodeBoundsCenter(other);
+                                    var counter =
+                                        $"{other.Attribute("text")?.Value} {other.Attribute("content-desc")?.Value}";
+                                    return counterY >= cy
+                                        && counterY - cy <= 140
+                                        && Regex.IsMatch(
+                                            counter,
+                                            @"\b(?:friends|followers|following|posts)\b",
+                                            RegexOptions.IgnoreCase
+                                        );
+                                })
+                            )
+                            && label.Length is > 2 and < 80
+                            && !IsIgnoredSwitcherHeaderOrAction(label)
+                            && !IsIgnoredProfileText(label)
+                            && !label.Contains("profile", StringComparison.OrdinalIgnoreCase)
+                            && !label.Contains("story", StringComparison.OrdinalIgnoreCase)
+                            && !label.Contains("friends", StringComparison.OrdinalIgnoreCase);
+                    }
+                    return string.Equals(label, profileName, StringComparison.OrdinalIgnoreCase)
+                        || label.StartsWith(profileName, StringComparison.OrdinalIgnoreCase)
+                        || (
+                            label.Length >= 4
+                            && profileName.StartsWith(
+                                label.TrimEnd('…', '.'),
+                                StringComparison.OrdinalIgnoreCase
+                            )
+                        );
+                })
+                .ToList();
+
+            foreach (var nameNode in nameNodes)
+            {
+                var (_, nameY) = ParseNodeBoundsCenter(nameNode);
+                if (nameY <= 0)
+                    continue;
+
+                var explicitlyNamed = nodes.FirstOrDefault(node =>
+                {
+                    var label =
+                        $"{node.Attribute("text")?.Value} {node.Attribute("content-desc")?.Value}";
+                    return label.Contains("profile switcher", StringComparison.OrdinalIgnoreCase)
+                        || label.Contains("switch accounts", StringComparison.OrdinalIgnoreCase)
+                        || label.Contains("switch profile", StringComparison.OrdinalIgnoreCase)
+                        || label.Contains(
+                            "your profiles and pages",
+                            StringComparison.OrdinalIgnoreCase
+                        );
+                });
+                if (explicitlyNamed != null)
+                    return explicitlyNamed;
+
+                // The dropdown is the small clickable control to the right of the
+                // verified profile name. Bind its vertical position to that title
+                // instead of tapping a fixed screen coordinate or the cover photo.
+                var candidate = nodes
+                    .Where(node =>
+                    {
+                        if (
+                            !string.Equals(
+                                node.Attribute("clickable")?.Value,
+                                "true",
+                                StringComparison.OrdinalIgnoreCase
+                            )
+                        )
+                            return false;
+
+                        var label =
+                            $"{node.Attribute("text")?.Value} {node.Attribute("content-desc")?.Value}".Trim();
+                        if (
+                            !string.IsNullOrWhiteSpace(label)
+                            && !Regex.IsMatch(
+                                label,
+                                @"\b(?:switch(?:er)?|chevron|dropdown)\b",
+                                RegexOptions.IgnoreCase
+                            )
+                        )
+                            return false;
+
+                        var bounds = node.Attribute("bounds")?.Value;
+                        if (string.IsNullOrWhiteSpace(bounds))
+                            return false;
+                        var match = Regex.Match(bounds, @"\[(\d+),(\d+)\]\[(\d+),(\d+)\]");
+                        if (!match.Success)
+                            return false;
+
+                        var left = int.Parse(match.Groups[1].Value);
+                        var top = int.Parse(match.Groups[2].Value);
+                        var right = int.Parse(match.Groups[3].Value);
+                        var bottom = int.Parse(match.Groups[4].Value);
+                        var centerX = (left + right) / 2;
+                        var centerY = (top + bottom) / 2;
+                        var width = right - left;
+                        var height = bottom - top;
+                        return centerX >= screenWidth * 0.82
+                            && Math.Abs(centerY - nameY) <= 100
+                            && width is > 0 and <= 180
+                            && height is > 0 and <= 180;
+                    })
+                    .OrderBy(node =>
+                    {
+                        var (x, y) = ParseNodeBoundsCenter(node);
+                        var bounds = node.Attribute("bounds")?.Value ?? string.Empty;
+                        var match = Regex.Match(bounds, @"\[(\d+),(\d+)\]\[(\d+),(\d+)\]");
+                        var area = match.Success
+                            ? (long)(
+                                int.Parse(match.Groups[3].Value) - int.Parse(match.Groups[1].Value)
+                            )
+                                * (
+                                    int.Parse(match.Groups[4].Value)
+                                    - int.Parse(match.Groups[2].Value)
+                                )
+                            : long.MaxValue;
+                        return Math.Abs(y - nameY) * 100000L + area;
+                    })
+                    .FirstOrDefault();
+
+                if (candidate != null)
+                    return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool IsAccessibilityNodeSelected(XElement node)
+    {
+        static bool IsTrue(XElement element, string name) =>
+            string.Equals(
+                element.Attribute(name)?.Value,
+                "true",
+                StringComparison.OrdinalIgnoreCase
+            );
+
+        if (IsTrue(node, "selected") || IsTrue(node, "checked"))
+            return true;
+
+        var label = string.Join(
+            " ",
+            node.Attribute("text")?.Value,
+            node.Attribute("content-desc")?.Value,
+            node.Attribute("resource-id")?.Value
+        );
+        if (
+            Regex.IsMatch(
+                label,
+                @"\b(?:unselected|unchecked|not\s+selected|not\s+checked)\b",
+                RegexOptions.IgnoreCase
+            )
+        )
+            return false;
+        return Regex.IsMatch(
+            label,
+            @"\b(?:selected|checked|current\s+profile)\b",
+            RegexOptions.IgnoreCase
+        );
+    }
+
+    private static (int Left, int Top, int Right, int Bottom, int Height) ParseAccessibilityBounds(
+        XElement node
+    )
+    {
+        var match = Regex.Match(
+            node.Attribute("bounds")?.Value ?? string.Empty,
+            @"\[(\d+),(\d+)\]\[(\d+),(\d+)\]"
+        );
+        if (!match.Success)
+            return (0, 0, 0, 0, 0);
+        var left = int.Parse(match.Groups[1].Value);
+        var top = int.Parse(match.Groups[2].Value);
+        var right = int.Parse(match.Groups[3].Value);
+        var bottom = int.Parse(match.Groups[4].Value);
+        return (left, top, right, bottom, bottom - top);
+    }
+
+    private async Task<bool> OpenAndVerifyPrimaryProfileAsync(
+        int index,
+        string accountUid,
+        string accountName,
+        string? customPath,
+        CancellationToken cancellationToken,
+        Func<string, Task>? progress
+    )
+    {
+        if (string.IsNullOrWhiteSpace(accountUid) || string.IsNullOrWhiteSpace(accountName))
+            return false;
+        if (progress != null)
+            await progress($"Selecting and confirming personal profile {accountName}.");
+        // The native switcher owns the single navigation recovery attempt.
+        if (
+            !await EnsureSwitchedToPersonalProfileAsync(
+                index,
+                accountName,
+                customPath,
+                cancellationToken
+            )
+        )
+            return false;
+        var current = await DumpBloksScreenAsync(index, customPath, cancellationToken);
+        var confirmed =
+            current != null
+            && !PFlowUiPrivacy.ContainsInput(current.RawXml)
+            && !PFlowPersonaSwitcherService.IsNativeSwitcherSheetOpen(current.RawXml)
+            && IsExpectedOwnProfileVisible(current, accountUid, accountName);
+        await PFlowFetchTrace.WriteAsync(
+            index,
+            confirmed ? "personal.profile.verified" : "personal.profile.not-confirmed",
+            "Shared identity selection completed; checking the requested own-profile controls.",
+            cancellationToken
+        );
+        return confirmed;
+    }
+
+    private async Task<bool> SwitchToPageFromProfileSwitcherAsync(
+        int index,
+        string accountUid,
+        string accountName,
+        string pageName,
+        string pageId,
+        string? customPath,
+        CancellationToken cancellationToken,
+        Func<string, Task>? progress,
+        bool ownerAlreadyVerified
+    )
+    {
+        if (
+            !ownerAlreadyVerified
+            && !await OpenAndVerifyPrimaryProfileAsync(
+                index,
+                accountUid,
+                accountName,
+                customPath,
+                cancellationToken,
+                progress
+            )
+        )
+            return false;
+        if (progress != null)
+            await progress($"Selecting and confirming managed Page {pageName}.");
+        return await SwitchToPersonaAsync(
+            index,
+            new FacebookPageTarget
+            {
+                Type = "Page",
+                PageName = pageName,
+                PageId = pageId,
+                UserUid = accountUid,
+                ManagedBy = accountName,
+            },
+            customPath,
+            cancellationToken
+        );
+    }
+
+    public static BloksElement? FindAuthenticatedProfileNavigationTarget(BloksScreenInfo screen) =>
+        screen.AllElements.FirstOrDefault(element =>
+            element.Enabled
+            && element.Clickable
+            && element.Width > 0
+            && element.Height > 0
+            && (
+                element.ContentDesc.StartsWith("Profile, tab", StringComparison.OrdinalIgnoreCase)
+                || element.Text.StartsWith("Profile, tab", StringComparison.OrdinalIgnoreCase)
+            )
+        )
+        ?? screen.AllElements.FirstOrDefault(element =>
+            element.Enabled
+            && element.Clickable
+            && element.Width > 0
+            && element.Height > 0
+            && element.Matches("Go to profile", partialMatch: false)
+        );
+
+    private async Task<bool> OpenAuthenticatedProfileFromNavigationAsync(
+        int index,
+        BloksScreenInfo currentScreen,
+        string expectedName,
+        string? customPath,
+        CancellationToken cancellationToken,
+        Func<string, Task>? progress
+    )
+    {
+        var verified = await PFlowOwnProfileNavigation.OpenAsync(
+            this,
+            index,
+            expectedName,
+            customPath,
+            screen => IsExpectedOwnProfileVisible(screen, string.Empty, expectedName),
+            cancellationToken,
+            progress
+        );
+        await PFlowFetchTrace.WriteAsync(
+            index,
+            verified ? "page.switch.profile-tab.verified" : "page.switch.profile-tab.timeout",
+            verified
+                ? "Authenticated own-profile navigation confirmed."
+                : "Profile navigation did not expose the expected owner controls.",
+            cancellationToken
+        );
+        return verified;
+    }
+
+    private async Task<FacebookPageInfo?> ExtractPageInfoCoreAsync(
+        int index,
+        string pageUid,
+        string? pageId = null,
+        string? expectedPageName = null,
+        string? expectedProfileUid = null,
+        string? expectedProfileName = null,
+        string? customPath = null,
+        CancellationToken cancellationToken = default,
+        Func<string, Task>? progress = null,
+        bool ownerAlreadyVerified = false
+    )
+    {
+        await PFlowFetchTrace.WriteAsync(
+            index,
+            "page.lookup.begin",
+            "Starting Page persona, join-date, and analytics lookup.",
+            cancellationToken
+        );
+        if (
+            (string.IsNullOrWhiteSpace(pageId) && string.IsNullOrWhiteSpace(pageUid))
+            || (string.IsNullOrWhiteSpace(pageId) && string.IsNullOrWhiteSpace(expectedPageName))
+            || string.IsNullOrWhiteSpace(expectedProfileUid)
+            || string.IsNullOrWhiteSpace(expectedProfileName)
+        )
+            return null;
+        pageId ??= string.Empty;
+
+        if (progress != null)
+            await progress($"Page UI: switching to {expectedPageName ?? pageId}.");
+
+        if (
+            !await SwitchToPageFromProfileSwitcherAsync(
+                index,
+                expectedProfileUid,
+                expectedProfileName,
+                expectedPageName ?? pageId,
+                pageId,
+                customPath,
+                cancellationToken,
+                progress,
+                ownerAlreadyVerified
+            )
+        )
+        {
+            var activity = await GetCurrentFocusedActivityAsync(
+                index,
+                customPath,
+                cancellationToken
+            );
+            await PFlowFetchTrace.WriteAsync(
+                index,
+                "page.switch.failed",
+                $"activity={activity}",
+                cancellationToken
+            );
+            if (progress != null)
+                await progress(
+                    $"Page UI: skipped {expectedPageName ?? pageId}; Facebook did not confirm the Page switch."
+                );
+            return null;
+        }
+
+        if (progress != null)
+            await progress(
+                $"Page UI: opening {expectedPageName ?? pageId} after confirming the Page switch."
+            );
+
+        // Keep the selected persona running and navigate through its Profile tab.
+        if (
+            !await OpenCurrentOwnProfileAsync(
+                index,
+                expectedPageName ?? pageId,
+                customPath,
+                cancellationToken,
+                progress
+            )
+        )
+            return null;
+
+        BloksScreenInfo? screen = null;
+        var pageContextConfirmed = false;
+        for (var attempt = 0; attempt < 20; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            screen = await DumpBloksScreenAsync(index, customPath, cancellationToken);
+            if (screen != null && !string.IsNullOrWhiteSpace(screen.RawXml))
+            {
+                pageContextConfirmed = IsExpectedOwnProfileVisible(
+                    screen,
+                    pageUid,
+                    expectedPageName
+                );
+                if (pageContextConfirmed)
+                    break;
+            }
+            await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken);
+        }
+
+        if (!pageContextConfirmed || screen == null)
+        {
+            var activity = await GetCurrentFocusedActivityAsync(
+                index,
+                customPath,
+                cancellationToken
+            );
+            await PFlowFetchTrace.WriteAsync(
+                index,
+                "page.home.not-confirmed",
+                $"activity={activity}; {PFlowFetchTrace.SummarizeScreen(screen)}",
+                cancellationToken
+            );
+            Debug.WriteLine(
+                $"[LD-{index}] Page hierarchy did not identify the requested page after opening its Page URI."
+            );
+            return null;
+        }
+
+        screen = await DumpBloksScreenAsync(index, customPath, cancellationToken);
+        if (
+            screen == null
+            || string.IsNullOrWhiteSpace(screen.RawXml)
+            || !IsExpectedOwnProfileVisible(screen, pageUid, expectedPageName)
+        )
+        {
+            Debug.WriteLine(
+                $"[LD-{index}] Page {pageId} was not visible after the account switcher confirmed it as active."
+            );
+            return null;
+        }
+
+        if (progress != null)
+            await progress(
+                $"Page UI: {expectedPageName ?? pageId} is active; reading its details."
+            );
+        await PFlowFetchTrace.WriteAsync(
+            index,
+            "page.home.confirmed",
+            PFlowFetchTrace.SummarizeScreen(screen),
+            cancellationToken
+        );
+
+        var currentScreen = screen;
+        var info = ReadPageInfoFromHierarchy(currentScreen, pageId, pageUid, expectedPageName);
+
+        // Creation dates use only the verified header-name -> transparency route.
+        // Do not search posts for an About link when the name sheet is unavailable.
+        if (!string.IsNullOrWhiteSpace(expectedPageName))
+        {
+            if (progress != null)
+                await progress(
+                    $"Page UI: reading {expectedPageName} creation date through its header and transparency."
+                );
+            var dates = await PFlowProfileDetailsReader.ReadOwnProfileAsync(
+                this,
+                index,
+                expectedPageName,
+                false,
+                customPath,
+                cancellationToken
+            );
+            if (!string.IsNullOrWhiteSpace(dates.CreationDate))
+                info.CreationDate = dates.CreationDate;
+            await PFlowFetchTrace.WriteAsync(
+                index,
+                "page.join.result",
+                $"creationDateFound={!string.IsNullOrWhiteSpace(dates.CreationDate)}; route=header-transparency",
+                cancellationToken
+            );
+            if (string.IsNullOrWhiteSpace(dates.CreationDate) && progress != null)
+                await progress(
+                    "Page UI: creation date unavailable through the confirmed header/transparency route."
+                );
+        }
+        // Professional dashboard analytics is where Facebook exposes Page
+        // audience and performance counts. Re-open the Page home because the
+        // About/Transparency routes above may have changed the current screen.
+        await OpenCurrentOwnProfileAsync(
+            index,
+            expectedPageName ?? pageId,
+            customPath,
+            cancellationToken,
+            progress
+        );
+        await Task.Delay(900, cancellationToken);
+        var pageHome = await DumpBloksScreenAsync(index, customPath, cancellationToken);
+        if (
+            pageHome != null
+            && !string.IsNullOrWhiteSpace(pageHome.RawXml)
+            && IsExpectedOwnProfileVisible(pageHome, pageUid, expectedPageName)
+        )
+        {
+            currentScreen = pageHome;
+            var pageHomeInfo = ReadPageInfoFromHierarchy(
+                currentScreen,
+                pageId,
+                pageUid,
+                expectedPageName
+            );
+            MergePageUiInfo(info, pageHomeInfo);
+
+            var dashboard = FindHierarchyTapTarget(
+                currentScreen,
+                ["Professional dashboard", "Professional tools", "Dashboard"]
+            );
+            if (dashboard != null)
+            {
+                await PFlowFetchTrace.WriteAsync(
+                    index,
+                    "page.dashboard.tap",
+                    "Professional dashboard control found; tapping.",
+                    cancellationToken
+                );
+                if (progress != null)
+                    await progress(
+                        $"Page UI: opening Professional dashboard for {expectedPageName ?? pageId}."
+                    );
+                await TapAsync(
+                    index,
+                    dashboard.CenterX,
+                    dashboard.CenterY,
+                    customPath,
+                    cancellationToken
+                );
+                BloksScreenInfo? dashboardScreen = null;
+                var dashboardWait = Stopwatch.StartNew();
+                var nextDashboardProgress = 5;
+                while (dashboardWait.Elapsed < TimeSpan.FromSeconds(30))
+                {
+                    await Task.Delay(400, cancellationToken);
+                    dashboardScreen = await DumpBloksScreenAsync(
+                        index,
+                        customPath,
+                        cancellationToken
+                    );
+                    if (
+                        dashboardScreen != null
+                        && !string.IsNullOrWhiteSpace(dashboardScreen.RawXml)
+                        && FindHierarchyTapTarget(dashboardScreen, ["Analytics"]) != null
+                    )
+                        break;
+                    var seconds = (int)dashboardWait.Elapsed.TotalSeconds;
+                    if (seconds >= nextDashboardProgress)
+                    {
+                        var message =
+                            $"Waiting for Facebook Professional dashboard {seconds}s/30s.";
+                        if (progress != null)
+                            await progress(message);
+                        await PFlowFetchTrace.WriteAsync(
+                            index,
+                            "page.dashboard.loading",
+                            message,
+                            cancellationToken
+                        );
+                        nextDashboardProgress = seconds + 5;
+                    }
+                }
+
+                if (dashboardScreen != null && !string.IsNullOrWhiteSpace(dashboardScreen.RawXml))
+                {
+                    currentScreen = dashboardScreen;
+                    await PFlowFetchTrace.WriteAsync(
+                        index,
+                        "page.dashboard.screen",
+                        PFlowFetchTrace.SummarizeScreen(currentScreen),
+                        cancellationToken
+                    );
+                    MergePageUiInfo(
+                        info,
+                        ReadPageInfoFromHierarchy(currentScreen, pageId, pageUid, expectedPageName)
+                    );
+                    var analytics = FindHierarchyTapTarget(currentScreen, ["Analytics"]);
+                    if (analytics != null)
+                    {
+                        await PFlowFetchTrace.WriteAsync(
+                            index,
+                            "page.analytics.tap",
+                            "Analytics tab found; tapping.",
+                            cancellationToken
+                        );
+                        if (progress != null)
+                            await progress(
+                                "Page UI: opening Analytics and collecting visible Page metrics."
+                            );
+                        await TapAsync(
+                            index,
+                            analytics.CenterX,
+                            analytics.CenterY,
+                            customPath,
+                            cancellationToken
+                        );
+
+                        // The selected tab can remain unchanged while its
+                        // network content loads. Wait for analytics content
+                        // before comparing snapshots or scrolling the screen.
+                        var analyticsWait = Stopwatch.StartNew();
+                        var nextAnalyticsProgress = 5;
+                        var analyticsReady = false;
+                        while (analyticsWait.Elapsed < TimeSpan.FromSeconds(30))
+                        {
+                            await Task.Delay(400, cancellationToken);
+                            var loadedAnalytics = await DumpBloksScreenAsync(
+                                index,
+                                customPath,
+                                cancellationToken
+                            );
+                            if (loadedAnalytics != null && IsAnalyticsContentReady(loadedAnalytics))
+                            {
+                                currentScreen = loadedAnalytics;
+                                info.Views = ReadDashboardViews(loadedAnalytics) ?? info.Views;
+                                MergePageUiInfo(
+                                    info,
+                                    ReadPageInfoFromHierarchy(
+                                        currentScreen,
+                                        pageId,
+                                        pageUid,
+                                        expectedPageName
+                                    )
+                                );
+                                analyticsReady = true;
+                                break;
+                            }
+                            var seconds = (int)analyticsWait.Elapsed.TotalSeconds;
+                            if (seconds >= nextAnalyticsProgress)
+                            {
+                                var message = $"Waiting for Facebook Analytics {seconds}s/30s.";
+                                if (progress != null)
+                                    await progress(message);
+                                await PFlowFetchTrace.WriteAsync(
+                                    index,
+                                    "page.analytics.loading",
+                                    message,
+                                    cancellationToken
+                                );
+                                nextAnalyticsProgress = seconds + 5;
+                            }
+                        }
+                        await PFlowFetchTrace.WriteAsync(
+                            index,
+                            analyticsReady ? "page.analytics.ready" : "page.analytics.timeout",
+                            $"waitMs={analyticsWait.ElapsedMilliseconds}; contentReady={analyticsReady}",
+                            cancellationToken
+                        );
+                        for (
+                            var scrollAttempt = 0;
+                            analyticsReady && scrollAttempt < 5;
+                            scrollAttempt++
+                        )
+                        {
+                            await Task.Delay(650, cancellationToken);
+                            var analyticsScreen = await DumpBloksScreenAsync(
+                                index,
+                                customPath,
+                                cancellationToken
+                            );
+                            if (
+                                analyticsScreen == null
+                                || string.IsNullOrWhiteSpace(analyticsScreen.RawXml)
+                            )
+                                break;
+                            if (
+                                scrollAttempt > 0
+                                && string.Equals(
+                                    currentScreen.RawXml,
+                                    analyticsScreen.RawXml,
+                                    StringComparison.Ordinal
+                                )
+                            )
+                                break;
+
+                            currentScreen = analyticsScreen;
+                            info.Views = ReadDashboardViews(analyticsScreen) ?? info.Views;
+                            await PFlowFetchTrace.WriteAsync(
+                                index,
+                                $"page.analytics.screen.{scrollAttempt + 1}",
+                                PFlowFetchTrace.SummarizeScreen(currentScreen),
+                                cancellationToken
+                            );
+                            MergePageUiInfo(
+                                info,
+                                ReadPageInfoFromHierarchy(
+                                    currentScreen,
+                                    pageId,
+                                    pageUid,
+                                    expectedPageName
+                                )
+                            );
+
+                            var (width, height) = ParseScreenDimensions(currentScreen.RawXml);
+                            if (width <= 0)
+                                width = 720;
+                            if (height <= 0)
+                                height = 1280;
+                            await SwipeAsync(
+                                index,
+                                width / 2,
+                                (int)(height * 0.80),
+                                width / 2,
+                                (int)(height * 0.35),
+                                durationMs: 400,
+                                customPath,
+                                cancellationToken
+                            );
+                        }
+                        await PFlowFetchTrace.WriteAsync(
+                            index,
+                            "page.analytics.metrics",
+                            $"followersKnown={info.FollowersKnown}; followers={info.Followers}; views={info.Views}; reach={!string.IsNullOrWhiteSpace(info.Reach)}; reelsKnown={info.ReelsCountKnown}; reels={info.ReelsCount}; videosKnown={info.VideosCountKnown}; videos={info.VideosCount}",
+                            cancellationToken
+                        );
+                    }
+                    else if (progress != null)
+                    {
+                        await progress(
+                            "Page UI: Professional dashboard opened, but Analytics was not found in its hierarchy."
+                        );
+                    }
+                }
+            }
+            else if (progress != null)
+            {
+                await progress(
+                    "Page UI: Professional dashboard control was not visible on the Page home."
+                );
+                await PFlowFetchTrace.WriteAsync(
+                    index,
+                    "page.dashboard.not-found",
+                    PFlowFetchTrace.SummarizeScreen(currentScreen),
+                    cancellationToken
+                );
+            }
+        }
+        else
+        {
+            await PFlowFetchTrace.WriteAsync(
+                index,
+                "page.home.dump-failed",
+                "Page URI returned no readable UI hierarchy.",
+                cancellationToken
+            );
+        }
+
+        MergePageUiInfo(
+            info,
+            ReadPageInfoFromHierarchy(currentScreen, pageId, pageUid, expectedPageName)
+        );
+        Debug.WriteLine(
+            string.IsNullOrWhiteSpace(info.CreationDate)
+                ? $"[LD-{index}] Page UI hierarchy was read, but no creation date was exposed for Page {pageId}."
+                : $"[LD-{index}] Read Page creation date from the UI hierarchy for Page {pageId}."
+        );
+        if (progress != null && string.IsNullOrWhiteSpace(info.CreationDate))
+        {
+            var visible = string.Join(
+                " | ",
+                currentScreen
+                    .VisibleTexts.Concat(currentScreen.ContentDescriptions)
+                    .Where(text => !string.IsNullOrWhiteSpace(text))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Take(24)
+            );
+            await progress(
+                $"Page UI: finished reading {expectedPageName ?? pageId}; Created date was not exposed. Last screen labels: {visible}"
+            );
+        }
+        var hasEnrichment = HasPageEnrichment(info);
+        await PFlowFetchTrace.WriteAsync(
+            index,
+            "page.lookup.complete",
+            $"hasData={hasEnrichment}; creationDate={(!string.IsNullOrWhiteSpace(info.CreationDate))}; followersKnown={info.FollowersKnown}; followers={info.Followers}; views={info.Views}; reach={(!string.IsNullOrWhiteSpace(info.Reach))}; reelsKnown={info.ReelsCountKnown}; reels={info.ReelsCount}; videosKnown={info.VideosCountKnown}; videos={info.VideosCount}",
+            cancellationToken
+        );
+        return info;
+    }
+
+    public async Task<FacebookAccountDetails?> ExtractPersonalAccountDetailsFromUiAsync(
+        int index,
+        string accountUid,
+        string accountName,
+        string? customPath = null,
+        CancellationToken cancellationToken = default,
+        Func<string, Task>? progress = null
+    )
+    {
+        await PFlowFetchTrace.WriteAsync(
+            index,
+            "personal.lookup.begin",
+            "Starting profile Birthday and Joined-date lookup.",
+            cancellationToken
+        );
+        if (string.IsNullOrWhiteSpace(accountName))
+            accountName =
+                await ResolvePersonalProfileNameAsync(
+                    index,
+                    accountUid,
+                    customPath,
+                    cancellationToken,
+                    progress
+                ) ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(accountName))
+        {
+            await PFlowFetchTrace.WriteAsync(
+                index,
+                "personal.lookup.invalid-root-data",
+                "Profile name is empty.",
+                cancellationToken
+            );
+            return null;
+        }
+
+        if (progress != null)
+            await progress($"Personal account: switching to {accountName}.");
+
+        if (
+            !await OpenAndVerifyPrimaryProfileAsync(
+                index,
+                accountUid,
+                accountName,
+                customPath,
+                cancellationToken,
+                progress
+            )
+        )
+        {
+            var activity = await GetCurrentFocusedActivityAsync(
+                index,
+                customPath,
+                cancellationToken
+            );
+            await PFlowFetchTrace.WriteAsync(
+                index,
+                "personal.switch.failed",
+                $"activity={activity}",
+                cancellationToken
+            );
+            Debug.WriteLine(
+                $"[LD-{index}] Could not confirm the personal profile before its UI lookup."
+            );
+            return null;
+        }
+
+        if (progress != null)
+            await progress($"Personal account: opening {accountName}'s profile.");
+
+        BloksScreenInfo? screen = null;
+        for (var attempt = 0; attempt < 16; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            screen = await DumpBloksScreenAsync(index, customPath, cancellationToken);
+            if (
+                screen != null
+                && !string.IsNullOrWhiteSpace(screen.RawXml)
+                && IsExpectedOwnProfileVisible(screen, accountUid, accountName)
+            )
+                break;
+            await Task.Delay(500, cancellationToken);
+        }
+
+        if (
+            screen == null
+            || string.IsNullOrWhiteSpace(screen.RawXml)
+            || !IsExpectedOwnProfileVisible(screen, accountUid, accountName)
+        )
+        {
+            var activity = await GetCurrentFocusedActivityAsync(
+                index,
+                customPath,
+                cancellationToken
+            );
+            await PFlowFetchTrace.WriteAsync(
+                index,
+                "personal.profile.not-confirmed",
+                $"activity={activity}; {PFlowFetchTrace.SummarizeScreen(screen)}",
+                cancellationToken
+            );
+            Debug.WriteLine($"[LD-{index}] Personal profile UI did not match '{accountName}'.");
+            return null;
+        }
+
+        var result = new FacebookAccountDetails
+        {
+            DeviceName = $"LD-{index}",
+            Name = accountName,
+            Uid = accountUid,
+            SwitchedToProfile = true,
+        };
+        if (progress != null)
+            await progress("Personal account: reading profile details and birthday.");
+        await PFlowFetchTrace.WriteAsync(
+            index,
+            "personal.profile.screen",
+            PFlowFetchTrace.SummarizeScreen(screen),
+            cancellationToken
+        );
+        ReadPersonalDatesFromHierarchy(screen, result);
+        await PFlowFetchTrace.WriteAsync(
+            index,
+            "personal.profile.fields",
+            $"birthdayFound={!string.IsNullOrWhiteSpace(result.Birthdate)}; creationDateFound={!string.IsNullOrWhiteSpace(result.CreationDate)}",
+            cancellationToken
+        );
+
+        // Tapping the signed-in user's name opens Facebook's profile details
+        // sheet, which contains the "Joined Facebook ..." line. This must be
+        // done from the authenticated profile screen, not from a UID deep link
+        // while a Page persona is active.
+        if (!PFlowProfileDates.HasFullDate(result.CreationDate))
+        {
+            var nameTarget = FindHierarchyTapTarget(screen, [accountName]);
+            if (nameTarget != null)
+            {
+                await PFlowFetchTrace.WriteAsync(
+                    index,
+                    "personal.join.tap-name",
+                    "Profile name target found; tapping.",
+                    cancellationToken
+                );
+                if (progress != null)
+                    await progress(
+                        "Personal account: tapping the profile name to read the Facebook join date."
+                    );
+                await TapAsync(
+                    index,
+                    nameTarget.CenterX,
+                    nameTarget.CenterY,
+                    customPath,
+                    cancellationToken
+                );
+                for (var attempt = 0; attempt < 10; attempt++)
+                {
+                    await Task.Delay(350, cancellationToken);
+                    var detailsSheet = await DumpBloksScreenAsync(
+                        index,
+                        customPath,
+                        cancellationToken
+                    );
+                    if (detailsSheet == null || string.IsNullOrWhiteSpace(detailsSheet.RawXml))
+                        continue;
+                    screen = detailsSheet;
+                    await PFlowFetchTrace.WriteAsync(
+                        index,
+                        "personal.join.details-screen",
+                        PFlowFetchTrace.SummarizeScreen(screen),
+                        cancellationToken
+                    );
+                    ReadPersonalDatesFromHierarchy(screen, result);
+                    if (!string.IsNullOrWhiteSpace(result.CreationDate))
+                        break;
+                }
+
+                if (!PFlowProfileDates.HasFullDate(result.CreationDate))
+                {
+                    if (progress != null)
+                        await progress(
+                            "Personal account: checking Profile transparency for the full creation date."
+                        );
+                    var exactCreated = await PFlowProfileDetailsReader.ReadTransparencyAsync(
+                        this,
+                        index,
+                        screen,
+                        accountName,
+                        true,
+                        customPath,
+                        cancellationToken
+                    );
+                    if (!string.IsNullOrWhiteSpace(exactCreated))
+                        result.CreationDate = exactCreated;
+                }
+                if (string.IsNullOrWhiteSpace(result.CreationDate) && progress != null)
+                    await progress(
+                        "Personal account: the name details sheet opened, but no Joined Facebook date was exposed."
+                    );
+                await PFlowFetchTrace.WriteAsync(
+                    index,
+                    "personal.join.result",
+                    $"creationDateFound={!string.IsNullOrWhiteSpace(result.CreationDate)}",
+                    cancellationToken
+                );
+
+                await PressBackAsync(index, customPath, cancellationToken);
+                await Task.Delay(400, cancellationToken);
+                var profileScreen = await DumpBloksScreenAsync(
+                    index,
+                    customPath,
+                    cancellationToken
+                );
+                if (profileScreen != null && !string.IsNullOrWhiteSpace(profileScreen.RawXml))
+                {
+                    screen = profileScreen;
+                    await PFlowFetchTrace.WriteAsync(
+                        index,
+                        "personal.profile.returned",
+                        PFlowFetchTrace.SummarizeScreen(screen),
+                        cancellationToken
+                    );
+                    ReadPersonalDatesFromHierarchy(screen, result);
+                }
+            }
+            else
+            {
+                await PFlowFetchTrace.WriteAsync(
+                    index,
+                    "personal.join.name-not-found",
+                    PFlowFetchTrace.SummarizeScreen(screen),
+                    cancellationToken
+                );
+            }
+        }
+
+        // On the profile home, Birthday can be rendered as a date-only row
+        // under Personal details (with no accessible "Birthday" label).
+        if (string.IsNullOrWhiteSpace(result.Birthdate))
+            result.Birthdate = ExtractBirthdayFromPersonalDetails(screen);
+        for (
+            var scrollAttempt = 0;
+            scrollAttempt < 16 && string.IsNullOrWhiteSpace(result.Birthdate);
+            scrollAttempt++
+        )
+        {
+            if (progress != null)
+                await progress(
+                    $"Personal account: reading profile details, screen {scrollAttempt + 1}/16."
+                );
+            var (width, height) = ParseScreenDimensions(screen.RawXml);
+            await SwipeAsync(
+                index,
+                width / 2,
+                (int)(height * 0.78),
+                width / 2,
+                (int)(height * 0.37),
+                durationMs: 400,
+                customPath,
+                cancellationToken
+            );
+            await Task.Delay(450, cancellationToken);
+            var scrolledProfile = await DumpBloksScreenAsync(index, customPath, cancellationToken);
+            if (scrolledProfile == null || string.IsNullOrWhiteSpace(scrolledProfile.RawXml))
+                break;
+            var unchanged = string.Equals(
+                screen.RawXml,
+                scrolledProfile.RawXml,
+                StringComparison.Ordinal
+            );
+            screen = scrolledProfile;
+            await PFlowFetchTrace.WriteAsync(
+                index,
+                $"personal.details.screen.{scrollAttempt + 1}",
+                PFlowFetchTrace.SummarizeScreen(screen),
+                cancellationToken
+            );
+            ReadPersonalDatesFromHierarchy(screen, result);
+            if (unchanged)
+                break;
+            // Stop once the details section has passed, to avoid reading dates
+            // from feed posts as a birthday.
+            if (
+                FindHierarchyTapTarget(screen, ["Posts", "All posts"]) != null
+                && !screen.AllElements.Any(e =>
+                    e.Matches("Personal details", partialMatch: false)
+                    || e.Matches("At a glance", partialMatch: false)
+                )
+            )
+                break;
+        }
+        await PFlowFetchTrace.WriteAsync(
+            index,
+            "personal.birthday.result",
+            $"birthdayFound={!string.IsNullOrWhiteSpace(result.Birthdate)}; creationDateFound={!string.IsNullOrWhiteSpace(result.CreationDate)}; {PFlowFetchTrace.SummarizeScreen(screen)}",
+            cancellationToken
+        );
+
+        // Birthday is usually private profile data. Try the signed-in user's
+        // Accounts Center through Facebook's public route and hierarchy labels.
+        if (string.IsNullOrWhiteSpace(result.Birthdate))
+        {
+            if (progress != null)
+                await progress("Personal account: opening Accounts Center to look for birthday.");
+            await OpenDeepLinkAsync(
+                index,
+                BloksConstants.AccountsCenterDeepLink,
+                BloksConstants.KatanaPackage,
+                customPath,
+                cancellationToken
+            );
+            await Task.Delay(1200, cancellationToken);
+            screen = await DumpBloksScreenAsync(index, customPath, cancellationToken);
+
+            if (screen != null)
+            {
+                var personalDetails = FindHierarchyTapTarget(
+                    screen,
+                    ["Personal details", "Personal information"]
+                );
+                if (personalDetails != null)
+                {
+                    if (progress != null)
+                        await progress("Personal account: opening Personal details.");
+                    await TapAsync(
+                        index,
+                        personalDetails.CenterX,
+                        personalDetails.CenterY,
+                        customPath,
+                        cancellationToken
+                    );
+                    await Task.Delay(1000, cancellationToken);
+                    screen = await DumpBloksScreenAsync(index, customPath, cancellationToken);
+                }
+
+                if (screen != null)
+                {
+                    result.Birthdate = ExtractHierarchyFieldValue(
+                        screen,
+                        ["Birthday", "Date of birth", "Birth date"]
+                    );
+                    if (string.IsNullOrWhiteSpace(result.Birthdate))
+                    {
+                        var birthday = FindHierarchyTapTarget(
+                            screen,
+                            ["Birthday", "Date of birth", "Birth date"]
+                        );
+                        if (birthday != null)
+                        {
+                            if (progress != null)
+                                await progress("Personal account: reading the Birthday field.");
+                            await TapAsync(
+                                index,
+                                birthday.CenterX,
+                                birthday.CenterY,
+                                customPath,
+                                cancellationToken
+                            );
+                            await Task.Delay(800, cancellationToken);
+                            screen = await DumpBloksScreenAsync(
+                                index,
+                                customPath,
+                                cancellationToken
+                            );
+                            if (screen != null)
+                                result.Birthdate = ExtractHierarchyFieldValue(
+                                    screen,
+                                    ["Birthday", "Date of birth", "Birth date"]
+                                );
+                        }
+                    }
+                }
+            }
+        }
+
+        if (progress != null)
+        {
+            var found = new List<string>();
+            if (!string.IsNullOrWhiteSpace(result.Birthdate))
+                found.Add("birthday");
+            if (!string.IsNullOrWhiteSpace(result.CreationDate))
+                found.Add("join date");
+            await progress(
+                found.Count > 0
+                    ? $"Personal account: finished; found {string.Join(" and ", found)}."
+                    : "Personal account: finished; birthday and join date were not exposed by Facebook UI."
+            );
+        }
+
+        await PFlowFetchTrace.WriteAsync(
+            index,
+            "personal.lookup.complete",
+            $"birthdayFound={!string.IsNullOrWhiteSpace(result.Birthdate)}; creationDateFound={!string.IsNullOrWhiteSpace(result.CreationDate)}",
+            cancellationToken
+        );
+
+        // A verified owner name is needed by every subsequent Page lookup,
+        // even when Facebook hides the birthday or join date.
+        return result;
+    }
+
+    private static void ReadPersonalDatesFromHierarchy(
+        BloksScreenInfo screen,
+        FacebookAccountDetails result
+    )
+    {
+        if (string.IsNullOrWhiteSpace(ExtractValidBirthdate(result.Birthdate)))
+        {
+            result.Birthdate = ExtractHierarchyFieldValue(
+                screen,
+                ["Birthday", "Date of birth", "Birth date"]
+            );
+            if (string.IsNullOrWhiteSpace(result.Birthdate))
+                result.Birthdate = ExtractBirthdayFromPersonalDetails(screen);
+        }
+
+        if (!string.IsNullOrWhiteSpace(result.CreationDate))
+            return;
+
+        result.CreationDate = ExtractJoinedDate(screen);
+    }
+
+    /// <summary>Reads the dates actually exposed by a profile hierarchy.</summary>
+    public static FacebookAccountDetails ParsePersonalDatesFromHierarchy(BloksScreenInfo screen)
+    {
+        var result = new FacebookAccountDetails();
+        ReadPersonalDatesFromHierarchy(screen, result);
+        return result;
+    }
+
+    private const string FacebookMonthPattern =
+        @"(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?";
+
+    private static string ExtractJoinedDate(BloksScreenInfo screen)
+    {
+        var pattern =
+            $@"\b(?:Joined\s+(?:Facebook\s+)?(?:in\s+|on\s+)?|Member\s+since\s+|(?:Page\s+)?(?:Date\s+created|Creation\s+date|Created(?:\s+on|\s+in)?)\s*[:·,]?\s*)({FacebookMonthPattern}\s+\d{{1,2}},?\s+\d{{4}}|\d{{1,2}}\s+{FacebookMonthPattern}\s+\d{{4}}|{FacebookMonthPattern}\s+\d{{4}}|(?:19|20)\d{{2}})\b";
+        var texts = screen
+            .VisibleTexts.Concat(screen.ContentDescriptions)
+            .Where(t => !string.IsNullOrWhiteSpace(t))
+            .Distinct()
+            .ToList();
+        foreach (var text in texts.Append(string.Join(" ", texts)))
+        {
+            var match = Regex.Match(text, pattern, RegexOptions.IgnoreCase);
+            if (
+                match.Success
+                && FacebookPageTarget.TryParseCreationDate(match.Groups[1].Value) != null
+            )
+                return match.Value.Trim();
+        }
+        return string.Empty;
+    }
+
+    private static string ExtractValidBirthdate(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+        var pattern =
+            $@"(?<!\w)({FacebookMonthPattern}\s+\d{{1,2}},?\s+\d{{4}}|\d{{1,2}}\s+{FacebookMonthPattern}\s+\d{{4}}|\d{{4}}-\d{{1,2}}-\d{{1,2}}|\d{{1,2}}/\d{{1,2}}/\d{{4}})(?!\w)";
+        var match = Regex.Match(value, pattern, RegexOptions.IgnoreCase);
+        if (!match.Success)
+            return string.Empty;
+        var candidate = match.Groups[1].Value.Trim();
+        return
+            DateTime.TryParse(
+                candidate,
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AllowWhiteSpaces,
+                out var parsed
+            )
+            && parsed.Year >= 1900
+            && parsed.Date <= DateTime.Today
+            ? candidate
+            : string.Empty;
+    }
+
+    private static string ExtractBirthdayFromPersonalDetails(BloksScreenInfo screen) =>
+        PFlowProfileDates.Birthdate(screen, confirmedProfileContext: true);
+
+    private static string ExtractHierarchyFieldValue(
+        BloksScreenInfo screen,
+        IEnumerable<string> labels
+    )
+    {
+        foreach (var label in labels)
+        {
+            var labelElement = screen.AllElements.FirstOrDefault(e =>
+                e.Matches(label, partialMatch: true)
+            );
+            if (labelElement == null)
+                continue;
+
+            var inlineDate = ExtractValidBirthdate(labelElement.Text);
+            if (string.IsNullOrWhiteSpace(inlineDate))
+                inlineDate = ExtractValidBirthdate(labelElement.ContentDesc);
+            if (!string.IsNullOrWhiteSpace(inlineDate))
+                return inlineDate;
+
+            var value = screen
+                .AllElements.Where(e =>
+                    e != labelElement
+                    && (
+                        !string.IsNullOrWhiteSpace(e.Text)
+                        || !string.IsNullOrWhiteSpace(e.ContentDesc)
+                    )
+                    && !labels.Any(other => e.Matches(other, partialMatch: false))
+                    && Math.Abs(e.CenterY - labelElement.CenterY) <= 120
+                )
+                .OrderBy(e =>
+                {
+                    var dy = e.CenterY - labelElement.CenterY;
+                    var dx = Math.Abs(e.CenterX - labelElement.CenterX);
+                    return (dy >= 0 && dy < 180 ? dy : Math.Abs(dy) * 4) + dx;
+                })
+                .SelectMany(e => new[] { e.Text, e.ContentDesc })
+                .Select(ExtractValidBirthdate)
+                .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+            if (!string.IsNullOrWhiteSpace(value))
+                return value;
+        }
+
+        return string.Empty;
+    }
+
+    private static string? ExtractHierarchyMetric(
+        BloksScreenInfo screen,
+        IEnumerable<string> labels
+    )
+    {
+        var navigationElements = new HashSet<BloksElement>();
+        void CollectNavigation(BloksElement element, bool indexedAncestor)
+        {
+            var indexed =
+                indexedAncestor
+                || IsIndexedNavigationLabel($"{element.Text} {element.ContentDesc}");
+            if (indexed)
+                navigationElements.Add(element);
+            foreach (var child in element.Children)
+                CollectNavigation(child, indexed);
+        }
+        foreach (var root in screen.RootElements)
+            CollectNavigation(root, false);
+        foreach (var label in labels)
+        {
+            foreach (
+                var labelElement in screen.AllElements.Where(e =>
+                    e.Matches(label, partialMatch: false) && !navigationElements.Contains(e)
+                )
+            )
+            {
+                var candidates = screen
+                    .AllElements.Where(e =>
+                        e != labelElement
+                        && !navigationElements.Contains(e)
+                        && Math.Abs(e.CenterY - labelElement.CenterY) <= 160
+                        && Math.Abs(e.CenterX - labelElement.CenterX) <= 110
+                    )
+                    .SelectMany(e =>
+                        new[] { (Element: e, Text: e.Text), (Element: e, Text: e.ContentDesc) }
+                    )
+                    .Where(item =>
+                        Regex.IsMatch(
+                            item.Text.Trim(),
+                            @"^\d[\d,.]*\s*[KMB]?$",
+                            RegexOptions.IgnoreCase
+                        )
+                    )
+                    .OrderBy(item =>
+                        Math.Abs(item.Element.CenterX - labelElement.CenterX) * 2
+                        + Math.Abs(item.Element.CenterY - labelElement.CenterY)
+                    )
+                    .ToList();
+                if (candidates.Count > 0)
+                    return candidates[0].Text.Trim();
+            }
+        }
+        return null;
+    }
+
+    private static bool IsIndexedNavigationLabel(string label) =>
+        Regex.IsMatch(
+            label,
+            @"(?:,\s*(?:tab\s*)?\d+\s+of\s+\d+|\btab\s+\d+\s+of\s+\d+)",
+            RegexOptions.IgnoreCase
+        );
+
+    private static bool IsIndexedNavigationNode(XElement node) =>
+        node.AncestorsAndSelf("node")
+            .Any(element =>
+                IsIndexedNavigationLabel(
+                    $"{element.Attribute("text")?.Value} {element.Attribute("content-desc")?.Value}"
+                )
+            );
+
+    public static bool IsAnalyticsContentReady(BloksScreenInfo screen)
+    {
+        if (
+            screen.AllElements.Any(element =>
+                element.ClassName.Contains("ProgressBar", StringComparison.OrdinalIgnoreCase)
+            )
+        )
+            return false;
+        var labels = screen.VisibleTexts.Concat(screen.ContentDescriptions).ToList();
+        var height = screen
+            .AllElements.Select(element => element.Bounds.Bottom)
+            .DefaultIfEmpty(1280)
+            .Max();
+        var titleLimit = Math.Max(96, height * 0.12);
+        var titleElements = screen
+            .AllElements.Where(element =>
+                element.Height > 0 && element.CenterY > 0 && element.CenterY <= titleLimit
+            )
+            .ToList();
+        if (
+            titleElements.Any(element =>
+                element.Matches("Professional dashboard", partialMatch: false)
+            )
+        )
+            return false;
+        var analytics = titleElements.Any(element =>
+            element.Matches("Analytics", partialMatch: false)
+        );
+        return analytics
+            && labels.Any(label =>
+                new[]
+                {
+                    "Views",
+                    "Followers",
+                    "Reach",
+                    "Earnings",
+                    "Engagement",
+                    "Interactions",
+                }.Any(metric => label.Equals(metric, StringComparison.OrdinalIgnoreCase))
+                || label.Contains("No data", StringComparison.OrdinalIgnoreCase)
+                || label.Contains("published any content", StringComparison.OrdinalIgnoreCase)
+                || label.Contains("Create your first post", StringComparison.OrdinalIgnoreCase)
+            );
+    }
+
+    private static void MergePageUiInfo(FacebookPageInfo target, FacebookPageInfo source)
+    {
+        if (!string.IsNullOrWhiteSpace(source.PageId))
+            target.PageId = source.PageId;
+        if (
+            string.IsNullOrWhiteSpace(target.PageName)
+            && !string.IsNullOrWhiteSpace(source.PageName)
+        )
+            target.PageName = source.PageName;
+        if (!target.FollowersKnown && (source.FollowersKnown || source.Followers > 0))
+        {
+            target.Followers = source.Followers;
+            target.FollowersKnown = true;
+        }
+        if (string.IsNullOrWhiteSpace(target.Reach) && !string.IsNullOrWhiteSpace(source.Reach))
+            target.Reach = source.Reach;
+        if (string.IsNullOrWhiteSpace(target.Views) && !string.IsNullOrWhiteSpace(source.Views))
+            target.Views = source.Views;
+        if (!target.ReelsCountKnown && (source.ReelsCountKnown || source.ReelsCount > 0))
+        {
+            target.ReelsCount = source.ReelsCount;
+            target.ReelsCountKnown = true;
+        }
+        if (!target.VideosCountKnown && (source.VideosCountKnown || source.VideosCount > 0))
+        {
+            target.VideosCount = source.VideosCount;
+            target.VideosCountKnown = true;
+        }
+        if (!target.PictureCountKnown && (source.PictureCountKnown || source.PictureCount > 0))
+        {
+            target.PictureCount = source.PictureCount;
+            target.PictureCountKnown = true;
+        }
+        if (
+            string.IsNullOrWhiteSpace(target.Birthdate)
+            && !string.IsNullOrWhiteSpace(source.Birthdate)
+        )
+            target.Birthdate = source.Birthdate;
+        if (
+            (
+                string.IsNullOrWhiteSpace(target.CreationDate)
+                || (
+                    !PFlowProfileDates.HasFullDate(target.CreationDate)
+                    && PFlowProfileDates.HasFullDate(source.CreationDate)
+                )
+            ) && !string.IsNullOrWhiteSpace(source.CreationDate)
+        )
+            target.CreationDate = source.CreationDate;
+    }
+
+    private static bool HasPageEnrichment(FacebookPageInfo info) =>
+        !string.IsNullOrWhiteSpace(info.CreationDate)
+        || !string.IsNullOrWhiteSpace(info.Birthdate)
+        || info.FollowersKnown
+        || info.Followers > 0
+        || !string.IsNullOrWhiteSpace(info.Reach)
+        || !string.IsNullOrWhiteSpace(info.Views)
+        || info.ReelsCountKnown
+        || info.ReelsCount > 0
+        || info.VideosCountKnown
+        || info.VideosCount > 0
+        || info.PictureCountKnown
+        || info.PictureCount > 0;
+
+    public static string? ReadDashboardViews(BloksScreenInfo screen) =>
+        ExtractHierarchyMetric(screen, ["Views"]);
+
+    private static FacebookPageInfo ReadPageInfoFromHierarchy(
+        BloksScreenInfo screen,
+        string pageId,
+        string pageUid,
+        string? expectedPageName
+    )
+    {
+        var info = ParsePageInfoFromXml(screen.RawXml ?? string.Empty, pageId);
+        if (!string.IsNullOrWhiteSpace(expectedPageName))
+            info.PageName = expectedPageName.Trim();
+        if (!string.IsNullOrWhiteSpace(expectedPageName))
+        {
+            var exactCreated = PFlowProfileDates.CreationDate(screen, false, expectedPageName);
+            if (!string.IsNullOrWhiteSpace(exactCreated))
+                info.CreationDate = exactCreated;
+        }
+        info.PersonaUid = pageUid;
+        info.Type = "Page";
+        return info;
+    }
+
+    private static bool IsExpectedPageVisible(
+        BloksScreenInfo screen,
+        string pageId,
+        string? expectedPageName
+    )
+    {
+        if (!string.IsNullOrWhiteSpace(expectedPageName))
+        {
+            var expected = NormalizeHierarchyText(expectedPageName);
+            return screen
+                .VisibleTexts.Concat(screen.ContentDescriptions)
+                .Any(text => IsPageTitleMatch(NormalizeHierarchyText(text), expected));
+        }
+
+        return screen
+            .VisibleTexts.Concat(screen.ContentDescriptions)
+            .Any(text => text.Contains(pageId, StringComparison.Ordinal));
+    }
+
+    public static bool IsExpectedOwnProfileVisible(
+        BloksScreenInfo screen,
+        string personaUid,
+        string? expectedName
+    )
+    {
+        if (!IsExpectedPageVisible(screen, personaUid, expectedName))
+            return false;
+        var labels = screen.VisibleTexts.Concat(screen.ContentDescriptions).ToList();
+        if (
+            labels.Any(text =>
+                text.Contains("Admin quick access", StringComparison.OrdinalIgnoreCase)
+                || text.Contains("Switch into", StringComparison.OrdinalIgnoreCase)
+            )
+        )
+            return false;
+        return labels.Any(text =>
+            text.Equals("Edit profile", StringComparison.OrdinalIgnoreCase)
+            || text.Equals("Edit profile picture", StringComparison.OrdinalIgnoreCase)
+            || (
+                text.Contains("Professional dashboard", StringComparison.OrdinalIgnoreCase)
+                && !text.Contains(", tab", StringComparison.OrdinalIgnoreCase)
+            )
+            || text.Equals("Edit Page", StringComparison.OrdinalIgnoreCase)
+            || text.Equals("Manage Page", StringComparison.OrdinalIgnoreCase)
+        );
+    }
+
+    private static string NormalizeHierarchyText(string value) =>
+        Regex.Replace(value.Trim(), @"\s+", " ");
+
+    private static string DescribeHierarchyElement(BloksElement element) =>
+        !string.IsNullOrWhiteSpace(element.Text) ? element.Text.Trim()
+        : !string.IsNullOrWhiteSpace(element.ContentDesc) ? element.ContentDesc.Trim()
+        : "matched navigation";
+
+    private static bool IsPageTitleMatch(string visibleText, string expectedPageName)
+    {
+        if (visibleText.Equals(expectedPageName, StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (!visibleText.StartsWith(expectedPageName, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        return visibleText.Length == expectedPageName.Length
+            || !char.IsLetterOrDigit(visibleText[expectedPageName.Length]);
+    }
+
+    private static BloksElement? FindHierarchyTapTarget(
+        BloksScreenInfo screen,
+        IEnumerable<string> labels
+    )
+    {
+        foreach (var label in labels)
+        {
+            foreach (var exact in new[] { true, false })
+            {
+                foreach (var root in screen.RootElements)
+                {
+                    var match = FindHierarchyTapTarget(root, label, null, exact);
+                    if (match != null)
+                        return match;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static BloksElement? FindHierarchyTapTarget(
+        BloksElement element,
+        string label,
+        BloksElement? nearestClickableAncestor,
+        bool exactMatch
+    )
+    {
+        var clickableAncestor =
+            element.Clickable
+            && element.Enabled
+            && element.Width > 0
+            && element.Height > 0
+            && element.Height <= 240
+                ? element
+                : nearestClickableAncestor;
+        if (
+            element.Enabled
+            && element.Matches(label, partialMatch: !exactMatch)
+            && element.Width > 0
+            && element.Height > 0
+            && element.Height <= 240
+        )
+        {
+            return clickableAncestor ?? element;
+        }
+
+        foreach (var child in element.Children)
+        {
+            var match = FindHierarchyTapTarget(child, label, clickableAncestor, exactMatch);
+            if (match != null)
+                return match;
+        }
+
+        return null;
+    }
+
     #endregion
 
     #region Root Shell Facebook Extraction
-
-    private const string RootExtractionScript =
-        @"#!/system/bin/sh
-PKG=""$1""
-[ -z ""$PKG"" ] && PKG=""com.facebook.katana""
-FB_DIR=""/data/data/$PKG""
-LP_DIR=""$FB_DIR/app_light_prefs/$PKG""
-DB=""$FB_DIR/databases/prefs_db""
-
-ACTIVE_UID=""""
-ACTIVE_NAME=""""
-ACCESS_TOKEN=""""
-COOKIES=""""
-
-# 1. Check underlying_account
-if [ -f ""$LP_DIR/underlying_account"" ]; then
-    UA_STR=$(strings ""$LP_DIR/underlying_account"" 2>/dev/null)
-    ACTIVE_UID=$(echo ""$UA_STR"" | grep -A 1 ""^underlying_account_uid$"" | tail -n 1)
-fi
-
-# 2. Check authentication
-if [ -f ""$LP_DIR/authentication"" ]; then
-    AUTH_STR=$(strings ""$LP_DIR/authentication"" 2>/dev/null)
-    if [ -z ""$ACTIVE_UID"" ]; then
-        ACTIVE_UID=$(echo ""$AUTH_STR"" | grep -A 1 ""^user_id$"" | tail -n 1)
-        if [ -z ""$ACTIVE_UID"" ]; then
-            ACTIVE_UID=$(echo ""$AUTH_STR"" | grep -E ""^[0-9]{10,20}$"" | head -n 1)
-        fi
-    fi
-    ACTIVE_NAME=$(echo ""$AUTH_STR"" | grep -A 1 ""^username$"" | tail -n 1)
-    ACCESS_TOKEN=$(echo ""$AUTH_STR"" | grep -A 1 ""^access_token$"" | tail -n 1)
-    COOKIES=$(echo ""$AUTH_STR"" | grep -A 1 ""^session_cookies_string$"" | tail -n 1)
-fi
-
-echo ""AUTH|$ACTIVE_UID|$ACTIVE_NAME|$ACCESS_TOKEN|$COOKIES""
-
-# 3. Logged in profiles & pages
-for f in $LP_DIR/logged_in_*; do
-    [ -f ""$f"" ] || continue
-    uid=$(basename ""$f"" | sed 's/logged_in_//')
-    [ -n ""$uid"" ] || continue
-    
-    STR=$(strings ""$f"" 2>/dev/null)
-    name=$(echo ""$STR"" | grep -A 1 ""^name$"" | tail -n 1)
-    page_id=$(echo ""$STR"" | grep -A 1 ""^delegate_page_id$"" | tail -n 1)
-    email=$(echo ""$STR"" | grep -A 1 ""^primary_contact$"" | tail -n 1)
-    if [ -z ""$email"" ]; then
-        email=$(echo ""$STR"" | grep -A 1 ""^emails$"" | tail -n 1)
-    fi
-    pic=$(echo ""$STR"" | grep -A 1 ""^pic_square$"" | tail -n 1)
-    
-    if [ -z ""$name"" ]; then
-        fname=$(echo ""$STR"" | grep -A 1 ""^first_name$"" | tail -n 1)
-        lname=$(echo ""$STR"" | grep -A 1 ""^last_name$"" | tail -n 1)
-        name=""$fname $lname""
-    fi
-    
-    if [ -n ""$name"" ]; then
-        if [ -n ""$page_id"" ]; then
-            echo ""ACCOUNT|Page|$uid|$page_id|$name|$ACTIVE_UID|$email|$pic""
-        else
-            echo ""ACCOUNT|Profile|$uid||$name|$uid|$email|$pic""
-        fi
-    fi
-done
-
-# 4. DBL login credentials in prefs_db
-if [ -f ""$DB"" ]; then
-    sqlite3 ""$DB"" ""SELECT value FROM preferences WHERE key LIKE '/auth/auth_device_based_login_credentials%';"" 2>/dev/null | while read -r line; do
-        [ -n ""$line"" ] && echo ""DBL|$line""
-    done
-fi
-";
 
     public async Task<List<FacebookAccountInfo>> ExtractFacebookAccountsFromRootShellAsync(
         int index,
@@ -5569,67 +7039,285 @@ fi
         CancellationToken cancellationToken = default
     )
     {
-        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
-            cancellationToken,
-            timeoutCts.Token
-        );
-        var ct = linkedCts.Token;
+        if (string.IsNullOrWhiteSpace(packageName))
+            packageName = "com.facebook.katana";
 
+        // Read each logged_in_* file with a separate root ADB command. Compound
+        // shell commands get re-quoted by ldconsole.exe and can silently lose data.
+        return await ExtractFacebookAccountsDirectFromRootAdbAsync(
+            index,
+            packageName,
+            customPath,
+            cancellationToken
+        );
+    }
+
+    private async Task<List<FacebookAccountInfo>> ExtractFacebookAccountsDirectFromRootAdbAsync(
+        int index,
+        string packageName,
+        string? customPath,
+        CancellationToken cancellationToken
+    )
+    {
+        var result = new List<FacebookAccountInfo>();
+        var lightPrefs = $"/data/data/{packageName}/app_light_prefs/{packageName}";
         try
         {
-            var tempFile = Path.Combine(Path.GetTempPath(), $"extract_fb_{Guid.NewGuid():N}.sh");
-            try
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(30));
+            var ct = timeout.Token;
+
+            var rootProbe = await ExecuteAdbAsync(index, "shell su 0 id", customPath, ct);
+            if (!Regex.IsMatch(rootProbe, @"\buid=0\b", RegexOptions.IgnoreCase))
             {
-                await File.WriteAllTextAsync(tempFile, RootExtractionScript, ct);
-                await PushFileToEmulatorAsync(
+                var detail = string.IsNullOrWhiteSpace(rootProbe)
+                    ? "the root probe returned no output"
+                    : rootProbe.Trim();
+                throw new RootShellUnavailableException(
+                    $"Root shell is unavailable on LD-{index} ({detail}). Enable root access in LDPlayer settings, then restart the instance."
+                );
+            }
+
+            var fileList = await ExecuteAdbAsync(
+                index,
+                $"shell su 0 ls -1 {lightPrefs}",
+                customPath,
+                ct
+            );
+            var accountFiles = fileList
+                .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
+                .Select(line => line.Trim())
+                .Where(name => Regex.IsMatch(name, @"^logged_in_\d{10,20}$"))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            var authDump = await ReadRootTextFileAsync(
+                index,
+                $"{lightPrefs}/underlying_account",
+                customPath,
+                ct
+            );
+            authDump +=
+                "\n"
+                + await ReadRootTextFileAsync(
                     index,
-                    tempFile,
-                    "/data/local/tmp/extract_fb_root.sh",
+                    $"{lightPrefs}/authentication",
                     customPath,
                     ct
                 );
-            }
-            catch (Exception pEx)
+            authDump = SanitizeRootDump(authDump);
+            var underlyingUid = Regex
+                .Match(
+                    authDump,
+                    @"underlying_account_uid[\r\n\s]+(\d{10,20})",
+                    RegexOptions.IgnoreCase
+                )
+                .Groups[1]
+                .Value;
+            var activeUid = Regex
+                .Match(
+                    authDump,
+                    @"(?:underlying_account_uid|user_id)[\r\n\s]+(\d{10,20})",
+                    RegexOptions.IgnoreCase
+                )
+                .Groups[1]
+                .Value;
+            if (!string.IsNullOrWhiteSpace(underlyingUid))
+                activeUid = underlyingUid;
+            if (string.IsNullOrWhiteSpace(activeUid))
+                activeUid = Regex.Match(authDump, @"\b(615\d{11,13}|\d{14,16})\b").Groups[1].Value;
+            var activeName = Regex
+                .Match(
+                    authDump,
+                    @"(?:username|name)[\r\n\s]+([^\r\n]{2,60})",
+                    RegexOptions.IgnoreCase
+                )
+                .Groups[1]
+                .Value.Trim();
+
+            foreach (var fileName in accountFiles)
             {
-                Debug.WriteLine($"[LD-{index}] Push script fallback: {pEx.Message}");
-            }
-            finally
-            {
-                if (File.Exists(tempFile))
+                ct.ThrowIfCancellationRequested();
+                var uid = Regex.Match(fileName, @"^logged_in_(\d{10,20})$").Groups[1].Value;
+                var dump = SanitizeRootDump(
+                    await ReadRootTextFileAsync(index, $"{lightPrefs}/{fileName}", customPath, ct)
+                );
+                if (string.IsNullOrWhiteSpace(dump))
+                    continue;
+
+                var name = Regex
+                    .Match(
+                        dump,
+                        @"(?:^|[\r\n])name[\r\n\s]+([^\r\n]{2,60})",
+                        RegexOptions.IgnoreCase
+                    )
+                    .Groups[1]
+                    .Value.Trim();
+                if (string.IsNullOrWhiteSpace(name))
                 {
-                    try
-                    {
-                        File.Delete(tempFile);
-                    }
-                    catch { }
+                    var first = Regex
+                        .Match(
+                            dump,
+                            @"(?:^|[\r\n])first_name[\r\n\s]+([^\r\n]{1,30})",
+                            RegexOptions.IgnoreCase
+                        )
+                        .Groups[1]
+                        .Value.Trim();
+                    var last = Regex
+                        .Match(
+                            dump,
+                            @"(?:^|[\r\n])last_name[\r\n\s]+([^\r\n]{1,30})",
+                            RegexOptions.IgnoreCase
+                        )
+                        .Groups[1]
+                        .Value.Trim();
+                    name = $"{first} {last}".Trim();
                 }
+                var pageId = Regex
+                    .Match(
+                        dump,
+                        @"(?:delegate_page_id|page_id)[\r\n\s]+(\d{10,20})",
+                        RegexOptions.IgnoreCase
+                    )
+                    .Groups[1]
+                    .Value;
+                // Cached owner records can retain Page delegation. This classification
+                // does not prove the live actor; native identity checks remain required.
+                var isUnderlyingOwner =
+                    !string.IsNullOrWhiteSpace(underlyingUid) && uid == underlyingUid;
+                var isPage =
+                    !isUnderlyingOwner
+                    && (
+                        Regex.IsMatch(
+                            dump,
+                            @"(?:^|[\r\n])is_page[\r\n\s]+(?:1|true)(?=\s|$)",
+                            RegexOptions.IgnoreCase
+                        )
+                        || !string.IsNullOrWhiteSpace(pageId)
+                        || (!string.IsNullOrWhiteSpace(activeUid) && uid != activeUid)
+                    );
+                var userUid = Regex
+                    .Match(
+                        dump,
+                        @"(?:^|[\r\n])user_id[\r\n\s]+(\d{10,20})",
+                        RegexOptions.IgnoreCase
+                    )
+                    .Groups[1]
+                    .Value;
+                if (string.IsNullOrWhiteSpace(userUid))
+                    userUid = activeUid;
+                if (isUnderlyingOwner)
+                    userUid = uid;
+                if (!isPage && (isUnderlyingOwner || string.IsNullOrWhiteSpace(pageId)))
+                    pageId = uid;
+
+                MergeRootAccount(
+                    result,
+                    new FacebookAccountInfo
+                    {
+                        Type = isPage ? "Page" : "Profile",
+                        Uid = uid,
+                        PageId = pageId,
+                        Name = name,
+                        UserUid = userUid,
+                        Email = Regex
+                            .Match(dump, @"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
+                            .Value,
+                        PicUrl = string.Empty,
+                        IsActive = !string.IsNullOrWhiteSpace(activeUid) && uid == activeUid,
+                    }
+                );
             }
 
-            await ExecuteAdbAsync(
+            if (!string.IsNullOrWhiteSpace(activeUid) && result.All(a => a.Uid != activeUid))
+            {
+                MergeRootAccount(
+                    result,
+                    new FacebookAccountInfo
+                    {
+                        Type = "Profile",
+                        Uid = activeUid,
+                        PageId = activeUid,
+                        Name = activeName,
+                        UserUid = activeUid,
+                        IsActive = true,
+                    }
+                );
+            }
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            await PFlowFetchTrace.WriteAsync(
                 index,
-                "shell chmod 755 /data/local/tmp/extract_fb_root.sh",
-                customPath,
-                ct
+                "root-shell.timeout",
+                "Direct ADB discovery exceeded 30 seconds; incomplete results were discarded."
             );
-
-            // Execute script with root privileges (clean syntax without nested quotes)
-            var output = await ExecuteAdbAsync(
-                index,
-                $"shell su 0 sh /data/local/tmp/extract_fb_root.sh {packageName}",
-                customPath,
-                ct
+            throw new RootShellUnavailableException(
+                $"Root-shell discovery timed out on LD-{index} after 30 seconds; saved data was preserved."
             );
-
-            return ParseRootShellAccountOutput(output);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (RootShellUnavailableException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
-            Debug.WriteLine(
-                $"[LD-{index}] Failed to extract accounts via root shell: {ex.Message}"
-            );
-            return [];
+            Debug.WriteLine($"[LD-{index}] Direct Facebook root read failed: {ex.Message}");
         }
+
+        return result;
+    }
+
+    private async Task<string> ReadRootTextFileAsync(
+        int index,
+        string remotePath,
+        string? customPath,
+        CancellationToken cancellationToken
+    ) =>
+        await ExecuteAdbAsync(index, $"shell su 0 cat {remotePath}", customPath, cancellationToken);
+
+    private static string SanitizeRootDump(string? raw)
+    {
+        if (string.IsNullOrEmpty(raw))
+            return string.Empty;
+        return new string(
+            raw.Select(ch => ch < 32 && ch is not '\r' and not '\n' and not '\t' ? '\n' : ch)
+                .ToArray()
+        );
+    }
+
+    private static void MergeRootAccount(
+        List<FacebookAccountInfo> accounts,
+        FacebookAccountInfo account
+    )
+    {
+        var existing = accounts.FirstOrDefault(a =>
+            string.Equals(a.Type, account.Type, StringComparison.OrdinalIgnoreCase)
+            && (
+                a.Uid == account.Uid
+                || (!string.IsNullOrWhiteSpace(a.PageId) && a.PageId == account.PageId)
+            )
+        );
+        if (existing is null)
+        {
+            accounts.Add(account);
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(existing.Name))
+            existing.Name = account.Name;
+        if (string.IsNullOrWhiteSpace(existing.PageId))
+            existing.PageId = account.PageId;
+        if (string.IsNullOrWhiteSpace(existing.UserUid))
+            existing.UserUid = account.UserUid;
+        if (string.IsNullOrWhiteSpace(existing.Email))
+            existing.Email = account.Email;
+        if (string.IsNullOrWhiteSpace(existing.PicUrl))
+            existing.PicUrl = account.PicUrl;
+        existing.IsActive |= account.IsActive;
     }
 
     public async Task<List<FacebookPageTarget>> SyncDiscoveredAccountsToStorageAsync(
@@ -5650,7 +7338,7 @@ fi
             cancellationToken
         );
 
-        var existingPages = await FacebookPageStorage.LoadPagesAsync(storageFilePath);
+        var existingPages = await PFlowPageStorage.LoadPagesAsync(storageFilePath);
 
         foreach (var account in discovered)
         {
@@ -5691,7 +7379,7 @@ fi
             }
         }
 
-        await FacebookPageStorage.SavePagesAsync(existingPages, storageFilePath);
+        await PFlowPageStorage.SavePagesAsync(existingPages, storageFilePath);
         return existingPages
             .Where(p =>
                 string.Equals(p.DeviceName, targetDevice, StringComparison.OrdinalIgnoreCase)
@@ -5725,6 +7413,54 @@ fi
                     activeAccessToken = parts[3].Trim();
                 if (parts.Length > 4 && !string.IsNullOrWhiteSpace(parts[4]))
                     activeCookies = parts[4].Trim();
+            }
+            else if (line.StartsWith("PERSONA|", StringComparison.OrdinalIgnoreCase))
+            {
+                var parts = line.Split('|');
+                if (parts.Length < 3)
+                    continue;
+
+                var userUid = parts[1].Trim();
+                var personaUid = parts[2].Trim();
+                if (
+                    !Regex.IsMatch(userUid, @"^\d{10,20}$")
+                    || !Regex.IsMatch(personaUid, @"^\d{10,20}$")
+                )
+                    continue;
+
+                var isProfile = string.Equals(userUid, personaUid, StringComparison.Ordinal);
+                var account = new FacebookAccountInfo
+                {
+                    Type = isProfile ? "Profile" : "Page",
+                    Uid = personaUid,
+                    // Scoped preferences reveal a persona UID, not delegate_page_id.
+                    PageId = isProfile ? personaUid : string.Empty,
+                    Name = isProfile ? activeName : string.Empty,
+                    UserUid = userUid,
+                    IsActive = isProfile,
+                    AccessToken = isProfile ? activeAccessToken : string.Empty,
+                    Cookies = isProfile ? activeCookies : string.Empty,
+                };
+
+                var existing = accounts.FirstOrDefault(a =>
+                    string.Equals(a.Type, account.Type, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(a.Uid, account.Uid, StringComparison.Ordinal)
+                );
+                if (existing == null)
+                {
+                    accounts.Add(account);
+                }
+                else
+                {
+                    if (string.IsNullOrWhiteSpace(existing.PageId))
+                        existing.PageId = account.PageId;
+                    if (string.IsNullOrWhiteSpace(existing.UserUid))
+                        existing.UserUid = account.UserUid;
+                    if (string.IsNullOrWhiteSpace(existing.Name))
+                        existing.Name = account.Name;
+                    if (!existing.IsActive && account.IsActive)
+                        existing.IsActive = true;
+                }
             }
             else if (line.StartsWith("ACCOUNT|", StringComparison.OrdinalIgnoreCase))
             {

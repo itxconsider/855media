@@ -77,6 +77,14 @@ public interface ILDPlayerService
         CancellationToken cancellationToken = default
     );
 
+    Task<bool> WaitForFacebookReadyAsync(
+        int index,
+        TimeSpan timeout,
+        string? customPath = null,
+        CancellationToken cancellationToken = default,
+        Func<string, Task>? progress = null
+    );
+
     Task<bool> LaunchAppAsync(
         int index,
         string packageName = "com.facebook.katana",
@@ -158,6 +166,19 @@ public interface ILDPlayerService
 
     Task<bool> SwitchToPersonaAsync(
         int index,
+        FacebookPageTarget target,
+        string? customPath = null,
+        CancellationToken cancellationToken = default
+    );
+    Task<bool> SwitchToPersonaAsync(
+        int index,
+        string name,
+        string? pageId,
+        string? customPath,
+        CancellationToken cancellationToken
+    );
+    Task<bool> SwitchToPersonaAsync(
+        int index,
         string personaName,
         string? customPath = null,
         CancellationToken cancellationToken = default
@@ -178,6 +199,7 @@ public interface ILDPlayerService
 
     Task<bool> ClickProfileSwitcherDropdownAsync(
         int index,
+        string? profileName = null,
         string? customPath = null,
         CancellationToken cancellationToken = default
     );
@@ -253,7 +275,9 @@ public interface ILDPlayerService
     Task<FacebookAccountDetails?> ExtractFacebookAccountDetailsAsync(
         int index,
         string? customPath = null,
-        CancellationToken cancellationToken = default
+        CancellationToken cancellationToken = default,
+        Func<FacebookAccountDetails, Task>? rootShellCompleted = null,
+        Func<string, Task>? progress = null
     );
 
     Task<bool> EnsureAtxAgentRunningAsync(
@@ -369,6 +393,13 @@ public interface ILDPlayerService
         CancellationToken cancellationToken = default
     );
 
+    Task<bool> ClearRecentAppsAsync(
+        int index,
+        string? customPath = null,
+        CancellationToken cancellationToken = default,
+        Func<string, Task>? progress = null
+    );
+
     Task<AtxDeviceInfo?> GetAtxDeviceInfoAsync(
         int index,
         CancellationToken cancellationToken = default
@@ -449,6 +480,28 @@ public interface ILDPlayerService
         int index,
         string? customPath = null,
         CancellationToken cancellationToken = default
+    );
+
+    Task<FacebookPageInfo?> ExtractPageInfoFromUiAsync(
+        int index,
+        string pageUid,
+        string? pageId = null,
+        string? expectedPageName = null,
+        string? expectedProfileUid = null,
+        string? expectedProfileName = null,
+        string? customPath = null,
+        CancellationToken cancellationToken = default,
+        Func<string, Task>? progress = null,
+        bool ownerAlreadyVerified = false
+    );
+
+    Task<FacebookAccountDetails?> ExtractPersonalAccountDetailsFromUiAsync(
+        int index,
+        string accountUid,
+        string accountName,
+        string? customPath = null,
+        CancellationToken cancellationToken = default,
+        Func<string, Task>? progress = null
     );
 
     /// <summary>

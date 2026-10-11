@@ -15,7 +15,7 @@ namespace _855Media.ViewModels.Components;
 public partial class FacebookDownloaderViewModel : ViewModelBase
 {
     private readonly ExtensionInstallerService _extensionInstallerService;
-    private readonly FacebookBrowserLauncher _facebookBrowserLauncher;
+    private readonly PFlowBrowserLauncher _facebookBrowserLauncher;
     private readonly LocalBridgeServer _localBridgeServer;
     private readonly SnackbarManager _snackbarManager;
     private DashboardViewModel? _dashboardViewModel;
@@ -54,7 +54,7 @@ public partial class FacebookDownloaderViewModel : ViewModelBase
     public FacebookDownloaderViewModel(
         LocalizationManager localizationManager,
         ExtensionInstallerService extensionInstallerService,
-        FacebookBrowserLauncher facebookBrowserLauncher,
+        PFlowBrowserLauncher facebookBrowserLauncher,
         LocalBridgeServer localBridgeServer,
         SnackbarManager snackbarManager
     )

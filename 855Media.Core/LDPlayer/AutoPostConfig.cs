@@ -6,11 +6,13 @@ using System.Threading.Tasks;
 namespace _855Media.Core.LDPlayer;
 
 /// <summary>
-/// Persisted configuration state for AutoPost workflow, warmup emulation, delays, and options.
+/// Persisted configuration state for AutoPost workflow, ScreenTime sessions, delays, and options.
 /// </summary>
 public class AutoPostConfig
 {
-    // --- Account Warmup & Anti-Ban ---
+    public ScreenTimeOptions ScreenTimeOptions { get; set; } = new();
+
+    // --- ScreenTime (legacy JSON property names retained for compatibility) ---
     public bool IsWatchVideo { get; set; } = true;
     public int WatchVideoMin { get; set; } = 60;
     public int WatchVideoMax { get; set; } = 120;
@@ -112,7 +114,17 @@ public static class AutoPostConfigStorage
         }
 
         var json = JsonSerializer.Serialize(config, JsonOptions);
-        await File.WriteAllTextAsync(filePath, json);
+        var temporary = filePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            await File.WriteAllTextAsync(temporary, json);
+            File.Move(temporary, filePath, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(temporary))
+                File.Delete(temporary);
+        }
     }
 
     public static async Task<AutoPostConfig> LoadConfigAsync(string? customFilePath = null)

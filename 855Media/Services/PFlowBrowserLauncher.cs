@@ -4,7 +4,7 @@ using System.IO;
 
 namespace _855Media.Services;
 
-public class FacebookBrowserLauncher
+public class PFlowBrowserLauncher
 {
     public bool LaunchBrowserWithExtension(string targetUrl)
     {

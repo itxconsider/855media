@@ -23,10 +23,12 @@ public partial class AutoPostViewModel : ViewModelBase
     private readonly SnackbarManager _snackbarManager;
     private readonly LocalizationManager _localizationManager;
     private readonly SettingsService _settingsService;
+    private readonly AtxAgentClient? _atxClient;
 
     private CancellationTokenSource? _batchCts;
     private CancellationTokenSource? _fetchCts;
     private readonly SemaphoreSlim _bootGate = new(1, 1);
+    private readonly SemaphoreSlim _pageSaveGate = new(1, 1);
 
     // --- LDPlayer Configuration ---
     [ObservableProperty]
@@ -129,7 +131,7 @@ public partial class AutoPostViewModel : ViewModelBase
     private bool _isPostReel = false;
 
     [ObservableProperty]
-    private bool _isDeleteReelFile = true;
+    private bool _isDeleteReelFile;
 
     [ObservableProperty]
     private bool _isBackupReelFile;
@@ -224,6 +226,9 @@ public partial class AutoPostViewModel : ViewModelBase
     [ObservableProperty]
     private string _statusSummary = "Ready";
 
+    [ObservableProperty]
+    private string _lastAtxTapSummary = "No UI tap recorded yet.";
+
     public static string[] TargetTypes { get; } = ["Page", "Profile"];
 
     // --- Collections ---
@@ -247,7 +252,7 @@ public partial class AutoPostViewModel : ViewModelBase
     private int _postToCount = 5;
 
     [ObservableProperty]
-    private bool _uploadUniqueFile = true;
+    private bool _uploadUniqueFile;
 
     [ObservableProperty]
     private bool _getPagesByApi = false;
@@ -258,16 +263,28 @@ public partial class AutoPostViewModel : ViewModelBase
     [RelayCommand]
     public void ClearTasks()
     {
+        if (IsRunning || IsBusy)
+            return;
         Tasks.Clear();
         _snackbarManager.Notify("Active dispatch queue cleared.");
     }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsExpandedGroupedView))]
     private bool _isGroupedView = true;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsExpandedGroupedView))]
+    private bool _isPersonalAccountsView;
+    public bool IsExpandedGroupedView => IsGroupedView && !IsPersonalAccountsView;
+    public ObservableCollection<FacebookProfileGroupViewModel> DisplayedPersonalAccounts { get; } =
+    [];
 
     [RelayCommand]
     public void ExpandAllGroups()
     {
+        IsPersonalAccountsView = false;
+        IsManagePagesEmpty = DisplayedProfileGroups.Count == 0;
         foreach (var g in DisplayedProfileGroups)
         {
             g.IsExpanded = true;
@@ -277,6 +294,8 @@ public partial class AutoPostViewModel : ViewModelBase
     [RelayCommand]
     public void CollapseAllGroups()
     {
+        IsPersonalAccountsView = true;
+        IsManagePagesEmpty = DisplayedPersonalAccounts.Count == 0;
         foreach (var g in DisplayedProfileGroups)
         {
             g.IsExpanded = false;
@@ -286,6 +305,7 @@ public partial class AutoPostViewModel : ViewModelBase
     [RelayCommand]
     public void SetGroupedView(bool isGrouped)
     {
+        IsPersonalAccountsView = false;
         IsGroupedView = isGrouped;
         IsManagePagesEmpty = isGrouped
             ? DisplayedProfileGroups.Count == 0
@@ -725,6 +745,8 @@ public partial class AutoPostViewModel : ViewModelBase
         }
 
         // Build Profile Groups with child pages that can expand & collapse
+        foreach (var group in DisplayedProfileGroups)
+            group.Dispose();
         DisplayedProfileGroups.Clear();
         var devicesInPool = list.Select(p => p.DeviceName)
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -935,8 +957,12 @@ public partial class AutoPostViewModel : ViewModelBase
             }
         }
 
-        IsManagePagesEmpty = IsGroupedView
-            ? DisplayedProfileGroups.Count == 0
+        DisplayedPersonalAccounts.Clear();
+        foreach (var group in DisplayedProfileGroups.Where(g => g.Profile != null))
+            DisplayedPersonalAccounts.Add(group);
+        IsManagePagesEmpty =
+            IsPersonalAccountsView ? DisplayedPersonalAccounts.Count == 0
+            : IsGroupedView ? DisplayedProfileGroups.Count == 0
             : DisplayedManagePages.Count == 0;
     }
 
@@ -1000,18 +1026,68 @@ public partial class AutoPostViewModel : ViewModelBase
         DialogManager dialogManager,
         SnackbarManager snackbarManager,
         LocalizationManager localizationManager,
-        SettingsService settingsService
+        SettingsService settingsService,
+        AtxAgentClient? atxClient = null,
+        IScreenTimeService? screenTimeService = null
     )
     {
         _ldPlayerService = ldPlayerService;
+        _screenTimeService = screenTimeService ?? new ScreenTimeService(ldPlayerService);
         _dialogManager = dialogManager;
         _snackbarManager = snackbarManager;
         _localizationManager = localizationManager;
         _settingsService = settingsService;
+        _atxClient = atxClient;
+        if (_atxClient != null)
+            _atxClient.TapObserved += OnAtxTapObserved;
 
         // Populate sample page data matching user's active configuration (885media, etc.)
         InitializeDefaultPages();
         InitializeSampleTasks();
+        InitializePFlowDashboard();
+        ScreenTimeOptions.PropertyChanged += ScreenTimeOptionsChanged;
+    }
+
+    private void OnAtxTapObserved(AtxTapEvent tapEvent)
+    {
+        if (!IsBusy)
+            return;
+
+        var state = tapEvent.Success ? "tapped" : "tap failed";
+        var message =
+            $"{tapEvent.Timestamp:HH:mm:ss} LD-{tapEvent.DeviceIndex} {tapEvent.InputMethod} {state}: "
+            + $"'{tapEvent.Target}' at ({tapEvent.X}, {tapEvent.Y})";
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (IsBusy)
+                LastAtxTapSummary = message;
+        });
+    }
+
+    partial void OnIsBusyChanged(bool value)
+    {
+        if (_atxClient != null)
+            _atxClient.IsTapTracingEnabled = value;
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _addAccountCancellation?.Cancel();
+            EndAddAccountOtp();
+            AddAccountLine = "";
+            DisposePFlowDashboard();
+            ScreenTimeOptions.PropertyChanged -= ScreenTimeOptionsChanged;
+        }
+        if (disposing && _atxClient != null)
+        {
+            _atxClient.TapObserved -= OnAtxTapObserved;
+            _atxClient.IsTapTracingEnabled = false;
+        }
+
+        base.Dispose(disposing);
     }
 
     public override async Task InitializeAsync()
@@ -1019,6 +1095,7 @@ public partial class AutoPostViewModel : ViewModelBase
         await LoadConfigFromDiskAsync();
         await LoadPagesFromDiskAsync();
         await LoadDevicesAsync();
+        await RefreshAccountMappingsAsync();
     }
 
     [RelayCommand]
@@ -1124,7 +1201,7 @@ public partial class AutoPostViewModel : ViewModelBase
     [RelayCommand]
     public async Task StartAutomationAsync()
     {
-        if (IsRunning)
+        if (IsRunning || IsBusy)
             return;
 
         // Strictly select only instances from the visible/active view that are checked
@@ -1151,8 +1228,23 @@ public partial class AutoPostViewModel : ViewModelBase
             t.Status == "Queued" && t.Type.Equals("Video", StringComparison.OrdinalIgnoreCase)
         );
 
+        var screenTime = ScreenTimeSetting.FromConfig(ExportConfig());
+        if (screenTime.HasActions && selectedWorkers.Any(w => w.FbClone != "FB-01"))
+        {
+            _snackbarManager.Notify(
+                "ScreenTime currently supports FB-01. Select the mapped Facebook app."
+            );
+            return;
+        }
+        var screenTimeErrors = screenTime.Validate();
+        if (screenTimeErrors.Count > 0)
+        {
+            _snackbarManager.Notify(string.Join("\n", screenTimeErrors));
+            return;
+        }
         var hasAnyAction =
-            IsWatchVideo
+            screenTime.HasActions
+            || IsWatchVideo
             || IsNewsFeed
             || IsMarketPlace
             || IsPostReel
@@ -1165,6 +1257,8 @@ public partial class AutoPostViewModel : ViewModelBase
             || hasQueuedReels
             || hasQueuedPictures
             || hasQueuedVideos;
+        if (_screenTimeOnlyRequested)
+            hasAnyAction = screenTime.HasActions;
         if (!hasAnyAction)
         {
             _snackbarManager.Notify(
@@ -1175,6 +1269,8 @@ public partial class AutoPostViewModel : ViewModelBase
 
         var config = new WorkerRunConfig
         {
+            ScreenTime = screenTime,
+            ScreenTimeOnly = _screenTimeOnlyRequested,
             WatchVideo = IsWatchVideo,
             WatchVideoMin = WatchVideoMin,
             WatchVideoMax = WatchVideoMax,
@@ -1196,13 +1292,13 @@ public partial class AutoPostViewModel : ViewModelBase
             AcceptFriends = AcceptFriends,
             AcceptFriendsMin = AcceptFriendsMin,
             AcceptFriendsMax = AcceptFriendsMax,
-            PostReel = IsPostReel || hasQueuedReels,
+            PostReel = !_screenTimeOnlyRequested && (IsPostReel || hasQueuedReels),
             DeleteReelFile = IsDeleteReelFile,
             BackupReelFile = IsBackupReelFile,
-            PostPicture = IsPostPicture || hasQueuedPictures,
+            PostPicture = !_screenTimeOnlyRequested && (IsPostPicture || hasQueuedPictures),
             DeletePictureFile = IsDeletePictureFile,
             BackupPictureFile = IsBackupPictureFile,
-            PostVideo = IsPostVideo || hasQueuedVideos,
+            PostVideo = !_screenTimeOnlyRequested && (IsPostVideo || hasQueuedVideos),
             DeleteVideoFile = IsDeleteVideoFile,
             BackupVideoFile = IsBackupVideoFile,
             ClearCache = ClearCacheFBBeforeOpen,
@@ -1217,81 +1313,109 @@ public partial class AutoPostViewModel : ViewModelBase
             DelayBeforeSwitchPage = DelayBeforeSwitchPage,
         };
 
+        IsBusy = true;
+        try
+        {
+            await PreparePFlowAsync(config);
+        }
+        catch (Exception ex)
+        {
+            _snackbarManager.Notify("P-Flow preparation failed: " + ex.Message);
+            await FinishPFlowFilesAsync();
+            return;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
         IsRunning = true;
         StatusSummary =
             $"Automation running on {Math.Min(RunThread, selectedWorkers.Count)} threads...";
         _batchCts = new CancellationTokenSource();
         var ct = _batchCts.Token;
 
-        _ = Task.Run(
-            async () =>
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var semaphore = new SemaphoreSlim(Math.Max(1, RunThread));
+                var tasks = selectedWorkers.Select(
+                    (worker, idx) =>
+                    {
+                        return Task.Run(
+                            async () =>
+                            {
+                                // Stagger emulator starts based on DelayOpenEachLD
+                                if (idx > 0 && config.DelayOpenEach > 0)
+                                {
+                                    var staggerSec = idx * config.DelayOpenEach;
+                                    worker.Status = $"Waiting to boot ({staggerSec}s)...";
+                                    await Task.Delay(TimeSpan.FromSeconds(staggerSec), ct);
+                                }
+
+                                await semaphore.WaitAsync(ct);
+                                try
+                                {
+                                    await ExecuteWorkerLifecycleAsync(worker, config, ct);
+                                }
+                                finally
+                                {
+                                    semaphore.Release();
+                                }
+                            },
+                            ct
+                        );
+                    }
+                );
+
+                await Task.WhenAll(tasks);
+
+                Dispatcher.UIThread.Post(() =>
+                {
+                    var completed = Tasks.Where(t => t.Status == "Posted").ToList();
+                    foreach (var c in completed)
+                    {
+                        Tasks.Remove(c);
+                    }
+                    var issues = selectedWorkers.Count(w =>
+                        w.Status.StartsWith("Error:")
+                        || w.Status.Contains("Inactive/Logged Out")
+                        || w.Status.Contains("Unknown publication")
+                    );
+                    StatusSummary =
+                        issues == 0
+                            ? "All sessions completed."
+                            : $"Batch finished with {issues} worker issue(s). Review device statuses.";
+                    _snackbarManager.Notify(StatusSummary);
+                });
+            }
+            catch (OperationCanceledException)
+            {
+                Dispatcher.UIThread.Post(() =>
+                {
+                    StatusSummary = "Automation stopped by user.";
+                    _snackbarManager.Notify("Automation halted.");
+                });
+            }
+            catch (Exception ex)
+            {
+                Dispatcher.UIThread.Post(() =>
+                {
+                    StatusSummary = $"Error: {ex.Message}";
+                });
+            }
+            finally
             {
                 try
                 {
-                    var semaphore = new SemaphoreSlim(Math.Max(1, RunThread));
-                    var tasks = selectedWorkers.Select(
-                        (worker, idx) =>
-                        {
-                            return Task.Run(
-                                async () =>
-                                {
-                                    // Stagger emulator starts based on DelayOpenEachLD
-                                    if (idx > 0 && config.DelayOpenEach > 0)
-                                    {
-                                        var staggerSec = idx * config.DelayOpenEach;
-                                        worker.Status = $"Waiting to boot ({staggerSec}s)...";
-                                        await Task.Delay(TimeSpan.FromSeconds(staggerSec), ct);
-                                    }
-
-                                    await semaphore.WaitAsync(ct);
-                                    try
-                                    {
-                                        await ExecuteWorkerLifecycleAsync(worker, config, ct);
-                                    }
-                                    finally
-                                    {
-                                        semaphore.Release();
-                                    }
-                                },
-                                ct
-                            );
-                        }
-                    );
-
-                    await Task.WhenAll(tasks);
-
-                    Dispatcher.UIThread.Post(() =>
-                    {
-                        var completed = Tasks.Where(t => t.Status == "Posted").ToList();
-                        foreach (var c in completed)
-                        {
-                            Tasks.Remove(c);
-                        }
-                        StatusSummary = "All automation tasks completed.";
-                        _snackbarManager.Notify("Batch completed and dispatch queue cleared.");
-                        IsRunning = false;
-                    });
+                    await FinishPFlowFilesAsync();
                 }
-                catch (OperationCanceledException)
+                finally
                 {
-                    Dispatcher.UIThread.Post(() =>
-                    {
-                        StatusSummary = "Automation stopped by user.";
-                        _snackbarManager.Notify("Automation halted.");
-                        IsRunning = false;
-                    });
+                    await Dispatcher.UIThread.InvokeAsync(() => IsRunning = false);
                 }
-                catch (Exception ex)
-                {
-                    Dispatcher.UIThread.Post(() =>
-                    {
-                        StatusSummary = $"Error: {ex.Message}";
-                        IsRunning = false;
-                    });
-                }
-            },
-            ct
-        );
+            }
+        });
     }
 
     private async Task ExecuteWorkerLifecycleAsync(
@@ -1300,6 +1424,8 @@ public partial class AutoPostViewModel : ViewModelBase
         CancellationToken ct
     )
     {
+        using var deviceLease = await PFlowDeviceLease.AcquireAsync(worker.Index, ct);
+        bool appsCleared = false;
         try
         {
             // Pre-flight check: determine if this worker has any work to do
@@ -1320,14 +1446,7 @@ public partial class AutoPostViewModel : ViewModelBase
                 )
             );
 
-            bool hasWarmupAction =
-                config.ReadNotification
-                || config.AddFriendSuggest
-                || config.AcceptFriends
-                || config.CheckIn
-                || config.NewsFeed
-                || config.WatchVideo
-                || config.MarketPlace;
+            bool hasWarmupAction = config.ScreenTime.HasActions;
 
             var workerPages = Pages
                 .Where(p =>
@@ -1350,7 +1469,8 @@ public partial class AutoPostViewModel : ViewModelBase
 
             // 1. Boot emulator
             worker.Status = "Booting LDPlayer...";
-            await _ldPlayerService.LaunchInstanceAsync(worker.Index, LdFolder, ct);
+            if (!await _ldPlayerService.LaunchInstanceAsync(worker.Index, LdFolder, ct))
+                throw new InvalidOperationException("LD launch was not acknowledged.");
             worker.IsAndroidStarted = true;
 
             // Wait for Android OS to finish booting
@@ -1361,348 +1481,32 @@ public partial class AutoPostViewModel : ViewModelBase
                 LdFolder,
                 ct
             );
+            if (!booted)
+                throw new InvalidOperationException(
+                    "Android did not finish booting within 60 seconds."
+                );
 
             if (config.AutoSort)
             {
                 await _ldPlayerService.SortWindowsAsync(LdFolder, ct);
             }
 
-            // 2. Delay 20 seconds after LD start (as requested by profile switch algorithm)
-            var postBootDelay = Math.Max(20, config.DelayAfterOpen);
-            worker.Status = $"{worker.FbClone}: Waiting {postBootDelay}s after LD start...";
+            var postBootDelay = Math.Max(0, config.DelayAfterOpen);
+            worker.Status = $"Waiting {postBootDelay}s after LD start...";
             await Task.Delay(TimeSpan.FromSeconds(postBootDelay), ct);
+            worker.Status = "Checking internet inside LD...";
+            await PFlowSession.WaitInternetAsync(_ldPlayerService, worker.Index, LdFolder, ct);
 
-            // Ensure switched to personal profile before starting account warm up
-            hasWarmupAction =
-                config.ReadNotification
-                || config.AddFriendSuggest
-                || config.NewsFeed
-                || config.WatchVideo
-                || config.MarketPlace;
-
-            if (hasWarmupAction && !ct.IsCancellationRequested)
+            if (config.ClearCache)
             {
-                var personalProfileHint = Pages
-                    .FirstOrDefault(p =>
-                        (
-                            p.DeviceName.Equals(worker.Name, StringComparison.OrdinalIgnoreCase)
-                            || p.DeviceName.Equals(
-                                $"LD-{worker.Index}",
-                                StringComparison.OrdinalIgnoreCase
-                            )
-                        ) && p.Type.Equals("Profile", StringComparison.OrdinalIgnoreCase)
-                    )
-                    ?.PageName;
-
-                if (!string.IsNullOrWhiteSpace(personalProfileHint))
-                {
-                    if (
-                        personalProfileHint.Contains("1 of", StringComparison.OrdinalIgnoreCase)
-                        || personalProfileHint.Contains(":")
-                        || personalProfileHint.Length > 40
-                        || personalProfileHint.Equals("All", StringComparison.OrdinalIgnoreCase)
-                        || personalProfileHint.Equals(
-                            "Shortcuts",
-                            StringComparison.OrdinalIgnoreCase
-                        )
-                        || personalProfileHint.Equals("Menu", StringComparison.OrdinalIgnoreCase)
-                    )
-                    {
-                        personalProfileHint = null;
-                    }
-                }
-
-                worker.Status = $"{worker.FbClone}: Switching to personal profile...";
-                await _ldPlayerService.EnsureSwitchedToPersonalProfileAsync(
-                    worker.Index,
-                    personalProfileHint,
-                    LdFolder,
-                    ct
-                );
-            }
-            else
-            {
-                if (config.ClearCache)
-                {
-                    worker.Status = "Clearing FB Cache...";
-                    await _ldPlayerService.ClearFacebookCacheAsync(worker.Index, LdFolder, ct);
-                    await Task.Delay(1000, ct);
-                }
-
-                // Launch Facebook App
-                worker.Status = "Opening Facebook App...";
-                if (config.WatchVideo && !config.NewsFeed)
-                {
-                    await _ldPlayerService.OpenDeepLinkAsync(
-                        worker.Index,
-                        "fb://watch",
-                        "com.facebook.katana",
-                        LdFolder,
-                        ct
+                worker.Status = "Clearing Facebook cache...";
+                if (!await _ldPlayerService.ClearFacebookCacheAsync(worker.Index, LdFolder, ct))
+                    throw new InvalidOperationException(
+                        "Facebook cache clear was not acknowledged."
                     );
-                }
-                else
-                {
-                    await _ldPlayerService.LaunchAppAsync(
-                        worker.Index,
-                        "com.facebook.katana",
-                        LdFolder,
-                        ct
-                    );
-                }
-                await Task.Delay(TimeSpan.FromSeconds(Math.Max(3, config.DelayOpenApp)), ct);
             }
-
-            // Read Notifications (ONLY if ReadNotification is selected)
-            if (config.ReadNotification && !ct.IsCancellationRequested)
-            {
-                worker.Status = $"{worker.FbClone}: Reading Notifications...";
-                await _ldPlayerService.OpenDeepLinkAsync(
-                    worker.Index,
-                    "fb://notifications",
-                    "com.facebook.katana",
-                    LdFolder,
-                    ct
-                );
-                await Task.Delay(3000, ct);
-                await _ldPlayerService.SwipeAsync(
-                    worker.Index,
-                    360,
-                    700,
-                    360,
-                    350,
-                    400,
-                    LdFolder,
-                    ct
-                );
-                await Task.Delay(2000, ct);
-
-                // Action finish: dismiss any open notification item or sheet
-                await _ldPlayerService.SendKeyAsync(worker.Index, 4, LdFolder, ct);
-                await Task.Delay(1000, ct);
-            }
-
-            // Friend suggestions (ONLY if AddFriendSuggest is selected)
-            if (config.AddFriendSuggest && !ct.IsCancellationRequested)
-            {
-                worker.Status = $"{worker.FbClone}: Friend Suggestions...";
-                await _ldPlayerService.OpenDeepLinkAsync(
-                    worker.Index,
-                    "fb://friends",
-                    "com.facebook.katana",
-                    LdFolder,
-                    ct
-                );
-                await Task.Delay(3000, ct);
-                await _ldPlayerService.SwipeAsync(
-                    worker.Index,
-                    360,
-                    800,
-                    360,
-                    400,
-                    350,
-                    LdFolder,
-                    ct
-                );
-                await Task.Delay(2000, ct);
-
-                // Action finish: dismiss any open profile or sheet
-                await _ldPlayerService.SendKeyAsync(worker.Index, 4, LdFolder, ct);
-                await Task.Delay(1000, ct);
-            }
-
-            // 5. Active Newsfeed Warmup (ONLY if NewsFeed is selected)
-            if (config.NewsFeed && !ct.IsCancellationRequested)
-            {
-                worker.Status = $"{worker.FbClone}: Navigating to Feed...";
-                await _ldPlayerService.OpenDeepLinkAsync(
-                    worker.Index,
-                    "fb://feed",
-                    "com.facebook.katana",
-                    LdFolder,
-                    ct
-                );
-                await Task.Delay(2500, ct);
-
-                var totalDuration = Random.Shared.Next(
-                    Math.Min(config.NewsFeedMin, config.NewsFeedMax),
-                    Math.Max(config.NewsFeedMin, config.NewsFeedMax)
-                );
-                var elapsed = 0;
-                var likesGiven = 0;
-                var targetLikes = config.LikePost
-                    ? Random.Shared.Next(
-                        Math.Min(config.LikePostMin, config.LikePostMax),
-                        Math.Max(config.LikePostMin, config.LikePostMax) + 1
-                    )
-                    : 0;
-
-                int scrollCount = 0;
-                while (elapsed < totalDuration && !ct.IsCancellationRequested)
-                {
-                    var remaining = totalDuration - elapsed;
-                    worker.Status = $"{worker.FbClone}: NewsFeed ({remaining}s)";
-
-                    // Safe human swipe path avoiding center media overlay targets
-                    int startX = Random.Shared.Next(330, 410);
-                    int endX = startX + Random.Shared.Next(-20, 21);
-                    int startY = Random.Shared.Next(750, 920);
-                    int scrollDistance = Random.Shared.Next(340, 520);
-                    int endY = Math.Max(240, startY - scrollDistance);
-                    int durationMs = Random.Shared.Next(480, 680);
-
-                    await _ldPlayerService.SwipeAsync(
-                        worker.Index,
-                        startX,
-                        startY,
-                        endX,
-                        endY,
-                        durationMs,
-                        LdFolder,
-                        ct
-                    );
-                    scrollCount++;
-
-                    var pauseSeconds = Random.Shared.Next(4, 8);
-                    await Task.Delay(TimeSpan.FromSeconds(pauseSeconds), ct);
-                    elapsed += pauseSeconds;
-
-                    if (
-                        likesGiven < targetLikes
-                        && Random.Shared.Next(0, 3) == 0
-                        && !ct.IsCancellationRequested
-                    )
-                    {
-                        var liked = await _ldPlayerService.LikeCurrentFeedPostAsync(
-                            worker.Index,
-                            LdFolder,
-                            ct
-                        );
-                        if (liked)
-                        {
-                            likesGiven++;
-                        }
-                    }
-
-                    // Check and recover if an accidental sheet/viewer was opened
-                    if (scrollCount % 3 == 0 && !ct.IsCancellationRequested)
-                    {
-                        await _ldPlayerService.EnsureOnFeedAsync(worker.Index, LdFolder, ct);
-                    }
-                }
-
-                // Action finish: ensure any opened modal, comments or preview is dismissed
-                worker.Status = $"{worker.FbClone}: NewsFeed finished. Transitioning...";
-                await _ldPlayerService.SendKeyAsync(worker.Index, 4, LdFolder, ct);
-                await Task.Delay(1000, ct);
-            }
-
-            // 6. Active Watch Video / Reels Interaction (ONLY if WatchVideo is selected)
-            if (config.WatchVideo && !ct.IsCancellationRequested)
-            {
-                worker.Status = $"{worker.FbClone}: Navigating to Watch Video / Reels...";
-                // Cleanly route to Watch Video / Reels via deep link with clear-top flag
-                await _ldPlayerService.OpenDeepLinkAsync(
-                    worker.Index,
-                    "fb://watch",
-                    "com.facebook.katana",
-                    LdFolder,
-                    ct
-                );
-                await Task.Delay(2500, ct);
-
-                var totalDuration = Random.Shared.Next(
-                    Math.Min(config.WatchVideoMin, config.WatchVideoMax),
-                    Math.Max(config.WatchVideoMin, config.WatchVideoMax)
-                );
-                var elapsed = 0;
-
-                while (elapsed < totalDuration && !ct.IsCancellationRequested)
-                {
-                    var remaining = totalDuration - elapsed;
-                    worker.Status = $"{worker.FbClone}: Watching Video ({remaining}s)";
-
-                    var watchTime = Random.Shared.Next(10, 20);
-                    var waitChunk = Math.Min(watchTime, remaining);
-                    await Task.Delay(TimeSpan.FromSeconds(waitChunk), ct);
-                    elapsed += waitChunk;
-
-                    if (!ct.IsCancellationRequested)
-                    {
-                        var durationMs = Random.Shared.Next(400, 560);
-                        int startX = Random.Shared.Next(330, 390);
-                        int endX = startX + Random.Shared.Next(-15, 16);
-                        // Swipe up to next video/reel
-                        await _ldPlayerService.SwipeAsync(
-                            worker.Index,
-                            startX,
-                            950,
-                            endX,
-                            240,
-                            durationMs,
-                            LdFolder,
-                            ct
-                        );
-
-                        if (config.LikePost && Random.Shared.Next(0, 4) == 0)
-                        {
-                            await _ldPlayerService.LikeCurrentVideoPostAsync(
-                                worker.Index,
-                                LdFolder,
-                                ct
-                            );
-                        }
-                    }
-                }
-
-                // Action finish: dismiss video player overlay / comment sheet
-                worker.Status = $"{worker.FbClone}: Watch Video finished. Transitioning...";
-                await _ldPlayerService.SendKeyAsync(worker.Index, 4, LdFolder, ct);
-                await Task.Delay(1000, ct);
-            }
-
-            // 7. Active Marketplace Browsing (ONLY if MarketPlace is selected)
-            if (config.MarketPlace && !ct.IsCancellationRequested)
-            {
-                worker.Status = $"{worker.FbClone}: Navigating to Marketplace...";
-                await _ldPlayerService.OpenDeepLinkAsync(
-                    worker.Index,
-                    "fb://marketplace",
-                    "com.facebook.katana",
-                    LdFolder,
-                    ct
-                );
-                await Task.Delay(2500, ct);
-
-                var totalDuration = Random.Shared.Next(
-                    Math.Min(config.MarketPlaceMin, config.MarketPlaceMax),
-                    Math.Max(config.MarketPlaceMin, config.MarketPlaceMax)
-                );
-                var elapsed = 0;
-                while (elapsed < totalDuration && !ct.IsCancellationRequested)
-                {
-                    var remaining = totalDuration - elapsed;
-                    worker.Status = $"{worker.FbClone}: Marketplace ({remaining}s)";
-                    await _ldPlayerService.SwipeAsync(
-                        worker.Index,
-                        360,
-                        850,
-                        360,
-                        350,
-                        400,
-                        LdFolder,
-                        ct
-                    );
-                    var pause = Random.Shared.Next(3, 7);
-                    await Task.Delay(TimeSpan.FromSeconds(pause), ct);
-                    elapsed += pause;
-                }
-
-                // Action finish: dismiss any opened product details sheet
-                worker.Status = $"{worker.FbClone}: Marketplace finished. Transitioning...";
-                await _ldPlayerService.SendKeyAsync(worker.Index, 4, LdFolder, ct);
-                await Task.Delay(1000, ct);
-            }
+            if (config.ScreenTime.HasActions)
+                await RunScreenTimeAsync(worker, config.ScreenTime, ct);
 
             // 8. Media Posting Pipeline: Facebook Page Post Reel, Video, and Picture
             if (
@@ -1808,7 +1612,7 @@ public partial class AutoPostViewModel : ViewModelBase
                     targetPages = configuredPages.Count > 0 ? configuredPages : devicePages;
                 }
 
-                foreach (var page in targetPages)
+                foreach (var page in targetPages.OrderByDescending(p => p.IsProfile))
                 {
                     if (ct.IsCancellationRequested)
                         break;
@@ -1857,80 +1661,51 @@ public partial class AutoPostViewModel : ViewModelBase
                         continue;
                     }
 
-                    // Switch persona to page
-                    if (!string.IsNullOrWhiteSpace(page.PageName))
-                    {
-                        worker.Status = $"{worker.FbClone}: Switching to Page '{page.PageName}'...";
-                        var switched = await _ldPlayerService.SwitchToPersonaAsync(
-                            worker.Index,
-                            page.PageName,
-                            LdFolder,
-                            ct
-                        );
-                        if (!switched)
-                        {
-                            worker.Status =
-                                $"{worker.FbClone}: Error: Could not switch to Page '{page.PageName}'. Skipping posts for this page.";
-
-                            // Mark queued tasks for this page as failed so they don't get posted to personal profile
-                            var pageTasks = Tasks
-                                .Where(t =>
-                                    t.Status == "Queued"
-                                    && t.Page.Equals(
-                                        page.PageName,
-                                        StringComparison.OrdinalIgnoreCase
-                                    )
-                                    && (
-                                        t.DeviceName.Equals(
-                                            worker.Name,
-                                            StringComparison.OrdinalIgnoreCase
-                                        )
-                                        || t.DeviceName.Equals(
-                                            $"LD-{worker.Index}",
-                                            StringComparison.OrdinalIgnoreCase
-                                        )
-                                        || t.DeviceName.Equals(
-                                            page.DeviceName,
-                                            StringComparison.OrdinalIgnoreCase
-                                        )
-                                    )
-                                )
-                                .ToList();
-                            foreach (var pt in pageTasks)
-                            {
-                                pt.Status = "Failed (Page Switch Error)";
-                            }
-                            continue;
-                        }
-
-                        var delaySeconds =
-                            config.DelayBeforeSwitchPage > 0
-                                ? Math.Min(30, config.DelayBeforeSwitchPage)
-                                : 5;
-                        await Task.Delay(TimeSpan.FromSeconds(delaySeconds), ct);
-                    }
-
                     // A. POST REEL
                     if (config.PostReel && !ct.IsCancellationRequested)
                     {
                         await ExecutePostReelForPageAsync(worker, page, config, ct);
+                        if (
+                            _pFlowJobs.Any(j =>
+                                j.DeviceIndex == worker.Index && j.State == PFlowState.Unknown
+                            )
+                        )
+                            return;
                     }
 
                     // B. POST PICTURE
                     if (config.PostPicture && !ct.IsCancellationRequested)
                     {
                         await ExecutePostPictureForPageAsync(worker, page, config, ct);
+                        if (
+                            _pFlowJobs.Any(j =>
+                                j.DeviceIndex == worker.Index && j.State == PFlowState.Unknown
+                            )
+                        )
+                            return;
                     }
 
                     // C. POST VIDEO (Long Video)
                     if (config.PostVideo && !ct.IsCancellationRequested)
                     {
                         await ExecutePostVideoForPageAsync(worker, page, config, ct);
+                        if (
+                            _pFlowJobs.Any(j =>
+                                j.DeviceIndex == worker.Index && j.State == PFlowState.Unknown
+                            )
+                        )
+                            return;
                     }
                 }
 
                 // If SwitchToProfileAfterPost is enabled, switch back to personal profile
-                if (SwitchToProfileAfterPost && !ct.IsCancellationRequested)
+                if (
+                    SwitchToProfileAfterPost
+                    && !ct.IsCancellationRequested
+                    && !_pFlowJobs.Any(j =>
+                        j.DeviceIndex == worker.Index && j.State == PFlowState.Unknown
+                    )
+                )
                 {
                     var profilePage = devicePages.FirstOrDefault(p =>
                         p.Type.Equals("Profile", StringComparison.OrdinalIgnoreCase)
@@ -1950,24 +1725,17 @@ public partial class AutoPostViewModel : ViewModelBase
                 }
             }
 
-            // 9. Stop Facebook App and Clear Recent Apps
-            worker.Status = "Closing Facebook App...";
-            await _ldPlayerService.StopFacebookAppAsync(worker.Index, LdFolder, ct);
-            await Task.Delay(500, ct);
-
-            // Always bring to clean Home screen
-            await _ldPlayerService.SendKeyAsync(worker.Index, 3, LdFolder, ct); // Home key
-
-            if (config.ClearRecent && !ct.IsCancellationRequested)
+            if (_pFlowJobs.Any(j => j.DeviceIndex == worker.Index && j.State == PFlowState.Unknown))
             {
-                worker.Status = "Clearing Recent Apps...";
-                await Task.Delay(400, ct);
-                await _ldPlayerService.SendKeyAsync(worker.Index, 187, LdFolder, ct); // App Switch key
-                await Task.Delay(800, ct);
-                await _ldPlayerService.TapAsync(worker.Index, 360, 1050, LdFolder, ct); // Clear all tasks
-                await Task.Delay(500, ct);
-                await _ldPlayerService.SendKeyAsync(worker.Index, 3, LdFolder, ct); // Home key
+                worker.Status = "P-Flow: Unknown publication; Facebook left open.";
+                return;
             }
+            if (config.ClearRecent)
+            {
+                worker.Status = "Clearing recent apps...";
+                await PFlowSession.ClearAppsAsync(_ldPlayerService, worker.Index, LdFolder, ct);
+            }
+            appsCleared = true;
 
             // 10. Close LDPlayer if enabled
             if (config.CloseAfterAction && !ct.IsCancellationRequested)
@@ -1977,11 +1745,15 @@ public partial class AutoPostViewModel : ViewModelBase
 
                 await _ldPlayerService.QuitInstanceAsync(worker.Index, LdFolder, ct);
                 worker.IsAndroidStarted = false;
-                worker.Status = "All Done";
+                worker.Status = config.ScreenTime.HasActions
+                    ? "ScreenTime completed • All done"
+                    : "All done";
             }
             else
             {
-                worker.Status = "All Done";
+                worker.Status = config.ScreenTime.HasActions
+                    ? "ScreenTime completed • All done"
+                    : "All done";
             }
         }
         catch (OperationCanceledException)
@@ -1992,10 +1764,39 @@ public partial class AutoPostViewModel : ViewModelBase
         {
             worker.Status = $"Error: {ex.Message}";
         }
+        finally
+        {
+            if (
+                !appsCleared
+                && config.ClearRecent
+                && worker.IsAndroidStarted
+                && !_pFlowJobs.Any(j =>
+                    j.DeviceIndex == worker.Index && j.State == PFlowState.Unknown
+                )
+            )
+            {
+                using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+                try
+                {
+                    await PFlowSession.ClearAppsAsync(
+                        _ldPlayerService,
+                        worker.Index,
+                        LdFolder,
+                        cleanup.Token
+                    );
+                }
+                catch (Exception ex)
+                {
+                    worker.Status += " (cleanup pending: " + ex.Message + ")";
+                }
+            }
+        }
     }
 
     public class WorkerRunConfig
     {
+        public ScreenTimeSetting ScreenTime { get; init; } = new() { WatchVideo = false };
+        public bool ScreenTimeOnly { get; init; }
         public bool WatchVideo { get; init; }
         public int WatchVideoMin { get; init; }
         public int WatchVideoMax { get; init; }
@@ -2050,733 +1851,95 @@ public partial class AutoPostViewModel : ViewModelBase
         public int DelayBeforeSwitchPage { get; init; }
     }
 
-    private async Task ExecutePostReelForPageAsync(
+    private async Task<bool> EnsureTargetPersonaActiveAsync(
         LDInstanceItemViewModel worker,
         FacebookPageTargetViewModel page,
-        WorkerRunConfig config,
         CancellationToken ct
     )
     {
-        var queuedTasks = Tasks
-            .Where(t =>
-                t.Status == "Queued"
-                && t.Type.Equals("Reel", StringComparison.OrdinalIgnoreCase)
-                && (
-                    t.DeviceName.Equals(worker.Name, StringComparison.OrdinalIgnoreCase)
-                    || t.DeviceName.Equals($"LD-{worker.Index}", StringComparison.OrdinalIgnoreCase)
-                    || t.DeviceName.Equals(page.DeviceName, StringComparison.OrdinalIgnoreCase)
-                )
-                && t.Page.Equals(page.PageName, StringComparison.OrdinalIgnoreCase)
-            )
-            .ToList();
+        if (
+            string.IsNullOrWhiteSpace(page.PageName)
+            || string.IsNullOrWhiteSpace(page.PageId)
+            || string.IsNullOrWhiteSpace(page.UserUid)
+        )
+            return false;
 
-        if (queuedTasks.Count > 0)
-        {
-            foreach (var queuedTask in queuedTasks)
-            {
-                if (ct.IsCancellationRequested)
-                    break;
-
-                if (AutoMaxPostByMaturity && page.GetPostsToday() >= page.GetMaxDailyPostsLimit())
-                {
-                    queuedTask.Status = "Skipped (Daily limit)";
-                    worker.Status =
-                        $"[{page.PageName}] Daily maturity limit reached ({page.GetPostsToday()}/{page.GetMaxDailyPostsLimit()}). Skipping Reel.";
-                    continue;
-                }
-
-                if (!File.Exists(queuedTask.FilePath))
-                {
-                    queuedTask.Status = "File Missing";
-                    worker.Status = $"[{page.PageName}] File not found: {queuedTask.FilePath}";
-                    continue;
-                }
-
-                queuedTask.Status = "In Progress";
-                var qFileName = Path.GetFileName(queuedTask.FilePath);
-                var qCaption = !string.IsNullOrWhiteSpace(queuedTask.Title)
-                    ? queuedTask.Title
-                    : ResolveCaptionForMedia(
-                        queuedTask.FilePath,
-                        page.TitleVideoReel,
-                        page.UseTitleFromTextFile
-                    );
-
-                worker.Status = $"Posting Reel: {qFileName} to '{page.PageName}'...";
-                var qSuccess = await _ldPlayerService.PostReelToFacebookAsync(
-                    worker.Index,
-                    queuedTask.FilePath,
-                    qCaption,
-                    LdFolder,
-                    ct
-                );
-
-                if (qSuccess)
-                {
-                    queuedTask.Status = "Posted";
-                    worker.Status = $"Reel '{qFileName}' Posted to '{page.PageName}'!";
-                    page.RecordPostToday();
-                    _ = SavePagesAsync();
-                    HandleMediaFilePostProcessing(
-                        queuedTask.FilePath,
-                        config.DeleteReelFile,
-                        config.BackupReelFile
-                    );
-                    page.RefreshMediaCounts();
-                    Dispatcher.UIThread.Post(() => Tasks.Remove(queuedTask));
-                    var remotePath = $"/sdcard/DCIM/Camera/{qFileName}";
-                    var maxWaitTimeout = TimeSpan.FromSeconds(Math.Max(config.DelayUpload, 180));
-                    await _ldPlayerService.WaitForFacebookUploadCompletedAsync(
-                        worker.Index,
-                        remotePath,
-                        maxWaitTimeout,
-                        LdFolder,
-                        ct
-                    );
-                    await Task.Delay(TimeSpan.FromSeconds(Math.Max(5, config.DelayUpload)), ct);
-                    await _ldPlayerService.DeleteFileFromEmulatorAsync(
-                        worker.Index,
-                        remotePath,
-                        LdFolder,
-                        ct
-                    );
-                }
-                else
-                {
-                    queuedTask.Status = "Failed";
-                    worker.Status = $"Failed to post Reel '{qFileName}' to '{page.PageName}'.";
-                    await _ldPlayerService.DeleteFileFromEmulatorAsync(
-                        worker.Index,
-                        $"/sdcard/DCIM/Camera/{qFileName}",
-                        LdFolder,
-                        ct
-                    );
-                }
-            }
-            return;
-        }
-
-        if (AutoMaxPostByMaturity && page.GetPostsToday() >= page.GetMaxDailyPostsLimit())
-        {
-            worker.Status =
-                $"[{page.PageName}] Daily maturity limit reached ({page.GetPostsToday()}/{page.GetMaxDailyPostsLimit()}). Skipping folder Reel post.";
-            return;
-        }
-
-        var sourcePath = page.VideoReelPath?.Trim().Trim('"', '\'');
-        if (string.IsNullOrWhiteSpace(sourcePath))
-        {
-            worker.Status = $"[{page.PageName}] No Video Reel path set. Skipping.";
-            return;
-        }
-
-        string? videoFile = null;
-        if (File.Exists(sourcePath))
-        {
-            videoFile = sourcePath;
-        }
-        else if (Directory.Exists(sourcePath))
-        {
-            var files = Directory
-                .GetFiles(sourcePath, "*.*")
-                .Where(f =>
-                    f.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase)
-                    || f.EndsWith(".mov", StringComparison.OrdinalIgnoreCase)
-                    || f.EndsWith(".webm", StringComparison.OrdinalIgnoreCase)
-                )
-                .OrderBy(f => f)
-                .ToList();
-            if (files.Count > 0)
-            {
-                videoFile = files[0];
-            }
-            else
-            {
-                worker.Status = $"[{page.PageName}] No video files found in folder: {sourcePath}";
-                return;
-            }
-        }
-        else
-        {
-            worker.Status = $"[{page.PageName}] Reel path not found on disk: {sourcePath}";
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(videoFile))
-        {
-            worker.Status = $"[{page.PageName}] No valid video file found.";
-            return;
-        }
-
-        var fileName = Path.GetFileName(videoFile);
-        var caption = ResolveCaptionForMedia(
-            videoFile,
-            page.TitleVideoReel,
-            page.UseTitleFromTextFile
-        );
-
-        worker.Status = $"Posting Reel: {fileName} to '{page.PageName}'...";
-        var success = await _ldPlayerService.PostReelToFacebookAsync(
-            worker.Index,
-            videoFile,
-            caption,
-            LdFolder,
-            ct
-        );
-
-        if (success)
-        {
-            worker.Status = $"Reel '{fileName}' Posted to '{page.PageName}'!";
-            page.RecordPostToday();
-            _ = SavePagesAsync();
-            HandleMediaFilePostProcessing(videoFile, config.DeleteReelFile, config.BackupReelFile);
-            page.RefreshMediaCounts();
-            var remotePath = $"/sdcard/DCIM/Camera/{fileName}";
-            var maxWaitTimeout = TimeSpan.FromSeconds(Math.Max(config.DelayUpload, 180));
-            await _ldPlayerService.WaitForFacebookUploadCompletedAsync(
-                worker.Index,
-                remotePath,
-                maxWaitTimeout,
-                LdFolder,
-                ct
-            );
-            await Task.Delay(TimeSpan.FromSeconds(Math.Max(5, config.DelayUpload)), ct);
-            await _ldPlayerService.DeleteFileFromEmulatorAsync(
-                worker.Index,
-                remotePath,
-                LdFolder,
-                ct
-            );
-        }
-        else
-        {
-            worker.Status = $"Failed to post Reel '{fileName}' to '{page.PageName}'.";
-            await _ldPlayerService.DeleteFileFromEmulatorAsync(
-                worker.Index,
-                $"/sdcard/DCIM/Camera/{fileName}",
-                LdFolder,
-                ct
-            );
-        }
-    }
-
-    private async Task ExecutePostPictureForPageAsync(
-        LDInstanceItemViewModel worker,
-        FacebookPageTargetViewModel page,
-        WorkerRunConfig config,
-        CancellationToken ct
-    )
-    {
-        var queuedTasks = Tasks
-            .Where(t =>
-                t.Status == "Queued"
-                && (
-                    t.Type.Equals("Picture", StringComparison.OrdinalIgnoreCase)
-                    || t.Type.Equals("Photo", StringComparison.OrdinalIgnoreCase)
-                )
-                && (
-                    t.DeviceName.Equals(worker.Name, StringComparison.OrdinalIgnoreCase)
-                    || t.DeviceName.Equals($"LD-{worker.Index}", StringComparison.OrdinalIgnoreCase)
-                    || t.DeviceName.Equals(page.DeviceName, StringComparison.OrdinalIgnoreCase)
-                )
-                && t.Page.Equals(page.PageName, StringComparison.OrdinalIgnoreCase)
-            )
-            .ToList();
-
-        if (queuedTasks.Count > 0)
-        {
-            foreach (var queuedTask in queuedTasks)
-            {
-                if (ct.IsCancellationRequested)
-                    break;
-
-                if (AutoMaxPostByMaturity && page.GetPostsToday() >= page.GetMaxDailyPostsLimit())
-                {
-                    queuedTask.Status = "Skipped (Daily limit)";
-                    worker.Status =
-                        $"[{page.PageName}] Daily maturity limit reached ({page.GetPostsToday()}/{page.GetMaxDailyPostsLimit()}). Skipping Picture.";
-                    continue;
-                }
-
-                if (!File.Exists(queuedTask.FilePath))
-                {
-                    queuedTask.Status = "File Missing";
-                    worker.Status = $"[{page.PageName}] File not found: {queuedTask.FilePath}";
-                    continue;
-                }
-
-                queuedTask.Status = "In Progress";
-                var qFileName = Path.GetFileName(queuedTask.FilePath);
-                var qCaption = !string.IsNullOrWhiteSpace(queuedTask.Title)
-                    ? queuedTask.Title
-                    : ResolveCaptionForMedia(
-                        queuedTask.FilePath,
-                        page.TitleImage,
-                        page.UseTitleFromTextFile
-                    );
-
-                worker.Status = $"Posting Picture: {qFileName} to '{page.PageName}'...";
-                var qSuccess = await _ldPlayerService.PostPictureToFacebookAsync(
-                    worker.Index,
-                    queuedTask.FilePath,
-                    qCaption,
-                    LdFolder,
-                    ct
-                );
-
-                if (qSuccess)
-                {
-                    queuedTask.Status = "Posted";
-                    worker.Status = $"Picture '{qFileName}' Posted to '{page.PageName}'!";
-                    page.RecordPostToday();
-                    _ = SavePagesAsync();
-                    HandleMediaFilePostProcessing(
-                        queuedTask.FilePath,
-                        config.DeletePictureFile,
-                        config.BackupPictureFile
-                    );
-                    page.RefreshMediaCounts();
-                    Dispatcher.UIThread.Post(() => Tasks.Remove(queuedTask));
-                    var remotePath = $"/sdcard/DCIM/Camera/{qFileName}";
-                    var maxWaitTimeout = TimeSpan.FromSeconds(Math.Max(config.DelayUpload, 180));
-                    await _ldPlayerService.WaitForFacebookUploadCompletedAsync(
-                        worker.Index,
-                        remotePath,
-                        maxWaitTimeout,
-                        LdFolder,
-                        ct
-                    );
-                    await Task.Delay(TimeSpan.FromSeconds(Math.Max(5, config.DelayUpload)), ct);
-                    await _ldPlayerService.DeleteFileFromEmulatorAsync(
-                        worker.Index,
-                        remotePath,
-                        LdFolder,
-                        ct
-                    );
-                }
-                else
-                {
-                    queuedTask.Status = "Failed";
-                    worker.Status = $"Failed to post Picture '{qFileName}' to '{page.PageName}'.";
-                    await _ldPlayerService.DeleteFileFromEmulatorAsync(
-                        worker.Index,
-                        $"/sdcard/DCIM/Camera/{qFileName}",
-                        LdFolder,
-                        ct
-                    );
-                }
-            }
-            return;
-        }
-
-        if (AutoMaxPostByMaturity && page.GetPostsToday() >= page.GetMaxDailyPostsLimit())
-        {
-            worker.Status =
-                $"[{page.PageName}] Daily maturity limit reached ({page.GetPostsToday()}/{page.GetMaxDailyPostsLimit()}). Skipping folder Picture post.";
-            return;
-        }
-
-        var sourcePath = page.ImagePath?.Trim().Trim('"', '\'');
-        if (string.IsNullOrWhiteSpace(sourcePath))
-        {
-            worker.Status = $"[{page.PageName}] No Picture path set. Skipping.";
-            return;
-        }
-
-        string? imageFile = null;
-        if (File.Exists(sourcePath))
-        {
-            imageFile = sourcePath;
-        }
-        else if (Directory.Exists(sourcePath))
-        {
-            var files = Directory
-                .GetFiles(sourcePath, "*.*")
-                .Where(f =>
-                    f.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase)
-                    || f.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase)
-                    || f.EndsWith(".png", StringComparison.OrdinalIgnoreCase)
-                    || f.EndsWith(".webp", StringComparison.OrdinalIgnoreCase)
-                )
-                .OrderBy(f => f)
-                .ToList();
-            if (files.Count > 0)
-            {
-                imageFile = files[0];
-            }
-            else
-            {
-                worker.Status = $"[{page.PageName}] No image files found in folder: {sourcePath}";
-                return;
-            }
-        }
-        else
-        {
-            worker.Status = $"[{page.PageName}] Image path not found on disk: {sourcePath}";
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(imageFile))
-        {
-            worker.Status = $"[{page.PageName}] No valid image file found.";
-            return;
-        }
-
-        var fileName = Path.GetFileName(imageFile);
-        var caption = ResolveCaptionForMedia(imageFile, page.TitleImage, page.UseTitleFromTextFile);
-
-        worker.Status = $"Posting Picture: {fileName} to '{page.PageName}'...";
-        var success = await _ldPlayerService.PostPictureToFacebookAsync(
-            worker.Index,
-            imageFile,
-            caption,
-            LdFolder,
-            ct
-        );
-
-        if (success)
-        {
-            worker.Status = $"Picture '{fileName}' Posted to '{page.PageName}'!";
-            page.RecordPostToday();
-            _ = SavePagesAsync();
-            HandleMediaFilePostProcessing(
-                imageFile,
-                config.DeletePictureFile,
-                config.BackupPictureFile
-            );
-            page.RefreshMediaCounts();
-            var remotePath = $"/sdcard/DCIM/Camera/{fileName}";
-            var maxWaitTimeout = TimeSpan.FromSeconds(Math.Max(config.DelayUpload, 180));
-            await _ldPlayerService.WaitForFacebookUploadCompletedAsync(
-                worker.Index,
-                remotePath,
-                maxWaitTimeout,
-                LdFolder,
-                ct
-            );
-            await Task.Delay(TimeSpan.FromSeconds(Math.Max(5, config.DelayUpload)), ct);
-            await _ldPlayerService.DeleteFileFromEmulatorAsync(
-                worker.Index,
-                remotePath,
-                LdFolder,
-                ct
-            );
-        }
-        else
-        {
-            worker.Status = $"Failed to post Picture '{fileName}' to '{page.PageName}'.";
-            await _ldPlayerService.DeleteFileFromEmulatorAsync(
-                worker.Index,
-                $"/sdcard/DCIM/Camera/{fileName}",
-                LdFolder,
-                ct
-            );
-        }
-    }
-
-    private async Task ExecutePostVideoForPageAsync(
-        LDInstanceItemViewModel worker,
-        FacebookPageTargetViewModel page,
-        WorkerRunConfig config,
-        CancellationToken ct
-    )
-    {
-        var queuedTasks = Tasks
-            .Where(t =>
-                t.Status == "Queued"
-                && t.Type.Equals("Video", StringComparison.OrdinalIgnoreCase)
-                && (
-                    t.DeviceName.Equals(worker.Name, StringComparison.OrdinalIgnoreCase)
-                    || t.DeviceName.Equals($"LD-{worker.Index}", StringComparison.OrdinalIgnoreCase)
-                    || t.DeviceName.Equals(page.DeviceName, StringComparison.OrdinalIgnoreCase)
-                )
-                && t.Page.Equals(page.PageName, StringComparison.OrdinalIgnoreCase)
-            )
-            .ToList();
-
-        if (queuedTasks.Count > 0)
-        {
-            foreach (var queuedTask in queuedTasks)
-            {
-                if (ct.IsCancellationRequested)
-                    break;
-
-                if (AutoMaxPostByMaturity && page.GetPostsToday() >= page.GetMaxDailyPostsLimit())
-                {
-                    queuedTask.Status = "Skipped (Daily limit)";
-                    worker.Status =
-                        $"[{page.PageName}] Daily maturity limit reached ({page.GetPostsToday()}/{page.GetMaxDailyPostsLimit()}). Skipping Video.";
-                    continue;
-                }
-
-                if (!File.Exists(queuedTask.FilePath))
-                {
-                    queuedTask.Status = "File Missing";
-                    worker.Status = $"[{page.PageName}] File not found: {queuedTask.FilePath}";
-                    continue;
-                }
-
-                queuedTask.Status = "In Progress";
-                var qFileName = Path.GetFileName(queuedTask.FilePath);
-                var qCaption = !string.IsNullOrWhiteSpace(queuedTask.Title)
-                    ? queuedTask.Title
-                    : ResolveCaptionForMedia(
-                        queuedTask.FilePath,
-                        page.TitleVideoLong,
-                        page.UseTitleFromTextFile
-                    );
-
-                worker.Status = $"Posting Video: {qFileName} to '{page.PageName}'...";
-                var qSuccess = await _ldPlayerService.PostVideoToFacebookAsync(
-                    worker.Index,
-                    queuedTask.FilePath,
-                    qCaption,
-                    LdFolder,
-                    ct
-                );
-
-                if (qSuccess)
-                {
-                    queuedTask.Status = "Posted";
-                    worker.Status = $"Video '{qFileName}' Posted to '{page.PageName}'!";
-                    page.RecordPostToday();
-                    _ = SavePagesAsync();
-                    HandleMediaFilePostProcessing(
-                        queuedTask.FilePath,
-                        config.DeleteVideoFile,
-                        config.BackupVideoFile
-                    );
-                    page.RefreshMediaCounts();
-                    Dispatcher.UIThread.Post(() => Tasks.Remove(queuedTask));
-                    var remotePath = $"/sdcard/DCIM/Camera/{qFileName}";
-                    var maxWaitTimeout = TimeSpan.FromSeconds(Math.Max(config.DelayUpload, 180));
-                    await _ldPlayerService.WaitForFacebookUploadCompletedAsync(
-                        worker.Index,
-                        remotePath,
-                        maxWaitTimeout,
-                        LdFolder,
-                        ct
-                    );
-                    await Task.Delay(TimeSpan.FromSeconds(Math.Max(5, config.DelayUpload)), ct);
-                    await _ldPlayerService.DeleteFileFromEmulatorAsync(
-                        worker.Index,
-                        remotePath,
-                        LdFolder,
-                        ct
-                    );
-                }
-                else
-                {
-                    queuedTask.Status = "Failed";
-                    worker.Status = $"Failed to post Video '{qFileName}' to '{page.PageName}'.";
-                    await _ldPlayerService.DeleteFileFromEmulatorAsync(
-                        worker.Index,
-                        $"/sdcard/DCIM/Camera/{qFileName}",
-                        LdFolder,
-                        ct
-                    );
-                }
-            }
-            return;
-        }
-
-        if (AutoMaxPostByMaturity && page.GetPostsToday() >= page.GetMaxDailyPostsLimit())
-        {
-            worker.Status =
-                $"[{page.PageName}] Daily maturity limit reached ({page.GetPostsToday()}/{page.GetMaxDailyPostsLimit()}). Skipping folder Video post.";
-            return;
-        }
-
-        var sourcePath = page.VideoLongPath?.Trim().Trim('"', '\'');
-        if (string.IsNullOrWhiteSpace(sourcePath))
-        {
-            worker.Status = $"[{page.PageName}] No Long Video path set. Skipping.";
-            return;
-        }
-
-        string? videoFile = null;
-        if (File.Exists(sourcePath))
-        {
-            videoFile = sourcePath;
-        }
-        else if (Directory.Exists(sourcePath))
-        {
-            var files = Directory
-                .GetFiles(sourcePath, "*.*")
-                .Where(f =>
-                    f.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase)
-                    || f.EndsWith(".mkv", StringComparison.OrdinalIgnoreCase)
-                    || f.EndsWith(".mov", StringComparison.OrdinalIgnoreCase)
-                )
-                .OrderBy(f => f)
-                .ToList();
-            if (files.Count > 0)
-            {
-                videoFile = files[0];
-            }
-            else
-            {
-                worker.Status =
-                    $"[{page.PageName}] No long video files found in folder: {sourcePath}";
-                return;
-            }
-        }
-        else
-        {
-            worker.Status = $"[{page.PageName}] Long video path not found on disk: {sourcePath}";
-            return;
-        }
-
-        if (string.IsNullOrWhiteSpace(videoFile))
-        {
-            worker.Status = $"[{page.PageName}] No valid video file found.";
-            return;
-        }
-
-        var fileName = Path.GetFileName(videoFile);
-        var caption = ResolveCaptionForMedia(
-            videoFile,
-            page.TitleVideoLong,
-            page.UseTitleFromTextFile
-        );
-
-        worker.Status = $"Posting Video: {fileName} to '{page.PageName}'...";
-        var success = await _ldPlayerService.PostVideoToFacebookAsync(
-            worker.Index,
-            videoFile,
-            caption,
-            LdFolder,
-            ct
-        );
-
-        if (success)
-        {
-            worker.Status = $"Video '{fileName}' Posted to '{page.PageName}'!";
-            page.RecordPostToday();
-            _ = SavePagesAsync();
-            HandleMediaFilePostProcessing(
-                videoFile,
-                config.DeleteVideoFile,
-                config.BackupVideoFile
-            );
-            page.RefreshMediaCounts();
-            var remotePath = $"/sdcard/DCIM/Camera/{fileName}";
-            var maxWaitTimeout = TimeSpan.FromSeconds(Math.Max(config.DelayUpload, 180));
-            await _ldPlayerService.WaitForFacebookUploadCompletedAsync(
-                worker.Index,
-                remotePath,
-                maxWaitTimeout,
-                LdFolder,
-                ct
-            );
-            await Task.Delay(TimeSpan.FromSeconds(Math.Max(5, config.DelayUpload)), ct);
-            await _ldPlayerService.DeleteFileFromEmulatorAsync(
-                worker.Index,
-                remotePath,
-                LdFolder,
-                ct
-            );
-        }
-        else
-        {
-            worker.Status = $"Failed to post Video '{fileName}' to '{page.PageName}'.";
-            await _ldPlayerService.DeleteFileFromEmulatorAsync(
-                worker.Index,
-                $"/sdcard/DCIM/Camera/{fileName}",
-                LdFolder,
-                ct
-            );
-        }
-    }
-
-    private static string ResolveCaptionForMedia(
-        string mediaFile,
-        string directCaption,
-        bool useTitleFromTextFile
-    )
-    {
-        if (useTitleFromTextFile)
-        {
-            try
-            {
-                var txtPath = Path.ChangeExtension(mediaFile, ".txt");
-                if (File.Exists(txtPath))
-                {
-                    var text = File.ReadAllText(txtPath).Trim();
-                    if (!string.IsNullOrWhiteSpace(text))
-                        return text;
-                }
-            }
-            catch { }
-        }
-
-        return directCaption ?? string.Empty;
-    }
-
-    private static void HandleMediaFilePostProcessing(
-        string mediaFile,
-        bool deleteFile,
-        bool backupFile
-    )
-    {
         try
         {
-            if (backupFile)
-            {
-                var dir = Path.GetDirectoryName(mediaFile);
-                if (!string.IsNullOrWhiteSpace(dir))
-                {
-                    var backupDir = Path.Combine(dir, "backup");
-                    Directory.CreateDirectory(backupDir);
-                    var destFile = Path.Combine(backupDir, Path.GetFileName(mediaFile));
-                    File.Copy(mediaFile, destFile, true);
+            // 2. Not active or unconfirmed, route persona switch
+            worker.Status =
+                $"{worker.FbClone}: Verifying & switching to {(page.IsProfile ? "Profile" : "Page")} '{page.PageName}'...";
+            bool switched =
+                page.Model != null
+                    ? await _ldPlayerService.SwitchToPersonaAsync(
+                        worker.Index,
+                        page.Model,
+                        LdFolder,
+                        ct
+                    )
+                    : (
+                        page.IsProfile
+                            ? await _ldPlayerService.EnsureSwitchedToPersonalProfileAsync(
+                                worker.Index,
+                                page.PageName,
+                                LdFolder,
+                                ct
+                            )
+                            : await _ldPlayerService.SwitchToPersonaAsync(
+                                worker.Index,
+                                page.PageName,
+                                !string.IsNullOrWhiteSpace(page.PageId)
+                                    ? page.PageId
+                                    : page.PersonaUid,
+                                LdFolder,
+                                ct
+                            )
+                    );
 
-                    var txtFile = Path.ChangeExtension(mediaFile, ".txt");
-                    if (File.Exists(txtFile))
-                    {
-                        var destTxt = Path.Combine(backupDir, Path.GetFileName(txtFile));
-                        File.Copy(txtFile, destTxt, true);
-                    }
-                }
-            }
-
-            if (deleteFile)
+            if (switched)
             {
-                File.Delete(mediaFile);
-                var txtFile = Path.ChangeExtension(mediaFile, ".txt");
-                if (File.Exists(txtFile))
-                {
-                    File.Delete(txtFile);
-                }
+                await Task.Delay(1500, ct);
             }
+            return switched;
         }
-        catch { }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            worker.Status = $"{worker.FbClone}: Persona verification failed: {ex.Message}";
+            return false;
+        }
     }
 
+    private Task ExecutePostReelForPageAsync(
+        LDInstanceItemViewModel worker,
+        FacebookPageTargetViewModel page,
+        WorkerRunConfig config,
+        CancellationToken ct
+    ) => ExecutePFlowForPageAsync(worker, page, "Reel", ct);
+
+    private Task ExecutePostPictureForPageAsync(
+        LDInstanceItemViewModel worker,
+        FacebookPageTargetViewModel page,
+        WorkerRunConfig config,
+        CancellationToken ct
+    ) => ExecutePFlowForPageAsync(worker, page, "Picture", ct);
+
+    private Task ExecutePostVideoForPageAsync(
+        LDInstanceItemViewModel worker,
+        FacebookPageTargetViewModel page,
+        WorkerRunConfig config,
+        CancellationToken ct
+    ) => ExecutePFlowForPageAsync(worker, page, "Video", ct);
+
     [RelayCommand]
-    public async Task StopAutomationAsync()
+    public Task StopAutomationAsync()
     {
-        if (!IsRunning)
-            return;
         _batchCts?.Cancel();
-        IsRunning = false;
-        StatusSummary = "Stopping workers...";
-
-        // Force-stop Facebook on all selected workers so nothing is left running in background
-        foreach (var worker in Instances.Where(i => i.IsSelected))
-        {
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    await _ldPlayerService.StopFacebookAppAsync(worker.Index, LdFolder);
-                    await _ldPlayerService.SendKeyAsync(worker.Index, 3, LdFolder);
-                }
-                catch { }
-            });
-        }
-
-        await Task.CompletedTask;
+        StatusSummary = "P-Flow: stopping; submitted uploads remain open for reconciliation.";
+        return Task.CompletedTask;
     }
 
     [RelayCommand]
@@ -2800,28 +1963,50 @@ public partial class AutoPostViewModel : ViewModelBase
     [RelayCommand]
     public void OpenConfig()
     {
+        if (IsRunning || IsBusy)
+        {
+            _snackbarManager.Notify("Stop the current operation before editing settings.");
+            return;
+        }
+        _configBeforeEdit = ExportConfig();
         IsConfigOpen = true;
     }
 
     [RelayCommand]
     public void CloseConfig()
     {
+        if (IsBusy)
+            return;
+        if (_configBeforeEdit != null)
+            ApplyConfig(_configBeforeEdit);
+        _configBeforeEdit = null;
         IsConfigOpen = false;
     }
 
     [RelayCommand]
     public async Task SaveConfigAsync()
     {
+        if (IsRunning || IsBusy)
+            return;
+        IsBusy = true;
         try
         {
             var cfg = ExportConfig();
+            var errors = ScreenTimeSetting.FromConfig(cfg).Validate();
+            if (errors.Count > 0)
+                throw new InvalidOperationException(string.Join("\n", errors));
             await AutoPostConfigStorage.SaveConfigAsync(cfg);
-            _snackbarManager.Notify("Automation & warmup configuration saved.");
+            _configBeforeEdit = null;
+            _snackbarManager.Notify("ScreenTime and posting configuration saved.");
             IsConfigOpen = false;
         }
         catch (Exception ex)
         {
             _snackbarManager.Notify($"Failed to save configuration: {ex.Message}");
+        }
+        finally
+        {
+            IsBusy = false;
         }
     }
 
@@ -2843,6 +2028,7 @@ public partial class AutoPostViewModel : ViewModelBase
     {
         return new AutoPostConfig
         {
+            ScreenTimeOptions = ScreenTimeOptions.Snapshot(),
             IsWatchVideo = IsWatchVideo,
             WatchVideoMin = WatchVideoMin,
             WatchVideoMax = WatchVideoMax,
@@ -2897,6 +2083,7 @@ public partial class AutoPostViewModel : ViewModelBase
 
     public void ApplyConfig(AutoPostConfig cfg)
     {
+        ScreenTimeOptions = (cfg.ScreenTimeOptions ?? new()).Snapshot();
         IsWatchVideo = cfg.IsWatchVideo;
         WatchVideoMin = cfg.WatchVideoMin;
         WatchVideoMax = cfg.WatchVideoMax;
@@ -2957,45 +2144,140 @@ public partial class AutoPostViewModel : ViewModelBase
         IsManagePagesOpen = false;
     }
 
+    private FacebookPageTargetViewModel? _pageConfigTarget;
+    private static readonly string[] PageConfigProperties =
+    [
+        "PageName",
+        "Type",
+        "PageId",
+        "PersonaUid",
+        "UserUid",
+        "CustomMaxDailyPosts",
+        "UseTitleFromTextFile",
+        "UseCaptionFromFilename",
+        "TitleVideoReel",
+        "TitleVideoReelMode",
+        "VideoReelPath",
+        "TitleImage",
+        "TitleImageMode",
+        "ImagePath",
+        "TitleVideoLong",
+        "TitleVideoLongMode",
+        "VideoLongPath",
+        "PageNote",
+        "GroupPostTitle",
+        "GroupPicturePath",
+        "GroupReelPath",
+        "GroupVideoPath",
+    ];
+
     [RelayCommand]
     public void EditPageConfig(FacebookPageTargetViewModel? page)
     {
         if (page == null)
             return;
-        SelectedPageForEdit = page;
+        if (IsRunning || IsBusy)
+        {
+            _snackbarManager.Notify(
+                "Stop the current operation before editing Page configuration."
+            );
+            return;
+        }
+        page.SyncToModel();
+        // Edit a draft so Cancel never changes the Page's active paths.
+        var draft = System.Text.Json.JsonSerializer.Deserialize<FacebookPageTarget>(
+            System.Text.Json.JsonSerializer.Serialize(page.Model)
+        )!;
+        _pageConfigTarget = page;
+        SelectedPageForEdit = new FacebookPageTargetViewModel(draft, page.Number);
+        PageConfigError = string.Empty;
         IsUpdatePageOpen = true;
     }
 
     [RelayCommand]
     public async Task SavePageConfigAsync()
     {
-        if (SelectedPageForEdit != null)
+        if (SelectedPageForEdit == null || _pageConfigTarget == null || IsSavingBulkPaths)
+            return;
+        if (IsRunning || IsBusy)
         {
-            SelectedPageForEdit.VideoReelPath =
-                SelectedPageForEdit.VideoReelPath?.Trim().Trim('"', '\'') ?? string.Empty;
-            SelectedPageForEdit.ImagePath =
-                SelectedPageForEdit.ImagePath?.Trim().Trim('"', '\'') ?? string.Empty;
-            SelectedPageForEdit.VideoLongPath =
-                SelectedPageForEdit.VideoLongPath?.Trim().Trim('"', '\'') ?? string.Empty;
-            SelectedPageForEdit.GroupPicturePath =
-                SelectedPageForEdit.GroupPicturePath?.Trim().Trim('"', '\'') ?? string.Empty;
-            SelectedPageForEdit.GroupReelPath =
-                SelectedPageForEdit.GroupReelPath?.Trim().Trim('"', '\'') ?? string.Empty;
-            SelectedPageForEdit.GroupVideoPath =
-                SelectedPageForEdit.GroupVideoPath?.Trim().Trim('"', '\'') ?? string.Empty;
-
-            SelectedPageForEdit.RefreshMediaCounts();
-            SelectedPageForEdit.SyncToModel();
-            await SavePagesAsync();
-            _snackbarManager.Notify($"Configuration saved for {SelectedPageForEdit.PageName}");
+            PageConfigError = "Stop the current operation before saving configuration.";
+            return;
         }
-        IsUpdatePageOpen = false;
+        var draft = SelectedPageForEdit;
+        foreach (
+            var key in PageConfigProperties.Where(k => k.EndsWith("Path", StringComparison.Ordinal))
+        )
+        {
+            var property = typeof(FacebookPageTargetViewModel).GetProperty(key)!;
+            var path = PageMediaPathEdit.Normalize(property.GetValue(draft) as string);
+            property.SetValue(draft, path);
+            if (path.Length == 0)
+                continue;
+            var extensions =
+                key is "ImagePath" or "GroupPicturePath"
+                    ? new[] { ".jpg", ".jpeg", ".png", ".webp" }
+                : key is "VideoReelPath" or "GroupReelPath" ? new[] { ".mp4", ".mov", ".webm" }
+                : new[] { ".mp4", ".mkv", ".mov" };
+            var edit = new PageMediaPathEdit(
+                key,
+                key,
+                key.StartsWith("Group", StringComparison.Ordinal),
+                extensions,
+                (_, _) => Task.CompletedTask
+            )
+            {
+                Path = path,
+            };
+            if (edit.Validate() is { } error)
+            {
+                PageConfigError = error;
+                return;
+            }
+        }
+        if (!Pages.Contains(_pageConfigTarget))
+        {
+            PageConfigError = "This target was removed. Close this editor.";
+            return;
+        }
+        var properties = PageConfigProperties
+            .Select(k => typeof(FacebookPageTargetViewModel).GetProperty(k)!)
+            .ToList();
+        var originals = properties.Select(p => p.GetValue(_pageConfigTarget)).ToList();
+        IsSavingBulkPaths = true;
+        IsBusy = true;
+        try
+        {
+            foreach (var property in properties)
+                property.SetValue(_pageConfigTarget, property.GetValue(draft));
+            _pageConfigTarget.RefreshMediaCounts();
+            await PersistPagesSnapshotAsync();
+            RefreshDisplayedManagePages();
+            _snackbarManager.Notify($"Configuration saved for {_pageConfigTarget.PageName}");
+            IsUpdatePageOpen = false;
+        }
+        catch (Exception ex)
+        {
+            for (var i = 0; i < properties.Count; i++)
+                properties[i].SetValue(_pageConfigTarget, originals[i]);
+            _pageConfigTarget.SyncToModel();
+            PageConfigError = $"Could not save configuration: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+            IsSavingBulkPaths = false;
+        }
     }
 
     [RelayCommand]
     public void CloseUpdatePage()
     {
+        if (IsSavingBulkPaths)
+            return;
         IsUpdatePageOpen = false;
+        _pageConfigTarget = null;
+        SelectedPageForEdit = null;
     }
 
     [RelayCommand]
@@ -3216,29 +2498,574 @@ public partial class AutoPostViewModel : ViewModelBase
     {
         try
         {
-            var models = Pages
-                .Select(p =>
-                {
-                    p.SyncToModel();
-                    return p.Model;
-                })
-                .ToList();
-
-            await FacebookPageStorage.SavePagesAsync(models);
-            _snackbarManager.Notify($"Saved {models.Count} pages to configuration.");
+            var models = await PersistPagesSnapshotAsync();
+            _snackbarManager.Notify($"Saved {models.Count} Facebook rows to configuration.");
         }
         catch (Exception ex)
         {
+            await PFlowFetchTrace.WriteAsync(-1, "storage.save.failed", ex.Message);
             _snackbarManager.Notify($"Failed to save pages: {ex.Message}");
         }
     }
+
+    private async Task<List<FacebookPageTarget>> PersistPagesSnapshotAsync()
+    {
+        await _pageSaveGate.WaitAsync();
+        try
+        {
+            var models = await Dispatcher.UIThread.InvokeAsync(() =>
+                Pages
+                    .Select(p =>
+                    {
+                        p.SyncToModel();
+                        return p.Model.CreateSnapshot();
+                    })
+                    .ToList()
+            );
+            await PFlowPageStorage.SavePagesAsync(models);
+            return models;
+        }
+        finally
+        {
+            _pageSaveGate.Release();
+        }
+    }
+
+    private async Task ReplaceDevicePagesInTableAsync(
+        LDInstanceItemViewModel target,
+        FacebookAccountDetails accountDetails,
+        bool isRootSnapshot = true
+    )
+    {
+        var freshPageCount = accountDetails.Pages.Count;
+        var retainedPageCount = 0;
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            var toRemove = Pages
+                .Where(p =>
+                    (
+                        p.DeviceName.Equals(target.Name, StringComparison.OrdinalIgnoreCase)
+                        || p.DeviceName.Equals(
+                            $"LD-{target.Index}",
+                            StringComparison.OrdinalIgnoreCase
+                        )
+                    )
+                    && p.AppClone.Equals(target.FbClone, StringComparison.OrdinalIgnoreCase)
+                    && p.UserUid == accountDetails.Uid
+                )
+                .ToList();
+
+            // Root shell refreshes identity fields but usually has no UI-only
+            // enrichment (Joined date, Birthday, follower metrics) or posting
+            // configuration. Reuse existing models by stable profile/Page IDs
+            // so a later fetch that cannot reach Facebook UI does not erase a
+            // date or other data that an earlier run already discovered.
+            foreach (var existing in toRemove)
+                existing.SyncToModel();
+
+            if (isRootSnapshot)
+                retainedPageCount = accountDetails.RetainSavedPageIdentities(
+                    toRemove.Select(row => row.Model),
+                    target.Name,
+                    target.FbClone,
+                    $"LD-{target.Index}"
+                );
+
+            FacebookPageTarget? FindExisting(bool isProfile, string? pageId, string? personaUid)
+            {
+                return toRemove
+                    .FirstOrDefault(existing =>
+                    {
+                        if (existing.IsProfile != isProfile)
+                            return false;
+                        var samePageId =
+                            !string.IsNullOrWhiteSpace(pageId)
+                            && string.Equals(existing.PageId, pageId, StringComparison.Ordinal);
+                        var samePersona =
+                            !string.IsNullOrWhiteSpace(personaUid)
+                            && string.Equals(
+                                existing.PersonaUid,
+                                personaUid,
+                                StringComparison.Ordinal
+                            );
+                        return samePageId || samePersona;
+                    })
+                    ?.Model;
+            }
+
+            foreach (var oldPage in toRemove)
+                Pages.Remove(oldPage);
+
+            var profileTarget =
+                FindExisting(true, accountDetails.Uid, accountDetails.Uid)
+                ?? new FacebookPageTarget { IsSelected = true };
+            profileTarget.DeviceName = target.Name;
+            profileTarget.AppClone = target.FbClone;
+            profileTarget.PageId = accountDetails.Uid;
+            profileTarget.PersonaUid = accountDetails.Uid;
+            profileTarget.UserUid = accountDetails.Uid;
+            profileTarget.PageName = PreferValue(accountDetails.Name, profileTarget.PageName);
+            profileTarget.Email = PreferValue(accountDetails.Email, profileTarget.Email);
+            profileTarget.Birthdate = PreferValue(
+                accountDetails.Birthdate,
+                profileTarget.Birthdate
+            );
+            profileTarget.CreationDate = PreferValue(
+                accountDetails.CreationDate,
+                profileTarget.CreationDate
+            );
+            profileTarget.Location = PreferValue(accountDetails.Location, profileTarget.Location);
+            profileTarget.Hometown = PreferValue(accountDetails.Hometown, profileTarget.Hometown);
+            profileTarget.Work = PreferValue(accountDetails.Work, profileTarget.Work);
+            profileTarget.Education = PreferValue(
+                accountDetails.Education,
+                profileTarget.Education
+            );
+            profileTarget.RelationshipStatus = PreferValue(
+                accountDetails.RelationshipStatus,
+                profileTarget.RelationshipStatus
+            );
+            profileTarget.Type = "Profile";
+            profileTarget.ManagedBy = accountDetails.Name;
+            Pages.Add(new FacebookPageTargetViewModel(profileTarget, Pages.Count + 1));
+
+            foreach (var page in accountDetails.Pages)
+            {
+                page.LivePageAccessVerified ??= false;
+                var personaUid = !string.IsNullOrWhiteSpace(page.PersonaUid)
+                    ? page.PersonaUid
+                    : page.PageId;
+                var pageTarget =
+                    FindExisting(false, page.PageId, personaUid)
+                    ?? new FacebookPageTarget { IsSelected = false };
+                pageTarget.DeviceName = target.Name;
+                pageTarget.AppClone = target.FbClone;
+                pageTarget.PageId = PreferValue(page.PageId, pageTarget.PageId);
+                pageTarget.PersonaUid = PreferValue(personaUid, pageTarget.PersonaUid);
+                pageTarget.UserUid = PreferValue(accountDetails.Uid, pageTarget.UserUid);
+                pageTarget.PageName = PreferValue(page.PageName, pageTarget.PageName);
+                pageTarget.Email = PreferValue(accountDetails.Email, pageTarget.Email);
+                pageTarget.Birthdate = PreferValue(page.Birthdate, pageTarget.Birthdate);
+                pageTarget.CreationDate = PreferValue(page.CreationDate, pageTarget.CreationDate);
+                pageTarget.Location = PreferValue(page.Location, pageTarget.Location);
+                pageTarget.Hometown = PreferValue(page.Hometown, pageTarget.Hometown);
+                pageTarget.Work = PreferValue(page.Work, pageTarget.Work);
+                pageTarget.Education = PreferValue(page.Education, pageTarget.Education);
+                pageTarget.RelationshipStatus = PreferValue(
+                    page.RelationshipStatus,
+                    pageTarget.RelationshipStatus
+                );
+                pageTarget.Type = "Page";
+                pageTarget.LivePageAccessVerified = page.LivePageAccessVerified;
+                if (pageTarget.LivePageAccessVerified != true)
+                    pageTarget.IsSelected = false;
+                if (page.FollowersKnown || page.Followers > 0)
+                {
+                    pageTarget.Followers = page.Followers;
+                    pageTarget.FollowersKnown = true;
+                }
+                pageTarget.Reach = PreferValue(page.Reach, pageTarget.Reach);
+                pageTarget.Views = PreferValue(page.Views, pageTarget.Views);
+                if (page.ReelsCountKnown || page.ReelsCount > 0)
+                {
+                    pageTarget.ReelsCount = page.ReelsCount;
+                    pageTarget.ReelsCountKnown = true;
+                }
+                if (page.VideosCountKnown || page.VideosCount > 0)
+                {
+                    pageTarget.VideosCount = page.VideosCount;
+                    pageTarget.VideosCountKnown = true;
+                }
+                if (page.PictureCountKnown || page.PictureCount > 0)
+                {
+                    pageTarget.PictureCount = page.PictureCount;
+                    pageTarget.PictureCountKnown = true;
+                }
+                pageTarget.Notifications = PreferValue(
+                    page.Notifications,
+                    pageTarget.Notifications
+                );
+                pageTarget.ManagedBy = PreferValue(
+                    !string.IsNullOrWhiteSpace(page.ManagedBy)
+                        ? page.ManagedBy
+                        : accountDetails.Name,
+                    pageTarget.ManagedBy
+                );
+                Pages.Add(new FacebookPageTargetViewModel(pageTarget, Pages.Count + 1));
+            }
+
+            RefreshDisplayedManagePages();
+            if (SelectedManageInstance == target)
+            {
+                SelectedAccountName = profileTarget.PageName;
+                SelectedAccountUid = profileTarget.UserUid;
+                SelectedAccountEmail = profileTarget.Email;
+                SelectedAccountBirthdate = profileTarget.Birthdate;
+                SelectedAccountCreationDate = profileTarget.CreationDate;
+                IsSelectedAccountActive = true;
+            }
+        });
+        if (isRootSnapshot)
+            await PFlowFetchTrace.WriteAsync(
+                target.Index,
+                "root-shell.saved-identities-retained",
+                $"Fresh root snapshot contained {freshPageCount} Page identities; retained {retainedPageCount} saved identities for the same personal UID and app clone. Managed access must be verified by the UI switch before enrichment."
+            );
+    }
+
+    private async Task UpdatePageFromUiAsync(
+        LDInstanceItemViewModel target,
+        FacebookPageInfo pageInfo
+    )
+    {
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            var row = Pages.FirstOrDefault(p =>
+                p.Model.MatchesIdentity(
+                    target.Name,
+                    target.FbClone,
+                    pageInfo.UserUid,
+                    pageInfo.PersonaUid,
+                    pageInfo.PageId,
+                    isProfile: false,
+                    $"LD-{target.Index}"
+                )
+            );
+            if (row == null)
+                return;
+
+            if (!string.IsNullOrWhiteSpace(pageInfo.PageId))
+                row.PageId = pageInfo.PageId;
+            if (
+                string.IsNullOrWhiteSpace(row.PageName)
+                && !string.IsNullOrWhiteSpace(pageInfo.PageName)
+            )
+                row.PageName = pageInfo.PageName;
+            if (pageInfo.FollowersKnown || pageInfo.Followers > 0)
+            {
+                row.Followers = pageInfo.Followers;
+                row.FollowersKnown = true;
+            }
+            if (!string.IsNullOrWhiteSpace(pageInfo.Reach))
+                row.Reach = pageInfo.Reach;
+            if (!string.IsNullOrWhiteSpace(pageInfo.Views))
+                row.Views = pageInfo.Views;
+            if (pageInfo.ReelsCountKnown || pageInfo.ReelsCount > 0)
+            {
+                row.ReelsCount = pageInfo.ReelsCount;
+                row.ReelsCountKnown = true;
+            }
+            if (pageInfo.VideosCountKnown || pageInfo.VideosCount > 0)
+            {
+                row.VideosCount = pageInfo.VideosCount;
+                row.VideosCountKnown = true;
+            }
+            if (pageInfo.PictureCountKnown || pageInfo.PictureCount > 0)
+            {
+                row.PictureCount = pageInfo.PictureCount;
+                row.PictureCountKnown = true;
+            }
+            if (!string.IsNullOrWhiteSpace(pageInfo.Birthdate))
+                row.Birthdate = pageInfo.Birthdate;
+            if (!string.IsNullOrWhiteSpace(pageInfo.CreationDate))
+                row.CreationDate = pageInfo.CreationDate;
+            row.Email = PreferValue(pageInfo.Email, row.Email);
+            row.Location = PreferValue(pageInfo.Location, row.Location);
+            row.Hometown = PreferValue(pageInfo.Hometown, row.Hometown);
+            row.Work = PreferValue(pageInfo.Work, row.Work);
+            row.Education = PreferValue(pageInfo.Education, row.Education);
+            row.RelationshipStatus = PreferValue(
+                pageInfo.RelationshipStatus,
+                row.RelationshipStatus
+            );
+            row.Notifications = PreferValue(pageInfo.Notifications, row.Notifications);
+            RefreshDisplayedManagePages();
+        });
+    }
+
+    private async Task UpdatePersonalAccountFromUiAsync(
+        LDInstanceItemViewModel target,
+        FacebookAccountDetails accountDetails,
+        FacebookAccountDetails personalInfo
+    )
+    {
+        accountDetails.Name = PreferValue(personalInfo.Name, accountDetails.Name);
+        accountDetails.SwitchedToProfile = personalInfo.SwitchedToProfile;
+        foreach (var managedPage in accountDetails.Pages)
+            managedPage.ManagedBy = accountDetails.Name;
+        accountDetails.Email = PreferValue(personalInfo.Email, accountDetails.Email);
+        accountDetails.Location = PreferValue(personalInfo.Location, accountDetails.Location);
+        accountDetails.Hometown = PreferValue(personalInfo.Hometown, accountDetails.Hometown);
+        accountDetails.Work = PreferValue(personalInfo.Work, accountDetails.Work);
+        accountDetails.Education = PreferValue(personalInfo.Education, accountDetails.Education);
+        accountDetails.RelationshipStatus = PreferValue(
+            personalInfo.RelationshipStatus,
+            accountDetails.RelationshipStatus
+        );
+        if (!string.IsNullOrWhiteSpace(personalInfo.Birthdate))
+            accountDetails.Birthdate = personalInfo.Birthdate;
+        if (!string.IsNullOrWhiteSpace(personalInfo.CreationDate))
+            accountDetails.CreationDate = personalInfo.CreationDate;
+
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            var profileRow = Pages.FirstOrDefault(p =>
+                p.Model.MatchesIdentity(
+                    target.Name,
+                    target.FbClone,
+                    accountDetails.Uid,
+                    accountDetails.Uid,
+                    accountDetails.Uid,
+                    isProfile: true,
+                    $"LD-{target.Index}"
+                )
+            );
+            if (profileRow != null)
+            {
+                if (!string.IsNullOrWhiteSpace(personalInfo.Birthdate))
+                    profileRow.Birthdate = personalInfo.Birthdate;
+                if (!string.IsNullOrWhiteSpace(personalInfo.CreationDate))
+                    profileRow.CreationDate = personalInfo.CreationDate;
+                profileRow.PageName = PreferValue(personalInfo.Name, profileRow.PageName);
+                profileRow.Email = PreferValue(personalInfo.Email, profileRow.Email);
+                profileRow.Location = PreferValue(personalInfo.Location, profileRow.Location);
+                profileRow.Hometown = PreferValue(personalInfo.Hometown, profileRow.Hometown);
+                profileRow.Work = PreferValue(personalInfo.Work, profileRow.Work);
+                profileRow.Education = PreferValue(personalInfo.Education, profileRow.Education);
+                profileRow.RelationshipStatus = PreferValue(
+                    personalInfo.RelationshipStatus,
+                    profileRow.RelationshipStatus
+                );
+            }
+
+            if (SelectedManageInstance == target)
+            {
+                if (!string.IsNullOrWhiteSpace(personalInfo.Birthdate))
+                    SelectedAccountBirthdate = personalInfo.Birthdate;
+                if (!string.IsNullOrWhiteSpace(personalInfo.CreationDate))
+                    SelectedAccountCreationDate = personalInfo.CreationDate;
+            }
+
+            RefreshDisplayedManagePages();
+        });
+    }
+
+    private async Task ReportFetchProgressAsync(
+        LDInstanceItemViewModel target,
+        string status,
+        string summary
+    )
+    {
+        await PFlowFetchTrace.WriteAsync(target.Index, status, summary);
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            target.Status = status;
+            StatusSummary = summary;
+        });
+    }
+
+    private async Task<(int Succeeded, int Attempted)> RunPageUiLookupsAsync(
+        LDInstanceItemViewModel target,
+        FacebookAccountDetails rootDetails,
+        CancellationToken cancellationToken
+    )
+    {
+        var pages = rootDetails.Pages;
+        var succeeded = 0;
+        var attempted = 0;
+        for (var i = 0; i < pages.Count; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var page = pages[i];
+            var pageUid = !string.IsNullOrWhiteSpace(page.PersonaUid)
+                ? page.PersonaUid
+                : page.PageId;
+            if (string.IsNullOrWhiteSpace(pageUid))
+                continue;
+
+            attempted++;
+            await ReportFetchProgressAsync(
+                target,
+                $"Page UI {i + 1}/{pages.Count}: opening",
+                $"{target.Name}: starting UI lookup for Page {i + 1} of {pages.Count}: {page.PageName}."
+            );
+            try
+            {
+                var pageUiInfo = await _ldPlayerService.ExtractPageInfoFromUiAsync(
+                    index: target.Index,
+                    pageUid: pageUid,
+                    pageId: page.PageId,
+                    expectedPageName: page.PageName,
+                    expectedProfileUid: rootDetails.Uid,
+                    expectedProfileName: rootDetails.Name,
+                    customPath: LdFolder,
+                    cancellationToken: cancellationToken,
+                    ownerAlreadyVerified: true,
+                    progress: step =>
+                        ReportFetchProgressAsync(
+                            target,
+                            $"Page UI {i + 1}/{pages.Count}",
+                            $"{target.Name}: {step}"
+                        )
+                );
+                // Non-null UI results are returned only after the selected Page and its
+                // authenticated own-profile controls have been confirmed.
+                page.LivePageAccessVerified = pageUiInfo != null;
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    var row = Pages.FirstOrDefault(p =>
+                        p.DeviceName == target.Name
+                        && p.UserUid == rootDetails.Uid
+                        && p.PageId == page.PageId
+                    );
+                    if (row != null)
+                    {
+                        row.Model.LivePageAccessVerified = page.LivePageAccessVerified;
+                        if (page.LivePageAccessVerified != true)
+                            row.IsSelected = false;
+                        row.RefreshAccessStatus();
+                    }
+                });
+                await PersistPagesSnapshotAsync();
+                if (pageUiInfo == null || !HasUsefulPageDetails(pageUiInfo))
+                {
+                    await ReportFetchProgressAsync(
+                        target,
+                        $"Page UI {i + 1}/{pages.Count}: no data",
+                        $"{target.Name}: No readable live details for {page.PageName}; cached configuration retained and unverified access blocks posting."
+                    );
+                    continue;
+                }
+
+                if (
+                    string.IsNullOrWhiteSpace(page.PageName)
+                    && !string.IsNullOrWhiteSpace(pageUiInfo.PageName)
+                )
+                    page.PageName = pageUiInfo.PageName;
+                if (!string.IsNullOrWhiteSpace(pageUiInfo.PageId))
+                    page.PageId = pageUiInfo.PageId;
+                if (pageUiInfo.FollowersKnown || pageUiInfo.Followers > 0)
+                {
+                    page.Followers = pageUiInfo.Followers;
+                    page.FollowersKnown = true;
+                }
+                if (!string.IsNullOrWhiteSpace(pageUiInfo.Reach))
+                    page.Reach = pageUiInfo.Reach;
+                if (!string.IsNullOrWhiteSpace(pageUiInfo.Views))
+                    page.Views = pageUiInfo.Views;
+                if (pageUiInfo.ReelsCountKnown || pageUiInfo.ReelsCount > 0)
+                {
+                    page.ReelsCount = pageUiInfo.ReelsCount;
+                    page.ReelsCountKnown = true;
+                }
+                if (pageUiInfo.VideosCountKnown || pageUiInfo.VideosCount > 0)
+                {
+                    page.VideosCount = pageUiInfo.VideosCount;
+                    page.VideosCountKnown = true;
+                }
+                if (pageUiInfo.PictureCountKnown || pageUiInfo.PictureCount > 0)
+                {
+                    page.PictureCount = pageUiInfo.PictureCount;
+                    page.PictureCountKnown = true;
+                }
+                if (!string.IsNullOrWhiteSpace(pageUiInfo.Birthdate))
+                    page.Birthdate = pageUiInfo.Birthdate;
+                if (!string.IsNullOrWhiteSpace(pageUiInfo.CreationDate))
+                    page.CreationDate = pageUiInfo.CreationDate;
+                page.Email = PreferValue(pageUiInfo.Email, page.Email);
+                page.Location = PreferValue(pageUiInfo.Location, page.Location);
+                page.Hometown = PreferValue(pageUiInfo.Hometown, page.Hometown);
+                page.Work = PreferValue(pageUiInfo.Work, page.Work);
+                page.Education = PreferValue(pageUiInfo.Education, page.Education);
+                page.RelationshipStatus = PreferValue(
+                    pageUiInfo.RelationshipStatus,
+                    page.RelationshipStatus
+                );
+                page.Notifications = PreferValue(pageUiInfo.Notifications, page.Notifications);
+
+                await UpdatePageFromUiAsync(target, page);
+                await PersistPagesSnapshotAsync();
+                succeeded++;
+                await ReportFetchProgressAsync(
+                    target,
+                    $"Page UI {i + 1}/{pages.Count}: saved",
+                    $"{target.Name}: saved {page.PageName}; Created={DisplayPageValue(page.CreationDate)}, Birthday={DisplayPageValue(page.Birthdate)}, Followers={page.Followers}, Reels={page.ReelsCount}, Videos={page.VideosCount}."
+                );
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                await ReportFetchProgressAsync(
+                    target,
+                    $"Page UI {i + 1}/{pages.Count}: failed",
+                    $"{target.Name}: Page UI lookup failed for {page.PageName}: {ex.Message}"
+                );
+            }
+        }
+
+        await ReportFetchProgressAsync(
+            target,
+            $"{pages.Count} Pages (UI {succeeded}/{attempted})",
+            $"{target.Name}: Page UI process complete; updated {succeeded} of {attempted} Pages."
+        );
+        return (succeeded, attempted);
+    }
+
+    private static string DisplayPageValue(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? "not exposed" : value.Trim();
+
+    private static bool HasUsefulPageDetails(FacebookPageInfo info) =>
+        !string.IsNullOrWhiteSpace(info.CreationDate)
+        || !string.IsNullOrWhiteSpace(info.Birthdate)
+        || !string.IsNullOrWhiteSpace(info.Reach)
+        || !string.IsNullOrWhiteSpace(info.Views)
+        || !string.IsNullOrWhiteSpace(info.Email)
+        || !string.IsNullOrWhiteSpace(info.Location)
+        || !string.IsNullOrWhiteSpace(info.Hometown)
+        || !string.IsNullOrWhiteSpace(info.Work)
+        || !string.IsNullOrWhiteSpace(info.Education)
+        || !string.IsNullOrWhiteSpace(info.RelationshipStatus)
+        || !string.IsNullOrWhiteSpace(info.Notifications)
+        || info.FollowersKnown
+        || info.ReelsCountKnown
+        || info.VideosCountKnown
+        || info.PictureCountKnown
+        || info.Followers > 0
+        || info.ReelsCount > 0
+        || info.VideosCount > 0
+        || info.PictureCount > 0;
+
+    private static bool HasUsefulPersonalDetails(FacebookAccountDetails info) =>
+        !string.IsNullOrWhiteSpace(info.Birthdate)
+        || !string.IsNullOrWhiteSpace(info.CreationDate)
+        || !string.IsNullOrWhiteSpace(info.Location)
+        || !string.IsNullOrWhiteSpace(info.Hometown)
+        || !string.IsNullOrWhiteSpace(info.Work)
+        || !string.IsNullOrWhiteSpace(info.Education)
+        || !string.IsNullOrWhiteSpace(info.RelationshipStatus);
+
+    private static string PreferValue(string? discovered, string? existing) =>
+        !string.IsNullOrWhiteSpace(discovered) ? discovered.Trim() : existing ?? string.Empty;
 
     [RelayCommand]
     public async Task SaveAndCloseManagePagesAsync()
     {
         CancelFetch();
-        await SavePagesAsync();
-        IsManagePagesOpen = false;
+        try
+        {
+            var saved = await PersistPagesSnapshotAsync();
+            _snackbarManager.Notify($"Saved {saved.Count} Facebook rows to configuration.");
+            IsManagePagesOpen = false;
+        }
+        catch (Exception ex)
+        {
+            await PFlowFetchTrace.WriteAsync(-1, "storage.save-close.failed", ex.Message);
+            StatusSummary = $"Cannot close because Facebook data was not saved: {ex.Message}";
+            _snackbarManager.Notify($"Failed to save pages: {ex.Message}");
+        }
     }
 
     [RelayCommand]
@@ -3246,7 +3073,7 @@ public partial class AutoPostViewModel : ViewModelBase
     {
         try
         {
-            var loaded = await FacebookPageStorage.LoadPagesAsync();
+            var loaded = await PFlowPageStorage.LoadPagesAsync();
             Pages.Clear();
             for (int i = 0; i < loaded.Count; i++)
             {
@@ -3256,7 +3083,30 @@ public partial class AutoPostViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
+            await PFlowFetchTrace.WriteAsync(-1, "storage.load.failed", ex.Message);
             _snackbarManager.Notify($"Failed to load pages: {ex.Message}");
+        }
+    }
+
+    private async Task ArrangeFetchWindowsAsync(CancellationToken ct)
+    {
+        if (!AutoSortLDPlayer)
+            return;
+
+        try
+        {
+            if (!await _ldPlayerService.SortWindowsAsync(LdFolder, ct))
+                StatusSummary =
+                    "LDPlayer could not arrange windows; account fetching will continue.";
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            StatusSummary =
+                $"Could not arrange emulator windows: {ex.Message}. Account fetching will continue.";
         }
     }
 
@@ -3269,6 +3119,46 @@ public partial class AutoPostViewModel : ViewModelBase
         if (target == null)
             return false;
 
+        var mapped = (await _accountStore.LoadAsync(ct))
+            .Where(a =>
+                a.Binding.DeviceIndex == target.Index
+                && a.Binding.AppPackage == "com.facebook.katana"
+            )
+            .ToArray();
+        if (mapped.Length > 1)
+        {
+            target.Status =
+                "Fetch blocked: saved personal-account switching needs device verification.";
+            return false;
+        }
+        if (mapped.Length == 1 && !mapped[0].SelectedForDiscovery)
+        {
+            target.Status = "Fetch skipped: personal account not selected for fetching.";
+            return true;
+        }
+        if (mapped.Length == 1)
+        {
+            try
+            {
+                PFlowAccountStore.RequireCurrentBinding(
+                    mapped[0].Binding,
+                    (await _ldPlayerService.GetInstancesAsync(LdFolder, ct)).ToArray(),
+                    LdFolder
+                );
+            }
+            catch (Exception ex)
+                when (ex
+                        is InvalidOperationException
+                            or System.IO.IOException
+                            or System.Text.Json.JsonException
+                            or UnauthorizedAccessException
+                )
+            {
+                target.Status = "Fetch blocked: " + ex.Message;
+                return false;
+            }
+        }
+        using var deviceLease = await PFlowDeviceLease.AcquireAsync(target.Index, ct);
         target.Status = "Checking Status...";
         bool wasRunning = false;
         try
@@ -3328,118 +3218,240 @@ public partial class AutoPostViewModel : ViewModelBase
                 await Task.Delay(2000, ct);
             }
 
+            await ArrangeFetchWindowsAsync(ct);
             ct.ThrowIfCancellationRequested();
-            target.Status = "Extracting Account...";
+            var facebookReady = await _ldPlayerService.WaitForFacebookReadyAsync(
+                target.Index,
+                TimeSpan.FromSeconds(120),
+                LdFolder,
+                ct,
+                step =>
+                    ReportFetchProgressAsync(target, "Waiting Internet", $"{target.Name}: {step}")
+            );
+            if (!facebookReady)
+            {
+                await ReportFetchProgressAsync(
+                    target,
+                    "Internet Not Connected",
+                    $"{target.Name}: Internet inside LD was not validated within 120 seconds; Facebook fetch was stopped."
+                );
+                return false;
+            }
+            await ReportFetchProgressAsync(
+                target,
+                "Root shell: reading account",
+                $"{target.Name}: starting root-shell account and Page discovery."
+            );
             FacebookAccountDetails? accountDetails = null;
+            var rootSaved = false;
+            var personalUiHadData = false;
+            var pageUiLookupResults = (Succeeded: 0, Attempted: 0);
             try
             {
                 accountDetails = await _ldPlayerService.ExtractFacebookAccountDetailsAsync(
                     target.Index,
                     LdFolder,
-                    ct
+                    ct,
+                    async rootShellDetails =>
+                    {
+                        try
+                        {
+                            // Keep the successful root result even if enrichment
+                            // fails after these rows have been saved.
+                            accountDetails = rootShellDetails;
+                            await ReplaceDevicePagesInTableAsync(target, rootShellDetails);
+                            await PersistPagesSnapshotAsync();
+                            rootSaved = true;
+
+                            var rootItemCount = rootShellDetails.Pages.Count + 1;
+                            await ReportFetchProgressAsync(
+                                target,
+                                $"{rootItemCount} Items (Root Saved)",
+                                $"{target.Name}: root-shell profile and Page rows saved."
+                            );
+                            await ReportFetchProgressAsync(
+                                target,
+                                "Personal account: starting",
+                                $"{target.Name}: starting personal account UI lookup."
+                            );
+                            FacebookAccountDetails? personalInfo = null;
+                            try
+                            {
+                                personalInfo =
+                                    await _ldPlayerService.ExtractPersonalAccountDetailsFromUiAsync(
+                                        target.Index,
+                                        rootShellDetails.Uid,
+                                        rootShellDetails.Name,
+                                        LdFolder,
+                                        ct,
+                                        step =>
+                                            ReportFetchProgressAsync(
+                                                target,
+                                                "Personal account UI",
+                                                $"{target.Name}: {step}"
+                                            )
+                                    );
+                            }
+                            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                            {
+                                throw;
+                            }
+                            catch (Exception ex)
+                            {
+                                await ReportFetchProgressAsync(
+                                    target,
+                                    "Personal account: lookup failed",
+                                    $"{target.Name}: personal account lookup failed: {ex.Message}; Page lookup requires a verified owner."
+                                );
+                            }
+                            if (personalInfo?.SwitchedToProfile == true)
+                            {
+                                personalUiHadData = HasUsefulPersonalDetails(personalInfo);
+                                await UpdatePersonalAccountFromUiAsync(
+                                    target,
+                                    rootShellDetails,
+                                    personalInfo
+                                );
+                                await PersistPagesSnapshotAsync();
+                                await ReportFetchProgressAsync(
+                                    target,
+                                    "Personal account: saved",
+                                    $"{target.Name}: personal data saved; Birthday={DisplayPageValue(personalInfo.Birthdate)}, Created={DisplayPageValue(personalInfo.CreationDate)}."
+                                );
+                            }
+                            else
+                            {
+                                await ReportFetchProgressAsync(
+                                    target,
+                                    "Personal account: verification failed",
+                                    $"{target.Name}: could not verify the personal account; its root-shell rows are saved."
+                                );
+                            }
+
+                            if (
+                                rootShellDetails.Pages.Count > 0
+                                && personalInfo?.SwitchedToProfile == true
+                            )
+                            {
+                                await ReportFetchProgressAsync(
+                                    target,
+                                    $"Pages: 0/{rootShellDetails.Pages.Count}",
+                                    $"{target.Name}: personal account step complete; beginning Page UI lookups."
+                                );
+                                pageUiLookupResults = await RunPageUiLookupsAsync(
+                                    target,
+                                    rootShellDetails,
+                                    ct
+                                );
+                            }
+                            else if (rootShellDetails.Pages.Count > 0)
+                            {
+                                await ReportFetchProgressAsync(
+                                    target,
+                                    "Pages: owner verification required",
+                                    $"{target.Name}: {rootShellDetails.Pages.Count} Pages saved; resolve the personal account before Page lookups."
+                                );
+                            }
+                            else
+                            {
+                                await ReportFetchProgressAsync(
+                                    target,
+                                    "Complete (No Pages)",
+                                    $"{target.Name}: personal account step complete; root shell found no managed Pages, so Page lookup was skipped."
+                                );
+                            }
+                        }
+                        finally
+                        {
+                            using var cleanupTimeout = new CancellationTokenSource(
+                                TimeSpan.FromSeconds(20)
+                            );
+                            try
+                            {
+                                await _ldPlayerService.ClearRecentAppsAsync(
+                                    target.Index,
+                                    LdFolder,
+                                    cleanupTimeout.Token,
+                                    step =>
+                                        ReportFetchProgressAsync(
+                                            target,
+                                            "Fetch: final cleanup",
+                                            $"{target.Name}: {step}"
+                                        )
+                                );
+                            }
+                            catch (Exception cleanupError)
+                            {
+                                await PFlowFetchTrace.WriteAsync(
+                                    target.Index,
+                                    "fetch.cleanup.warning",
+                                    cleanupError.Message,
+                                    CancellationToken.None
+                                );
+                            }
+                        }
+                    },
+                    progress: step =>
+                        ReportFetchProgressAsync(
+                            target,
+                            "Root shell: discovering",
+                            $"{target.Name}: {step}"
+                        )
                 );
             }
             catch (OperationCanceledException)
             {
                 throw;
             }
+            catch (RootShellUnavailableException ex)
+            {
+                await PFlowFetchTrace.WriteAsync(
+                    target.Index,
+                    "fetch.root-shell-unavailable",
+                    ex.Message,
+                    CancellationToken.None
+                );
+                target.Status = "Root Shell Unavailable";
+                StatusSummary = ex.Message;
+            }
             catch (Exception ex)
             {
+                await PFlowFetchTrace.WriteAsync(
+                    target.Index,
+                    "fetch.error",
+                    $"{ex.GetType().Name}: {ex.Message}",
+                    CancellationToken.None
+                );
                 target.Status = "Extract Error";
                 StatusSummary = $"Error extracting {target.Name}: {ex.Message}";
             }
 
-            if (accountDetails != null)
+            if (accountDetails != null && rootSaved)
             {
-                await Dispatcher.UIThread.InvokeAsync(() =>
-                {
-                    // Remove existing pages for this device
-                    var toRemove = Pages
-                        .Where(p =>
-                            p.DeviceName.Equals(target.Name, StringComparison.OrdinalIgnoreCase)
-                            || p.DeviceName.Equals(
-                                $"LD-{target.Index}",
-                                StringComparison.OrdinalIgnoreCase
-                            )
-                        )
-                        .ToList();
-
-                    foreach (var oldPage in toRemove)
-                    {
-                        Pages.Remove(oldPage);
-                    }
-
-                    // Add User Profile
-                    var profileTarget = new FacebookPageTarget
-                    {
-                        IsSelected = true,
-                        DeviceName = target.Name,
-                        AppClone = target.FbClone,
-                        PageId = accountDetails.Uid,
-                        PersonaUid = accountDetails.Uid,
-                        UserUid = accountDetails.Uid,
-                        PageName = accountDetails.Name,
-                        Email = accountDetails.Email,
-                        Birthdate = accountDetails.Birthdate,
-                        CreationDate = accountDetails.CreationDate,
-                        Location = accountDetails.Location,
-                        Hometown = accountDetails.Hometown,
-                        Work = accountDetails.Work,
-                        Education = accountDetails.Education,
-                        RelationshipStatus = accountDetails.RelationshipStatus,
-                        Type = "Profile",
-                        ManagedBy = accountDetails.Name,
-                    };
-                    Pages.Add(new FacebookPageTargetViewModel(profileTarget, Pages.Count + 1));
-
-                    // Add Pages
-                    foreach (var page in accountDetails.Pages)
-                    {
-                        var pageTarget = new FacebookPageTarget
-                        {
-                            IsSelected = false,
-                            DeviceName = target.Name,
-                            AppClone = target.FbClone,
-                            PageId = page.PageId,
-                            PersonaUid = !string.IsNullOrWhiteSpace(page.PersonaUid)
-                                ? page.PersonaUid
-                                : page.PageId,
-                            UserUid = accountDetails.Uid,
-                            PageName = page.PageName,
-                            Email = accountDetails.Email,
-                            Birthdate = accountDetails.Birthdate,
-                            CreationDate = accountDetails.CreationDate,
-                            Location = page.Location,
-                            Hometown = page.Hometown,
-                            Work = page.Work,
-                            Education = page.Education,
-                            RelationshipStatus = page.RelationshipStatus,
-                            Type = "Page",
-                            Followers = page.Followers,
-                            Reach = page.Reach,
-                            ReelsCount = page.ReelsCount,
-                            Notifications = page.Notifications,
-                            ManagedBy = !string.IsNullOrWhiteSpace(page.ManagedBy)
-                                ? page.ManagedBy
-                                : accountDetails.Name,
-                        };
-                        Pages.Add(new FacebookPageTargetViewModel(pageTarget, Pages.Count + 1));
-                    }
-
-                    RefreshDisplayedManagePages();
-
-                    if (SelectedManageInstance == target)
-                    {
-                        SelectedAccountName = accountDetails.Name;
-                        SelectedAccountUid = accountDetails.Uid;
-                        SelectedAccountEmail = accountDetails.Email;
-                        SelectedAccountBirthdate = accountDetails.Birthdate;
-                        SelectedAccountCreationDate = accountDetails.CreationDate;
-                        IsSelectedAccountActive = true;
-                    }
-                });
-
-                var totalItems = accountDetails.Pages.Count + 1;
+                // The root callback already merged and persisted each UI update.
+                // Merge once more using the same models instead of rebuilding
+                // root-only rows and losing dates, statistics, or posting config.
+                await ReplaceDevicePagesInTableAsync(target, accountDetails, isRootSnapshot: false);
+                await PersistPagesSnapshotAsync();
+                var completionStatus =
+                    $"1 Profile + {accountDetails.Pages.Count} Pages"
+                    + (
+                        accountDetails.Pages.Count > 0
+                            ? !accountDetails.SwitchedToProfile
+                            && pageUiLookupResults.Attempted == 0
+                                ? " (Owner not verified)"
+                                : $" (UI {pageUiLookupResults.Succeeded}/{pageUiLookupResults.Attempted})"
+                            : personalUiHadData
+                                ? " (UI saved)"
+                                : " (UI unavailable)"
+                    );
+                if (accountDetails.IdentitySwitchFailed)
+                    completionStatus += "; " + accountDetails.FetchStatus;
+                await ReportFetchProgressAsync(
+                    target,
+                    completionStatus,
+                    $"{target.Name}: saved 1 personal profile and {accountDetails.Pages.Count} managed Pages; personal UI details {(personalUiHadData ? "saved" : "unavailable")}; Page UI details saved for {pageUiLookupResults.Succeeded}/{accountDetails.Pages.Count}."
+                );
                 if (autoCloseIfBooted && (!wasRunning || CloseLDAfterAction))
                 {
                     target.Status = "Closing...";
@@ -3450,24 +3462,24 @@ public partial class AutoPostViewModel : ViewModelBase
                             LdFolder,
                             CancellationToken.None
                         );
-                        target.Status = $"{totalItems} Pages (Closed)";
+                        target.Status = completionStatus + "; Closed";
                     }
                     catch
                     {
-                        target.Status = $"{totalItems} Pages";
+                        target.Status = completionStatus + "; Close failed";
                     }
                 }
                 else
                 {
-                    target.Status = $"{totalItems} Pages (Ready)";
+                    target.Status = completionStatus;
                 }
                 return true;
             }
             else
             {
-                if (target.Status != "Extract Error")
+                if (target.Status is not ("Extract Error" or "Root Shell Unavailable"))
                 {
-                    target.Status = "No Pages Detected";
+                    target.Status = "No Root Account Records";
                 }
 
                 if (autoCloseIfBooted && (!wasRunning || CloseLDAfterAction))
@@ -3525,6 +3537,18 @@ public partial class AutoPostViewModel : ViewModelBase
     [RelayCommand]
     public async Task FetchDevicePagesAsync(LDInstanceItemViewModel? targetInstance = null)
     {
+        if (IsRunning)
+        {
+            _snackbarManager.Notify(
+                "P-Flow is using Facebook; stop the batch before fetching or switching."
+            );
+            return;
+        }
+        if (IsBusy)
+        {
+            _snackbarManager.Notify("A fetch or extraction operation is already in progress.");
+            return;
+        }
         var target =
             targetInstance ?? SelectedManageInstance ?? Instances.FirstOrDefault(i => i.IsSelected);
         if (target == null)
@@ -3535,6 +3559,9 @@ public partial class AutoPostViewModel : ViewModelBase
 
         SelectedManageInstance = target;
         IsBusy = true;
+        _fetchCts?.Cancel();
+        _fetchCts = new CancellationTokenSource();
+        var ct = _fetchCts.Token;
         target.Status = "Get Pages From Device";
         StatusSummary = $"Fetching Facebook account & pages for {target.Name} via Root Shell...";
         _snackbarManager.Notify(
@@ -3546,18 +3573,23 @@ public partial class AutoPostViewModel : ViewModelBase
             var ok = await ProcessSingleDeviceFetchAsync(
                 target,
                 autoCloseIfBooted: CloseLDAfterAction,
-                CancellationToken.None
+                ct
             );
             if (ok)
             {
                 await SavePagesAsync();
-                StatusSummary = $"Successfully extracted account & pages for {target.Name}.";
-                _snackbarManager.Notify($"Extracted profile & pages for {target.Name}.");
+                StatusSummary = $"{target.Name}: {target.Status}.";
+                _snackbarManager.Notify($"{target.Name}: {target.Status}.");
             }
             else
             {
-                _snackbarManager.Notify($"Could not detect Facebook session on {target.Name}.");
+                _snackbarManager.Notify($"Fetch stopped on {target.Name}: {target.Status}.");
             }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            target.Status = "Canceled";
+            StatusSummary = $"Fetch canceled for {target.Name}; completed updates are saved.";
         }
         catch (Exception ex)
         {
@@ -3574,6 +3606,13 @@ public partial class AutoPostViewModel : ViewModelBase
     [RelayCommand]
     public async Task SwitchToPersonaAsync(FacebookPageTargetViewModel? targetPage)
     {
+        if (IsRunning || IsBusy)
+        {
+            _snackbarManager.Notify(
+                "P-Flow is using Facebook; stop the batch before fetching or switching."
+            );
+            return;
+        }
         if (targetPage == null)
             return;
 
@@ -3590,29 +3629,17 @@ public partial class AutoPostViewModel : ViewModelBase
 
         try
         {
+            using var deviceLease = await PFlowDeviceLease.AcquireAsync(
+                deviceIndex,
+                CancellationToken.None
+            );
             var ok = await _ldPlayerService.SwitchToPersonaAsync(
                 deviceIndex,
-                targetPage.PageName,
+                targetPage.Model,
                 LdFolder
             );
             if (ok)
             {
-                if (targetPage.IsProfile)
-                {
-                    StatusSummary =
-                        $"Clearing Facebook app after switch to profile on LD-{deviceIndex}...";
-                    await _ldPlayerService.StopFacebookAppAsync(deviceIndex, LdFolder);
-                    await Task.Delay(1000);
-                    await _ldPlayerService.ClearFacebookCacheAsync(deviceIndex, LdFolder);
-                    await Task.Delay(1000);
-                    await _ldPlayerService.LaunchAppAsync(
-                        deviceIndex,
-                        "com.facebook.katana",
-                        LdFolder
-                    );
-                    await Task.Delay(2500);
-                }
-
                 StatusSummary =
                     $"Successfully switched to '{targetPage.PageName}' on LD-{deviceIndex}.";
                 _snackbarManager.Notify($"Switched to {targetPage.PageName}!");
@@ -3660,25 +3687,14 @@ public partial class AutoPostViewModel : ViewModelBase
             IsBusy = true;
             try
             {
-                var ok = await _ldPlayerService.SwitchToPersonaAsync(
+                var ok = await _ldPlayerService.EnsureSwitchedToPersonalProfileAsync(
                     deviceIndex,
                     SelectedAccountName,
                     LdFolder
                 );
                 if (ok)
                 {
-                    StatusSummary =
-                        $"Clearing Facebook app after switch to profile on LD-{deviceIndex}...";
-                    await _ldPlayerService.StopFacebookAppAsync(deviceIndex, LdFolder);
-                    await Task.Delay(1000);
-                    await _ldPlayerService.ClearFacebookCacheAsync(deviceIndex, LdFolder);
-                    await Task.Delay(1000);
-                    await _ldPlayerService.LaunchAppAsync(
-                        deviceIndex,
-                        "com.facebook.katana",
-                        LdFolder
-                    );
-                    await Task.Delay(2500);
+                    StatusSummary = $"Switched to primary profile: {SelectedAccountName}.";
                     _snackbarManager.Notify($"Switched to primary profile: {SelectedAccountName}");
                 }
                 else
@@ -3697,29 +3713,8 @@ public partial class AutoPostViewModel : ViewModelBase
         }
     }
 
-    private int ResolveDeviceIndex(string deviceName)
-    {
-        if (
-            deviceName.StartsWith("LD-", StringComparison.OrdinalIgnoreCase)
-            && int.TryParse(deviceName[3..].Trim(), out var parsedIdx)
-        )
-        {
-            return parsedIdx;
-        }
-
-        var matchedInst = Instances.FirstOrDefault(i =>
-            i.Name.Equals(deviceName, StringComparison.OrdinalIgnoreCase)
-            || i.Index.ToString() == deviceName
-        );
-        if (matchedInst != null)
-        {
-            return matchedInst.Index;
-        }
-
-        return SelectedManageInstance?.Index
-            ?? Instances.FirstOrDefault(i => i.IsAndroidStarted)?.Index
-            ?? 0;
-    }
+    private int ResolveDeviceIndex(string deviceName) =>
+        PFlowDeviceRouting.Resolve(deviceName, Instances.Select(i => i.Model));
 
     private bool MatchesSelectedDevice(FacebookPageTargetViewModel p)
     {
@@ -3755,6 +3750,13 @@ public partial class AutoPostViewModel : ViewModelBase
     [RelayCommand]
     public async Task FetchSelectedPagesInfoAsync()
     {
+        if (IsRunning)
+        {
+            _snackbarManager.Notify(
+                "P-Flow is using Facebook; stop the batch before fetching or switching."
+            );
+            return;
+        }
         if (IsBusy)
         {
             _snackbarManager.Notify("A fetch or extraction operation is already in progress.");
@@ -3780,6 +3782,7 @@ public partial class AutoPostViewModel : ViewModelBase
 
                 int completedCount = 0;
                 int successCount = 0;
+                int identitySwitchFailures = 0;
                 var semaphore = new SemaphoreSlim(concurrency);
 
                 try
@@ -3799,6 +3802,13 @@ public partial class AutoPostViewModel : ViewModelBase
                                 if (ok)
                                 {
                                     Interlocked.Increment(ref successCount);
+                                    if (
+                                        inst.Status.Contains(
+                                            "identity switch failed",
+                                            StringComparison.OrdinalIgnoreCase
+                                        )
+                                    )
+                                        Interlocked.Increment(ref identitySwitchFailures);
                                 }
                                 var done = Interlocked.Increment(ref completedCount);
                                 StatusSummary =
@@ -3815,10 +3825,8 @@ public partial class AutoPostViewModel : ViewModelBase
 
                     await SavePagesAsync();
                     StatusSummary =
-                        $"Bulk extraction finished: {successCount}/{selectedInstances.Count} devices succeeded.";
-                    _snackbarManager.Notify(
-                        $"Bulk extraction completed: {successCount} devices extracted."
-                    );
+                        $"Bulk extraction finished: data fetched from {successCount}/{selectedInstances.Count} devices; {identitySwitchFailures} identity switch failures.";
+                    _snackbarManager.Notify(StatusSummary);
                 }
                 catch (OperationCanceledException)
                 {
@@ -3864,177 +3872,77 @@ public partial class AutoPostViewModel : ViewModelBase
         var pageCt = _fetchCts.Token;
 
         var pageConcurrency = Math.Max(1, RunThread);
-        StatusSummary =
-            $"Fetching page info for {selectedPages.Count} pages ({pageConcurrency} threads)...";
-        _snackbarManager.Notify(
-            $"Extracting page stats for {selectedPages.Count} pages across {pageConcurrency} threads..."
-        );
-
-        // Group selected pages by device to avoid redundant emulator launches
-        var pagesByDevice = selectedPages
-            .GroupBy(p => ResolveDeviceIndex(p.DeviceName))
-            .Where(g => g.Key >= 0)
+        // Use the same verified identity workflow for either fetch button.
+        // Run once per device; switching each selected public Page URL cannot
+        // provide the personal account or managed Page information.
+        var deviceTargets = selectedPages
+            .Select(page =>
+                Instances.FirstOrDefault(instance =>
+                    instance.Name.Equals(page.DeviceName, StringComparison.OrdinalIgnoreCase)
+                    || page.DeviceName.Equals(
+                        $"LD-{instance.Index}",
+                        StringComparison.OrdinalIgnoreCase
+                    )
+                )
+            )
+            .Where(instance => instance != null)
+            .Select(instance => instance!)
+            .DistinctBy(instance => instance.Index)
             .ToList();
-
-        int pagesCompleted = 0;
-        int pagesSuccess = 0;
-        var pageSemaphore = new SemaphoreSlim(pageConcurrency);
-
+        var completed = 0;
+        var succeeded = 0;
+        using var rowFetchSemaphore = new SemaphoreSlim(pageConcurrency);
         try
         {
-            var tasks = pagesByDevice.Select(
-                async (deviceGroup) =>
-                {
-                    await pageSemaphore.WaitAsync(pageCt);
-                    try
-                    {
-                        pageCt.ThrowIfCancellationRequested();
-                        int deviceIndex = deviceGroup.Key;
-                        var devicePages = deviceGroup.ToList();
-                        var targetInst = Instances.FirstOrDefault(i => i.Index == deviceIndex);
-
-                        var wasRunning = await _ldPlayerService.WaitForBootCompletedAsync(
-                            deviceIndex,
-                            TimeSpan.FromSeconds(2),
-                            LdFolder,
-                            pageCt
-                        );
-
-                        if (!wasRunning)
-                        {
-                            await _bootGate.WaitAsync(pageCt);
-                            try
-                            {
-                                pageCt.ThrowIfCancellationRequested();
-                                if (targetInst != null)
-                                    targetInst.Status = "Booting...";
-                                StatusSummary = $"Booting LD-{deviceIndex}...";
-                                await _ldPlayerService.LaunchInstanceAsync(
-                                    deviceIndex,
-                                    LdFolder,
-                                    pageCt
-                                );
-                                var staggerSec = Math.Clamp(
-                                    DelayOpenEachLD > 0 ? DelayOpenEachLD : 3,
-                                    2,
-                                    8
-                                );
-                                await Task.Delay(TimeSpan.FromSeconds(staggerSec), pageCt);
-                            }
-                            finally
-                            {
-                                _bootGate.Release();
-                            }
-
-                            var booted = await _ldPlayerService.WaitForBootCompletedAsync(
-                                deviceIndex,
-                                TimeSpan.FromSeconds(45),
-                                LdFolder,
-                                pageCt
-                            );
-                            if (!booted)
-                            {
-                                if (targetInst != null)
-                                    targetInst.Status = "Boot Failed";
-                                return;
-                            }
-                            await Task.Delay(2000, pageCt);
-                        }
-
-                        if (targetInst != null)
-                            targetInst.Status = "Fetching Pages...";
-
-                        foreach (var page in devicePages)
-                        {
-                            pageCt.ThrowIfCancellationRequested();
-                            if (string.IsNullOrWhiteSpace(page.PageId))
-                                continue;
-
-                            var info = await _ldPlayerService.FetchPageInfoFromDeviceAsync(
-                                deviceIndex,
-                                page.PageId,
-                                LdFolder,
-                                pageCt
-                            );
-
-                            if (info != null)
-                            {
-                                await Dispatcher.UIThread.InvokeAsync(() =>
-                                {
-                                    if (
-                                        !string.IsNullOrWhiteSpace(info.PageName)
-                                        && info.PageName.Length > 2
-                                    )
-                                        page.PageName = info.PageName;
-                                    if (info.Followers > 0)
-                                        page.Followers = info.Followers;
-                                    if (!string.IsNullOrWhiteSpace(info.Reach))
-                                        page.Reach = info.Reach;
-                                    if (!string.IsNullOrWhiteSpace(info.Type))
-                                        page.Type = info.Type;
-                                    if (info.ReelsCount > 0)
-                                        page.ReelsCount = info.ReelsCount;
-                                });
-                                Interlocked.Increment(ref pagesSuccess);
-                            }
-                            var done = Interlocked.Increment(ref pagesCompleted);
-                            StatusSummary =
-                                $"[{done}/{selectedPages.Count}] Fetched {page.PageName} on LD-{deviceIndex}.";
-                        }
-
-                        if (!wasRunning || CloseLDAfterAction)
-                        {
-                            if (targetInst != null)
-                                targetInst.Status = "Closing...";
-                            try
-                            {
-                                await _ldPlayerService.QuitInstanceAsync(
-                                    deviceIndex,
-                                    LdFolder,
-                                    CancellationToken.None
-                                );
-                                if (targetInst != null)
-                                    targetInst.Status = "Closed";
-                            }
-                            catch { }
-                        }
-                        else
-                        {
-                            if (targetInst != null)
-                                targetInst.Status = "Ready";
-                        }
-                    }
-                    finally
-                    {
-                        pageSemaphore.Release();
-                    }
-                }
-            );
-
-            await Task.WhenAll(tasks);
-
-            await Dispatcher.UIThread.InvokeAsync(() =>
+            if (deviceTargets.Count == 0)
             {
-                RefreshDisplayedManagePages();
+                _snackbarManager.Notify("No LDPlayer device matches the selected rows.");
+                return;
+            }
+            StatusSummary =
+                $"Refreshing profiles and managed Pages from {deviceTargets.Count} devices...";
+            var tasks = deviceTargets.Select(async target =>
+            {
+                await ReportFetchProgressAsync(
+                    target,
+                    "Waiting Fetch Slot",
+                    $"{target.Name}: waiting for an account-fetch worker slot."
+                );
+                await rowFetchSemaphore.WaitAsync(pageCt);
+                try
+                {
+                    pageCt.ThrowIfCancellationRequested();
+                    if (
+                        await ProcessSingleDeviceFetchAsync(target, autoCloseIfBooted: true, pageCt)
+                    )
+                        Interlocked.Increment(ref succeeded);
+                    var done = Interlocked.Increment(ref completed);
+                    StatusSummary =
+                        $"[{done}/{deviceTargets.Count}] Processed {target.Name}; root data saved for {succeeded} devices.";
+                }
+                finally
+                {
+                    rowFetchSemaphore.Release();
+                }
             });
-            await SavePagesAsync();
-            StatusSummary = $"Updated {pagesSuccess} of {selectedPages.Count} pages from LDPlayer.";
-            _snackbarManager.Notify($"Fetched & saved info for {pagesSuccess} pages.");
+            await Task.WhenAll(tasks);
+            await PersistPagesSnapshotAsync();
+            StatusSummary =
+                $"Account and Page refresh finished: root data saved for {succeeded}/{deviceTargets.Count} devices. See device status for UI results.";
+            _snackbarManager.Notify($"Saved profile & Page data from {succeeded} devices.");
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (pageCt.IsCancellationRequested)
         {
-            StatusSummary = "Page info extraction stopped by user.";
-            _snackbarManager.Notify("Fetch canceled.");
+            StatusSummary = "Account and Page refresh canceled; completed updates are saved.";
         }
         catch (Exception ex)
         {
-            StatusSummary = $"Error fetching page info: {ex.Message}";
+            StatusSummary = $"Error refreshing account and Page data: {ex.Message}";
             _snackbarManager.Notify($"Fetch failed: {ex.Message}");
         }
         finally
         {
             IsBusy = false;
-            pageSemaphore.Dispose();
         }
     }
 
@@ -4270,7 +4178,8 @@ public partial class AutoPostViewModel : ViewModelBase
                     var title = ResolveCaptionForMedia(
                         file,
                         titleConfig,
-                        page.UseTitleFromTextFile
+                        page.UseTitleFromTextFile,
+                        page.UseCaptionFromFilename
                     );
 
                     var task = new AutoPostTaskItem

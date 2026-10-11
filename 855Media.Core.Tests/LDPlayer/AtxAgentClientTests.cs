@@ -134,6 +134,42 @@ public class AtxAgentClientTests
     }
 
     [Fact]
+    public async Task TapAsync_ObserverExceptionsDoNotChangeResultOrSuppressOtherObservers()
+    {
+        var tapCommands = 0;
+        var mockHandler = new MockHttpMessageHandler(request =>
+        {
+            if (request.RequestUri!.AbsolutePath.EndsWith("/dump/hierarchy"))
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        "<hierarchy><node text=\"Birthday\" clickable=\"true\" bounds=\"[0,0][100,100]\" /></hierarchy>"
+                    ),
+                };
+            tapCommands++;
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    "{\"output\":\"\",\"exitCode\":0}",
+                    Encoding.UTF8,
+                    "application/json"
+                ),
+            };
+        });
+        using var httpClient = new HttpClient(mockHandler);
+        using var client = new AtxAgentClient(7912, httpClient) { IsTapTracingEnabled = true };
+        AtxTapEvent? observed = null;
+        client.TapObserved += _ => throw new InvalidOperationException("Observer unavailable");
+        client.TapObserved += tap => observed = tap;
+
+        Assert.True(await client.TapAsync(0, 50, 50));
+        Assert.Equal(1, tapCommands);
+        Assert.NotNull(observed);
+        Assert.True(observed.Success);
+        Assert.Equal("Birthday", observed.Target);
+    }
+
+    [Fact]
     public async Task TakeScreenshotAsync_ReturnsRawImageBytes()
     {
         var dummyBytes = new byte[] { 0xFF, 0xD8, 0xFF, 0xE0, 0x01, 0x02 };
@@ -461,7 +497,7 @@ public class AtxAgentClientTests
                 return new HttpResponseMessage(HttpStatusCode.OK)
                 {
                     Content = new StringContent(
-                        "{\"output\":\"\"}",
+                        "{\"output\":\"Starting: Intent { act=android.intent.action.SEND }\"}",
                         Encoding.UTF8,
                         "application/json"
                     ),

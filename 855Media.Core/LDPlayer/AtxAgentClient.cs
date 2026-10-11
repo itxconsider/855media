@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -12,16 +13,30 @@ using System.Xml.Linq;
 
 namespace _855Media.Core.LDPlayer;
 
+public sealed record AtxTapEvent(
+    DateTimeOffset Timestamp,
+    int DeviceIndex,
+    int X,
+    int Y,
+    string Target,
+    string Bounds,
+    string InputMethod,
+    bool Success
+);
+
 /// <summary>
 /// High-performance HTTP client for OpenATX on-device daemon (atx-agent).
 /// Communicates over HTTP port 7912 (forwarded to localhost) for single-digit ms UI hierarchy dumps,
 /// fast element interaction, shell commands, and HTTP file uploads/downloads.
 /// </summary>
-public class AtxAgentClient : IDisposable
+public partial class AtxAgentClient : IDisposable
 {
     private readonly HttpClient _httpClient;
     private readonly int _basePort;
     private bool _disposed;
+
+    public event Action<AtxTapEvent>? TapObserved;
+    public bool IsTapTracingEnabled { get; set; }
 
     public const int DefaultBasePort = 7912;
 
@@ -110,7 +125,124 @@ public class AtxAgentClient : IDisposable
         CancellationToken cancellationToken = default
     )
     {
-        return await ExecuteShellAsync(deviceIndex, $"input tap {x} {y}", cancellationToken);
+        var hierarchy = IsTapTracingEnabled
+            ? await DumpHierarchyAsync(deviceIndex, cancellationToken)
+            : null;
+        var success = await ExecuteShellAsync(deviceIndex, $"input tap {x} {y}", cancellationToken);
+        ReportTapObserved(deviceIndex, x, y, hierarchy, "ATX", success);
+        return success;
+    }
+
+    public void ReportTapObserved(
+        int deviceIndex,
+        int x,
+        int y,
+        string? hierarchy,
+        string inputMethod,
+        bool success
+    )
+    {
+        if (!IsTapTracingEnabled || TapObserved is not { } tapObserved)
+            return;
+
+        var (target, bounds) = DescribeElementAtPoint(hierarchy, x, y);
+        var tapEvent = new AtxTapEvent(
+            DateTimeOffset.Now,
+            deviceIndex,
+            x,
+            y,
+            target,
+            bounds,
+            inputMethod,
+            success
+        );
+        Debug.WriteLine(
+            $"[{inputMethod}][LD-{deviceIndex}] Tap {(success ? "sent" : "failed")}: {target} at ({x},{y}) bounds={bounds}"
+        );
+        _ = PFlowFetchTrace.WriteAsync(
+            deviceIndex,
+            success ? "ui.tap.sent" : "ui.tap.failed",
+            $"method={inputMethod}; target={target}; x={x}; y={y}; bounds={bounds}"
+        );
+        foreach (Action<AtxTapEvent> observer in tapObserved.GetInvocationList())
+        {
+            try
+            {
+                observer.Invoke(tapEvent);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[AtxAgentClient] Tap observer failed: {ex.GetType().Name}");
+                _ = PFlowFetchTrace.WriteAsync(
+                    deviceIndex,
+                    "ui.tap.observer-failed",
+                    $"error={ex.GetType().Name}"
+                );
+            }
+        }
+    }
+
+    private static (string Target, string Bounds) DescribeElementAtPoint(
+        string? hierarchy,
+        int x,
+        int y
+    )
+    {
+        if (string.IsNullOrWhiteSpace(hierarchy))
+            return ("UI hierarchy unavailable", string.Empty);
+
+        try
+        {
+            var doc = XDocument.Parse(PFlowUiPrivacy.RedactForDiagnostics(hierarchy));
+            var candidates = doc.Descendants("node")
+                .Select(node =>
+                {
+                    var boundsText = node.Attribute("bounds")?.Value ?? string.Empty;
+                    var match = Regex.Match(boundsText, @"\[(\d+),(\d+)\]\[(\d+),(\d+)\]");
+                    if (!match.Success)
+                        return null;
+
+                    var left = int.Parse(match.Groups[1].Value);
+                    var top = int.Parse(match.Groups[2].Value);
+                    var right = int.Parse(match.Groups[3].Value);
+                    var bottom = int.Parse(match.Groups[4].Value);
+                    if (x < left || x > right || y < top || y > bottom)
+                        return null;
+
+                    var text = node.Attribute("text")?.Value?.Trim();
+                    var description = node.Attribute("content-desc")?.Value?.Trim();
+                    var resourceId = node.Attribute("resource-id")?.Value?.Trim();
+                    var className = node.Attribute("class")?.Value?.Trim();
+                    var label =
+                        !string.IsNullOrWhiteSpace(description) ? description
+                        : !string.IsNullOrWhiteSpace(text) ? text
+                        : !string.IsNullOrWhiteSpace(resourceId) ? resourceId
+                        : className ?? "Unlabeled element";
+                    var clickable = string.Equals(
+                        node.Attribute("clickable")?.Value,
+                        "true",
+                        StringComparison.OrdinalIgnoreCase
+                    );
+                    var area = (long)(right - left) * (bottom - top);
+                    return new
+                    {
+                        Label = label,
+                        Bounds = boundsText,
+                        Clickable = clickable,
+                        Area = area,
+                    };
+                })
+                .Where(candidate => candidate != null)
+                .OrderByDescending(candidate => candidate!.Clickable)
+                .ThenBy(candidate => candidate!.Area)
+                .ToList();
+
+            if (candidates.Count > 0)
+                return (candidates[0]!.Label, candidates[0]!.Bounds);
+        }
+        catch { }
+
+        return ("No accessibility node at point", string.Empty);
     }
 
     public async Task<bool> SwipeAsync(
@@ -482,11 +614,13 @@ public class AtxAgentClient : IDisposable
         CancellationToken cancellationToken = default
     )
     {
-        return await ExecuteShellAsync(
+        var (ok, output) = await ExecuteShellWithOutputAsync(
             deviceIndex,
-            $"am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d \"file://{remotePath}\"",
+            PFlowMediaIntent.ScanCommand(remotePath),
             cancellationToken
         );
+        cancellationToken.ThrowIfCancellationRequested();
+        return ok && PFlowMediaIntent.ScanAcknowledged(output);
     }
 
     public async Task<bool> ShareVideoAsync(
@@ -496,11 +630,16 @@ public class AtxAgentClient : IDisposable
         CancellationToken cancellationToken = default
     )
     {
-        return await ExecuteShellAsync(
+        var command = PFlowMediaIntent.ShareCommand(remotePath, packageName, false);
+        if (command == null)
+            return false;
+        var (ok, output) = await ExecuteShellWithOutputAsync(
             deviceIndex,
-            $"am start -a android.intent.action.SEND -t \"video/mp4\" --eu android.intent.extra.STREAM \"file://{remotePath}\" -p {packageName}",
+            command,
             cancellationToken
         );
+        cancellationToken.ThrowIfCancellationRequested();
+        return ok && PFlowMediaIntent.ShareStarted(output);
     }
 
     public async Task<bool> ShareImageAsync(
@@ -510,14 +649,16 @@ public class AtxAgentClient : IDisposable
         CancellationToken cancellationToken = default
     )
     {
-        var mimeType = remotePath.EndsWith(".png", StringComparison.OrdinalIgnoreCase)
-            ? "image/png"
-            : "image/jpeg";
-        return await ExecuteShellAsync(
+        var command = PFlowMediaIntent.ShareCommand(remotePath, packageName, true);
+        if (command == null)
+            return false;
+        var (ok, output) = await ExecuteShellWithOutputAsync(
             deviceIndex,
-            $"am start -a android.intent.action.SEND -t \"{mimeType}\" --eu android.intent.extra.STREAM \"file://{remotePath}\" -p {packageName}",
+            command,
             cancellationToken
         );
+        cancellationToken.ThrowIfCancellationRequested();
+        return ok && PFlowMediaIntent.ShareStarted(output);
     }
 
     public async Task<byte[]?> TakeScreenshotAsync(
@@ -938,34 +1079,43 @@ public class AtxAgentClient : IDisposable
     {
         var (ok, output) = await ExecuteShellWithOutputAsync(
             deviceIndex,
-            "dumpsys window | grep -E \"mCurrentFocus|mFocusedApp\"",
+            "dumpsys window windows",
             cancellationToken
         );
 
         if (ok && !string.IsNullOrWhiteSpace(output))
         {
-            var match = Regex.Match(output, @"([a-zA-Z0-9._]+/[a-zA-Z0-9._]+)");
-            if (match.Success)
-            {
-                return match.Groups[1].Value;
-            }
+            var activity = ParseFocusedActivity(output);
+            if (activity != null)
+                return activity;
         }
 
         var (topOk, topOutput) = await ExecuteShellWithOutputAsync(
             deviceIndex,
-            "dumpsys activity top | grep -m 1 \"ACTIVITY \"",
+            "dumpsys activity top",
             cancellationToken
         );
 
         if (topOk && !string.IsNullOrWhiteSpace(topOutput))
         {
-            var match = Regex.Match(topOutput, @"ACTIVITY\s+([a-zA-Z0-9._]+/[a-zA-Z0-9._]+)");
-            if (match.Success)
-            {
-                return match.Groups[1].Value;
-            }
+            return ParseFocusedActivity(topOutput);
         }
 
+        return null;
+    }
+
+    public static string? ParseFocusedActivity(string? output)
+    {
+        if (string.IsNullOrWhiteSpace(output))
+            return null;
+
+        const string component = @"([A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)+/[A-Za-z0-9_.$]+)";
+        foreach (var prefix in new[] { @"mCurrentFocus=.*?", @"mFocusedApp=.*?", @"ACTIVITY\s+" })
+        {
+            var match = Regex.Match(output, prefix + component);
+            if (match.Success)
+                return match.Groups[1].Value;
+        }
         return null;
     }
 
@@ -996,24 +1146,57 @@ public class AtxAgentClient : IDisposable
         CancellationToken cancellationToken = default
     )
     {
-        var uri = $"fb://bloks?app_id={Uri.EscapeDataString(bloksAppId)}";
-        if (parameters != null && parameters.Count > 0)
-        {
-            var jsonParams = JsonSerializer.Serialize(parameters);
-            uri += $"&params={Uri.EscapeDataString(jsonParams)}";
-        }
+        if (string.IsNullOrWhiteSpace(bloksAppId))
+            return false;
 
-        var started = await OpenDeepLinkAsync(deviceIndex, uri, packageName, cancellationToken);
-        if (!started)
+        var previousScreen = await DumpBloksScreenAsync(deviceIndex, cancellationToken);
+        var uri = BloksConstants.CreateBloksScreenQueryUri(bloksAppId, parameters);
+        await PFlowFetchTrace.WriteAsync(
+            deviceIndex,
+            "bloks.query.begin",
+            $"transport=atx; appId={bloksAppId}; parameterKeys=[{string.Join(",", parameters?.Keys ?? Enumerable.Empty<string>())}]",
+            cancellationToken
+        );
+        if (!await OpenDeepLinkAsync(deviceIndex, uri, packageName, cancellationToken))
         {
-            started = await ExecuteShellAsync(
+            await PFlowFetchTrace.WriteAsync(
                 deviceIndex,
-                $"am start -n {packageName}/{BloksConstants.BloksNativeShellActivity} --es app_id \"{bloksAppId}\" -f 0x14000000",
+                "bloks.query.intent-failed",
+                $"appId={bloksAppId}",
                 cancellationToken
             );
+            return false;
         }
 
-        return started;
+        BloksScreenInfo? screen = null;
+        var state = BloksQueryScreenState.AwaitingContent;
+        for (var attempt = 0; attempt < 12; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            screen = await DumpBloksScreenAsync(deviceIndex, cancellationToken);
+            state = BloksQueryScreenValidator.Inspect(screen, previousScreen);
+            if (state == BloksQueryScreenState.Ready)
+            {
+                await PFlowFetchTrace.WriteAsync(
+                    deviceIndex,
+                    "bloks.query.opened",
+                    PFlowFetchTrace.SummarizeScreen(screen),
+                    cancellationToken
+                );
+                return true;
+            }
+            if (state is BloksQueryScreenState.DemoShell or BloksQueryScreenState.Error)
+                break;
+            await Task.Delay(500, cancellationToken);
+        }
+
+        await PFlowFetchTrace.WriteAsync(
+            deviceIndex,
+            "bloks.query.rejected",
+            $"appId={bloksAppId}; reason={state}; {PFlowFetchTrace.SummarizeScreen(screen)}",
+            cancellationToken
+        );
+        return false;
     }
 
     /// <summary>
@@ -1345,6 +1528,16 @@ public class AtxAgentClient : IDisposable
             return null;
 
         var all = screen.AllElements;
+        // Use the hierarchy's actual device coordinate space. The previous
+        // fixed 720x1280 defaults filtered out the bottom navigation on LD
+        // instances with a smaller reported resolution, so no Profile/Menu
+        // tab was found and the caller fell through to unrelated taps.
+        var hierarchyWidth = all.Count == 0 ? 0 : all.Max(element => element.Bounds.Right);
+        var hierarchyHeight = all.Count == 0 ? 0 : all.Max(element => element.Bounds.Bottom);
+        if (hierarchyWidth > 0)
+            screenWidth = hierarchyWidth;
+        if (hierarchyHeight > 0)
+            screenHeight = hierarchyHeight;
 
         // 1. Direct search by accessibility content-desc or text:
         // Examples across Facebook app versions:
@@ -1418,7 +1611,6 @@ public class AtxAgentClient : IDisposable
             || e.Matches("Go to Accounts Center", partialMatch: true)
             || e.Matches("Switch profile", partialMatch: true)
             || e.Matches("Create Facebook Page", partialMatch: true)
-            || (e.Matches("Menu", partialMatch: false) && e.CenterY < 180)
         );
     }
 

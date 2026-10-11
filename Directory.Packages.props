@@ -3,6 +3,9 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
   <ItemGroup>
+    <PackageVersion Include="MailKit" Version="4.17.0" />
+    <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.12" />
     <PackageVersion Include="AngleSharp" Version="1.5.0" />
     <PackageVersion Include="AsyncImageLoader.Avalonia" Version="3.7.0" />
     <PackageVersion Include="Avalonia" Version="11.3.14" />
