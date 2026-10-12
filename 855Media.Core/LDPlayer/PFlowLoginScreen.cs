@@ -15,6 +15,7 @@ public enum PFlowLoginScreenKind
     SaveLoginInfo,
     OwnPersonalProfile,
     Checkpoint,
+    LocationServicesIntro,
 }
 
 // Observed installed-screen markers. A profile marker is NOT exact live UID proof.
@@ -52,8 +53,16 @@ public static class PFlowLoginScreen
                     (!requireEnabled || (string?)n.Attribute("enabled") == "true")
                     && (string?)n.Attribute("clickable") == "true"
                     && (
-                        (string?)n.Attribute("text") == label
-                        || (string?)n.Attribute("content-desc") == label
+                        string.Equals(
+                            (string?)n.Attribute("text"),
+                            label,
+                            StringComparison.OrdinalIgnoreCase
+                        )
+                        || string.Equals(
+                            (string?)n.Attribute("content-desc"),
+                            label,
+                            StringComparison.OrdinalIgnoreCase
+                        )
                     )
                 );
             if (
@@ -96,6 +105,14 @@ public static class PFlowLoginScreen
             if (Has("Save your login info?") && Button("Not now"))
                 return PFlowLoginScreenKind.SaveLoginInfo;
             if (
+                !PFlowUiPrivacy.ContainsInput(xml)
+                && Has("To use Location Services, allow Facebook to access your location")
+                && Has("How you can use Location Services")
+                && Button("Continue")
+                && Button("Skip")
+            )
+                return PFlowLoginScreenKind.LocationServicesIntro;
+            if (
                 Button("Edit cover photo button")
                 && Button("Edit profile picture")
                 && Button("Edit profile")
@@ -126,7 +143,7 @@ public static class PFlowLoginScreen
             PFlowLoginScreenKind.AuthenticatorCodeRequired =>
                 "Enter this account’s current authenticator code.",
             PFlowLoginScreenKind.SaveLoginInfo =>
-                "Login accepted; exact personal UID verification is still required.",
+                "Facebook is asking whether to save login information.",
             PFlowLoginScreenKind.OwnPersonalProfile =>
                 "Personal profile visible; verify its exact UID before continuing.",
             PFlowLoginScreenKind.Checkpoint =>

@@ -77,41 +77,6 @@ public partial class AutoPostViewModel
         }
     }
 
-    private async Task RunScreenTimeAsync(
-        LDInstanceItemViewModel worker,
-        ScreenTimeSetting settings,
-        CancellationToken ct
-    )
-    {
-        var selected = PFlowAccountSelection.ForScreenTime(
-            _mappedAccounts,
-            worker.Index,
-            "com.facebook.katana"
-        );
-        if (selected.Length == 0)
-        {
-            worker.Status = "ScreenTime skipped: no personal accounts selected for this LD.";
-            return;
-        }
-        if (selected.Length > 1)
-            throw new NotSupportedException(
-                "Multiple personal accounts are selected for ScreenTime on this LD. Select one until saved-account switching and exact live UID verification are supported."
-            );
-        PFlowAccountSelection.RequireSupportedSingleLogin(
-            _mappedAccounts,
-            worker.Index,
-            "com.facebook.katana",
-            Pages
-                .Where(p => ResolveDeviceIndex(p.DeviceName) == worker.Index && p.IsProfile)
-                .Select(p => p.UserUid)
-        );
-        foreach (var account in selected)
-        {
-            ct.ThrowIfCancellationRequested();
-            await RunScreenTimeAccountAsync(worker, settings, account, ct);
-        }
-    }
-
     private async Task RunScreenTimeAccountAsync(
         LDInstanceItemViewModel worker,
         ScreenTimeSetting settings,

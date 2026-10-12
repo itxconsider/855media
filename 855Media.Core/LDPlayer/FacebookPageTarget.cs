@@ -433,6 +433,8 @@ public class AutoPostTaskItem : INotifyPropertyChanged
     public string Comment { get; set; } = string.Empty;
     public string PageId { get; set; } = string.Empty;
     public bool IsProfile { get; set; }
+    public string OwnerUid { get; set; } = string.Empty;
+    public PFlowAccountBinding? AccountBinding { get; set; }
     public string Page { get; set; } = string.Empty;
 
     public string Status

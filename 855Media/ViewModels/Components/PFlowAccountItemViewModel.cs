@@ -25,6 +25,42 @@ public partial class PFlowAccountItemViewModel : ObservableObject
     [ObservableProperty]
     private bool _selectedForPosting;
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanEnableAccountRotation))]
+    private bool _allowAutomaticLogin;
+
+    [ObservableProperty]
+    private bool _allowAccountRotation;
+
+    [ObservableProperty]
+    private int _rotationOrder;
+
+    public bool HasProtectedCredentials => !string.IsNullOrWhiteSpace(Account.CredentialReference);
+    public bool CanOpenCredentials => HasProtectedCredentials || IsMappingValid;
+    public string CredentialButtonLabel =>
+        HasProtectedCredentials ? "View / edit credentials" : "Store login credentials";
+    public bool CanEnableAutomaticLogin => IsMappingValid && HasProtectedCredentials;
+    public bool CanEnableAccountRotation => CanEnableAutomaticLogin && AllowAutomaticLogin;
+
+    partial void OnAllowAutomaticLoginChanged(bool value)
+    {
+        if (value && !CanEnableAutomaticLogin)
+            AllowAutomaticLogin = false;
+        if (!AllowAutomaticLogin)
+            AllowAccountRotation = false;
+    }
+
+    partial void OnAllowAccountRotationChanged(bool value)
+    {
+        if (value && !CanEnableAccountRotation)
+            AllowAccountRotation = false;
+    }
+
+    public string CredentialStatus =>
+        string.IsNullOrWhiteSpace(Account.CredentialReference)
+            ? "No protected credentials stored • existing verified Facebook logins can still run; store credentials for automatic login."
+            : "Protected credentials stored for this account";
+
     public PFlowAccountItemViewModel(PFlowPersonalAccount account, string bindingProblem = "")
     {
         Account = account;
@@ -35,5 +71,8 @@ public partial class PFlowAccountItemViewModel : ObservableObject
         SelectedForDiscovery = account.SelectedForDiscovery;
         SelectedForScreenTime = account.SelectedForScreenTime;
         SelectedForPosting = account.SelectedForPosting;
+        AllowAutomaticLogin = account.AllowAutomaticLogin && CanEnableAutomaticLogin;
+        AllowAccountRotation = account.AllowAccountRotation && CanEnableAccountRotation;
+        RotationOrder = account.RotationOrder;
     }
 }

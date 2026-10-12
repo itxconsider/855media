@@ -241,4 +241,107 @@ public class PFlowCredentialTests : IDisposable
         );
         Assert.False(Directory.Exists(directory));
     }
+
+    [Theory]
+    [InlineData(PFlowTwoFactorKind.None)]
+    [InlineData(PFlowTwoFactorKind.TotpSecret)]
+    public void EditorRestoresFullReusableValuesAndCanSaveThemAgain(PFlowTwoFactorKind kind)
+    {
+        var factor = kind == PFlowTwoFactorKind.TotpSecret ? Secret : "";
+        using var original = PFlowCredentialImport.Parse(
+            "123| fixture-密碼 |" + factor + "|",
+            Binding,
+            "fixture@example.invalid",
+            kind
+        );
+        var line = PFlowCredentialImport.FormatForEditor(Binding, original);
+        Assert.Equal("123| fixture-密碼 |" + factor + "|", line);
+        using var restored = PFlowCredentialImport.Parse(
+            line,
+            Binding,
+            Encoding.UTF8.GetString(original.LoginIdentifier),
+            kind
+        );
+        Assert.Equal(original.Password, restored.Password);
+        Assert.Equal(original.LoginIdentifier, restored.LoginIdentifier);
+        Assert.Equal(original.TwoFactor, restored.TwoFactor);
+    }
+
+    [Fact]
+    public void ExpiringOrDisposedCredentialsCannotBeReloadedIntoEditor()
+    {
+        using var expiring = PFlowCredentialImport.Parse(
+            "123|fixture-password|123456|",
+            Binding,
+            "fixture-login",
+            PFlowTwoFactorKind.OneTimeCode
+        );
+        Assert.Throws<InvalidOperationException>(() =>
+            PFlowCredentialImport.FormatForEditor(Binding, expiring)
+        );
+        using var disposed = PFlowCredentialImport.Parse(
+            "123|fixture-password||",
+            Binding,
+            "fixture-login",
+            PFlowTwoFactorKind.None
+        );
+        disposed.Dispose();
+        Assert.Throws<InvalidOperationException>(() =>
+            PFlowCredentialImport.FormatForEditor(Binding, disposed)
+        );
+    }
+
+    [Fact]
+    public async Task RecreatedInstanceRemapRetainsRealDpapiCredentialsWithoutReentry()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+        var credentials = new PFlowCredentialStore(directory);
+        var accounts = new PFlowAccountStore(Path.Combine(directory, "accounts.json"), credentials);
+        using var original = PFlowCredentialImport.Parse(
+            "123|fixture-password|" + Secret + "|",
+            Binding,
+            "fixture@example.invalid",
+            PFlowTwoFactorKind.TotpSecret
+        );
+        var reference = await credentials.SaveAsync(Binding, original);
+        await accounts.UpdateAsync(a =>
+            a.Add(
+                new PFlowPersonalAccount
+                {
+                    Binding = Binding,
+                    CredentialReference = reference,
+                    AllowAutomaticLogin = true,
+                }
+            )
+        );
+        var replacement = Binding with
+        {
+            InstanceIdentity = "recreated-instance",
+            DeviceName = "Recreated LD-1",
+        };
+        Assert.Equal(reference, await accounts.RemapAsync(Binding, replacement));
+        var account = (await accounts.LoadAsync()).Single();
+        Assert.NotEqual(reference, account.CredentialReference);
+        Assert.True(account.AllowAutomaticLogin);
+        Assert.Null(account.LastVerifiedUtc);
+        using var restored = await credentials.LoadAsync(replacement, account.CredentialReference);
+        Assert.Equal(original.Password, restored.Password);
+        Assert.Equal(original.TwoFactor, restored.TwoFactor);
+        await Assert.ThrowsAsync<CryptographicException>(() =>
+            credentials.LoadAsync(
+                replacement with
+                {
+                    OwnerUid = "456",
+                },
+                account.CredentialReference
+            )
+        );
+        credentials.Delete(reference);
+        using var afterCleanup = await credentials.LoadAsync(
+            replacement,
+            account.CredentialReference
+        );
+        Assert.Equal(original.LoginIdentifier, afterCleanup.LoginIdentifier);
+    }
 }

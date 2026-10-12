@@ -99,6 +99,9 @@ public sealed class PFlowPersonalAccount
     public PFlowAuthenticationState Authentication { get; set; }
     public DateTimeOffset? LastVerifiedUtc { get; set; }
     public string CredentialReference { get; set; } = "";
+    public bool AllowAutomaticLogin { get; set; }
+    public bool AllowAccountRotation { get; set; }
+    public int RotationOrder { get; set; }
     public List<PFlowPageAccess> Pages { get; set; } = [];
 
     // Only explicit same-index remaps create these entries; used to recover Page rows after restart.

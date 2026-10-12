@@ -57,7 +57,9 @@ public partial class LDInstanceItemViewModel : ObservableObject
         if (IsBusy)
             return;
         IsBusy = true;
-        Status = "Launching...";
+        Status = SurfsharkVpnMonitor.IsConnected()
+            ? "Launching..."
+            : "Waiting for Surfshark VPN...";
         try
         {
             await _ldPlayerService.LaunchInstanceAsync(Index, _customLdPath);

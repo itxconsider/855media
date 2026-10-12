@@ -46,17 +46,7 @@ public sealed class PFlowNativeOtpChallengeAdapter(
     {
         await ReadWorkerAsync(binding, ct);
         await _preparation.RequireConnectionAsync(binding, ct);
-        var focused = await ld.GetCurrentFocusedActivityAsync(binding.DeviceIndex, path, ct) ?? "";
-        if (
-            !System.Text.RegularExpressions.Regex.IsMatch(
-                focused,
-                @"(?<![\w.])com\.facebook\.katana/"
-            )
-        )
-            throw new InvalidOperationException(
-                "Facebook is not the foreground app. Verification stopped."
-            );
-        return await ld.DumpUiHierarchyAsync(binding.DeviceIndex, path, ct) ?? "";
+        return await _preparation.ReadFacebookScreenAsync(binding, ct);
     }
 
     private async Task Tap(
@@ -141,19 +131,27 @@ public sealed class PFlowNativeOtpChallengeAdapter(
                     )
                 );
             }
-            else if (kind == PFlowLoginScreenKind.SaveLoginInfo)
+            else if (
+                kind
+                    is PFlowLoginScreenKind.SaveLoginInfo
+                        or PFlowLoginScreenKind.OwnPersonalProfile
+                        or PFlowLoginScreenKind.LocationServicesIntro
+                || ScreenTimeNavigation.FeedViewportSignature(xml) != null
+                || PFlowNativeAccountNavigator.OwnProfile(xml)
+            )
                 return new(PFlowOtpChallengeState.NotRequired);
             else if (kind == PFlowLoginScreenKind.Checkpoint)
                 return new(PFlowOtpChallengeState.Checkpoint);
             else if (
                 kind
                 is PFlowLoginScreenKind.CredentialsRejected
-                    or PFlowLoginScreenKind.LoginRequired
                     or PFlowLoginScreenKind.DeviceApprovalRequired
                     or PFlowLoginScreenKind.VerificationMethods
             )
                 throw new InvalidOperationException(PFlowLoginScreen.Message(kind));
             else
+                // Facebook can keep the populated login form visible while the submitted
+                // request is loading. Observe only; never tap Log in again.
                 await Task.Delay(500, ct);
             if (DateTimeOffset.UtcNow >= until)
                 return new(PFlowOtpChallengeState.Unsupported);

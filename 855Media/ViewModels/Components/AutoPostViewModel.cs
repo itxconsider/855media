@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using _855Media.Core.LDPlayer;
+using _855Media.Core.Utilities;
 using _855Media.Framework;
 using _855Media.Localization;
 using _855Media.Services;
@@ -218,9 +219,13 @@ public partial class AutoPostViewModel : ViewModelBase
 
     // --- Automation Engine State ---
     [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(FetchDevicePagesCommand))]
+    [NotifyCanExecuteChangedFor(nameof(FetchSelectedPagesInfoCommand))]
     private bool _isRunning;
 
     [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(FetchDevicePagesCommand))]
+    [NotifyCanExecuteChangedFor(nameof(FetchSelectedPagesInfoCommand))]
     private bool _isBusy;
 
     [ObservableProperty]
@@ -387,9 +392,7 @@ public partial class AutoPostViewModel : ViewModelBase
             inst.IsSelected = value.Value;
         }
 
-        OnPropertyChanged(nameof(SelectedInstancesCountSummary));
-        OnPropertyChanged(nameof(ManagePagesHeaderTitle));
-        RefreshDisplayedManagePages();
+        RequestManageSelectionRefresh();
     }
 
     public void UpdateIsAllManageInstancesSelectedState()
@@ -445,10 +448,7 @@ public partial class AutoPostViewModel : ViewModelBase
                     names += $", +{selected.Count - 3} more";
                 return $"Devices: {selected.Count} Selected ({names}) - Facebook Users & Managed Pages";
             }
-            if (SelectedManageInstance != null)
-                return $"Device: {SelectedManageInstance.Name} - Facebook User & Managed Pages";
-
-            return "All Devices - Facebook Users & Managed Pages";
+            return "No checked devices - Facebook Users & Managed Pages";
         }
     }
 
@@ -473,10 +473,7 @@ public partial class AutoPostViewModel : ViewModelBase
         if (instance != null)
         {
             SelectedManageInstance = instance;
-            UpdateIsAllManageInstancesSelectedState();
-            OnPropertyChanged(nameof(SelectedInstancesCountSummary));
-            OnPropertyChanged(nameof(ManagePagesHeaderTitle));
-            RefreshDisplayedManagePages();
+            RequestManageSelectionRefresh();
         }
     }
 
@@ -486,10 +483,7 @@ public partial class AutoPostViewModel : ViewModelBase
         if (instance != null)
         {
             SelectedManageInstance = instance;
-            UpdateIsAllManageInstancesSelectedState();
-            OnPropertyChanged(nameof(SelectedInstancesCountSummary));
-            OnPropertyChanged(nameof(ManagePagesHeaderTitle));
-            RefreshDisplayedManagePages();
+            RequestManageSelectionRefresh();
         }
     }
 
@@ -534,8 +528,7 @@ public partial class AutoPostViewModel : ViewModelBase
 
     partial void OnSelectedManageInstanceChanged(LDInstanceItemViewModel? value)
     {
-        OnPropertyChanged(nameof(ManagePagesHeaderTitle));
-        RefreshDisplayedManagePages();
+        RequestManageSelectionRefresh();
     }
 
     partial void OnFilterBySelectedDeviceChanged(bool value)
@@ -564,29 +557,14 @@ public partial class AutoPostViewModel : ViewModelBase
             return pool.Where(p => allowedDeviceNames.Contains(p.DeviceName));
         }
 
-        if (SelectedManageInstance != null)
-        {
-            var devName = SelectedManageInstance.Name;
-            var devIdxName = $"LD-{SelectedManageInstance.Index}";
-            return pool.Where(p =>
-                p.DeviceName.Equals(devName, StringComparison.OrdinalIgnoreCase)
-                || p.DeviceName.Equals(devIdxName, StringComparison.OrdinalIgnoreCase)
-            );
-        }
-
-        return pool;
+        return Enumerable.Empty<FacebookPageTargetViewModel>();
     }
 
     public void RefreshDisplayedManagePages()
     {
-        DisplayedManagePages.Clear();
         var pool = FilterPagesByDevice(Pages);
 
         var list = pool.ToList();
-        foreach (var p in list)
-        {
-            p.RefreshMediaCounts();
-        }
 
         // Ensure SAM Outdoor is recognized as a Page (never falsely labeled as a Profile)
         foreach (
@@ -701,9 +679,11 @@ public partial class AutoPostViewModel : ViewModelBase
             else
             {
                 SelectedAccountName =
-                    SelectedManageInstance != null
+                    FilterBySelectedDevice && !Instances.Any(i => i.IsSelected)
+                        ? "No checked devices"
+                    : SelectedManageInstance != null
                         ? $"{SelectedManageInstance.Name} (Not Extracted)"
-                        : "No Device Selected";
+                    : "No Device Selected";
                 SelectedAccountUid = "Not Discovered";
                 SelectedAccountEmail = "Not Discovered";
                 SelectedAccountBirthdate = "Not Discovered";
@@ -738,16 +718,16 @@ public partial class AutoPostViewModel : ViewModelBase
         }
 
         int no = 1;
-        foreach (var p in filtered)
+        var displayed = filtered.ToArray();
+        foreach (var p in displayed)
         {
             p.Number = no++;
-            DisplayedManagePages.Add(p);
         }
+        CollectionSync.Apply(DisplayedManagePages, displayed);
 
         // Build Profile Groups with child pages that can expand & collapse
-        foreach (var group in DisplayedProfileGroups)
-            group.Dispose();
-        DisplayedProfileGroups.Clear();
+        PruneManageGroups();
+        var nextGroups = new List<FacebookProfileGroupViewModel>();
         var devicesInPool = list.Select(p => p.DeviceName)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -860,7 +840,7 @@ public partial class AutoPostViewModel : ViewModelBase
                             continue;
                     }
 
-                    var group = new FacebookProfileGroupViewModel(
+                    var group = GetManageGroup(
                         prof,
                         prof.DeviceName,
                         prof.PageName,
@@ -868,19 +848,16 @@ public partial class AutoPostViewModel : ViewModelBase
                         prof.Email,
                         prof.Birthdate,
                         prof.CreationDate
-                    )
-                    {
-                        IsExpanded = true,
-                    };
+                    );
 
                     int childNo = 1;
                     foreach (var cp in childPages)
                     {
-                        cp.Number = childNo++;
-                        group.Pages.Add(cp);
+                        cp.GroupNumber = childNo++;
                     }
+                    CollectionSync.Apply(group.Pages, childPages);
                     group.UpdateSelectionState();
-                    DisplayedProfileGroups.Add(group);
+                    nextGroups.Add(group);
                 }
             }
             else
@@ -935,31 +912,30 @@ public partial class AutoPostViewModel : ViewModelBase
                 }
 
                 var firstPage = childPages.FirstOrDefault();
-                var group = new FacebookProfileGroupViewModel(
+                var group = GetManageGroup(
                     null,
                     devName,
                     $"{devName} (Pages)",
                     firstPage?.UserUid ?? "N/A",
                     firstPage?.Email ?? ""
-                )
-                {
-                    IsExpanded = true,
-                };
+                );
 
                 int childNo = 1;
                 foreach (var cp in childPages)
                 {
-                    cp.Number = childNo++;
-                    group.Pages.Add(cp);
+                    cp.GroupNumber = childNo++;
                 }
+                CollectionSync.Apply(group.Pages, childPages);
                 group.UpdateSelectionState();
-                DisplayedProfileGroups.Add(group);
+                nextGroups.Add(group);
             }
         }
 
-        DisplayedPersonalAccounts.Clear();
-        foreach (var group in DisplayedProfileGroups.Where(g => g.Profile != null))
-            DisplayedPersonalAccounts.Add(group);
+        CollectionSync.Apply(DisplayedProfileGroups, nextGroups);
+        CollectionSync.Apply(
+            DisplayedPersonalAccounts,
+            nextGroups.Where(g => g.Profile != null).ToArray()
+        );
         IsManagePagesEmpty =
             IsPersonalAccountsView ? DisplayedPersonalAccounts.Count == 0
             : IsGroupedView ? DisplayedProfileGroups.Count == 0
@@ -1028,10 +1004,14 @@ public partial class AutoPostViewModel : ViewModelBase
         LocalizationManager localizationManager,
         SettingsService settingsService,
         AtxAgentClient? atxClient = null,
-        IScreenTimeService? screenTimeService = null
+        IScreenTimeService? screenTimeService = null,
+        IPFlowAutoPostService? autoPostService = null,
+        IPFlowFeedEngagementService? feedEngagementService = null
     )
     {
         _ldPlayerService = ldPlayerService;
+        _autoPostService = autoPostService;
+        _feedEngagementService = feedEngagementService;
         _screenTimeService = screenTimeService ?? new ScreenTimeService(ldPlayerService);
         _dialogManager = dialogManager;
         _snackbarManager = snackbarManager;
@@ -1079,6 +1059,10 @@ public partial class AutoPostViewModel : ViewModelBase
             EndAddAccountOtp();
             AddAccountLine = "";
             DisposePFlowDashboard();
+            _manageSelectionRefresh?.Dispose();
+            foreach (var group in _manageGroupCache.Values)
+                group.Dispose();
+            _manageGroupCache.Clear();
             ScreenTimeOptions.PropertyChanged -= ScreenTimeOptionsChanged;
         }
         if (disposing && _atxClient != null)
@@ -1130,21 +1114,6 @@ public partial class AutoPostViewModel : ViewModelBase
                     // If some emulators are already running, check only running emulators.
                     // If none are running, check the first 4 instances by default, rest false.
                     IsSelected = anyRunning ? item.IsAndroidStarted : (item.Index < 4),
-                };
-
-                vm.PropertyChanged += (s, e) =>
-                {
-                    if (e.PropertyName == nameof(LDInstanceItemViewModel.IsSelected))
-                    {
-                        UpdateIsAllSelectedState();
-                        UpdateIsAllManageInstancesSelectedState();
-                        OnPropertyChanged(nameof(SelectedInstancesCountSummary));
-                        OnPropertyChanged(nameof(ManagePagesHeaderTitle));
-                        if (IsManagePagesOpen)
-                        {
-                            RefreshDisplayedManagePages();
-                        }
-                    }
                 };
 
                 Instances.Add(vm);
@@ -1305,6 +1274,7 @@ public partial class AutoPostViewModel : ViewModelBase
             ClearRecent = IsClearRecentApp,
             CloseAfterAction = CloseLDAfterAction,
             AutoSort = AutoSortLDPlayer,
+            ReturnToProfile = SwitchToProfileAfterPost,
             DelayAfterOpen = DelayAfterOpenLD,
             DelayOpenApp = DelayOpenApp,
             DelayBeforeClose = DelayBeforeCloseLD,
@@ -1321,6 +1291,11 @@ public partial class AutoPostViewModel : ViewModelBase
         catch (Exception ex)
         {
             _snackbarManager.Notify("P-Flow preparation failed: " + ex.Message);
+            StatusSummary = "Preparation failed: " + ex.Message;
+            if (config.ScreenTime.HasActions)
+                ScreenTimeStatus = "ScreenTime could not start: " + ex.Message;
+            foreach (var worker in selectedWorkers)
+                worker.Status = "Cannot start: " + ex.Message;
             await FinishPFlowFilesAsync();
             return;
         }
@@ -1428,42 +1403,19 @@ public partial class AutoPostViewModel : ViewModelBase
         bool appsCleared = false;
         try
         {
-            // Pre-flight check: determine if this worker has any work to do
-            var hasWorkerQueuedTasks = Tasks.Any(t =>
-                t.Status == "Queued"
-                && (
-                    t.DeviceName.Equals(worker.Name, StringComparison.OrdinalIgnoreCase)
-                    || t.DeviceName.Equals($"LD-{worker.Index}", StringComparison.OrdinalIgnoreCase)
-                    || Pages.Any(p =>
-                        (
-                            p.DeviceName.Equals(worker.Name, StringComparison.OrdinalIgnoreCase)
-                            || p.DeviceName.Equals(
-                                $"LD-{worker.Index}",
-                                StringComparison.OrdinalIgnoreCase
-                            )
-                        ) && t.Page.Equals(p.PageName, StringComparison.OrdinalIgnoreCase)
-                    )
-                )
+            var hasQueuedJobs = _pFlowJobs.Any(j =>
+                j.DeviceIndex == worker.Index && j.State == PFlowState.Queued
             );
-
-            bool hasWarmupAction = config.ScreenTime.HasActions;
-
-            var workerPages = Pages
-                .Where(p =>
-                    p.DeviceName.Equals(worker.Name, StringComparison.OrdinalIgnoreCase)
-                    || p.DeviceName.Equals($"LD-{worker.Index}", StringComparison.OrdinalIgnoreCase)
-                )
-                .ToList();
-
-            bool hasFolderMedia = workerPages.Any(p =>
-                (config.PostReel && !string.IsNullOrWhiteSpace(p.VideoReelPath))
-                || (config.PostPicture && !string.IsNullOrWhiteSpace(p.ImagePath))
-                || (config.PostVideo && !string.IsNullOrWhiteSpace(p.VideoLongPath))
-            );
-
-            if (!hasWorkerQueuedTasks && !hasWarmupAction && !hasFolderMedia)
+            var hasScreenTimeWork =
+                config.ScreenTime.HasActions
+                && _pFlowRunAccounts.Any(a =>
+                    a.Binding.DeviceIndex == worker.Index
+                    && a.Binding.AppPackage == "com.facebook.katana"
+                    && a.SelectedForScreenTime
+                );
+            if (!hasQueuedJobs && !hasScreenTimeWork)
             {
-                worker.Status = "Skipped (No queued tasks or actions)";
+                worker.Status = "Skipped (No selected account tasks)";
                 return;
             }
 
@@ -1505,225 +1457,7 @@ public partial class AutoPostViewModel : ViewModelBase
                         "Facebook cache clear was not acknowledged."
                     );
             }
-            if (config.ScreenTime.HasActions)
-                await RunScreenTimeAsync(worker, config.ScreenTime, ct);
-
-            // 8. Media Posting Pipeline: Facebook Page Post Reel, Video, and Picture
-            if (
-                (config.PostReel || config.PostPicture || config.PostVideo)
-                && !ct.IsCancellationRequested
-            )
-            {
-                var devicePages = Pages
-                    .Where(p =>
-                        p.DeviceName.Equals(worker.Name, StringComparison.OrdinalIgnoreCase)
-                        || p.DeviceName.Equals(
-                            $"LD-{worker.Index}",
-                            StringComparison.OrdinalIgnoreCase
-                        )
-                    )
-                    .ToList();
-
-                // Find any tasks in Tasks (the queue) that belong to this worker
-                var queuedTasksForWorker = Tasks
-                    .Where(t =>
-                        t.Status == "Queued"
-                        && (
-                            t.DeviceName.Equals(worker.Name, StringComparison.OrdinalIgnoreCase)
-                            || t.DeviceName.Equals(
-                                $"LD-{worker.Index}",
-                                StringComparison.OrdinalIgnoreCase
-                            )
-                        )
-                    )
-                    .ToList();
-
-                // Distinct page names with queued tasks
-                var queuedPageNames = queuedTasksForWorker
-                    .Select(t => t.Page?.Trim())
-                    .Where(p => !string.IsNullOrWhiteSpace(p))
-                    .Select(p => p!)
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToList();
-
-                // Find existing device pages matching queued tasks
-                var queuedPages = devicePages
-                    .Where(p =>
-                        queuedPageNames.Any(qp =>
-                            string.Equals(qp, p.PageName, StringComparison.OrdinalIgnoreCase)
-                        )
-                    )
-                    .ToList();
-
-                // For any queued page not in devicePages, create a representation so it can execute
-                foreach (var qpName in queuedPageNames)
-                {
-                    if (
-                        !queuedPages.Any(p =>
-                            string.Equals(p.PageName, qpName, StringComparison.OrdinalIgnoreCase)
-                        )
-                    )
-                    {
-                        var virtualPage = new FacebookPageTargetViewModel(
-                            new FacebookPageTarget
-                            {
-                                PageName = qpName,
-                                DeviceName = worker.Name,
-                                Type = "Page",
-                            }
-                        );
-                        queuedPages.Add(virtualPage);
-                    }
-                }
-
-                // If user selected specific pages, use selected pages PLUS any queued pages
-                var selectedPages = devicePages.Where(p => p.IsSelected).ToList();
-                List<FacebookPageTargetViewModel> targetPages;
-                if (selectedPages.Count > 0)
-                {
-                    targetPages = selectedPages.ToList();
-                    foreach (var qp in queuedPages)
-                    {
-                        if (
-                            !targetPages.Any(p =>
-                                p.PageName.Equals(qp.PageName, StringComparison.OrdinalIgnoreCase)
-                            )
-                        )
-                        {
-                            targetPages.Add(qp);
-                        }
-                    }
-                }
-                else if (queuedPages.Count > 0)
-                {
-                    targetPages = queuedPages;
-                }
-                else
-                {
-                    // Prioritize pages that have media paths configured for enabled actions
-                    var configuredPages = devicePages
-                        .Where(p =>
-                            (config.PostReel && !string.IsNullOrWhiteSpace(p.VideoReelPath))
-                            || (config.PostPicture && !string.IsNullOrWhiteSpace(p.ImagePath))
-                            || (config.PostVideo && !string.IsNullOrWhiteSpace(p.VideoLongPath))
-                        )
-                        .ToList();
-
-                    targetPages = configuredPages.Count > 0 ? configuredPages : devicePages;
-                }
-
-                foreach (var page in targetPages.OrderByDescending(p => p.IsProfile))
-                {
-                    if (ct.IsCancellationRequested)
-                        break;
-
-                    bool hasQueuedForPage = Tasks.Any(t =>
-                        t.Status == "Queued"
-                        && t.Page.Equals(page.PageName, StringComparison.OrdinalIgnoreCase)
-                        && (
-                            t.DeviceName.Equals(worker.Name, StringComparison.OrdinalIgnoreCase)
-                            || t.DeviceName.Equals(
-                                $"LD-{worker.Index}",
-                                StringComparison.OrdinalIgnoreCase
-                            )
-                            || t.DeviceName.Equals(
-                                page.DeviceName,
-                                StringComparison.OrdinalIgnoreCase
-                            )
-                        )
-                        && (
-                            (
-                                config.PostReel
-                                && t.Type.Equals("Reel", StringComparison.OrdinalIgnoreCase)
-                            )
-                            || (
-                                config.PostPicture
-                                && (
-                                    t.Type.Equals("Picture", StringComparison.OrdinalIgnoreCase)
-                                    || t.Type.Equals("Photo", StringComparison.OrdinalIgnoreCase)
-                                )
-                            )
-                            || (
-                                config.PostVideo
-                                && t.Type.Equals("Video", StringComparison.OrdinalIgnoreCase)
-                            )
-                        )
-                    );
-
-                    bool hasConfiguredMedia =
-                        (config.PostReel && !string.IsNullOrWhiteSpace(page.VideoReelPath))
-                        || (config.PostPicture && !string.IsNullOrWhiteSpace(page.ImagePath))
-                        || (config.PostVideo && !string.IsNullOrWhiteSpace(page.VideoLongPath));
-
-                    // Skip if this page has neither queued tasks nor configured media paths
-                    if (!hasQueuedForPage && !hasConfiguredMedia)
-                    {
-                        continue;
-                    }
-
-                    // A. POST REEL
-                    if (config.PostReel && !ct.IsCancellationRequested)
-                    {
-                        await ExecutePostReelForPageAsync(worker, page, config, ct);
-                        if (
-                            _pFlowJobs.Any(j =>
-                                j.DeviceIndex == worker.Index && j.State == PFlowState.Unknown
-                            )
-                        )
-                            return;
-                    }
-
-                    // B. POST PICTURE
-                    if (config.PostPicture && !ct.IsCancellationRequested)
-                    {
-                        await ExecutePostPictureForPageAsync(worker, page, config, ct);
-                        if (
-                            _pFlowJobs.Any(j =>
-                                j.DeviceIndex == worker.Index && j.State == PFlowState.Unknown
-                            )
-                        )
-                            return;
-                    }
-
-                    // C. POST VIDEO (Long Video)
-                    if (config.PostVideo && !ct.IsCancellationRequested)
-                    {
-                        await ExecutePostVideoForPageAsync(worker, page, config, ct);
-                        if (
-                            _pFlowJobs.Any(j =>
-                                j.DeviceIndex == worker.Index && j.State == PFlowState.Unknown
-                            )
-                        )
-                            return;
-                    }
-                }
-
-                // If SwitchToProfileAfterPost is enabled, switch back to personal profile
-                if (
-                    SwitchToProfileAfterPost
-                    && !ct.IsCancellationRequested
-                    && !_pFlowJobs.Any(j =>
-                        j.DeviceIndex == worker.Index && j.State == PFlowState.Unknown
-                    )
-                )
-                {
-                    var profilePage = devicePages.FirstOrDefault(p =>
-                        p.Type.Equals("Profile", StringComparison.OrdinalIgnoreCase)
-                    );
-                    var profileName = profilePage?.PageName;
-                    if (!string.IsNullOrWhiteSpace(profileName))
-                    {
-                        worker.Status =
-                            $"{worker.FbClone}: Switching back to profile '{profileName}'...";
-                        await _ldPlayerService.SwitchToPersonaAsync(
-                            worker.Index,
-                            profileName,
-                            LdFolder,
-                            ct
-                        );
-                    }
-                }
-            }
+            await ExecuteAccountBatchAsync(worker, config, ct);
 
             if (_pFlowJobs.Any(j => j.DeviceIndex == worker.Index && j.State == PFlowState.Unknown))
             {
@@ -1770,6 +1504,8 @@ public partial class AutoPostViewModel : ViewModelBase
                 !appsCleared
                 && config.ClearRecent
                 && worker.IsAndroidStarted
+                && !_pFlowAccountAttention.ContainsKey(worker.Index)
+                && !new ScreenTimeHistoryStore().NeedsReview(worker.Index)
                 && !_pFlowJobs.Any(j =>
                     j.DeviceIndex == worker.Index && j.State == PFlowState.Unknown
                 )
@@ -1842,6 +1578,7 @@ public partial class AutoPostViewModel : ViewModelBase
         public bool ClearRecent { get; init; }
         public bool CloseAfterAction { get; init; }
         public bool AutoSort { get; init; }
+        public bool ReturnToProfile { get; init; }
 
         public int DelayAfterOpen { get; init; }
         public int DelayOpenApp { get; init; }
@@ -3125,39 +2862,8 @@ public partial class AutoPostViewModel : ViewModelBase
                 && a.Binding.AppPackage == "com.facebook.katana"
             )
             .ToArray();
-        if (mapped.Length > 1)
-        {
-            target.Status =
-                "Fetch blocked: saved personal-account switching needs device verification.";
-            return false;
-        }
-        if (mapped.Length == 1 && !mapped[0].SelectedForDiscovery)
-        {
-            target.Status = "Fetch skipped: personal account not selected for fetching.";
-            return true;
-        }
-        if (mapped.Length == 1)
-        {
-            try
-            {
-                PFlowAccountStore.RequireCurrentBinding(
-                    mapped[0].Binding,
-                    (await _ldPlayerService.GetInstancesAsync(LdFolder, ct)).ToArray(),
-                    LdFolder
-                );
-            }
-            catch (Exception ex)
-                when (ex
-                        is InvalidOperationException
-                            or System.IO.IOException
-                            or System.Text.Json.JsonException
-                            or UnauthorizedAccessException
-                )
-            {
-                target.Status = "Fetch blocked: " + ex.Message;
-                return false;
-            }
-        }
+        if (mapped.Length > 0)
+            return await FetchMappedAccountsAsync(target, mapped, autoCloseIfBooted, ct);
         using var deviceLease = await PFlowDeviceLease.AcquireAsync(target.Index, ct);
         target.Status = "Checking Status...";
         bool wasRunning = false;
@@ -3534,7 +3240,23 @@ public partial class AutoPostViewModel : ViewModelBase
         }
     }
 
-    [RelayCommand]
+    private bool CanFetchSelectedPagesInfo() =>
+        !IsBusy && !IsRunning && Instances.Any(i => i.IsSelected);
+
+    private LDInstanceItemViewModel? ResolveCheckedFetchDevice(LDInstanceItemViewModel? requested)
+    {
+        if (requested != null)
+            return Instances.Contains(requested) && requested.IsSelected ? requested : null;
+        return
+            SelectedManageInstance?.IsSelected == true && Instances.Contains(SelectedManageInstance)
+            ? SelectedManageInstance
+            : Instances.FirstOrDefault(i => i.IsSelected);
+    }
+
+    private bool CanFetchDevicePages(LDInstanceItemViewModel? requested) =>
+        !IsBusy && !IsRunning && ResolveCheckedFetchDevice(requested) != null;
+
+    [RelayCommand(CanExecute = nameof(CanFetchDevicePages))]
     public async Task FetchDevicePagesAsync(LDInstanceItemViewModel? targetInstance = null)
     {
         if (IsRunning)
@@ -3549,11 +3271,10 @@ public partial class AutoPostViewModel : ViewModelBase
             _snackbarManager.Notify("A fetch or extraction operation is already in progress.");
             return;
         }
-        var target =
-            targetInstance ?? SelectedManageInstance ?? Instances.FirstOrDefault(i => i.IsSelected);
+        var target = ResolveCheckedFetchDevice(targetInstance);
         if (target == null)
         {
-            _snackbarManager.Notify("Please select an LDPlayer instance first.");
+            StatusSummary = "Check an LDPlayer instance before fetching accounts and Pages.";
             return;
         }
 
@@ -3570,6 +3291,7 @@ public partial class AutoPostViewModel : ViewModelBase
 
         try
         {
+            await PersistAccountSelectionDraftsAsync(new[] { target.Index });
             var ok = await ProcessSingleDeviceFetchAsync(
                 target,
                 autoCloseIfBooted: CloseLDAfterAction,
@@ -3747,9 +3469,14 @@ public partial class AutoPostViewModel : ViewModelBase
         }
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanFetchSelectedPagesInfo))]
     public async Task FetchSelectedPagesInfoAsync()
     {
+        if (!Instances.Any(i => i.IsSelected))
+        {
+            StatusSummary = "Check an LDPlayer instance before fetching accounts and Pages.";
+            return;
+        }
         if (IsRunning)
         {
             _snackbarManager.Notify(
@@ -3787,6 +3514,9 @@ public partial class AutoPostViewModel : ViewModelBase
 
                 try
                 {
+                    await PersistAccountSelectionDraftsAsync(
+                        selectedInstances.Select(i => i.Index)
+                    );
                     var tasks = selectedInstances.Select(
                         async (inst) =>
                         {
@@ -3850,11 +3580,6 @@ public partial class AutoPostViewModel : ViewModelBase
                 await FetchDevicePagesAsync(selectedInstances[0]);
                 return;
             }
-            else if (SelectedManageInstance != null)
-            {
-                await FetchDevicePagesAsync(SelectedManageInstance);
-                return;
-            }
         }
 
         var selectedPages = Pages.Where(p => p.IsSelected).ToList();
@@ -3885,7 +3610,7 @@ public partial class AutoPostViewModel : ViewModelBase
                     )
                 )
             )
-            .Where(instance => instance != null)
+            .Where(instance => instance?.IsSelected == true)
             .Select(instance => instance!)
             .DistinctBy(instance => instance.Index)
             .ToList();
@@ -3899,6 +3624,7 @@ public partial class AutoPostViewModel : ViewModelBase
                 _snackbarManager.Notify("No LDPlayer device matches the selected rows.");
                 return;
             }
+            await PersistAccountSelectionDraftsAsync(deviceTargets.Select(i => i.Index));
             StatusSummary =
                 $"Refreshing profiles and managed Pages from {deviceTargets.Count} devices...";
             var tasks = deviceTargets.Select(async target =>
@@ -4191,6 +3917,10 @@ public partial class AutoPostViewModel : ViewModelBase
                         App = page.AppClone,
                         Type = postType,
                         Page = page.PageName,
+                        PageId = page.PageId,
+                        IsProfile = page.IsProfile,
+                        OwnerUid = page.UserUid,
+                        AccountBinding = page.Model.AccountBinding,
                         Status = "Queued",
                     };
 
@@ -4385,4 +4115,7 @@ public partial class AutoPostViewModel : ViewModelBase
     {
         Tasks.Clear();
     }
+
+    private readonly IPFlowAutoPostService? _autoPostService;
+    private readonly IPFlowFeedEngagementService? _feedEngagementService;
 }

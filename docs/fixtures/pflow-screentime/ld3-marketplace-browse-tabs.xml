@@ -1,0 +1,8 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<hierarchy>
+  <!--Navigation-only extract from the saved LD-3 Marketplace hierarchy; listing content omitted.-->
+  <node index="1" text="" resource-id="" class="android.view.View" package="com.facebook.katana" content-desc="For you, Tab, 1 of 2" checkable="false" checked="false" clickable="false" enabled="true" focusable="true" focused="false" scrollable="false" long-clickable="false" password="false" selected="true" visible-to-user="true" bounds="[130,168][286,240]" />
+  <node index="2" text="" resource-id="" class="android.view.View" package="com.facebook.katana" content-desc="Local, Tab, 2 of 2" checkable="false" checked="false" clickable="false" enabled="true" focusable="true" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" visible-to-user="true" bounds="[286,168][407,240]" />
+  <node index="1" text="Marketplace" resource-id="com.facebook.katana:id/(name removed)" class="android.widget.TextView" package="com.facebook.katana" content-desc="Marketplace, Heading" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" visible-to-user="true" bounds="[96,69][448,115]" />
+  <node index="3" text="" resource-id="com.facebook.katana:id/(name removed)" class="android.widget.Button" package="com.facebook.katana" content-desc="Search Marketplace" checkable="false" checked="false" clickable="true" enabled="true" focusable="true" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" visible-to-user="true" bounds="[536,48][624,136]" />
+</hierarchy>

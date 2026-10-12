@@ -23,7 +23,7 @@ public class MovieCharacterData
     public string ToneArchetype { get; set; } = "Hero";
     public double ToneWarmth { get; set; } = 0.25;
     public double ToneClarity { get; set; } = 0.35;
-    public string ColorTag { get; set; } = "#3B82F6";
+    public string ColorTag { get; set; } = "#575f6bff";
 }
 
 public class SubtitleSegmentData
@@ -35,7 +35,7 @@ public class SubtitleSegmentData
     public string KhmerText { get; set; } = string.Empty;
     public Guid? CharacterId { get; set; }
     public string SpeakerName { get; set; } = "Hero (Male)";
-    public string SpeakerColor { get; set; } = "#3B82F6";
+    public string SpeakerColor { get; set; } = "#939dadff";
     public string Emotion { get; set; } = "Normal";
     public string DetectedGender { get; set; } = "Unknown";
     public string? AudioClipPath { get; set; }

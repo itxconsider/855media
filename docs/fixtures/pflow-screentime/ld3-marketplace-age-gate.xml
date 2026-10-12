@@ -1,0 +1,8 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<hierarchy>
+  <!--Navigation-only extract of the live LD-3 Marketplace age gate captured 2026-10-12.-->
+  <node index="1" text="Marketplace" resource-id="com.facebook.katana:id/(name removed)" class="android.widget.TextView" package="com.facebook.katana" content-desc="Marketplace, Heading" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" visible-to-user="true" bounds="[96,69][448,115]" />
+  <node index="2" text="Age confirmation needed" resource-id="" class="android.view.ViewGroup" package="com.facebook.katana" content-desc="" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" visible-to-user="true" bounds="[134,591][585,647]" />
+  <node index="4" text="" resource-id="" class="android.widget.Button" package="com.facebook.katana" content-desc="Confirm your age" checkable="false" checked="false" clickable="true" enabled="true" focusable="true" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" visible-to-user="true" bounds="[221,833][500,905]" />
+  <node index="0" text="Confirm your age" resource-id="" class="android.view.ViewGroup" package="com.facebook.katana" content-desc="" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" visible-to-user="true" bounds="[245,850][476,890]" />
+</hierarchy>

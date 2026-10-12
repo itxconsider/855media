@@ -61,6 +61,19 @@ public sealed class PFlowCredential : IDisposable
 
 public static class PFlowCredentialImport
 {
+    public static string FormatForEditor(PFlowAccountBinding binding, PFlowCredential credential)
+    {
+        binding.Validate();
+        if (credential.IsDisposed || credential.TwoFactorKind == PFlowTwoFactorKind.OneTimeCode)
+            throw new InvalidOperationException("Reusable stored credentials are unavailable.");
+        return binding.OwnerUid
+            + "|"
+            + Encoding.UTF8.GetString(credential.Password)
+            + "|"
+            + Encoding.UTF8.GetString(credential.TwoFactor)
+            + "|";
+    }
+
     public static PFlowCredential Parse(
         string line,
         PFlowAccountBinding binding,

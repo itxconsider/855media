@@ -63,7 +63,18 @@ public sealed class PFlowNativeLoginNavigator(
                         "code" => (string?)n.Attribute("class") == "android.widget.EditText"
                             && ((string?)n.Attribute("content-desc"))?.Split(',')[0] == "Code",
                         _ => (string?)n.Attribute("clickable") == "true"
-                            && (string?)n.Attribute("content-desc") == role,
+                            && (
+                                string.Equals(
+                                    (string?)n.Attribute("content-desc"),
+                                    role,
+                                    StringComparison.OrdinalIgnoreCase
+                                )
+                                || string.Equals(
+                                    (string?)n.Attribute("text"),
+                                    role,
+                                    StringComparison.OrdinalIgnoreCase
+                                )
+                            ),
                     }
                 )
                 .ToArray();
@@ -113,16 +124,7 @@ public sealed class PFlowNativeLoginNavigator(
                 worker.InstanceIdentity,
                 worker.AppPackage
             );
-            if (
-                !(await ld.GetCurrentFocusedActivityAsync(index, path, ct) ?? "").Contains(
-                    binding.AppPackage,
-                    StringComparison.Ordinal
-                )
-            )
-                throw new InvalidOperationException(
-                    "Facebook is not the foreground app; login stopped."
-                );
-            return await ld.DumpUiHierarchyAsync(index, path, ct) ?? "";
+            return await preparation.ReadFacebookScreenAsync(binding, ct);
         }
         async Task Tap(string role)
         {
@@ -221,13 +223,7 @@ public sealed class PFlowNativeLoginNavigator(
             throw new NotSupportedException(
                 "A supported verification-code adapter and code source are required for this login."
             );
-        if (
-            !await ld.EnableAdbKeyboardAsync(index, path, ct)
-            || !await ld.IsAdbKeyboardActiveAsync(index, path, ct)
-        )
-            throw new InvalidOperationException(
-                "Android text input could not be verified. Install/enable ADBKeyboard on this LD before retrying."
-            );
+        await preparation.EnsureTextInputAsync(binding, progress, ct);
         // Secret input is never put in screenshots, progress messages or exception text.
         await progress("Entering login details into the inspected Facebook form.");
         await Input("login", credential.LoginIdentifier);
@@ -238,9 +234,7 @@ public sealed class PFlowNativeLoginNavigator(
                 "The login form changed before submission; no login tap was made."
             );
         await Tap("Log in");
-        await progress(
-            "Login submitted once. Complete any Facebook challenge inside this LD. Credentials have not been saved."
-        );
+        await progress("Login submitted once. Waiting for Facebook verification.");
         if (otpAdapter != null && otpCodes != null)
             await new PFlowOtpAuthenticationService(otpAdapter, otpCodes).AuthenticateAsync(
                 binding,

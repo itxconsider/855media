@@ -49,6 +49,7 @@ public sealed class ScreenTimeService : IScreenTimeService
     private readonly ScreenTimeHistoryStore _history;
     private readonly Func<TimeSpan, CancellationToken, Task> _delay;
     private readonly Func<DateTimeOffset> _now;
+    private readonly Func<int> _chooseFeedGesture;
 
     public ScreenTimeService(ILDPlayerService ld)
         : this(ld, Task.Delay, () => DateTimeOffset.UtcNow, new ScreenTimeHistoryStore()) { }
@@ -57,7 +58,8 @@ public sealed class ScreenTimeService : IScreenTimeService
         ILDPlayerService ld,
         Func<TimeSpan, CancellationToken, Task> delay,
         Func<DateTimeOffset> now,
-        ScreenTimeHistoryStore? history = null
+        ScreenTimeHistoryStore? history = null,
+        Func<int>? chooseFeedGesture = null
     )
     {
         _ld = ld;
@@ -71,6 +73,7 @@ public sealed class ScreenTimeService : IScreenTimeService
             );
         _delay = delay;
         _now = now;
+        _chooseFeedGesture = chooseFeedGesture ?? (() => Random.Shared.Next(2));
     }
 
     public async Task<ScreenTimeResult> RunAsync(
@@ -180,7 +183,8 @@ public sealed class ScreenTimeService : IScreenTimeService
             settings.Marketplace,
         }.Count(x => x);
         int step = 0,
-            likes = 0;
+            likes = 0,
+            browseSkips = 0;
         var likeLimit = settings.LikePost
             ? Random.Shared.Next(settings.LikePostMin, settings.LikePostMax + 1)
             : 0;
@@ -208,17 +212,64 @@ public sealed class ScreenTimeService : IScreenTimeService
                 true
             );
         if (settings.Marketplace)
-            await Browse(
-                "Marketplace",
-                "fb://marketplace",
-                settings.MarketplaceMin,
-                settings.MarketplaceMax,
-                false
-            );
+        {
+            try
+            {
+                await Browse(
+                    "Marketplace",
+                    "fb://marketplace",
+                    settings.MarketplaceMin,
+                    settings.MarketplaceMax,
+                    false
+                );
+            }
+            catch (MarketplaceAgeGateDetectedException gate)
+            {
+                ct.ThrowIfCancellationRequested();
+                await ScreenTimeNavigation.ExitMarketplaceAgeGateAsync(
+                    _ld,
+                    index,
+                    gate.Xml,
+                    path,
+                    _delay,
+                    ct
+                );
+                browseSkips++;
+                const string reason =
+                    "Marketplace skipped: age confirmation needed; Back returned to Facebook.";
+                await _history.NoteAsync(session, reason);
+                await PFlowTrace.SessionAsync(index, "ScreenTime.marketplace.skipped", reason, ct);
+                await progress(
+                    new(
+                        "Marketplace skipped: age confirmation needed",
+                        step,
+                        steps,
+                        0,
+                        likes,
+                        actions.Stories,
+                        actions.Reactions,
+                        actions.Comments,
+                        actions.Skipped + browseSkips
+                    )
+                );
+            }
+        }
         if (settings.Options.Comments)
         {
             step++;
-            await progress(new("Review approved comments", step, steps, 0, likes));
+            await progress(
+                new(
+                    "Review approved comments",
+                    step,
+                    steps,
+                    0,
+                    likes,
+                    actions.Stories,
+                    actions.Reactions,
+                    actions.Comments,
+                    actions.Skipped + browseSkips
+                )
+            );
             if (!await verifyPersonalIdentity(ct))
                 throw new InvalidOperationException("Personal identity changed before commenting.");
             await actions.CommentAsync(reviewComment, ct);
@@ -233,7 +284,7 @@ public sealed class ScreenTimeService : IScreenTimeService
                 actions.Stories,
                 actions.Reactions,
                 actions.Comments,
-                actions.Skipped
+                actions.Skipped + browseSkips
             )
         );
         return new(
@@ -243,7 +294,7 @@ public sealed class ScreenTimeService : IScreenTimeService
             actions.Stories,
             actions.Reactions,
             actions.Comments,
-            actions.Skipped
+            actions.Skipped + browseSkips
         );
 
         async Task Browse(string name, string link, int min, int max, bool allowLike)
@@ -278,6 +329,8 @@ public sealed class ScreenTimeService : IScreenTimeService
             for (var attempt = 0; attempt < 12; attempt++)
             {
                 lastScreen = await _ld.DumpUiHierarchyAsync(index, path, ct);
+                if (name == "Marketplace" && ScreenTimeNavigation.IsMarketplaceAgeGate(lastScreen))
+                    throw new MarketplaceAgeGateDetectedException(lastScreen!);
                 if (IsScreen(lastScreen, name))
                 {
                     ready = true;
@@ -315,7 +368,7 @@ public sealed class ScreenTimeService : IScreenTimeService
                         actions.Stories,
                         actions.Reactions,
                         actions.Comments,
-                        actions.Skipped
+                        actions.Skipped + browseSkips
                     )
                 );
                 if (
@@ -383,6 +436,40 @@ public sealed class ScreenTimeService : IScreenTimeService
                     throw new InvalidOperationException(
                         "ScreenTime swipe geometry is unavailable."
                     );
+                if (name == "Feed")
+                {
+                    // Pick one of the two tested profiles independently for each Feed scroll.
+                    var gesture = ScreenTimeGesture.NewsFeed(_chooseFeedGesture());
+                    if (
+                        !await _ld.HoldAndSwipeAsync(
+                            index,
+                            w / 2,
+                            h * 3 / 4,
+                            w / 2,
+                            h / 6,
+                            gesture.HoldMs,
+                            gesture.MovementTargetMs,
+                            path,
+                            ct
+                        )
+                    )
+                    {
+                        await CaptureNavigationFailureAsync(
+                            name,
+                            await _ld.DumpUiHierarchyAsync(index, path, ct)
+                        );
+                        throw new InvalidOperationException(
+                            "ScreenTime Feed hold/swipe was not acknowledged."
+                        );
+                    }
+                    await PFlowTrace.SessionAsync(
+                        index,
+                        "ScreenTime.feed.swipe",
+                        $"holdMs={gesture.HoldMs}; movementTargetMs={gesture.MovementTargetMs}; start=({w / 2},{h * 3 / 4}); end=({w / 2},{h / 6})",
+                        ct
+                    );
+                    return;
+                }
                 if (name != "Reels")
                 {
                     if (!await _ld.SwipeAsync(index, w / 2, h * 3 / 4, w / 2, h / 3, 400, path, ct))
@@ -391,52 +478,60 @@ public sealed class ScreenTimeService : IScreenTimeService
                         );
                     return;
                 }
-                // Avoid compact caption/interest/advertising controls and use enough
-                // travel to advance the video. ADB acknowledgement does not prove it.
-                var before = ScreenTimeNavigation.ReelContentKey(xml);
-                var (swipeX, swipeY) = ScreenTimeNavigation.ReelsSwipeStart(xml, w, h);
+                // The fixed centre path also advanced the tested product and ad layouts.
+                // Touch acknowledgements alone do not prove the next Reel appeared.
+                var before = ScreenTimeNavigation.ReelObservationKey(xml);
+                var swipeX = w / 2;
+                var swipeY = h * 3 / 4;
+                var reelGesture = ScreenTimeGesture.Reels;
                 for (var swipeAttempt = 0; swipeAttempt < 2; swipeAttempt++)
                 {
                     ct.ThrowIfCancellationRequested();
                     if (
-                        !await _ld.SwipeAsync(
+                        !await _ld.HoldAndSwipeAsync(
                             index,
                             swipeX,
                             swipeY,
                             swipeX,
                             h / 6,
-                            swipeAttempt == 0 ? 600 : 450,
+                            reelGesture.HoldMs,
+                            reelGesture.MovementTargetMs,
                             path,
                             ct
                         )
                     )
-                        throw new InvalidOperationException(
-                            "ScreenTime Reels swipe was not acknowledged."
+                    {
+                        await CaptureNavigationFailureAsync(
+                            name,
+                            await _ld.DumpUiHierarchyAsync(index, path, ct)
                         );
+                        throw new InvalidOperationException(
+                            "ScreenTime Reels hold/swipe was not acknowledged."
+                        );
+                    }
                     await _delay(TimeSpan.FromMilliseconds(500), ct);
                     var (_, after) = await RequireCurrentScreenAsync();
-                    var current = ScreenTimeNavigation.ReelContentKey(after);
+                    var current = ScreenTimeNavigation.ReelObservationKey(after);
+                    var changed = ScreenTimeNavigation.ReelContentChanged(xml, after);
                     // Rendering can lag behind an acknowledged gesture on active LDs.
                     // Re-read before issuing another gesture or declaring a stuck reel.
                     var observationUntil = _now().AddSeconds(3);
                     while (
-                        before != null
-                        && (current == null || current == before)
-                        && _now() < observationUntil
-                        && _now() < deadline
+                        before != null && !changed && _now() < observationUntil && _now() < deadline
                     )
                     {
                         await _delay(TimeSpan.FromMilliseconds(500), ct);
                         (_, after) = await RequireCurrentScreenAsync();
-                        current = ScreenTimeNavigation.ReelContentKey(after);
+                        current = ScreenTimeNavigation.ReelObservationKey(after);
+                        changed = ScreenTimeNavigation.ReelContentChanged(xml, after);
                     }
                     await PFlowTrace.SessionAsync(
                         index,
                         "ScreenTime.reels.swipe.observed",
-                        $"attempt={swipeAttempt + 1}; beforeKeyAvailable={before != null}; afterKeyAvailable={current != null}; contentChanged={current != null && current != before}",
+                        $"attempt={swipeAttempt + 1}; holdMs={reelGesture.HoldMs}; movementTargetMs={reelGesture.MovementTargetMs}; beforeKeyAvailable={before != null}; afterKeyAvailable={current != null}; contentChanged={changed}",
                         ct
                     );
-                    if (before == null || current != null && current != before)
+                    if (before == null || changed)
                     {
                         await PFlowTrace.SessionAsync(
                             index,
@@ -462,6 +557,8 @@ public sealed class ScreenTimeService : IScreenTimeService
                 {
                     ct.ThrowIfCancellationRequested();
                     xml = await _ld.DumpUiHierarchyAsync(index, path, ct);
+                    if (name == "Marketplace" && ScreenTimeNavigation.IsMarketplaceAgeGate(xml))
+                        throw new MarketplaceAgeGateDetectedException(xml!);
                     if (IsScreen(xml, name))
                     {
                         if (name == "Feed")
@@ -536,6 +633,16 @@ public sealed class ScreenTimeService : IScreenTimeService
                     PFlowUiPrivacy.RedactForDiagnostics(xml),
                     capture.Token
                 );
+                if (!string.IsNullOrWhiteSpace(xml) && !PFlowUiPrivacy.ContainsInput(xml))
+                {
+                    var screenshot = await _ld.TakeScreenshotAsync(index, path, capture.Token);
+                    if (screenshot != null)
+                        await System.IO.File.WriteAllBytesAsync(
+                            System.IO.Path.ChangeExtension(file, ".png"),
+                            screenshot,
+                            capture.Token
+                        );
+                }
                 await PFlowTrace.SessionAsync(
                     index,
                     "ScreenTime.screen.failed",
@@ -550,6 +657,11 @@ public sealed class ScreenTimeService : IScreenTimeService
                 );
             }
         }
+    }
+
+    private sealed class MarketplaceAgeGateDetectedException(string xml) : Exception
+    {
+        internal string Xml { get; } = xml;
     }
 
     internal static bool IsScreen(string? xml, string name)

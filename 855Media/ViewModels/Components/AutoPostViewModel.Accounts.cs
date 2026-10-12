@@ -153,7 +153,7 @@ public partial class AutoPostViewModel
                 .Distinct()
                 .ToArray();
             AccountMappingStatus =
-                $"{MappedAccounts.Count} personal account bindings. Multi-login execution awaits device verification."
+                $"{MappedAccounts.Count} personal account bindings. Selected accounts run sequentially on each LD."
                 + (
                     problems.Length == 0
                         ? " Selections are separate from Page checkboxes."
@@ -178,6 +178,39 @@ public partial class AutoPostViewModel
         }
     }
 
+    private async Task PersistAccountSelectionDraftsAsync(IEnumerable<int>? deviceIndices = null)
+    {
+        var allowed = deviceIndices?.ToHashSet();
+        var selections = await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            var rows = MappedAccounts
+                .Where(a => allowed == null || allowed.Contains(a.Account.Binding.DeviceIndex))
+                .ToArray();
+            var invalid = rows.FirstOrDefault(a =>
+                !a.IsMappingValid
+                && (a.SelectedForDiscovery || a.SelectedForScreenTime || a.SelectedForPosting)
+            );
+            if (invalid != null)
+                throw new InvalidOperationException(
+                    $"{invalid.DeviceName}: review this account's mapping before running. {invalid.BindingStatus}"
+                );
+            return rows.Select(a => new PFlowAccountSelectionDraft(
+                    a.Account.Binding,
+                    a.SelectedForDiscovery,
+                    a.SelectedForScreenTime,
+                    a.SelectedForPosting,
+                    a.AllowAutomaticLogin,
+                    a.AllowAccountRotation,
+                    a.RotationOrder
+                ))
+                .ToArray();
+        });
+        if (selections.Length > 0)
+            await _accountStore.UpdateAsync(saved =>
+                PFlowAccountSelections.Apply(saved, selections)
+            );
+    }
+
     [RelayCommand]
     private async Task SaveAccountSelectionsAsync()
     {
@@ -185,41 +218,15 @@ public partial class AutoPostViewModel
             return;
         try
         {
-            var invalid = MappedAccounts.FirstOrDefault(a =>
-                !a.IsMappingValid
-                && (a.SelectedForDiscovery || a.SelectedForScreenTime || a.SelectedForPosting)
-            );
-            if (invalid != null)
-                throw new InvalidOperationException(
-                    $"{invalid.DeviceName}: disable this account's selections until its mapping is reviewed. {invalid.BindingStatus}"
-                );
-            var selections = MappedAccounts
-                .Select(a =>
-                    (
-                        a.Account.Binding.AccountKey,
-                        a.SelectedForDiscovery,
-                        a.SelectedForScreenTime,
-                        a.SelectedForPosting
-                    )
-                )
-                .ToArray();
-            await _accountStore.UpdateAsync(saved =>
-            {
-                foreach (var selection in selections)
-                {
-                    var account = saved.Single(a => a.Binding.AccountKey == selection.AccountKey);
-                    account.SelectedForDiscovery = selection.SelectedForDiscovery;
-                    account.SelectedForScreenTime = selection.SelectedForScreenTime;
-                    account.SelectedForPosting = selection.SelectedForPosting;
-                }
-            });
+            await PersistAccountSelectionDraftsAsync();
             await LoadAccountMappingsAsync();
             AccountMappingStatus =
-                "Account selections saved. Multi-login execution needs a verified saved-account switcher adapter.";
+                "Account selections saved. Order controls sequential execution. Automatic login and account rotation are enabled separately per account.";
         }
         catch (Exception ex)
         {
             AccountMappingStatus = "Account selections were not saved: " + ex.Message;
+            _snackbarManager.Notify(AccountMappingStatus);
         }
     }
 }

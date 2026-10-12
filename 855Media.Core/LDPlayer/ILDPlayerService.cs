@@ -111,6 +111,18 @@ public interface ILDPlayerService
         CancellationToken cancellationToken = default
     );
 
+    Task<bool> HoldAndSwipeAsync(
+        int index,
+        int startX,
+        int startY,
+        int endX,
+        int endY,
+        int holdMs,
+        int movementTargetMs,
+        string? customPath = null,
+        CancellationToken cancellationToken = default
+    );
+
     Task<bool> TapAsync(
         int index,
         int x,
@@ -524,6 +536,86 @@ public interface ILDPlayerService
         string appClone = "FB-01",
         string packageName = "com.facebook.katana",
         string? storageFilePath = null,
+        string? customPath = null,
+        CancellationToken cancellationToken = default
+    );
+
+    /// <summary>
+    /// Direct deep-link switch pipeline to manage a Facebook Page by its numeric PageId,
+    /// bypassing navigation bar, menu, and switcher sheet variations.
+    /// </summary>
+    Task<bool> SwitchToPageByIdAsync(
+        int index,
+        string pageName,
+        string pageId,
+        string? customPath = null,
+        CancellationToken cancellationToken = default
+    );
+
+    Task<bool> ClickProfileSwitcherDropdownAsync(
+        int index,
+        string? customPath = null,
+        CancellationToken cancellationToken = default
+    );
+
+    /// <summary>
+    /// Performs an authentic, human-like finger scroll transition on the Facebook newsfeed.
+    /// Emulates natural thumb flick kinetics (smooth momentum glide / fling transition), reading drags,
+    /// micro-adjustments, thumb arc curvature/drift, and returns the recommended dwell time in ms.
+    /// </summary>
+    Task<int> ScrollNewsFeedLikeHumanAsync(
+        int index,
+        string? customPath = null,
+        CancellationToken cancellationToken = default
+    );
+
+    /// <summary>
+    /// Performs an upward swipe gesture specifically tuned for video/reels feeds to advance to the next video,
+    /// ensuring any blocking comment overlays or modal sheets are dismissed and swiping with sufficient travel
+    /// and duration to reliably trigger ViewPager page switching without snapping back.
+    /// </summary>
+    Task<bool> ScrollToNextVideoAsync(
+        int index,
+        string? customPath = null,
+        CancellationToken cancellationToken = default
+    );
+
+    /// <summary>
+    /// Verifies whether Facebook has an active, logged-in session on the emulator instance.
+    /// Checks root session database / shared_prefs and inspects UI hierarchy to detect
+    /// login prompts, expired sessions, or checkpoints.
+    /// </summary>
+    Task<(
+        bool IsActive,
+        string? AccountName,
+        string? StatusReason
+    )> VerifyFacebookAccountActiveAsync(
+        int index,
+        string? customPath = null,
+        CancellationToken cancellationToken = default
+    );
+
+    /// <summary>
+    /// Applies custom delay configuration to the Facebook account discovery service.
+    /// </summary>
+    void ApplyDiscoveryDelayConfig(PFlowDiscoveryDelayConfig config);
+
+    /// <summary>
+    /// Applies discovery delay configuration derived from AutoPostConfig.
+    /// </summary>
+    void ApplyDiscoveryDelayConfig(AutoPostConfig config);
+
+    /// <summary>
+    /// Applies discovery delay configuration derived from LDSettings.
+    /// </summary>
+    void ApplyDiscoveryDelayConfig(LDSettings settings);
+
+    /// <summary>
+    /// Fallback direct in-memory extraction of Facebook accounts via ADB root shell commands without pushing scripts.
+    /// </summary>
+    Task<List<FacebookAccountInfo>> ExtractFacebookAccountsDirectFromRootAdbAsync(
+        int index,
+        string packageName = "com.facebook.katana",
         string? customPath = null,
         CancellationToken cancellationToken = default
     );

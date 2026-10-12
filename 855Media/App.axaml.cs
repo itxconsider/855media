@@ -54,7 +54,16 @@ public class App : Application, IDisposable
         services.AddSingleton<VideoQueueManager>();
         services.AddSingleton<HardwareMonitorService>();
         services.AddSingleton<AtxAgentClient>();
-        services.AddSingleton<ILDPlayerService, LDPlayerService>();
+        services.AddSingleton<ILDPlayerService>(sp => new LDPlayerService(
+            sp.GetService<AtxAgentClient>()
+        ));
+        services.AddSingleton<IPFlowPersonaSwitcherService, PFlowPersonaSwitcherService>();
+        services.AddSingleton<IPFlowAutoPostService, PFlowAutoPostService>();
+        services.AddSingleton<IPFlowFeedEngagementService, PFlowFeedEngagementService>();
+        services.AddSingleton<IPFlowBloksService, PFlowBloksService>();
+        services.AddSingleton<IPFlowAccountDiscoveryService, PFlowAccountDiscoveryService>();
+        services.AddSingleton<IAdbKeyboardService, AdbKeyboardService>();
+        services.AddSingleton<ILDPlayerUiAutomationService, LDPlayerUiAutomationService>();
 
         services.AddSingleton<IScreenTimeService, ScreenTimeService>();
 

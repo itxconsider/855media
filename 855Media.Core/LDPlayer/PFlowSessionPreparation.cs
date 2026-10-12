@@ -77,6 +77,83 @@ public sealed class PFlowSessionPreparation(ILDPlayerService ld, string path)
         return worker;
     }
 
+    public async Task<string> ReadFacebookScreenAsync(
+        PFlowAccountBinding binding,
+        CancellationToken ct
+    )
+    {
+        var dismissed = false;
+        for (var attempt = 0; attempt < 7; attempt++)
+        {
+            await RequireWorkerAsync(binding, ct);
+            var activity =
+                await ld.GetCurrentFocusedActivityAsync(binding.DeviceIndex, path, ct) ?? "";
+            if (
+                binding.AppPackage == "com.facebook.katana"
+                && System.Text.RegularExpressions.Regex.IsMatch(
+                    activity,
+                    @"(?<![\w.])com\.facebook\.katana/"
+                )
+            )
+                return await ld.DumpUiHierarchyAsync(binding.DeviceIndex, path, ct) ?? "";
+            if (string.IsNullOrWhiteSpace(activity))
+            {
+                // Logout changes activities; Android may briefly report no focused window.
+                await Task.Delay(500, ct);
+                continue;
+            }
+            if (activity != PFlowAndroidCredentialPrompt.Activity)
+                throw new InvalidOperationException(
+                    "Assigned Facebook app is not in the foreground."
+                );
+            var prompt = await ld.DumpUiHierarchyAsync(binding.DeviceIndex, path, ct);
+            var close = PFlowAndroidCredentialPrompt.CloseControl(prompt);
+            if (close != null && !dismissed)
+            {
+                if (!await ld.TapAsync(binding.DeviceIndex, close.Value.X, close.Value.Y, path, ct))
+                    throw new InvalidOperationException(
+                        "Android saved-password prompt could not be dismissed; no saved credential was selected."
+                    );
+                dismissed = true;
+            }
+            await Task.Delay(500, ct);
+        }
+        throw new InvalidOperationException(
+            "Android saved-password prompt could not be dismissed; no saved credential was selected."
+        );
+    }
+
+    public async Task EnsureTextInputAsync(
+        PFlowAccountBinding binding,
+        Func<string, Task> progress,
+        CancellationToken ct
+    )
+    {
+        await RequireWorkerAsync(binding, ct);
+        if (!await ld.IsAdbKeyboardInstalledAsync(binding.DeviceIndex, path, ct))
+        {
+            await progress("Installing Android text input on the assigned LD.");
+            if (
+                !await ld.InstallAdbKeyboardAsync(
+                    binding.DeviceIndex,
+                    customPath: path,
+                    cancellationToken: ct
+                ) || !await ld.IsAdbKeyboardInstalledAsync(binding.DeviceIndex, path, ct)
+            )
+                throw new InvalidOperationException(
+                    "ADBKeyboard installation could not be verified; no login details were entered."
+                );
+        }
+        await RequireWorkerAsync(binding, ct);
+        if (
+            !await ld.EnableAdbKeyboardAsync(binding.DeviceIndex, path, ct)
+            || !await ld.IsAdbKeyboardActiveAsync(binding.DeviceIndex, path, ct)
+        )
+            throw new InvalidOperationException(
+                "Android text input could not be verified; no login details were entered."
+            );
+    }
+
     // Caller owns the device lease for the complete operation, including navigation afterward.
     public async Task PrepareAsync(
         PFlowAccountBinding binding,
@@ -121,7 +198,7 @@ public sealed class PFlowSessionPreparation(ILDPlayerService ld, string path)
 
 public static class PFlowAccountSelection
 {
-    // Keep the existing multi-login capability guard until installed switching/UID proof exists.
+    // Legacy callers without an automatic session navigator must still reject multiple logins.
     public static void RequireSupportedSingleLogin(
         System.Collections.Generic.IEnumerable<PFlowPersonalAccount> accounts,
         int index,

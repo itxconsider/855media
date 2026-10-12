@@ -124,38 +124,75 @@ public sealed partial class PFlowAccountStore
         PFlowAccountRemap.RequireSameAssignment(expected, replacement);
         if (expected == replacement)
             throw new InvalidOperationException("The assigned mapping has not changed.");
-        string oldCredential = "";
-        await UpdateAsync(
-            accounts =>
-            {
-                var account =
-                    accounts.SingleOrDefault(a => a.Binding == expected)
-                    ?? throw new InvalidOperationException(
-                        "Saved mapping changed. Refresh and review again."
-                    );
-                if (accounts.Any(a => a != account && a.Binding == replacement))
-                    throw new InvalidOperationException("Replacement mapping already exists.");
-                oldCredential = account.CredentialReference;
-                account.PreviousBindings.Remove(replacement);
-                if (!account.PreviousBindings.Contains(expected))
-                    account.PreviousBindings.Add(expected);
-                account.Binding = replacement;
-                account.CredentialReference = "";
-                account.Authentication = PFlowAuthenticationState.Cached;
-                account.LastVerifiedUtc = null;
-                account.SelectedForDiscovery =
-                    account.SelectedForScreenTime =
-                    account.SelectedForPosting =
-                        false;
-                foreach (var page in account.Pages)
+        var snapshot =
+            (await LoadAsync(ct)).SingleOrDefault(a => a.Binding == expected)
+            ?? throw new InvalidOperationException(
+                "Saved mapping changed. Refresh and review again."
+            );
+        var oldCredential = snapshot.CredentialReference;
+        var replacementCredential = "";
+        if (oldCredential.Length > 0)
+        {
+            using var credential = await _credentials.LoadAsync(expected, oldCredential, ct);
+            replacementCredential = await _credentials.SaveAsync(replacement, credential, ct);
+        }
+        var committed = false;
+        try
+        {
+            await UpdateAsync(
+                accounts =>
                 {
-                    page.State = PFlowPageAccessState.Cached;
-                    page.LastVerifiedUtc = null;
-                    page.VerifiedRunId = "";
+                    var account =
+                        accounts.SingleOrDefault(a => a.Binding == expected)
+                        ?? throw new InvalidOperationException(
+                            "Saved mapping changed. Refresh and review again."
+                        );
+                    if (accounts.Any(a => a != account && a.Binding == replacement))
+                        throw new InvalidOperationException("Replacement mapping already exists.");
+                    if (account.CredentialReference != oldCredential)
+                        throw new InvalidOperationException(
+                            "Stored credentials changed during remapping; refresh and review again."
+                        );
+                    account.PreviousBindings.Remove(replacement);
+                    if (!account.PreviousBindings.Contains(expected))
+                        account.PreviousBindings.Add(expected);
+                    account.Binding = replacement;
+                    account.CredentialReference = replacementCredential;
+                    if (replacementCredential.Length == 0)
+                    {
+                        account.AllowAutomaticLogin = false;
+                        account.AllowAccountRotation = false;
+                    }
+                    account.Authentication = PFlowAuthenticationState.Cached;
+                    account.LastVerifiedUtc = null;
+                    account.SelectedForDiscovery =
+                        account.SelectedForScreenTime =
+                        account.SelectedForPosting =
+                            false;
+                    foreach (var page in account.Pages)
+                    {
+                        page.State = PFlowPageAccessState.Cached;
+                        page.LastVerifiedUtc = null;
+                        page.VerifiedRunId = "";
+                    }
+                },
+                ct
+            );
+            committed = true;
+        }
+        finally
+        {
+            if (!committed && replacementCredential.Length > 0)
+            {
+                try
+                {
+                    _credentials.Delete(replacementCredential);
                 }
-            },
-            ct
-        );
+                catch
+                { /* Keep the original credential reference authoritative. */
+                }
+            }
+        }
         return oldCredential;
     }
 }

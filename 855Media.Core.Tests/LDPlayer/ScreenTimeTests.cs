@@ -338,6 +338,7 @@ public class ScreenTimeTests
                 case "ScrollToNextVideoAsync":
                     Scrolls++;
                     return Task.FromResult(true);
+                case "HoldAndSwipeAsync":
                 case "SwipeAsync":
                     Scrolls++;
                     return Task.FromResult(true);

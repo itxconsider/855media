@@ -42,7 +42,9 @@ public static class PFlowUiPrivacy
             );
             foreach (
                 var node in nodes.Where(n =>
-                    authentication || (string?)n.Attribute("class") == "android.widget.EditText"
+                    authentication
+                    || (string?)n.Attribute("class") == "android.widget.EditText"
+                    || (string?)n.Attribute("package") == "com.google.android.gms"
                 )
             )
             {

@@ -1578,4 +1578,114 @@ public class LDPlayerServiceTests
         );
         Assert.Equal(maxConcurrency, peakActive);
     }
+
+    [Fact]
+    public async Task PFlowPersonaSwitcherService_DirectInvocation_SwitchesSuccessfully()
+    {
+        var menuXml =
+            @"<hierarchy rotation=""0"">
+            <node class=""android.widget.FrameLayout"" bounds=""[0,0][720,1280]"">
+                <node text=""My Test Persona"" bounds=""[100,100][400,200]"" />
+            </node>
+        </hierarchy>";
+
+        var mockHandler = new MockHttpMessageHandler(req =>
+        {
+            if (req.RequestUri!.AbsolutePath.EndsWith("/version"))
+            {
+                return new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new System.Net.Http.StringContent("0.10.1"),
+                };
+            }
+            if (req.RequestUri.AbsolutePath.EndsWith("/dump/hierarchy"))
+            {
+                return new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new System.Net.Http.StringContent(
+                        System.Text.Json.JsonSerializer.Serialize(
+                            new
+                            {
+                                jsonrpc = "2.0",
+                                id = 1,
+                                result = menuXml,
+                            }
+                        ),
+                        System.Text.Encoding.UTF8,
+                        "application/json"
+                    ),
+                };
+            }
+            if (req.RequestUri.AbsolutePath.EndsWith("/shell"))
+            {
+                return new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new System.Net.Http.StringContent("{\"output\":\"\"}"),
+                };
+            }
+            return new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.NotFound);
+        });
+
+        using var http = new System.Net.Http.HttpClient(mockHandler);
+        using var atx = new AtxAgentClient(7912, http);
+        var ldPlayer = new LDPlayerService(atx);
+        var switcher = new PFlowPersonaSwitcherService(ldPlayer, atx);
+
+        var switched = await switcher.SwitchToPersonaAsync(0, "My Test Persona");
+        Assert.True(switched);
+    }
+
+    [Fact]
+    public async Task SwitchToPersonaAsync_WithFacebookPageTarget_RejectsUnverifiedPublicView()
+    {
+        var pageTarget = new FacebookPageTarget
+        {
+            PageName = "Cool Tech Page",
+            PageId = "987654321",
+            Type = "Page",
+        };
+
+        var pageXml =
+            @"<hierarchy rotation=""0"">
+            <node class=""android.widget.FrameLayout"" bounds=""[0,0][720,1280]"">
+                <node text=""Switch"" bounds=""[100,200][300,300]"" />
+            </node>
+        </hierarchy>";
+
+        var mockHandler = new MockHttpMessageHandler(req =>
+        {
+            if (req.RequestUri!.AbsolutePath.EndsWith("/version"))
+            {
+                return new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new System.Net.Http.StringContent("0.10.1"),
+                };
+            }
+            if (req.RequestUri.AbsolutePath.EndsWith("/dump/hierarchy"))
+            {
+                return new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new System.Net.Http.StringContent(
+                        System.Text.Json.JsonSerializer.Serialize(
+                            new
+                            {
+                                jsonrpc = "2.0",
+                                id = 1,
+                                result = pageXml,
+                            }
+                        )
+                    ),
+                };
+            }
+            return new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.OK);
+        });
+
+        using var http = new System.Net.Http.HttpClient(mockHandler);
+        using var atx = new AtxAgentClient(7912, http);
+        var ldPlayer = new LDPlayerService(atx);
+        var switcher = new PFlowPersonaSwitcherService(ldPlayer, atx);
+
+        var switched = await switcher.SwitchToPersonaAsync(0, pageTarget);
+        Assert.False(switched);
+    }
 }

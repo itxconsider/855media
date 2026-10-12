@@ -15,7 +15,7 @@ public partial class LDPlayerService
         CancellationToken cancellationToken = default
     )
     {
-        return await new PFlowPersonaSwitcherService(this, _atxClient).SwitchToPersonaAsync(
+        return await _personaSwitcher.SwitchToPersonaAsync(
             index,
             target,
             customPath,

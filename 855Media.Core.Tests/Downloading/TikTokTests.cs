@@ -117,29 +117,49 @@ public class TikTokTests
     }
 
     [Fact]
-    public void CookieUtils_TryFindCookieFile_DiscoversLocalFileInSolutionRoot()
+    public void CookieUtils_TryFindCookieFile_DiscoversLocalFileInApplicationDirectory()
     {
-        var cookieFile = _855Media.Core.Utils.CookieUtils.TryFindCookieFile(
-            "tiktok_cookies.txt",
-            "cookies.txt"
-        );
-
-        Assert.NotNull(cookieFile);
-        Assert.True(System.IO.File.Exists(cookieFile));
+        var name = "855media-cookie-fixture-" + Guid.NewGuid().ToString("N") + ".txt";
+        var path = System.IO.Path.Combine(AppContext.BaseDirectory, name);
+        try
+        {
+            System.IO.File.WriteAllText(path, "# synthetic cookie fixture");
+            var cookieFile = _855Media.Core.Utils.CookieUtils.TryFindCookieFile(name);
+            Assert.Equal(path, cookieFile);
+        }
+        finally
+        {
+            System.IO.File.Delete(path);
+        }
     }
 
     [Fact]
     public void CookieUtils_ParseNetscapeCookieFile_ParsesCorrectly()
     {
-        var cookieFile = _855Media.Core.Utils.CookieUtils.TryFindCookieFile(
-            "tiktok_cookies.txt",
-            "cookies.txt"
+        var path = System.IO.Path.Combine(
+            System.IO.Path.GetTempPath(),
+            "855media-cookie-fixture-" + Guid.NewGuid().ToString("N") + ".txt"
         );
-
-        Assert.NotNull(cookieFile);
-        var cookies = _855Media.Core.Utils.CookieUtils.ParseNetscapeCookieFile(cookieFile!);
-        Assert.NotEmpty(cookies);
-        Assert.Contains(cookies, c => !string.IsNullOrWhiteSpace(c.Name));
+        try
+        {
+            System.IO.File.WriteAllText(
+                path,
+                "# Netscape HTTP Cookie File\n#HttpOnly_.example.test\tTRUE\t/\tTRUE\t0\tfixture_cookie\tfixture_value\n"
+            );
+            var cookie = Assert.Single(
+                _855Media.Core.Utils.CookieUtils.ParseNetscapeCookieFile(path)
+            );
+            Assert.Equal("fixture_cookie", cookie.Name);
+            Assert.Equal("fixture_value", cookie.Value);
+            Assert.Equal("example.test", cookie.Domain);
+            Assert.Equal("/", cookie.Path);
+            Assert.True(cookie.Secure);
+            Assert.True(cookie.HttpOnly);
+        }
+        finally
+        {
+            System.IO.File.Delete(path);
+        }
     }
 
     [Fact]

@@ -71,7 +71,7 @@ public partial class AutoPostViewModel
             AccountRemapSummary =
                 $"{item.Name} • UID {old.OwnerUid} • {old.AppPackage}\nAssigned LD index: {old.DeviceIndex}\nSaved: {old.DeviceName} / {old.InstanceIdentity[..Math.Min(12, old.InstanceIdentity.Length)]}\nCurrent: {next.DeviceName} / {next.InstanceIdentity[..Math.Min(12, next.InstanceIdentity.Length)]}";
             AccountRemapStatus =
-                "Review the renamed or replaced instance. Apply disables Fetch, ScreenTime and Posting, clears identity/access proofs and removes the old credential reference. Media paths and posting history are retained. Reimport credentials and verify this personal account before selecting it again.";
+                "Review the renamed or replaced instance. Apply retains this account's protected credentials and login options, disables task selections, and clears device/access verification. Credentials are protected again for the reviewed instance. Verify this personal account before selecting it again.";
         }
         catch (Exception ex)
         {
@@ -162,7 +162,7 @@ public partial class AutoPostViewModel
             await LoadAccountMappingsAsync();
             await PFlowPageStorage.SavePagesAsync(Pages.Select(p => p.Model.CreateSnapshot()));
             AccountRemapStatus =
-                "Assigned instance updated. Account selections are disabled; reimport credentials and verify identity before running.";
+                "Assigned instance updated. Protected credentials retained. Select the account again; live identity verification is required before tasks run.";
             AccountRemapConfirmed = false;
             _remapExpected = _remapReplacement = null;
             HasAccountRemapCandidate = false;

@@ -1173,7 +1173,64 @@ public class PFlowNavigationRegressionTests
             Options = new ScreenTimeOptions { FeedDwellSeconds = 1 },
         };
 
-    private static (ScreenTimeService Service, NavigationDevice Device, string History) Harness()
+    [Fact]
+    public async Task ReelsUsesTestedFixedPathAndTiming()
+    {
+        var (service, fake, _) = Harness();
+        fake.StartFixture = "ld1-reels-interest";
+        var settings = Settings();
+        settings.NewsFeed = false;
+        settings.WatchVideo = true;
+        settings.WatchVideoMin = settings.WatchVideoMax = 3;
+        settings.Options.ReelDwellSeconds = 1;
+        await service.RunAsync(910, settings, _ => Task.FromResult(true), _ => Task.CompletedTask);
+        Assert.NotEmpty(fake.HoldSwipes);
+        Assert.All(fake.HoldSwipes, v => Assert.Equal((360, 960, 360, 213, 300, 100), v));
+    }
+
+    [Fact]
+    public async Task FeedChoosesProfileForEveryScroll()
+    {
+        var choice = 0;
+        var (service, fake, _) = Harness(() => choice++ % 2);
+        var settings = Settings();
+        settings.NewsFeedMin = settings.NewsFeedMax = 4;
+        await service.RunAsync(911, settings, _ => Task.FromResult(true), _ => Task.CompletedTask);
+        Assert.True(fake.HoldSwipes.Count >= 2);
+        for (var i = 0; i < fake.HoldSwipes.Count; i++)
+            Assert.Equal(
+                i % 2 == 0 ? (360, 960, 360, 213, 100, 300) : (360, 960, 360, 213, 300, 100),
+                fake.HoldSwipes[i]
+            );
+        Assert.Equal(fake.HoldSwipes.Count, choice);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RejectedTouchStopsBeforeRetry(bool reels)
+    {
+        var (service, fake, _) = Harness();
+        var settings = Settings();
+        fake.HoldSwipeAcknowledged = false;
+        if (reels)
+        {
+            fake.StartFixture = "ld1-reels-interest";
+            settings.NewsFeed = false;
+            settings.WatchVideo = true;
+            settings.WatchVideoMin = settings.WatchVideoMax = 3;
+            settings.Options.ReelDwellSeconds = 1;
+        }
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.RunAsync(912, settings, _ => Task.FromResult(true), _ => Task.CompletedTask)
+        );
+        Assert.Contains("hold/swipe was not acknowledged", error.Message);
+        Assert.Single(fake.HoldSwipes);
+    }
+
+    private static (ScreenTimeService Service, NavigationDevice Device, string History) Harness(
+        Func<int>? chooseFeedGesture = null
+    )
     {
         var ld = DispatchProxy.Create<ILDPlayerService, NavigationDevice>();
         var fake = (NavigationDevice)(object)ld;
@@ -1193,7 +1250,8 @@ public class PFlowNavigationRegressionTests
                     return Task.CompletedTask;
                 },
                 () => now,
-                new ScreenTimeHistoryStore(history)
+                new ScreenTimeHistoryStore(history),
+                chooseFeedGesture
             ),
             fake,
             history
@@ -1216,6 +1274,7 @@ public class PFlowNavigationRegressionTests
             Transient,
             PageActor;
         public bool TapAcknowledged = true;
+        public bool HoldSwipeAcknowledged = true;
         public bool CapturedMedia;
         public string? StartFixture,
             AfterSwipeFixture;
@@ -1223,6 +1282,14 @@ public class PFlowNavigationRegressionTests
         public bool LoseSemanticScreenAfterInteraction;
         private int _hierarchyReads;
         public (int, int) LastTap;
+        public List<(
+            int StartX,
+            int StartY,
+            int EndX,
+            int EndY,
+            int Hold,
+            int Movement
+        )> HoldSwipes = new();
         public Action? OnFailure;
         private bool _missed;
 
@@ -1332,6 +1399,21 @@ public class PFlowNavigationRegressionTests
                     return Task.FromResult<BloksScreenInfo?>(
                         AtxAgentClient.ParseBloksHierarchy(Screen())
                     );
+                case "HoldAndSwipeAsync":
+                    HoldSwipes.Add(
+                        (
+                            (int)args![1]!,
+                            (int)args[2]!,
+                            (int)args[3]!,
+                            (int)args[4]!,
+                            (int)args[5]!,
+                            (int)args[6]!
+                        )
+                    );
+                    Swipes++;
+                    return Task.FromResult(HoldSwipeAcknowledged);
+                case "TakeScreenshotAsync":
+                    return Task.FromResult<byte[]?>(null);
                 case "SwipeAsync":
                     Swipes++;
                     return Task.FromResult(true);

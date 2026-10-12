@@ -4,6 +4,7 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
 using _855Media.Core.LDPlayer;
+using _855Media.Core.Utilities;
 using Avalonia.Threading;
 
 namespace _855Media.ViewModels.Components;
@@ -11,6 +12,7 @@ namespace _855Media.ViewModels.Components;
 public partial class AutoPostViewModel
 {
     private readonly HashSet<INotifyPropertyChanged> _dashboardRows = [];
+    private CoalescedAction? _dashboardRefresh;
     public int PFlowQueuedCount => Tasks.Count(t => t.Status == "Queued");
     public int PFlowConfirmedCount =>
         Tasks.Count(t => t.Status.StartsWith("Confirmed", StringComparison.OrdinalIgnoreCase));
@@ -41,6 +43,10 @@ public partial class AutoPostViewModel
 
     private void InitializePFlowDashboard()
     {
+        _dashboardRefresh = new(
+            a => Dispatcher.UIThread.Post(a, DispatcherPriority.Background),
+            RefreshPFlowDashboardNow
+        );
         Tasks.CollectionChanged += DashboardCollectionChanged;
         Instances.CollectionChanged += DashboardCollectionChanged;
         Pages.CollectionChanged += DashboardCollectionChanged;
@@ -72,10 +78,28 @@ public partial class AutoPostViewModel
         }
     }
 
-    private void DashboardRowChanged(object? sender, PropertyChangedEventArgs e) =>
-        RefreshPFlowDashboard();
+    private void DashboardRowChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (
+            sender is LDInstanceItemViewModel
+            && e.PropertyName == nameof(LDInstanceItemViewModel.IsSelected)
+        )
+            RequestManageSelectionRefresh();
+        if (
+            sender is AutoPostTaskItem && e.PropertyName == nameof(AutoPostTaskItem.Status)
+            || sender is LDInstanceItemViewModel
+                && e.PropertyName
+                    is nameof(LDInstanceItemViewModel.IsSelected)
+                        or nameof(LDInstanceItemViewModel.IsAndroidStarted)
+            || sender is FacebookPageTargetViewModel
+                && e.PropertyName == nameof(FacebookPageTargetViewModel.IsSelected)
+        )
+            RefreshPFlowDashboard();
+    }
 
-    private void RefreshPFlowDashboard()
+    private void RefreshPFlowDashboard() => _dashboardRefresh?.Request();
+
+    private void RefreshPFlowDashboardNow()
     {
         if (!Dispatcher.UIThread.CheckAccess())
         {
@@ -102,6 +126,7 @@ public partial class AutoPostViewModel
 
     private void DisposePFlowDashboard()
     {
+        _dashboardRefresh?.Dispose();
         Tasks.CollectionChanged -= DashboardCollectionChanged;
         Instances.CollectionChanged -= DashboardCollectionChanged;
         Pages.CollectionChanged -= DashboardCollectionChanged;

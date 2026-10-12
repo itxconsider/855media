@@ -25,7 +25,18 @@ public partial class AutoPostViewModel
 
     private async Task PreparePFlowAsync(WorkerRunConfig config)
     {
+        var selectedDeviceIndices = (ShowOnlyOpen ? DisplayedInstances : Instances)
+            .Where(w => w.IsSelected)
+            .Select(w => w.Index)
+            .ToArray();
+        await PersistAccountSelectionDraftsAsync(selectedDeviceIndices);
         await LoadAccountMappingsAsync();
+        _pFlowRunAccounts = System.Text.Json.JsonSerializer.Deserialize<PFlowPersonalAccount[]>(
+            System.Text.Json.JsonSerializer.Serialize(_mappedAccounts)
+        )!;
+        _pFlowSessions.Clear();
+        _pFlowActiveBindings.Clear();
+        _pFlowAccountAttention.Clear();
         _pFlowJobs.Clear();
         _pFlowTasks.Clear();
         _pFlowOwners.Clear();
@@ -34,6 +45,17 @@ public partial class AutoPostViewModel
         var selectedWorkers = (ShowOnlyOpen ? DisplayedInstances : Instances)
             .Where(w => w.IsSelected)
             .ToList();
+        if (
+            config.ScreenTimeOnly
+            && !_pFlowRunAccounts.Any(a =>
+                a.SelectedForScreenTime
+                && selectedDeviceIndices.Contains(a.Binding.DeviceIndex)
+                && a.Binding.AppPackage == "com.facebook.katana"
+            )
+        )
+            throw new InvalidOperationException(
+                "Select ScreenTime for at least one mapped personal account on the selected LDs."
+            );
         if (Tasks.Any(t => t.Status == "Queued" && ResolveDeviceIndex(t.DeviceName) < 0))
             throw new InvalidOperationException(
                 "A queued target has no assigned LD instance. Review its mapping; no fallback was used."
@@ -61,15 +83,18 @@ public partial class AutoPostViewModel
             var devicePages = Pages
                 .Where(p => ResolveDeviceIndex(p.DeviceName) == worker.Index)
                 .ToList();
-            PFlowAccountSelection.RequireSupportedSingleLogin(
-                _mappedAccounts,
+            var accountPlan = PFlowAutomaticSessionService.Plan(
+                _pFlowRunAccounts,
                 worker.Index,
                 "com.facebook.katana",
-                devicePages.Where(p => p.IsProfile).Select(p => p.UserUid)
+                config.ScreenTime.HasActions,
+                true
             );
-            if (devicePages.Where(p => p.IsProfile).Select(p => p.UserUid).Distinct().Count() > 1)
-                throw new InvalidOperationException(
-                    "Multiple personal logins need verified saved-account switching. No account was selected by guessing."
+            foreach (var selectedAccount in accountPlan)
+                PFlowAccountStore.RequireCurrentBinding(
+                    selectedAccount.Binding,
+                    Instances.Select(i => i.Model).ToArray(),
+                    LdFolder
                 );
             foreach (var page in devicePages)
             {
@@ -79,6 +104,7 @@ public partial class AutoPostViewModel
                         var task in Tasks.Where(t =>
                             t.Status == "Queued"
                             && ResolveDeviceIndex(t.DeviceName) == worker.Index
+                            && t.App == page.AppClone
                             && t.PageId == page.PageId
                         )
                     )
@@ -86,13 +112,15 @@ public partial class AutoPostViewModel
                     continue;
                 }
 
-                var account = _mappedAccounts.SingleOrDefault(a =>
+                var account = _pFlowRunAccounts.SingleOrDefault(a =>
                     a.Binding.DeviceIndex == worker.Index
                     && a.Binding.OwnerUid == page.UserUid
                     && a.Binding.AppPackage == "com.facebook.katana"
                 );
                 if (account == null || !account.SelectedForPosting)
                     continue;
+                var targetModel =
+                    page.Model ?? throw new InvalidOperationException("Target model is missing.");
                 foreach (var type in new[] { "Reel", "Picture", "Video" })
                 {
                     if (
@@ -107,15 +135,12 @@ public partial class AutoPostViewModel
                         .Where(t =>
                             t.Status == "Queued"
                             && ResolveDeviceIndex(t.DeviceName) == worker.Index
-                            && (t.Type == type || type == "Picture" && t.Type == "Photo")
-                            && (
-                                !string.IsNullOrWhiteSpace(t.PageId)
-                                    ? t.PageId == page.PageId
-                                    : t.Page.Equals(
-                                        page.PageName,
-                                        StringComparison.OrdinalIgnoreCase
-                                    )
+                            && PFlowTaskRouting.MatchesTarget(
+                                t,
+                                targetModel,
+                                devicePages.Select(p => p.Model)
                             )
+                            && (t.Type == type || type == "Picture" && t.Type == "Photo")
                         )
                         .ToList();
                     if (queued.Count == 0 && !page.IsSelected)
@@ -163,15 +188,13 @@ public partial class AutoPostViewModel
                         );
                     if (
                         devicePages.Count(p =>
-                            p.PageName.Equals(page.PageName, StringComparison.OrdinalIgnoreCase)
+                            p.UserUid == page.UserUid
+                            && p.PageName.Equals(page.PageName, StringComparison.OrdinalIgnoreCase)
                         ) > 1
                     )
                         throw new InvalidOperationException(
                             "Duplicate target names require identity disambiguation before UI posting."
                         );
-                    var targetModel =
-                        page.Model
-                        ?? throw new InvalidOperationException("Target model is missing.");
                     var instanceIdentity = PFlowDeviceRouting.ReadIdentity(LdFolder, worker.Index);
                     var binding =
                         targetModel.AccountBinding
@@ -311,6 +334,7 @@ public partial class AutoPostViewModel
                     && j.OwnerUid == page.UserUid
                     && j.AppPackage == "com.facebook.katana"
                     && j.TargetId == page.PageId
+                    && j.IsProfile == page.IsProfile
                     && j.PostType == type
                     && j.State == PFlowState.Queued
                 )
@@ -336,23 +360,52 @@ public partial class AutoPostViewModel
                     task.Status = "Skipped (Daily capacity)";
                 continue;
             }
-            bool confirmed = await runner.RunAsync(
-                job,
-                c => VerifyPFlowIdentityAsync(worker, page, c),
-                async step =>
-                {
-                    await Dispatcher.UIThread.InvokeAsync(() =>
+            async Task<bool> RunJob() =>
+                await runner.RunAsync(
+                    job,
+                    c => VerifyPFlowIdentityAsync(worker, page, c),
+                    async step =>
                     {
-                        worker.Status = $"P-Flow [{page.PageName}] {step}";
-                        if (task != null)
-                            task.Status = step;
-                    });
-                },
-                LdFolder,
-                ct,
-                _pFlowBatchDryRun,
-                AutoMaxPostByMaturity ? page.GetMaxDailyPostsLimit() : int.MaxValue
-            );
+                        await Dispatcher.UIThread.InvokeAsync(() =>
+                        {
+                            worker.Status = $"P-Flow [{page.PageName}] {step}";
+                            if (task != null)
+                                task.Status = step;
+                        });
+                    },
+                    LdFolder,
+                    ct,
+                    _pFlowBatchDryRun,
+                    AutoMaxPostByMaturity ? page.GetMaxDailyPostsLimit() : int.MaxValue
+                );
+            bool confirmed = await RunJob();
+            if (
+                job.State == PFlowState.Failed
+                && !job.SubmittedUtc.HasValue
+                && !ct.IsCancellationRequested
+            )
+            {
+                var authentication = PFlowLoginScreen.Classify(
+                    await _ldPlayerService.DumpUiHierarchyAsync(worker.Index, LdFolder, ct)
+                );
+                if (authentication == PFlowLoginScreenKind.LoginRequired)
+                {
+                    var account = _pFlowRunAccounts.Single(a => a.Binding == job.AccountBinding);
+                    await EnsureRunAccountAsync(worker, account, ct);
+                    job.Error = "";
+                    job.RemoteCleanupState = "Pending";
+                    confirmed = await RunJob();
+                }
+                else if (PFlowLoginScreen.RequiresAuthentication(authentication))
+                {
+                    _pFlowAccountAttention[worker.Index] = 0;
+                    throw new InvalidOperationException(PFlowLoginScreen.Message(authentication));
+                }
+            }
+            if (_pFlowAccountAttention.ContainsKey(worker.Index))
+                throw new InvalidOperationException(
+                    "Account authentication needs attention; remaining tasks on this LD were stopped."
+                );
             if (confirmed)
             {
                 var count = await _pFlowHistory.DailyCountAsync(
@@ -379,6 +432,7 @@ public partial class AutoPostViewModel
                 // Do not carry a failed caption editor or stale navigation into the next target.
                 worker.Status = "P-Flow: resetting failed pre-submit navigation";
                 _pFlowOwners.TryRemove(worker.Index, out _);
+                _pFlowActiveBindings.TryRemove(worker.Index, out _);
                 await _ldPlayerService.StopFacebookAppAsync(worker.Index, LdFolder, ct);
                 await _ldPlayerService.LaunchAppAsync(
                     worker.Index,
@@ -399,8 +453,29 @@ public partial class AutoPostViewModel
         var sessionScreen = PFlowLoginScreen.Classify(
             await _ldPlayerService.DumpUiHierarchyAsync(worker.Index, LdFolder, ct)
         );
-        if (PFlowLoginScreen.RequiresAuthentication(sessionScreen))
+        var account =
+            _pFlowRunAccounts.SingleOrDefault(a =>
+                a.Binding.DeviceIndex == worker.Index
+                && a.Binding.OwnerUid == page.UserUid
+                && a.Binding.AppPackage == "com.facebook.katana"
+            )
+            ?? throw new InvalidOperationException(
+                "Target has no account in the immutable run plan."
+            );
+        if (
+            PFlowLoginScreen.RequiresAuthentication(sessionScreen)
+            && sessionScreen != PFlowLoginScreenKind.LoginRequired
+        )
+        {
+            _pFlowAccountAttention[worker.Index] = 0;
             throw new InvalidOperationException(PFlowLoginScreen.Message(sessionScreen));
+        }
+        if (
+            sessionScreen == PFlowLoginScreenKind.LoginRequired
+            || !_pFlowActiveBindings.TryGetValue(worker.Index, out var verifiedBinding)
+            || verifiedBinding != account.Binding
+        )
+            await EnsureRunAccountAsync(worker, account, ct);
         var personalSelected = false;
         if (!_pFlowOwners.TryGetValue(worker.Index, out var owner) || owner != page.UserUid)
         {

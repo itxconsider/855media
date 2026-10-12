@@ -5,7 +5,7 @@ using System.Xml.Linq;
 
 namespace _855Media.Core.LDPlayer;
 
-internal static class ScreenTimeNavigation
+internal static partial class ScreenTimeNavigation
 {
     internal static (int X, int Y) ReelsSwipeStart(string xml, int width, int height)
     {
@@ -87,10 +87,11 @@ internal static class ScreenTimeNavigation
         var creators = details[0]
             .Descendants("node")
             .SelectMany(Labels)
+            .Select(v => Regex.Replace(v, @"\s+", " ").Trim())
             .Where(v => Regex.IsMatch(v, @"^View .+['’]s reels$", RegexOptions.IgnoreCase))
             .Distinct()
             .OrderBy(v => v);
-        return caption + "|" + string.Join("|", creators);
+        return Regex.Replace(caption, @"\s+", " ").Trim() + "|" + string.Join("|", creators);
     }
 
     internal static bool IsReelsChaptersSheet(string? xml)
@@ -410,6 +411,7 @@ internal static class ScreenTimeNavigation
     {
         var nodes = ScreenTimeHierarchy.Nodes(xml);
         return IsReelsChaptersSheet(xml)
+            || (name == "Marketplace" && IsMarketplaceNonBrowsingScreen(xml))
             || PFlowLoginScreen.RequiresAuthentication(PFlowLoginScreen.Classify(xml))
             || PFlowPersonaSwitcherService.IsNativeSwitcherSheetOpen(xml)
             || nodes.Any(n =>
@@ -453,6 +455,7 @@ internal static class ScreenTimeNavigation
                     ", tab",
                     StringComparison.OrdinalIgnoreCase
                 )
+                && !(name == "Marketplace" && IsMarketplaceBrowseTab(xml, n))
                 && !expected.Any(x =>
                     (n.Attribute("content-desc")?.Value ?? "").StartsWith(
                         x + ", tab",

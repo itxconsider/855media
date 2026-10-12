@@ -40,6 +40,9 @@ public partial class FacebookPageTargetViewModel : ObservableObject
     private int _number;
 
     [ObservableProperty]
+    private int _groupNumber;
+
+    [ObservableProperty]
     private string _deviceName = string.Empty;
 
     [ObservableProperty]

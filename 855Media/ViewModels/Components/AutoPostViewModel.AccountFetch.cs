@@ -1,0 +1,206 @@
+using System;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using _855Media.Core.LDPlayer;
+using Avalonia.Threading;
+
+namespace _855Media.ViewModels.Components;
+
+public partial class AutoPostViewModel
+{
+    private async Task<bool> FetchMappedAccountsAsync(
+        LDInstanceItemViewModel worker,
+        PFlowPersonalAccount[] accounts,
+        bool autoCloseIfBooted,
+        CancellationToken ct
+    )
+    {
+        var selected = accounts
+            .Where(a => a.SelectedForDiscovery)
+            .OrderBy(a => a.RotationOrder)
+            .ThenBy(a => a.Binding.OwnerUid, StringComparer.Ordinal)
+            .ToArray();
+        if (selected.Length == 0)
+        {
+            worker.Status = "Fetch skipped: no personal accounts selected for fetching.";
+            return true;
+        }
+        using var lease = await PFlowDeviceLease.AcquireAsync(worker.Index, ct);
+        var wasRunning = (await _ldPlayerService.GetInstancesAsync(LdFolder, ct))
+            .Single(i => i.Index == worker.Index)
+            .IsRunning;
+        var navigator = new PFlowNativeAccountNavigator(
+            _ldPlayerService,
+            LdFolder,
+            b => accounts.Single(a => a.Binding == b).Name
+        );
+        var service = new PFlowAutomaticSessionService(
+            navigator,
+            new PFlowCredentialStore(),
+            c => RequireAccountTransitionIdleAsync(worker.Index, c)
+        );
+        var completed = false;
+        var verifiedPages = 0;
+        var attemptedPages = 0;
+        try
+        {
+            foreach (var account in selected)
+            {
+                async Task Progress(string step) =>
+                    await ReportFetchProgressAsync(
+                        worker,
+                        "Account " + account.Binding.OwnerUid,
+                        worker.Name + ": " + step
+                    );
+                await new PFlowSessionPreparation(_ldPlayerService, LdFolder).PrepareAsync(
+                    account.Binding,
+                    Progress,
+                    ct
+                );
+                await service.EnsureAsync(account, Progress, ct, deviceLeaseAlreadyHeld: true);
+                var root = await _ldPlayerService.ExtractFacebookAccountsFromRootShellAsync(
+                    worker.Index,
+                    account.Binding.AppPackage,
+                    LdFolder,
+                    ct
+                );
+                var owner =
+                    root.SingleOrDefault(a =>
+                        a.Type == "Profile" && a.Uid == account.Binding.OwnerUid
+                    )
+                    ?? throw new InvalidOperationException(
+                        "Verified personal account is missing from discovery; no other owner was substituted."
+                    );
+                var details = new FacebookAccountDetails
+                {
+                    DeviceName = worker.Name,
+                    Uid = account.Binding.OwnerUid,
+                    Name = string.IsNullOrWhiteSpace(owner.Name) ? account.Name : owner.Name,
+                    Email = owner.Email,
+                    Pages = root.Where(a =>
+                            a.Type == "Page" && a.UserUid == account.Binding.OwnerUid
+                        )
+                        .GroupBy(a => a.PageId)
+                        .Select(g => g.First().ToFacebookPageInfo())
+                        .ToList(),
+                };
+                await ReplaceDevicePagesInTableAsync(worker, details);
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    foreach (
+                        var row in Pages.Where(p =>
+                            ResolveDeviceIndex(p.DeviceName) == worker.Index
+                            && p.UserUid == account.Binding.OwnerUid
+                            && p.AppClone == "FB-01"
+                        )
+                    )
+                        row.Model.AccountBinding = account.Binding;
+                });
+                await PersistPagesSnapshotAsync();
+                var personal = await _ldPlayerService.ExtractPersonalAccountDetailsFromUiAsync(
+                    worker.Index,
+                    details.Uid,
+                    details.Name,
+                    LdFolder,
+                    ct,
+                    Progress
+                );
+                if (personal?.SwitchedToProfile != true)
+                    throw new InvalidOperationException(
+                        "Selected personal profile could not be confirmed for discovery."
+                    );
+                details.SwitchedToProfile = true;
+                details.Name = PreferValue(personal.Name, details.Name);
+                details.Email = PreferValue(personal.Email, details.Email);
+                details.Birthdate = personal.Birthdate;
+                details.CreationDate = personal.CreationDate;
+                details.Location = personal.Location;
+                details.Hometown = personal.Hometown;
+                details.Work = personal.Work;
+                details.Education = personal.Education;
+                details.RelationshipStatus = personal.RelationshipStatus;
+                var pageResults = await RunPageUiLookupsAsync(worker, details, ct);
+                verifiedPages += pageResults.Succeeded;
+                attemptedPages += pageResults.Attempted;
+                await ReplaceDevicePagesInTableAsync(worker, details, isRootSnapshot: false);
+                await PersistPagesSnapshotAsync();
+                // Root/cache enumeration cannot establish that a missing Page was removed.
+                var runId = Guid.NewGuid().ToString("N");
+                PFlowAccountReconciliation.Apply(
+                    account,
+                    new(
+                        details.Uid,
+                        runId,
+                        false,
+                        details
+                            .Pages.Select(p => new PFlowLivePage(
+                                p.PageId,
+                                p.PersonaUid,
+                                p.PageName,
+                                p.LivePageAccessVerified == true
+                            ))
+                            .ToArray()
+                    ),
+                    DateTimeOffset.UtcNow
+                );
+                await _accountStore.UpdateAsync(
+                    saved =>
+                    {
+                        var target = saved.Single(a => a.Binding == account.Binding);
+                        target.Name = details.Name;
+                        target.Email = details.Email;
+                        target.LastVerifiedUtc = account.LastVerifiedUtc;
+                        target.Authentication = account.Authentication;
+                        target.Pages = account.Pages;
+                    },
+                    ct
+                );
+                await RequireAccountTransitionIdleAsync(worker.Index, ct);
+                if (
+                    !await _ldPlayerService.EnsureSwitchedToPersonalProfileAsync(
+                        worker.Index,
+                        details.Name,
+                        LdFolder,
+                        ct
+                    )
+                )
+                    throw new InvalidOperationException(
+                        "Personal identity could not be restored after Page discovery."
+                    );
+            }
+            completed = true;
+            worker.Status =
+                $"Fetched {selected.Length} personal accounts · {verifiedPages}/{attemptedPages} Pages verified.";
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            worker.Status = "Account fetch cancelled; Facebook left open.";
+            throw;
+        }
+        catch (Exception ex)
+        {
+            worker.Status = "Account fetch stopped: " + ex.Message;
+            return false;
+        }
+        finally
+        {
+            // Keep authentication challenges and failed observations visible for user action.
+            if (completed)
+            {
+                using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+                await RequireAccountTransitionIdleAsync(worker.Index, cleanup.Token);
+                if (IsClearRecentApp)
+                    await PFlowSession.ClearAppsAsync(
+                        _ldPlayerService,
+                        worker.Index,
+                        LdFolder,
+                        cleanup.Token
+                    );
+                if (autoCloseIfBooted && (!wasRunning || CloseLDAfterAction))
+                    await _ldPlayerService.QuitInstanceAsync(worker.Index, LdFolder, cleanup.Token);
+            }
+        }
+    }
+}

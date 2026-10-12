@@ -18,12 +18,10 @@ public partial class LDPlayerService : ILDPlayerService
     private readonly AtxAgentClient _atxClient;
 
     public LDPlayerService()
-        : this(null) { }
+        : this(null, null, null, null, null, null, null, null) { }
 
     public LDPlayerService(AtxAgentClient? atxClient)
-    {
-        _atxClient = atxClient ?? new AtxAgentClient();
-    }
+        : this(atxClient, null, null, null, null, null, null, null) { }
 
     private static readonly string[] DefaultProbeDirectories =
     [
@@ -207,7 +205,7 @@ public partial class LDPlayerService : ILDPlayerService
             RegexOptions.IgnoreCase
         );
 
-    public async Task<string> ExecuteAdbAsync(
+    public virtual async Task<string> ExecuteAdbAsync(
         int index,
         string adbCommand,
         string? customPath = null,
@@ -666,6 +664,36 @@ public partial class LDPlayerService : ILDPlayerService
         return IsSuccessfulInputCommand(output);
     }
 
+    public async Task<bool> HoldAndSwipeAsync(
+        int index,
+        int startX,
+        int startY,
+        int endX,
+        int endY,
+        int holdMs,
+        int movementTargetMs,
+        string? customPath = null,
+        CancellationToken cancellationToken = default
+    )
+    {
+        if (
+            !await _atxClient.IsRunningAsync(index, cancellationToken)
+            && !await EnsureAtxAgentRunningAsync(index, customPath, cancellationToken)
+        )
+            return false;
+        // Do not substitute an ADB swipe: it cannot preserve the separate stationary hold.
+        return await _atxClient.HoldAndSwipeAsync(
+            index,
+            startX,
+            startY,
+            endX,
+            endY,
+            holdMs,
+            movementTargetMs,
+            cancellationToken
+        );
+    }
+
     public async Task<bool> TapAsync(
         int index,
         int x,
@@ -809,7 +837,7 @@ public partial class LDPlayerService : ILDPlayerService
         string? customPath = null,
         CancellationToken cancellationToken = default
     ) =>
-        new PFlowAutoPostService(this, _atxClient).WaitForUploadCompletedAsync(
+        _autoPostService.WaitForUploadCompletedAsync(
             index,
             remotePath,
             timeout,
@@ -1104,7 +1132,7 @@ public partial class LDPlayerService : ILDPlayerService
         string? customPath = null,
         CancellationToken cancellationToken = default
     ) =>
-        new PFlowPersonaSwitcherService(this, _atxClient).EnsureSwitchedToPersonalProfileAsync(
+        _personaSwitcher.EnsureSwitchedToPersonalProfileAsync(
             index,
             targetProfileName,
             customPath,
@@ -1633,7 +1661,7 @@ public partial class LDPlayerService : ILDPlayerService
         string? customPath = null,
         CancellationToken cancellationToken = default
     ) =>
-        new PFlowAutoPostService(this, _atxClient).PostReelAsync(
+        _autoPostService.PostReelAsync(
             index,
             localVideoPath,
             caption,
@@ -1648,7 +1676,7 @@ public partial class LDPlayerService : ILDPlayerService
         string? customPath = null,
         CancellationToken cancellationToken = default
     ) =>
-        new PFlowAutoPostService(this, _atxClient).PostPictureAsync(
+        _autoPostService.PostPictureAsync(
             index,
             localImagePath,
             caption,
@@ -1663,7 +1691,7 @@ public partial class LDPlayerService : ILDPlayerService
         string? customPath = null,
         CancellationToken cancellationToken = default
     ) =>
-        new PFlowAutoPostService(this, _atxClient).PostVideoAsync(
+        _autoPostService.PostVideoAsync(
             index,
             localVideoPath,
             caption,
@@ -7052,7 +7080,7 @@ public partial class LDPlayerService : ILDPlayerService
         );
     }
 
-    private async Task<List<FacebookAccountInfo>> ExtractFacebookAccountsDirectFromRootAdbAsync(
+    public async Task<List<FacebookAccountInfo>> ExtractFacebookAccountsDirectFromRootAdbAsync(
         int index,
         string packageName,
         string? customPath,
@@ -7648,6 +7676,195 @@ public partial class LDPlayerService : ILDPlayerService
 
         return accounts;
     }
+
+    public LDPlayerService(AtxAgentClient? atxClient, IPFlowPersonaSwitcherService? personaSwitcher)
+        : this(atxClient, personaSwitcher, null, null, null, null, null, null) { }
+
+    public LDPlayerService(
+        AtxAgentClient? atxClient,
+        IPFlowPersonaSwitcherService? personaSwitcher,
+        IPFlowAutoPostService? autoPostService
+    )
+        : this(atxClient, personaSwitcher, autoPostService, null, null, null, null, null) { }
+
+    public LDPlayerService(
+        AtxAgentClient? atxClient,
+        IPFlowPersonaSwitcherService? personaSwitcher,
+        IPFlowAutoPostService? autoPostService,
+        IPFlowFeedEngagementService? feedEngagementService
+    )
+        : this(
+            atxClient,
+            personaSwitcher,
+            autoPostService,
+            feedEngagementService,
+            null,
+            null,
+            null,
+            null
+        ) { }
+
+    public LDPlayerService(
+        AtxAgentClient? atxClient,
+        IPFlowPersonaSwitcherService? personaSwitcher,
+        IPFlowAutoPostService? autoPostService,
+        IPFlowFeedEngagementService? feedEngagementService,
+        IPFlowBloksService? bloksService
+    )
+        : this(
+            atxClient,
+            personaSwitcher,
+            autoPostService,
+            feedEngagementService,
+            bloksService,
+            null,
+            null,
+            null
+        ) { }
+
+    public LDPlayerService(
+        AtxAgentClient? atxClient,
+        IPFlowPersonaSwitcherService? personaSwitcher,
+        IPFlowAutoPostService? autoPostService,
+        IPFlowFeedEngagementService? feedEngagementService,
+        IPFlowBloksService? bloksService,
+        IPFlowAccountDiscoveryService? accountDiscoveryService
+    )
+        : this(
+            atxClient,
+            personaSwitcher,
+            autoPostService,
+            feedEngagementService,
+            bloksService,
+            accountDiscoveryService,
+            null,
+            null
+        ) { }
+
+    public LDPlayerService(
+        AtxAgentClient? atxClient,
+        IPFlowPersonaSwitcherService? personaSwitcher,
+        IPFlowAutoPostService? autoPostService,
+        IPFlowFeedEngagementService? feedEngagementService,
+        IPFlowBloksService? bloksService,
+        IPFlowAccountDiscoveryService? accountDiscoveryService,
+        IAdbKeyboardService? adbKeyboardService
+    )
+        : this(
+            atxClient,
+            personaSwitcher,
+            autoPostService,
+            feedEngagementService,
+            bloksService,
+            accountDiscoveryService,
+            adbKeyboardService,
+            null
+        ) { }
+
+    public LDPlayerService(
+        AtxAgentClient? atxClient,
+        IPFlowPersonaSwitcherService? personaSwitcher,
+        IPFlowAutoPostService? autoPostService,
+        IPFlowFeedEngagementService? feedEngagementService,
+        IPFlowBloksService? bloksService,
+        IPFlowAccountDiscoveryService? accountDiscoveryService,
+        IAdbKeyboardService? adbKeyboardService,
+        ILDPlayerUiAutomationService? uiAutomationService
+    )
+    {
+        _atxClient = atxClient ?? new AtxAgentClient();
+        _personaSwitcher = personaSwitcher ?? new PFlowPersonaSwitcherService(this, _atxClient);
+        _autoPostService = autoPostService ?? new PFlowAutoPostService(this, _atxClient);
+        _feedEngagementService = feedEngagementService ?? new PFlowFeedEngagementService(this);
+        _bloksService = bloksService ?? new PFlowBloksService(this, _atxClient);
+        _accountDiscoveryService =
+            accountDiscoveryService
+            ?? new PFlowAccountDiscoveryService(
+                this,
+                _atxClient,
+                _bloksService,
+                personaSwitcher: _personaSwitcher
+            );
+        _adbKeyboardService = adbKeyboardService ?? new AdbKeyboardService(this, _atxClient);
+        _uiAutomationService =
+            uiAutomationService
+            ?? new LDPlayerUiAutomationService(this, _atxClient, _adbKeyboardService);
+    }
+
+    private readonly IPFlowPersonaSwitcherService _personaSwitcher;
+    private readonly IPFlowAutoPostService _autoPostService;
+    private readonly IPFlowFeedEngagementService _feedEngagementService;
+    private readonly IPFlowBloksService _bloksService;
+    private readonly IPFlowAccountDiscoveryService _accountDiscoveryService;
+    private readonly IAdbKeyboardService _adbKeyboardService;
+    private readonly ILDPlayerUiAutomationService _uiAutomationService;
+
+    public Task<bool> SwitchToPageByIdAsync(
+        int index,
+        string pageName,
+        string pageId,
+        string? customPath = null,
+        CancellationToken cancellationToken = default
+    ) =>
+        _personaSwitcher.SwitchToPageByIdAsync(
+            index,
+            pageName,
+            pageId,
+            customPath,
+            cancellationToken
+        );
+
+    public Task<bool> ClickProfileSwitcherDropdownAsync(
+        int index,
+        string? customPath = null,
+        CancellationToken cancellationToken = default
+    ) => _personaSwitcher.ClickProfileSwitcherDropdownAsync(index, customPath, cancellationToken);
+
+    public Task<int> ScrollNewsFeedLikeHumanAsync(
+        int index,
+        string? customPath = null,
+        CancellationToken cancellationToken = default
+    ) => _feedEngagementService.ScrollNewsFeedLikeHumanAsync(index, customPath, cancellationToken);
+
+    public Task<bool> ScrollToNextVideoAsync(
+        int index,
+        string? customPath = null,
+        CancellationToken cancellationToken = default
+    ) => _feedEngagementService.ScrollToNextVideoAsync(index, customPath, cancellationToken);
+
+    public Task<(
+        bool IsActive,
+        string? AccountName,
+        string? StatusReason
+    )> VerifyFacebookAccountActiveAsync(
+        int index,
+        string? customPath = null,
+        CancellationToken cancellationToken = default
+    ) =>
+        _accountDiscoveryService.VerifyFacebookAccountActiveAsync(
+            index,
+            customPath,
+            cancellationToken
+        );
+
+    public void ApplyDiscoveryDelayConfig(PFlowDiscoveryDelayConfig config) =>
+        _accountDiscoveryService.ApplyDelayConfig(config);
+
+    public void ApplyDiscoveryDelayConfig(AutoPostConfig config) =>
+        _accountDiscoveryService.ApplyDelayConfig(config);
+
+    public void ApplyDiscoveryDelayConfig(LDSettings settings) =>
+        _accountDiscoveryService.ApplyDelayConfig(settings);
+
+    public static (int X, int Y)? FindQuickSwitchAvatarInMenu(
+        string? menuXml,
+        string targetPersonaName
+    ) => PFlowPersonaSwitcherService.FindQuickSwitchAvatarInMenu(menuXml, targetPersonaName);
+
+    public static (int X, int Y)? FindPageInMenuShortcuts(
+        string? menuXml,
+        string targetPersonaName
+    ) => PFlowPersonaSwitcherService.FindPageInMenuShortcuts(menuXml, targetPersonaName);
 
     #endregion
 }

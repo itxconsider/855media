@@ -69,7 +69,8 @@ internal static class PFlowOwnProfileNavigation
         Func<BloksScreenInfo, bool> isOwnProfile,
         CancellationToken ct,
         Func<string, Task>? progress = null,
-        Func<TimeSpan, CancellationToken, Task>? delay = null
+        Func<TimeSpan, CancellationToken, Task>? delay = null,
+        bool navigateCurrentActor = false
     )
     {
         if (string.IsNullOrWhiteSpace(expectedName))
@@ -93,7 +94,18 @@ internal static class PFlowOwnProfileNavigation
             var menu = AtxAgentClient.IsMenuPageInBloks(screen);
             if (!menu && isOwnProfile(screen))
                 return true;
-            var target = FindTarget(screen, expectedName);
+            var navigationName = expectedName;
+            if (menu && navigateCurrentActor)
+            {
+                var activeHeader = screen
+                    .AllElements.Select(e => e.ContentDesc)
+                    .FirstOrDefault(label =>
+                        label.EndsWith(", see your profile", StringComparison.Ordinal)
+                    );
+                if (activeHeader != null)
+                    navigationName = activeHeader[..^18];
+            }
+            var target = FindTarget(screen, navigationName);
             if (menu && target != null && !menuRowTapped)
             {
                 if (progress != null)

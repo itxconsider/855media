@@ -21,8 +21,12 @@ public sealed record PFlowMappingCandidates(
     IReadOnlyList<PFlowMappingIssue> Issues
 );
 
-public sealed partial class PFlowAccountStore(string? path = null)
+public sealed partial class PFlowAccountStore(
+    string? path = null,
+    IPFlowCredentialStore? credentials = null
+)
 {
+    private readonly IPFlowCredentialStore _credentials = credentials ?? new PFlowCredentialStore();
     public string FilePath { get; } =
         Path.GetFullPath(
             path

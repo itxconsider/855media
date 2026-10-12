@@ -26,7 +26,7 @@ public class PFlowAccountRemapTests
     }
 
     [Fact]
-    public async Task ExplicitRemapInvalidatesProofsAndCredentialsAndSelections()
+    public async Task ExplicitRemapRetainsCredentialsButInvalidatesProofsAndSelections()
     {
         using var f = new Fixture();
         await f.Seed();
@@ -37,7 +37,9 @@ public class PFlowAccountRemapTests
         Assert.False(account.SelectedForDiscovery);
         Assert.False(account.SelectedForScreenTime);
         Assert.False(account.SelectedForPosting);
-        Assert.Equal("", account.CredentialReference);
+        Assert.Equal(f.Credentials.LastReference, account.CredentialReference);
+        Assert.True(account.AllowAutomaticLogin);
+        Assert.True(account.AllowAccountRotation);
         Assert.Null(account.LastVerifiedUtc);
         Assert.Equal(PFlowAuthenticationState.Cached, account.Authentication);
         Assert.Equal(PFlowPageAccessState.Cached, account.Pages.Single().State);
@@ -229,6 +231,92 @@ public class PFlowAccountRemapTests
         Assert.Equal("123", Assert.Single(issues).OwnerUid);
     }
 
+    [Fact]
+    public async Task UnreadableCredentialStopsRemapWithoutDeletingTheStoredRecord()
+    {
+        using var f = new Fixture();
+        await f.Seed();
+        f.Credentials.FailLoad = true;
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            f.Store.RemapAsync(f.Old, f.Next)
+        );
+        var account = (await f.Store.LoadAsync()).Single();
+        Assert.Equal(f.Old, account.Binding);
+        Assert.Equal("old-protected-ref", account.CredentialReference);
+        Assert.Empty(f.Credentials.Deleted);
+    }
+
+    [Fact]
+    public async Task ConcurrentCredentialEditRollsBackOnlyTheNewProtectedCopy()
+    {
+        using var f = new Fixture();
+        await f.Seed();
+        f.Credentials.OnSave = () =>
+            f.Store.UpdateAsync(a => a.Single().CredentialReference = "new-user-edit");
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            f.Store.RemapAsync(f.Old, f.Next)
+        );
+        var account = (await f.Store.LoadAsync()).Single();
+        Assert.Equal(f.Old, account.Binding);
+        Assert.Equal("new-user-edit", account.CredentialReference);
+        Assert.Equal(new[] { f.Credentials.LastReference }, f.Credentials.Deleted);
+    }
+
+    [Fact]
+    public async Task RemapWithoutCredentialsKeepsLoginPermissionsDisabled()
+    {
+        using var f = new Fixture();
+        await f.Seed();
+        await f.Store.UpdateAsync(a => a.Single().CredentialReference = "");
+        await f.Store.RemapAsync(f.Old, f.Next);
+        var account = (await f.Store.LoadAsync()).Single();
+        Assert.Equal("", account.CredentialReference);
+        Assert.False(account.AllowAutomaticLogin);
+        Assert.False(account.AllowAccountRotation);
+        Assert.Equal(0, f.Credentials.Saves);
+    }
+
+    private sealed class FakeCredentials : IPFlowCredentialStore
+    {
+        public bool FailLoad;
+        public int Saves;
+        public string LastReference = "";
+        public List<string> Deleted = [];
+        public Func<Task>? OnSave;
+
+        public Task<PFlowCredential> LoadAsync(
+            PFlowAccountBinding binding,
+            string reference,
+            CancellationToken ct = default
+        )
+        {
+            if (FailLoad)
+                throw new InvalidOperationException("Fixture credential could not be opened.");
+            return Task.FromResult(
+                PFlowCredentialImport.Parse(
+                    binding.OwnerUid + "|fixture-password||",
+                    binding,
+                    "fixture-login",
+                    PFlowTwoFactorKind.None
+                )
+            );
+        }
+
+        public async Task<string> SaveAsync(
+            PFlowAccountBinding binding,
+            PFlowCredential credential,
+            CancellationToken ct = default
+        )
+        {
+            LastReference = "retained-protected-ref-" + ++Saves;
+            if (OnSave != null)
+                await OnSave();
+            return LastReference;
+        }
+
+        public void Delete(string reference) => Deleted.Add(reference);
+    }
+
     private sealed class Fixture : IDisposable
     {
         public string Root { get; } =
@@ -238,6 +326,7 @@ public class PFlowAccountRemapTests
         public PFlowAccountBinding Next { get; }
         public LDInstanceInfo[] Instances { get; } = [new() { Index = 8, Name = "New instance" }];
         public PFlowAccountStore Store { get; }
+        public FakeCredentials Credentials { get; } = new();
 
         public Fixture()
         {
@@ -253,7 +342,7 @@ public class PFlowAccountRemapTests
                 InstanceIdentity = PFlowDeviceRouting.ReadIdentity(Root, 8),
                 DeviceName = "New instance",
             };
-            Store = new(Path.Combine(Root, "accounts.json"));
+            Store = new(Path.Combine(Root, "accounts.json"), Credentials);
         }
 
         public Task Seed() =>
@@ -264,6 +353,8 @@ public class PFlowAccountRemapTests
                         Binding = Old,
                         Name = "Owner",
                         CredentialReference = "old-protected-ref",
+                        AllowAutomaticLogin = true,
+                        AllowAccountRotation = true,
                         SelectedForDiscovery = true,
                         SelectedForScreenTime = true,
                         SelectedForPosting = true,

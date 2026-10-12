@@ -73,7 +73,7 @@ public partial class AutoPostViewModel
         );
         AddAccountSummary = $"Assigned instance: {device.Name} (index {device.Index}) · FB-01";
         AddAccountStatus =
-            "Paste UID|Password, optionally followed by |2FA secret|Email. UID is the login identifier. Credentials are saved only after verified login, protected for this Windows user and locked to this LD binding. The authenticator flow is available; exact personal UID verification is still required before automatic login can be enabled.";
+            "Paste UID|Password, optionally followed by |2FA secret|Email. UID is the login identifier. Adding a different account logs out the current personal account on this LD. Credentials are protected for this Windows user and saved only after live personal UID verification.";
         IsAddAccountOpen = true;
     }
 
@@ -129,17 +129,23 @@ public partial class AutoPostViewModel
             var service = new PFlowAddAccountService(
                 _accountStore,
                 new PFlowCredentialStore(),
-                new PFlowNativeLoginNavigator(
-                    _ldPlayerService,
-                    LdFolder,
-                    otpAdapter: new PFlowNativeOtpChallengeAdapter(
+                new PFlowAddAccountLoginNavigator(
+                    new PFlowNativeAccountNavigator(
                         _ldPlayerService,
                         LdFolder,
-                        input.Binding,
-                        selectAuthenticator: input.Credential.TwoFactorKind
-                            == PFlowTwoFactorKind.TotpSecret
+                        binding =>
+                            Pages
+                                .FirstOrDefault(p =>
+                                    p.IsProfile
+                                    && p.UserUid == binding.OwnerUid
+                                    && ResolveDeviceIndex(p.DeviceName) == binding.DeviceIndex
+                                )
+                                ?.PageName
+                            ?? binding.OwnerUid,
+                        receiveCode: otpInbox.ReceiveAsync
                     ),
-                    otpCodes: new PFlowOtpCodeSource(otpInbox.ReceiveAsync)
+                    new PFlowSessionPreparation(_ldPlayerService, LdFolder).PrepareAsync,
+                    c => RequireAccountTransitionIdleAsync(input.Binding.DeviceIndex, c)
                 )
             );
             await service.AddAsync(

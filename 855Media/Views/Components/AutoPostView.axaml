@@ -640,7 +640,7 @@
                                                                                     </DataTemplate>
                                                                                 </DataGridTemplateColumn.CellTemplate>
                                                                             </DataGridTemplateColumn>
-<DataGridTextColumn Header="No" Binding="{Binding Number}" Width="46" MinWidth="40" IsReadOnly="True" />
+<DataGridTextColumn Header="No" Binding="{Binding GroupNumber}" Width="46" MinWidth="40" IsReadOnly="True" />
 <DataGridTextColumn Header="Device" Binding="{Binding DeviceName}" Width="70" MinWidth="60" />
 <DataGridTextColumn Header="FB" Binding="{Binding AppClone}" Width="60" MinWidth="50" />
 <DataGridTemplateColumn Header="Name" SortMemberPath="PageName" CanUserSort="True" Width="180" MinWidth="140">
@@ -697,28 +697,6 @@
                                                                                     </DataTemplate>
                                                                                 </DataGridTemplateColumn.CellTemplate>
                                                                             </DataGridTemplateColumn>
-<DataGridTemplateColumn Header="Switch" Width="88" MinWidth="80">
-                                                                                <DataGridTemplateColumn.CellTemplate>
-                                                                                    <DataTemplate DataType="components:FacebookPageTargetViewModel">
-                                                                                        <Button
-                                                                                            Command="{Binding #RootView.((components:AutoPostViewModel)DataContext).SwitchToPersonaCommand}"
-                                                                                            CommandParameter="{Binding}"
-                                                                                            Classes="action-btn"
-                                                                                            Padding="6,3"
-                                                                                            FontSize="10.5"
-                                                                                            Background="#1E293B"
-                                                                                            BorderBrush="#3B82F6"
-                                                                                            BorderThickness="1"
-                                                                                            HorizontalAlignment="Left"
-                                                                                            ToolTip.Tip="Switch Facebook persona to this item via Bloks">
-                                                                                            <StackPanel Orientation="Horizontal" Spacing="4">
-                                                                                                <materialIcons:MaterialIcon Kind="SwapHorizontal" Width="12" Height="12" Foreground="#60A5FA" />
-                                                                                                <TextBlock Text="Switch" FontWeight="Bold" Foreground="#93C5FD" />
-                                                                                            </StackPanel>
-                                                                                        </Button>
-                                                                                    </DataTemplate>
-                                                                                </DataGridTemplateColumn.CellTemplate>
-                                                                            </DataGridTemplateColumn>
 <DataGridTemplateColumn Header="Email" Width="150" MinWidth="110">
                                                                                 <DataGridTemplateColumn.CellTemplate>
                                                                                     <DataTemplate DataType="components:FacebookPageTargetViewModel">
@@ -726,11 +704,12 @@
                                                                                     </DataTemplate>
                                                                                 </DataGridTemplateColumn.CellTemplate>
                                                                             </DataGridTemplateColumn>
-<DataGridTextColumn Header="Followers" Binding="{Binding Followers}" Width="75" MinWidth="60" />
+<DataGridTextColumn Header="Followers" Binding="{Binding FollowersDisplay}" Width="75" MinWidth="60" />
+<DataGridTextColumn Header="Views" Binding="{Binding Views}" Width="75" MinWidth="60" />
 <DataGridTextColumn Header="Reach" Binding="{Binding Reach}" Width="70" MinWidth="55" />
-<DataGridTextColumn Header="Reels" Binding="{Binding ReelsCount}" Width="60" MinWidth="48" />
-<DataGridTextColumn Header="Videos" Binding="{Binding VideosCount}" Width="60" MinWidth="48" />
-<DataGridTextColumn Header="Photos" Binding="{Binding PictureCount}" Width="60" MinWidth="48" />
+<DataGridTextColumn Header="Reels" Binding="{Binding ReelsCountDisplay}" Width="60" MinWidth="48" />
+<DataGridTextColumn Header="Videos" Binding="{Binding VideosCountDisplay}" Width="60" MinWidth="48" />
+<DataGridTextColumn Header="Photos" Binding="{Binding PictureCountDisplay}" Width="60" MinWidth="48" />
 <DataGridTextColumn Header="File Group" Binding="{Binding FileInGroup}" Width="80" MinWidth="65" />
 <DataGridTextColumn Header="Invite" Binding="{Binding PageInvite}" Width="65" MinWidth="50" />
 <DataGridTextColumn Header="Birthdate" Binding="{Binding Birthdate}" Width="85" MinWidth="70" />
@@ -899,28 +878,6 @@
                                                     </DataTemplate>
                                                 </DataGridTemplateColumn.CellTemplate>
                                             </DataGridTemplateColumn>
-<DataGridTemplateColumn Header="Switch" Width="90" MinWidth="85">
-                                                <DataGridTemplateColumn.CellTemplate>
-                                                    <DataTemplate DataType="components:FacebookPageTargetViewModel">
-                                                        <Button
-                                                            Command="{Binding #RootView.((components:AutoPostViewModel)DataContext).SwitchToPersonaCommand}"
-                                                            CommandParameter="{Binding}"
-                                                            Classes="action-btn"
-                                                            Padding="6,3"
-                                                            FontSize="11"
-                                                            Background="#1E293B"
-                                                            BorderBrush="#3B82F6"
-                                                            BorderThickness="1"
-                                                            HorizontalAlignment="Left"
-                                                            ToolTip.Tip="Switch Facebook persona to this item via Bloks">
-                                                            <StackPanel Orientation="Horizontal" Spacing="4">
-                                                                <materialIcons:MaterialIcon Kind="SwapHorizontal" Width="12" Height="12" Foreground="#60A5FA" />
-                                                                <TextBlock Text="Switch" FontWeight="Bold" Foreground="#93C5FD" />
-                                                            </StackPanel>
-                                                        </Button>
-                                                    </DataTemplate>
-                                                </DataGridTemplateColumn.CellTemplate>
-                                            </DataGridTemplateColumn>
 <DataGridTemplateColumn Header="Email" Width="160" MinWidth="120">
                                                 <DataGridTemplateColumn.CellTemplate>
                                                     <DataTemplate DataType="components:FacebookPageTargetViewModel">
@@ -928,11 +885,12 @@
                                                     </DataTemplate>
                                                 </DataGridTemplateColumn.CellTemplate>
                                             </DataGridTemplateColumn>
-<DataGridTextColumn Header="Followers" Binding="{Binding Followers}" Width="75" MinWidth="65" />
+<DataGridTextColumn Header="Followers" Binding="{Binding FollowersDisplay}" Width="75" MinWidth="65" />
+<DataGridTextColumn Header="Views" Binding="{Binding Views}" Width="75" MinWidth="60" />
 <DataGridTextColumn Header="Reach" Binding="{Binding Reach}" Width="70" MinWidth="60" />
-<DataGridTextColumn Header="Reels" Binding="{Binding ReelsCount}" Width="60" MinWidth="50" />
-<DataGridTextColumn Header="Videos" Binding="{Binding VideosCount}" Width="60" MinWidth="50" />
-<DataGridTextColumn Header="Photos" Binding="{Binding PictureCount}" Width="60" MinWidth="50" />
+<DataGridTextColumn Header="Reels" Binding="{Binding ReelsCountDisplay}" Width="60" MinWidth="50" />
+<DataGridTextColumn Header="Videos" Binding="{Binding VideosCountDisplay}" Width="60" MinWidth="50" />
+<DataGridTextColumn Header="Photos" Binding="{Binding PictureCountDisplay}" Width="60" MinWidth="50" />
 <DataGridTextColumn Header="File Group" Binding="{Binding FileInGroup}" Width="85" MinWidth="70" />
 <DataGridTextColumn Header="Invite" Binding="{Binding PageInvite}" Width="65" MinWidth="55" />
 <DataGridTextColumn Header="Birthdate" Binding="{Binding Birthdate}" Width="90" MinWidth="75" />
@@ -1013,14 +971,21 @@
                                                                 <TextBlock Text="{Binding Name}" FontWeight="Bold" />
                                                                 <StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="{Binding DeviceName}" /><TextBlock Text="{Binding OwnerUid}" /><TextBlock Text="{Binding AppPackage}" /></StackPanel>
                                                                 <TextBlock Text="{Binding BindingStatus}" TextWrapping="Wrap" />
-                                                                <Button Content="Store login credentials" IsEnabled="{Binding IsMappingValid}" Classes="action-btn" HorizontalAlignment="Left" Command="{Binding $parent[UserControl].((components:AutoPostViewModel)DataContext).OpenCredentialImportCommand}" CommandParameter="{Binding}" />
+                                                                <Button Content="{Binding CredentialButtonLabel}" IsEnabled="{Binding CanOpenCredentials}" Classes="action-btn" HorizontalAlignment="Left" Command="{Binding $parent[UserControl].((components:AutoPostViewModel)DataContext).OpenCredentialImportCommand}" CommandParameter="{Binding}" />
                                                                 <Button Content="Review assigned instance" IsVisible="{Binding !IsMappingValid}" Classes="action-btn" HorizontalAlignment="Left" Command="{Binding $parent[UserControl].((components:AutoPostViewModel)DataContext).OpenAccountRemapCommand}" CommandParameter="{Binding}" />
                                                                 <TextBlock Text="{Binding AccessSummary}" TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                                                 <StackPanel Orientation="Horizontal" Spacing="16">
-                                                                    <CheckBox Content="Fetch" IsChecked="{Binding SelectedForDiscovery}" ToolTip.Tip="Saved preference. Multiple-login fetching needs a verified account switcher." />
+                                                                    <CheckBox Content="Fetch" IsChecked="{Binding SelectedForDiscovery}" ToolTip.Tip="Select this account for account discovery." />
                                                                     <CheckBox Content="ScreenTime" IsChecked="{Binding SelectedForScreenTime}" />
                                                                     <CheckBox Content="Posting" IsChecked="{Binding SelectedForPosting}" />
                                                                 </StackPanel>
+                                                                <TextBlock Text="{Binding CredentialStatus}" TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                                                <WrapPanel>
+                                                                    <CheckBox Content="Automatic login" IsChecked="{Binding AllowAutomaticLogin}" IsEnabled="{Binding CanEnableAutomaticLogin}" Margin="0,0,16,8" ToolTip.Tip="Store protected credentials first to recover expired sessions. Existing verified logins can run with this option off." />
+                                                                    <CheckBox Content="Account rotation" IsChecked="{Binding AllowAccountRotation}" IsEnabled="{Binding CanEnableAccountRotation}" Margin="0,0,16,8" ToolTip.Tip="Requires protected credentials and Automatic login. Allows changing the active personal account on this LD." />
+                                                                    <TextBlock Text="Run order" VerticalAlignment="Center" Margin="0,0,8,8" />
+                                                                    <NumericUpDown Value="{Binding RotationOrder}" Minimum="0" Maximum="1000" Width="80" FormatString="0" Margin="0,0,0,8" />
+                                                                </WrapPanel>
                                                             </StackPanel>
                                                         </Border>
                                                     </DataTemplate>
@@ -1550,20 +1515,20 @@
         <Border IsVisible="{Binding IsCredentialImportOpen}" Background="#D0000000" ZIndex="400">
             <Border Classes="modal-window" MaxWidth="720" VerticalAlignment="Center" Margin="24">
                 <StackPanel Spacing="12">
-                    <TextBlock Text="Store mapped login credentials" FontSize="20" FontWeight="Bold" />
+                    <TextBlock Text="View and edit login credentials" FontSize="20" FontWeight="Bold" />
                     <TextBlock Text="{Binding CredentialTargetSummary}" TextWrapping="Wrap" />
                     <TextBlock Text="{Binding CredentialImportStatus}" TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
                     <TextBlock Text="Login identifier (email, phone or username supported by the installed login screen)" TextWrapping="Wrap" />
-                    <TextBox Text="{Binding CredentialLoginIdentifier}" IsUndoEnabled="False" MaxLength="1024" IsEnabled="{Binding !IsSavingCredentials}" />
+                    <TextBox Text="{Binding CredentialLoginIdentifier}" IsUndoEnabled="False" MaxLength="1024" IsEnabled="{Binding CanEditCredentialFields}" />
                     <TextBlock Text="UID|Password|2FA|Cookie — paste one line; leave Cookie empty" />
-                    <TextBox Text="{Binding CredentialLine}" PasswordChar="●" IsUndoEnabled="False" MaxLength="65536" IsEnabled="{Binding !IsSavingCredentials}" />
+                    <TextBox Text="{Binding CredentialLine}" IsUndoEnabled="False" MaxLength="65536" IsEnabled="{Binding CanEditCredentialFields}" />
                     <TextBlock Text="2FA field type" />
-                    <ComboBox ItemsSource="{Binding CredentialTwoFactorModes}" SelectedItem="{Binding CredentialTwoFactorMode}" IsEnabled="{Binding !IsSavingCredentials}" />
+                    <ComboBox ItemsSource="{Binding CredentialTwoFactorModes}" SelectedItem="{Binding CredentialTwoFactorMode}" IsEnabled="{Binding CanEditCredentialFields}" />
                     <TextBlock Text="TOTP secrets are reusable keys. Expiring one-time codes must be entered during a supported login challenge and are never saved. Cookie import is unavailable." TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
                     <TextBlock Text="Saving replaces this account’s stored credentials using Windows user protection. No login is started." TextWrapping="Wrap" />
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" IsEnabled="{Binding !IsSavingCredentials}">
                         <Button Content="Close" Classes="action-btn" Command="{Binding CancelCredentialImportCommand}" />
-                        <Button Content="Store protected credentials" Classes="action-btn btn-primary" Command="{Binding StoreMappedCredentialsCommand}" />
+                        <Button Content="Save credentials" IsEnabled="{Binding CanSaveCredentialRecord}" Classes="action-btn btn-primary" Command="{Binding StoreMappedCredentialsCommand}" />
                     </StackPanel>
                 </StackPanel>
             </Border>
