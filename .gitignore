@@ -10,6 +10,8 @@ env/
 # Build results & releases
 [Bb]in/
 [Oo]bj/
+# Local release artifacts; never commit the root dist folder.
+/dist/
 [Dd]ist/
 dist/
 **/dist/
