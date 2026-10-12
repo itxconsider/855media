@@ -1,0 +1,15 @@
+{
+  "DeviceIndex": 1,
+  "Mode": "--inspect",
+  "ExpectedOwnerUid": "61586742627455",
+  "BeforeUid": "61586742627455",
+  "AfterUid": null,
+  "Stage": "observe-before",
+  "LogoutConfirmed": false,
+  "StartedLoggedOut": false,
+  "PasswordSubmissions": 0,
+  "OtpSubmissions": 0,
+  "Success": true,
+  "PublishingActions": 0,
+  "FinishedUtc": "2026-10-12T11:32:14.147657+00:00"
+}

@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Xml.Linq;
 using _855Media.Core.LDPlayer;
 using Xunit;
 
@@ -9,6 +10,31 @@ namespace _855Media.Core.Tests.LDPlayer;
 
 public class PFlowAutoPostServiceTests
 {
+    [Theory]
+    [InlineData("Luke Kaz\n\u00a0\u00a0", "Luke Kaz", true)]
+    [InlineData("Luke\u00a0\u00a0Kaz\r\n", " Luke Kaz ", true)]
+    [InlineData("Posting as\nLuke Kaz", "Luke Kaz", true)]
+    [InlineData(" Sharing as Luke\tKaz ", "Luke Kaz", true)]
+    [InlineData("Luke Kaz\nGet verified", "Luke Kaz", false)]
+    [InlineData("Luke Kaz Fans", "Luke Kaz", false)]
+    [InlineData("Different Actor", "Luke Kaz", false)]
+    [InlineData("Luke Kaz", " ", false)]
+    public void ActorConfirmationNormalizesWhitespaceWithoutMatchingOtherNames(
+        string label,
+        string expected,
+        bool matches
+    )
+    {
+        foreach (var attribute in new[] { "text", "content-desc" })
+        {
+            var xml = new XElement(
+                "hierarchy",
+                new XElement("node", new XAttribute(attribute, label))
+            ).ToString();
+            Assert.Equal(matches, PFlowAutoPostService.ComposerMatchesTarget(xml, expected));
+        }
+    }
+
     [Fact]
     public void Constructor_NullLDPlayer_ThrowsArgumentNullException()
     {

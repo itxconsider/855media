@@ -1,0 +1,15 @@
+{
+  "DeviceIndex": 1,
+  "Mode": "--logout-login",
+  "ExpectedOwnerUid": "61586742627455",
+  "BeforeUid": null,
+  "AfterUid": "61586742627455",
+  "Stage": "complete",
+  "LogoutConfirmed": true,
+  "StartedLoggedOut": true,
+  "PasswordSubmissions": 1,
+  "OtpSubmissions": 0,
+  "Success": true,
+  "PublishingActions": 0,
+  "FinishedUtc": "2026-10-12T09:46:53.9674366+00:00"
+}

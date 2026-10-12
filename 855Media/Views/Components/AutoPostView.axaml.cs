@@ -15,6 +15,8 @@ public partial class AutoPostView : UserControl
     {
         InitializeComponent();
 
+        AddHandler(PointerPressedEvent, OnTargetPagePointerPressed, RoutingStrategies.Tunnel);
+
         var manageGrid = this.FindControl<DataGrid>("ManageDeviceDataGrid");
         manageGrid?.AddHandler(
             PointerPressedEvent,
@@ -31,6 +33,44 @@ public partial class AutoPostView : UserControl
                 RoutingStrategies.Tunnel | RoutingStrategies.Bubble
             );
         }
+    }
+
+    private void OnTargetPagePointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (
+            !e.GetCurrentPoint(this).Properties.IsRightButtonPressed
+            || DataContext is not AutoPostViewModel vm
+        )
+            return;
+        var source = e.Source as Control;
+        var row =
+            source as DataGridRow
+            ?? source?.GetVisualAncestors().OfType<DataGridRow>().FirstOrDefault();
+        var page = row?.DataContext switch
+        {
+            FacebookPageTargetViewModel target => target,
+            FacebookProfileGroupViewModel group => group.Profile,
+            _ => null,
+        };
+        if (page == null || row == null)
+            return;
+
+        // Bind to the clicked row, including grouped tables, rather than prior selection.
+        var menu = new ContextMenu
+        {
+            ItemsSource = new[]
+            {
+                new MenuItem
+                {
+                    Header = "Update page",
+                    Command = vm.EditPageConfigCommand,
+                    CommandParameter = page,
+                    IsEnabled = !vm.IsBusy && !vm.IsRunning,
+                },
+            },
+        };
+        menu.Open(row);
+        e.Handled = true;
     }
 
     private void OnManageDevicePointerPressed(object? sender, PointerPressedEventArgs e)

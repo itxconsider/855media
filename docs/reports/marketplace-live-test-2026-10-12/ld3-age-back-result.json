@@ -1,0 +1,16 @@
+{
+  "device": 3,
+  "mode": "age-back",
+  "confirmed": 0,
+  "requested": 0,
+  "stop": "Completed",
+  "events": [
+    {
+      "step": "age gate exit",
+      "exited": true,
+      "backCommands": 1,
+      "confirmationTaps": 0,
+      "feed": true
+    }
+  ]
+}

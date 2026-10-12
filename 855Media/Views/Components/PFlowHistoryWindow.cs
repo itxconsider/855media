@@ -17,6 +17,7 @@ public sealed class PFlowHistoryWindow : Window
     private readonly ILDPlayerService _ld;
     private readonly string _ldPath;
     private readonly Func<bool> _busy;
+    private readonly Func<Task>? _filesChanged;
     private List<PFlowJob> _jobs = [];
     private readonly ListBox _list = new();
     private readonly TextBox _filter = new()
@@ -51,7 +52,8 @@ public sealed class PFlowHistoryWindow : Window
         ILDPlayerService ld,
         AtxAgentClient? atx,
         string path,
-        Func<bool> busy
+        Func<bool> busy,
+        Func<Task>? filesChanged = null
     )
     {
         _history = history;
@@ -59,6 +61,7 @@ public sealed class PFlowHistoryWindow : Window
         _ldPath = path;
         _runner = new(ld, history, atx);
         _busy = busy;
+        _filesChanged = filesChanged;
         Title = "PFlow — History & review";
         Width = 1000;
         Height = 760;
@@ -110,7 +113,12 @@ public sealed class PFlowHistoryWindow : Window
         {
             if (_list.SelectedItem is Row row)
                 _details.Text =
-                    $"Job: {row.Job.JobId}\nTarget: {row.Job.TargetId} / owner {row.Job.OwnerUid}\nSource: {row.Job.SourcePath}\nSHA-256: {row.Job.Sha256}\nRemote: {row.Job.RemotePath}\nEvidence: {row.Job.Evidence}\nError: {row.Job.Error}\nBackup: {row.Job.BackupState}; local: {row.Job.LocalDeleteState}; remote: {row.Job.RemoteCleanupState}";
+                    $"Job: {row.Job.JobId}\nState: {row.Job.State}; last step: {row.Job.CurrentStep}"
+                    + $"\nSubmitted: {row.Job.SubmittedUtc?.ToLocalTime():yyyy-MM-dd HH:mm:ss}; confirmed: {row.Job.ConfirmedUtc?.ToLocalTime():yyyy-MM-dd HH:mm:ss}"
+                    + $"\nTarget: {row.Job.TargetId} / owner {row.Job.OwnerUid}\nSource: {row.Job.SourcePath}\nSHA-256: {row.Job.Sha256}"
+                    + $"\nCaption file SHA-256: {row.Job.CaptionFileSha256}\nRemote: {row.Job.RemotePath}\nEvidence: {row.Job.Evidence}\nError: {row.Job.Error}"
+                    + $"\nBackup requested: {row.Job.BackupRequested}; delete original requested: {row.Job.DeleteRequested}"
+                    + $"\nBackup: {row.Job.BackupState} ({row.Job.BackupPath}); local: {row.Job.LocalDeleteState}; remote: {row.Job.RemoteCleanupState}";
             _review.IsChecked = false;
             _evidence.Text = "";
             _publishedAt.Text = _list.SelectedItem is Row selected
@@ -141,6 +149,7 @@ public sealed class PFlowHistoryWindow : Window
 
     public async Task RefreshAsync()
     {
+        await _history.RecoverAsync();
         _jobs = await _history.ReadAsync();
         Filter();
         _status.Text = $"{_jobs.Count} jobs · {_history.FilePath}";
@@ -199,6 +208,7 @@ public sealed class PFlowHistoryWindow : Window
             );
         row.Job.Evidence = "Manual review: " + _evidence.Text.Trim();
         row.Job.State = confirmed ? PFlowState.Confirmed : PFlowState.Failed;
+        row.Job.NoPublicationVerified = !confirmed;
         row.Job.ConfirmedUtc = confirmed ? publishedAt.ToUniversalTime() : null;
         row.Job.Error = confirmed
             ? ""
@@ -228,21 +238,32 @@ public sealed class PFlowHistoryWindow : Window
             CancellationToken.None
         );
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        await _runner.BackupAsync(row.Job, timeout.Token);
+        var job =
+            (await _history.ReadAsync(timeout.Token)).SingleOrDefault(j => j.JobId == row.Job.JobId)
+            ?? throw new InvalidOperationException(
+                "The selected job no longer exists. Refresh history."
+            );
+        if (job.State != PFlowState.Confirmed && !job.CanRetry)
+            throw new InvalidOperationException(
+                "This outcome changed or still needs review. Refresh history before cleanup."
+            );
+        await _runner.BackupAsync(job, timeout.Token);
         if (
             await _ld.WaitForBootCompletedAsync(
-                row.Job.DeviceIndex,
+                job.DeviceIndex,
                 TimeSpan.FromSeconds(2),
                 _ldPath,
                 timeout.Token
             )
         )
-            await _runner.CleanupRemoteAsync(row.Job, _ldPath, timeout.Token);
-        await _history.SaveAsync(row.Job);
+            await _runner.CleanupRemoteAsync(job, _ldPath, timeout.Token);
+        await _history.SaveAsync(job);
         var batchJobs = (await _history.ReadAsync(timeout.Token))
-            .Where(j => j.BatchId == row.Job.BatchId)
+            .Where(j => j.BatchId == job.BatchId)
             .ToList();
-        await _runner.DeleteSharedSourceAsync(row.Job, batchJobs, timeout.Token);
+        await _runner.DeleteSharedSourceAsync(job, batchJobs, timeout.Token);
+        if (_filesChanged != null)
+            await _filesChanged();
         await RefreshAsync();
     }
 }

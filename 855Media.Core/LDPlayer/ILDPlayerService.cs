@@ -271,6 +271,18 @@ public interface ILDPlayerService
         CancellationToken cancellationToken = default
     );
 
+    Task<bool> PrepareProfileLinkClipboardAsync(
+        int index,
+        string? customPath = null,
+        CancellationToken cancellationToken = default
+    ) => Task.FromResult(false);
+
+    Task<string?> ReadCopiedProfileLinkAsync(
+        int index,
+        string? customPath = null,
+        CancellationToken cancellationToken = default
+    ) => Task.FromResult<string?>(null);
+
     Task<FacebookPageInfo?> FetchPageInfoFromDeviceAsync(
         int index,
         string pageId,

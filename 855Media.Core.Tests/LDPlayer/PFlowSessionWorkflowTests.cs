@@ -247,6 +247,28 @@ public sealed class PFlowSessionWorkflowTests : IDisposable
         Assert.All(fake.Indices, i => Assert.Equal(900075, i));
     }
 
+    [Theory]
+    [InlineData("mCurrentFocus=Window{fixture com.ldmnq.launcher3/Launcher}", true)]
+    [InlineData("mCurrentFocus=Window{fixture com.android.launcher3/Launcher}", true)]
+    [InlineData("mCurrentFocus=Window{fixture com.facebook.katana/ProfileActivity}", false)]
+    [InlineData("mCurrentFocus=Window{fixture com.android.chrome/Main}", false)]
+    public async Task NextPostRestoresOnlyTheAssignedFacebookAppFromAndroidHome(
+        string focus,
+        bool launches
+    )
+    {
+        var (ld, fake) = DeviceProxy();
+        fake.FocusedActivity = focus;
+        await new PFlowSessionPreparation(ld, directory).RestorePostForegroundFromLauncherAsync(
+            Binding(),
+            default
+        );
+        Assert.Equal(launches ? 1 : 0, fake.Calls.Count(c => c == "LaunchAppAsync"));
+        Assert.DoesNotContain("StopFacebookAppAsync", fake.Calls);
+        Assert.DoesNotContain("ClearFacebookCacheAsync", fake.Calls);
+        Assert.All(fake.Indices, index => Assert.Equal(900075, index));
+    }
+
     [Fact]
     public async Task BindingMismatchStopsBeforeLaunchingAnything()
     {
@@ -482,6 +504,8 @@ public sealed class PFlowSessionWorkflowTests : IDisposable
 
     public class Device : DispatchProxy
     {
+        public string FocusedActivity =
+            "mCurrentFocus=Window{fixture com.facebook.katana/ProfileActivity}";
         public bool Running;
         public int Network = 100;
         public CancellationTokenSource? CancelOnInternet;
@@ -523,12 +547,13 @@ public sealed class PFlowSessionWorkflowTests : IDisposable
                     return Task.FromResult(true);
                 case "WaitForBootCompletedAsync":
                 case "EnsureAtxAgentRunningAsync":
+                    return Task.FromResult(true);
                 case "LaunchAppAsync":
+                    FocusedActivity =
+                        "mCurrentFocus=Window{fixture com.facebook.katana/ProfileActivity}";
                     return Task.FromResult(true);
                 case "GetCurrentFocusedActivityAsync":
-                    return Task.FromResult<string?>(
-                        "mCurrentFocus=Window{fixture com.facebook.katana/ProfileActivity}"
-                    );
+                    return Task.FromResult<string?>(FocusedActivity);
                 case "DumpUiHierarchyAsync":
                     return Task.FromResult<string?>(Ui);
                 case "IsAdbKeyboardActiveAsync":

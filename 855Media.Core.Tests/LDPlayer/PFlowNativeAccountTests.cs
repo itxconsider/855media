@@ -70,6 +70,97 @@ public sealed class PFlowNativeAccountTests : IDisposable
             Node("Profile settings", true, "[250,100][350,160]")
         );
 
+    private static string ProfessionalSettings() =>
+        Xml(
+            Node("Profile Settings"),
+            Node("Back", true),
+            Node("Activity log"),
+            Node("Copy profile link", true, "[10,200][250,260]"),
+            Node("Profile and tagging settings")
+        );
+
+    [Fact]
+    public async Task ProfessionalModeCopiesFreshNumericUidThenRestoresOwnProfile()
+    {
+        var (nav, fake) = Native();
+        fake.Ui = Own();
+        fake.UseCopySettings = true;
+        fake.CopiedProfileLink = "https://www.facebook.com/profile.php?id=123";
+        var observed = await nav.ObserveAsync(Binding(), default);
+        Assert.True(PFlowAutomaticSessionService.Verified(observed, Binding()));
+        Assert.Equal(1, fake.CopyTaps);
+        Assert.Equal(Own(), fake.Ui);
+        Assert.True(
+            fake.Calls.IndexOf("PrepareProfileLinkClipboardAsync")
+                < fake.Calls.IndexOf("ReadCopiedProfileLinkAsync")
+        );
+        Assert.Equal(0, fake.LoginSubmissions);
+        Assert.All(fake.Indices, index => Assert.Equal(Index, index));
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    public async Task StaleClipboardCannotProveIdentity(bool resetWorks, bool copyUpdates)
+    {
+        var (nav, fake) = Native();
+        fake.Ui = Own();
+        fake.UseCopySettings = true;
+        fake.ProfileClipboard = "https://www.facebook.com/profile.php?id=123";
+        fake.ClipboardResetWorks = resetWorks;
+        fake.CopyUpdatesClipboard = copyUpdates;
+        var observed = await nav.ObserveAsync(Binding(), default);
+        Assert.False(PFlowAutomaticSessionService.Verified(observed, Binding()));
+        Assert.Equal("", observed.OwnerUid);
+        if (!resetWorks)
+        {
+            Assert.Equal(0, fake.CopyTaps);
+            Assert.DoesNotContain("ReadCopiedProfileLinkAsync", fake.Calls);
+        }
+    }
+
+    [Fact]
+    public async Task CopiedWrongUidIsReportedWithoutSubstitution()
+    {
+        var (nav, fake) = Native();
+        fake.Ui = Own();
+        fake.UseCopySettings = true;
+        fake.CopiedProfileLink = "https://www.facebook.com/456";
+        var observed = await nav.ObserveAsync(Binding(), default);
+        Assert.Equal("456", observed.OwnerUid);
+        Assert.False(PFlowAutomaticSessionService.Verified(observed, Binding()));
+    }
+
+    [Theory]
+    [InlineData("https://www.facebook.com/profile.php?id=123", "123")]
+    [InlineData("https://m.facebook.com/123/?ref=profile", "123")]
+    [InlineData("https://facebook.com/people/Fixture/123/", "123")]
+    [InlineData("https://www.facebook.com/fixture.username", null)]
+    [InlineData("https://facebook.com.evil.test/profile.php?id=123", null)]
+    [InlineData("https://www.facebook.com/profile.php?id=123&id=456", null)]
+    [InlineData("https://user@www.facebook.com/123", null)]
+    [InlineData("pflow-profile-proof-marker", null)]
+    public void CopiedLinkRequiresAnUnambiguousFacebookNumericUid(string link, string? expected) =>
+        Assert.Equal(expected, PFlowNativeAccountNavigator.ReadNumericProfileLinkUid(link));
+
+    [Fact]
+    public void CopyRouteRejectsPageAndEditableSettings()
+    {
+        Assert.NotNull(PFlowNativeAccountNavigator.CopyProfileLinkControl(ProfessionalSettings()));
+        Assert.Null(
+            PFlowNativeAccountNavigator.CopyProfileLinkControl(
+                ProfessionalSettings().Replace("Profile Settings", "Page Settings")
+            )
+        );
+        var input = Node("Password");
+        input.SetAttributeValue("class", "android.widget.EditText");
+        Assert.Null(
+            PFlowNativeAccountNavigator.CopyProfileLinkControl(
+                Xml(Node("Profile Settings"), Node("Copy profile link", true), input)
+            )
+        );
+    }
+
     private static XElement TextButton(string text, string bounds)
     {
         var node = Node(text, true, bounds);
@@ -708,6 +799,12 @@ public sealed class PFlowNativeAccountTests : IDisposable
             KeyboardActivationSucceeds = true;
         public bool HideLinkUntilScroll;
         public bool SettingsHasBack;
+        public bool UseCopySettings;
+        public bool ClipboardResetWorks = true,
+            CopyUpdatesClipboard = true;
+        public string? ProfileClipboard,
+            CopiedProfileLink;
+        public int CopyTaps;
         public string? RecoveredUid;
         public int PersonalRecoveries;
         public Queue<string> UiSequence = new(),
@@ -740,6 +837,12 @@ public sealed class PFlowNativeAccountTests : IDisposable
                     if (UiSequence.Count > 0)
                         Ui = UiSequence.Dequeue();
                     return Task.FromResult<string?>(Ui);
+                case "PrepareProfileLinkClipboardAsync":
+                    if (ClipboardResetWorks)
+                        ProfileClipboard = "pflow-profile-proof-fixture";
+                    return Task.FromResult(ClipboardResetWorks);
+                case "ReadCopiedProfileLinkAsync":
+                    return Task.FromResult(ProfileClipboard);
                 case "EnsureSwitchedToPersonalProfileAsync":
                     PersonalRecoveries++;
                     Assert.Equal("Fixture Personal", args![1]);
@@ -756,6 +859,17 @@ public sealed class PFlowNativeAccountTests : IDisposable
                     return Task.FromResult(true);
                 case "TapAsync":
                     Taps++;
+                    if (Ui == ProfessionalSettings())
+                    {
+                        Assert.Equal(
+                            PFlowNativeAccountNavigator.CopyProfileLinkControl(Ui),
+                            ((int)args![1]!, (int)args[2]!)
+                        );
+                        CopyTaps++;
+                        if (CopyUpdatesClipboard)
+                            ProfileClipboard = CopiedProfileLink;
+                        return Task.FromResult(true);
+                    }
                     if (Foreground == PFlowAndroidCredentialPrompt.Activity)
                     {
                         Assert.Equal(
@@ -832,6 +946,7 @@ public sealed class PFlowNativeAccountTests : IDisposable
                                     Node("Back", true),
                                     Node("Your profile link")
                                 )
+                            : UseCopySettings ? ProfessionalSettings()
                             : SettingsHasBack
                                 ? Xml(
                                     Node("Profile settings"),

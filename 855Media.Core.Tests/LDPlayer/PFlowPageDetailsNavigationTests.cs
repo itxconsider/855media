@@ -34,6 +34,28 @@ public class PFlowPageDetailsNavigationTests
             children
         );
 
+    [Fact]
+    public void ToolbarEditIconAboveCoverDoesNotHidePageHeader()
+    {
+        var edit = Node("Edit profile");
+        edit.SetAttributeValue("bounds", "[490,72][538,144]");
+        var header = Node("Luke Kaz\n\u00a0\u00a0", false);
+        header.SetAttributeValue("bounds", "[259,612][469,669]");
+        var dashboard = Node("Professional dashboard");
+        dashboard.SetAttributeValue("bounds", "[24,994][440,1066]");
+        var post = Node("Luke Kaz");
+        post.SetAttributeValue("bounds", "[128,1083][380,1121]");
+        var target = PFlowPageDetailsNavigation.FindHeaderName(
+            Screen(edit, header, dashboard, post),
+            "Luke Kaz"
+        );
+        Assert.NotNull(target);
+        Assert.Equal(612, target.Bounds.Top);
+        Assert.Null(
+            PFlowPageDetailsNavigation.FindHeaderName(Screen(edit, dashboard, post), "Luke Kaz")
+        );
+    }
+
     private static BloksScreenInfo Screen(params XElement[] nodes) =>
         AtxAgentClient.ParseBloksHierarchy(new XElement("hierarchy", nodes).ToString());
 

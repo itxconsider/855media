@@ -25,7 +25,13 @@ internal static class PFlowPageDetailsNavigation
             .ToArray();
         if (controls.Length == 0)
             return null;
-        var headerBottom = controls.Min(e => e.Bounds.Top);
+        // Page layouts can put an Edit profile pencil above the cover photo.
+        // The dashboard/manage control below the name bounds the Page header;
+        // that toolbar pencil must not hide the name from the details route.
+        var pageControls = controls.Where(e => !e.Matches("Edit profile", false)).ToArray();
+        var headerBottom = (pageControls.Length > 0 ? pageControls : controls).Min(e =>
+            e.Bounds.Top
+        );
         return screen
             .AllElements.Where(e =>
                 e.Enabled

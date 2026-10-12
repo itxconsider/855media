@@ -212,6 +212,12 @@ public partial class AutoPostViewModel : ViewModelBase
     private bool _isManagePagesOpen;
 
     [ObservableProperty]
+    private bool _isLdPanelVisible = true;
+
+    [ObservableProperty]
+    private bool _isPostQueuePanelVisible;
+
+    [ObservableProperty]
     private bool _isUpdatePageOpen;
 
     [ObservableProperty]
@@ -245,7 +251,7 @@ public partial class AutoPostViewModel : ViewModelBase
 
     // --- Pre-Select & Batch File Upload Toolbar State ---
     [ObservableProperty]
-    private int _selectedPostTypeIndex = 0; // 0: Reel, 1: Picture, 2: Video
+    private int _selectedPostTypeIndex = 0; // 0: Reel, 1: Picture
 
     [ObservableProperty]
     private int _selectedFileByIndex = 0; // 0: Random, 1: Sequential
@@ -276,7 +282,7 @@ public partial class AutoPostViewModel : ViewModelBase
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsExpandedGroupedView))]
-    private bool _isGroupedView = true;
+    private bool _isGroupedView;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsExpandedGroupedView))]
@@ -387,7 +393,7 @@ public partial class AutoPostViewModel : ViewModelBase
         if (_isUpdatingManageInstancesSelection || !value.HasValue)
             return;
 
-        foreach (var inst in Instances)
+        foreach (var inst in DisplayedInstances)
         {
             inst.IsSelected = value.Value;
         }
@@ -397,19 +403,20 @@ public partial class AutoPostViewModel : ViewModelBase
 
     public void UpdateIsAllManageInstancesSelectedState()
     {
+        var targets = DisplayedInstances;
         _isUpdatingManageInstancesSelection = true;
         try
         {
-            if (Instances.Count == 0)
+            if (targets.Count == 0)
             {
                 IsAllManageInstancesSelected = false;
                 return;
             }
 
-            var selectedCount = Instances.Count(i => i.IsSelected);
+            var selectedCount = targets.Count(i => i.IsSelected);
             if (selectedCount == 0)
                 IsAllManageInstancesSelected = false;
-            else if (selectedCount == Instances.Count)
+            else if (selectedCount == targets.Count)
                 IsAllManageInstancesSelected = true;
             else
                 IsAllManageInstancesSelected = null;
@@ -424,10 +431,11 @@ public partial class AutoPostViewModel : ViewModelBase
     {
         get
         {
-            var selectedCount = Instances.Count(i => i.IsSelected);
+            var targets = DisplayedInstances;
+            var selectedCount = targets.Count(i => i.IsSelected);
             return selectedCount > 0
-                ? $"{selectedCount}/{Instances.Count} Selected"
-                : $"Total: {Instances.Count}";
+                ? $"{selectedCount}/{targets.Count} Selected"
+                : $"Total: {targets.Count}";
         }
     }
 
@@ -436,9 +444,11 @@ public partial class AutoPostViewModel : ViewModelBase
         get
         {
             if (!FilterBySelectedDevice)
-                return "All Devices - Facebook Users & Managed Pages";
+                return ShowOnlyOpen
+                    ? "Running Devices - Facebook Users & Managed Pages"
+                    : "All Devices - Facebook Users & Managed Pages";
 
-            var selected = Instances.Where(i => i.IsSelected).ToList();
+            var selected = DisplayedInstances.Where(i => i.IsSelected).ToList();
             if (selected.Count == 1)
                 return $"Device: {selected[0].Name} - Facebook User & Managed Pages";
             if (selected.Count > 1)
@@ -541,10 +551,14 @@ public partial class AutoPostViewModel : ViewModelBase
         IEnumerable<FacebookPageTargetViewModel> pool
     )
     {
-        if (!FilterBySelectedDevice)
+        if (!FilterBySelectedDevice && !ShowOnlyOpen)
             return pool;
 
-        var selected = Instances.Where(i => i.IsSelected).ToList();
+        var selected = Instances
+            .Where(i =>
+                (!FilterBySelectedDevice || i.IsSelected) && (!ShowOnlyOpen || i.IsAndroidStarted)
+            )
+            .ToList();
         if (selected.Count > 0)
         {
             var allowedDeviceNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -995,6 +1009,8 @@ public partial class AutoPostViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(DisplayedInstances));
         UpdateIsAllSelectedState();
+        RequestManageSelectionRefresh();
+        RefreshPFlowDashboard();
     }
 
     public AutoPostViewModel(
@@ -1058,6 +1074,7 @@ public partial class AutoPostViewModel : ViewModelBase
             _addAccountCancellation?.Cancel();
             EndAddAccountOtp();
             AddAccountLine = "";
+            DisposeNetworkMonitor();
             DisposePFlowDashboard();
             _manageSelectionRefresh?.Dispose();
             foreach (var group in _manageGroupCache.Values)
@@ -1104,6 +1121,8 @@ public partial class AutoPostViewModel : ViewModelBase
         try
         {
             var detected = await _ldPlayerService.GetInstancesAsync(LdFolder);
+            foreach (var row in Instances)
+                row.ResetNetworkInfo();
             Instances.Clear();
 
             var anyRunning = detected.Any(d => d.IsAndroidStarted);
@@ -1130,6 +1149,7 @@ public partial class AutoPostViewModel : ViewModelBase
             RefreshDisplayedManagePages();
             StatusSummary = $"Detected {Instances.Count} LDPlayer instances.";
             _snackbarManager.Notify($"Loaded {Instances.Count} LDPlayer instances.");
+            StartNetworkMonitor();
         }
         catch (Exception ex)
         {
@@ -1261,13 +1281,15 @@ public partial class AutoPostViewModel : ViewModelBase
             AcceptFriends = AcceptFriends,
             AcceptFriendsMin = AcceptFriendsMin,
             AcceptFriendsMax = AcceptFriendsMax,
-            PostReel = !_screenTimeOnlyRequested && (IsPostReel || hasQueuedReels),
+            PostReel =
+                !_screenTimeOnlyRequested
+                && (IsPostReel || IsPostVideo || hasQueuedReels || hasQueuedVideos),
             DeleteReelFile = IsDeleteReelFile,
             BackupReelFile = IsBackupReelFile,
             PostPicture = !_screenTimeOnlyRequested && (IsPostPicture || hasQueuedPictures),
             DeletePictureFile = IsDeletePictureFile,
             BackupPictureFile = IsBackupPictureFile,
-            PostVideo = !_screenTimeOnlyRequested && (IsPostVideo || hasQueuedVideos),
+            PostVideo = false,
             DeleteVideoFile = IsDeleteVideoFile,
             BackupVideoFile = IsBackupVideoFile,
             ClearCache = ClearCacheFBBeforeOpen,
@@ -1695,6 +1717,7 @@ public partial class AutoPostViewModel : ViewModelBase
         OnPropertyChanged(nameof(ManagePagesHeaderTitle));
         RefreshDisplayedManagePages();
         IsManagePagesOpen = true;
+        _ = RefreshVisibleMediaCountsAsync();
     }
 
     [RelayCommand]
@@ -1846,13 +1869,13 @@ public partial class AutoPostViewModel : ViewModelBase
         DeleteFriendRequest = cfg.DeleteFriendRequest;
         DeleteFriendRequestMin = cfg.DeleteFriendRequestMin;
         DeleteFriendRequestMax = cfg.DeleteFriendRequestMax;
-        IsPostReel = cfg.IsPostReel;
+        IsPostReel = cfg.IsPostReel || cfg.IsPostVideo;
         IsDeleteReelFile = cfg.IsDeleteReelFile;
         IsBackupReelFile = cfg.IsBackupReelFile;
         IsPostPicture = cfg.IsPostPicture;
         IsDeletePictureFile = cfg.IsDeletePictureFile;
         IsBackupPictureFile = cfg.IsBackupPictureFile;
-        IsPostVideo = cfg.IsPostVideo;
+        IsPostVideo = false;
         IsDeleteVideoFile = cfg.IsDeleteVideoFile;
         IsBackupVideoFile = cfg.IsBackupVideoFile;
         DelayUpload = cfg.DelayUpload;
@@ -1954,7 +1977,7 @@ public partial class AutoPostViewModel : ViewModelBase
             var extensions =
                 key is "ImagePath" or "GroupPicturePath"
                     ? new[] { ".jpg", ".jpeg", ".png", ".webp" }
-                : key is "VideoReelPath" or "GroupReelPath" ? new[] { ".mp4", ".mov", ".webm" }
+                : key is "VideoReelPath" or "GroupReelPath" ? FacebookPageTarget.ReelExtensions
                 : new[] { ".mp4", ".mkv", ".mov" };
             var edit = new PageMediaPathEdit(
                 key,
@@ -3241,16 +3264,22 @@ public partial class AutoPostViewModel : ViewModelBase
     }
 
     private bool CanFetchSelectedPagesInfo() =>
-        !IsBusy && !IsRunning && Instances.Any(i => i.IsSelected);
+        !IsBusy && !IsRunning && Instances.Any(IsEligibleFetchDevice);
+
+    private bool IsEligibleFetchDevice(LDInstanceItemViewModel? instance) =>
+        instance?.IsSelected == true && (!ShowOnlyOpen || instance.IsAndroidStarted);
 
     private LDInstanceItemViewModel? ResolveCheckedFetchDevice(LDInstanceItemViewModel? requested)
     {
         if (requested != null)
-            return Instances.Contains(requested) && requested.IsSelected ? requested : null;
+            return Instances.Contains(requested) && IsEligibleFetchDevice(requested)
+                ? requested
+                : null;
         return
-            SelectedManageInstance?.IsSelected == true && Instances.Contains(SelectedManageInstance)
+            IsEligibleFetchDevice(SelectedManageInstance)
+            && Instances.Contains(SelectedManageInstance!)
             ? SelectedManageInstance
-            : Instances.FirstOrDefault(i => i.IsSelected);
+            : Instances.FirstOrDefault(IsEligibleFetchDevice);
     }
 
     private bool CanFetchDevicePages(LDInstanceItemViewModel? requested) =>
@@ -3472,7 +3501,7 @@ public partial class AutoPostViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanFetchSelectedPagesInfo))]
     public async Task FetchSelectedPagesInfoAsync()
     {
-        if (!Instances.Any(i => i.IsSelected))
+        if (!Instances.Any(IsEligibleFetchDevice))
         {
             StatusSummary = "Check an LDPlayer instance before fetching accounts and Pages.";
             return;
@@ -3492,7 +3521,7 @@ public partial class AutoPostViewModel : ViewModelBase
 
         if (FilterBySelectedDevice)
         {
-            var selectedInstances = Instances.Where(i => i.IsSelected).ToList();
+            var selectedInstances = Instances.Where(IsEligibleFetchDevice).ToList();
             if (selectedInstances.Count > 1)
             {
                 IsBusy = true;
@@ -3610,7 +3639,7 @@ public partial class AutoPostViewModel : ViewModelBase
                     )
                 )
             )
-            .Where(instance => instance?.IsSelected == true)
+            .Where(IsEligibleFetchDevice)
             .Select(instance => instance!)
             .DistinctBy(instance => instance.Index)
             .ToList();
@@ -3742,15 +3771,8 @@ public partial class AutoPostViewModel : ViewModelBase
         string postType = SelectedPostTypeIndex switch
         {
             1 => "Picture",
-            2 => "Video",
+            2 => "Reel",
             _ => "Reel",
-        };
-
-        string[] validExtensions = postType switch
-        {
-            "Picture" => [".jpg", ".jpeg", ".png", ".webp"],
-            "Video" => [".mp4", ".mkv", ".mov"],
-            _ => [".mp4", ".mov", ".webm"],
         };
 
         var usedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -3794,49 +3816,15 @@ public partial class AutoPostViewModel : ViewModelBase
                 }
             }
 
-            string? sourcePath = postType switch
+            page.SyncToModel();
+            page.RefreshMediaCounts();
+            var mediaSnapshot = page.Model.ReadUploadMediaSnapshot(postType);
+            if (mediaSnapshot.Error.Length > 0)
             {
-                "Picture" => page.ImagePath,
-                "Video" => page.VideoLongPath,
-                _ => page.VideoReelPath,
-            };
-
-            sourcePath = sourcePath?.Trim().Trim('"', '\'');
-            if (string.IsNullOrWhiteSpace(sourcePath))
-            {
+                _snackbarManager.Notify($"{page.PageName}: {mediaSnapshot.Error}");
                 continue;
             }
-
-            List<string> candidateFiles = [];
-            if (File.Exists(sourcePath))
-            {
-                var ext = Path.GetExtension(sourcePath);
-                if (validExtensions.Any(e => e.Equals(ext, StringComparison.OrdinalIgnoreCase)))
-                {
-                    candidateFiles.Add(sourcePath);
-                }
-            }
-            else if (Directory.Exists(sourcePath))
-            {
-                try
-                {
-                    candidateFiles = Directory
-                        .EnumerateFiles(sourcePath, "*.*", SearchOption.TopDirectoryOnly)
-                        .Where(f =>
-                        {
-                            var ext = Path.GetExtension(f);
-                            return validExtensions.Any(e =>
-                                e.Equals(ext, StringComparison.OrdinalIgnoreCase)
-                            );
-                        })
-                        .OrderBy(f => f)
-                        .ToList();
-                }
-                catch
-                {
-                    // Ignore folder enumeration errors
-                }
-            }
+            var candidateFiles = mediaSnapshot.Files.ToList();
 
             if (candidateFiles.Count == 0)
             {
@@ -3898,7 +3886,7 @@ public partial class AutoPostViewModel : ViewModelBase
                     {
                         "Picture" => page.TitleImage,
                         "Video" => page.TitleVideoLong,
-                        _ => page.TitleVideoReel,
+                        _ => page.Model.GetReelCaptionForFile(file),
                     };
 
                     var title = ResolveCaptionForMedia(

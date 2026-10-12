@@ -20,7 +20,7 @@ public enum PageMaturityLevel
     Unknown,
 }
 
-public class FacebookPageTarget
+public partial class FacebookPageTarget
 {
     public PFlowAccountBinding? AccountBinding { get; set; }
     public bool IsSelected { get; set; } = true;
@@ -338,16 +338,7 @@ public class FacebookPageTarget
 
     public void RefreshMediaCounts()
     {
-        UploadReelsCount = CountMediaFiles(VideoReelPath, [".mp4", ".mov", ".webm"]);
-        UploadVideosCount = CountMediaFiles(VideoLongPath, [".mp4", ".mkv", ".mov"]);
-        UploadPictureCount = CountMediaFiles(ImagePath, [".jpg", ".jpeg", ".png", ".webp"]);
-
-        int groupCount =
-            CountMediaFiles(GroupReelPath, [".mp4", ".mov", ".webm"])
-            + CountMediaFiles(GroupPicturePath, [".jpg", ".jpeg", ".png", ".webp"])
-            + CountMediaFiles(GroupVideoPath, [".mp4", ".mkv", ".mov"]);
-
-        FileInGroup = groupCount.ToString();
+        RefreshMediaSnapshot();
     }
 
     public static int CountMediaFiles(string? path, string[] validExtensions)

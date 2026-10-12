@@ -1,0 +1,8 @@
+{
+  "device": 3,
+  "mode": "test",
+  "confirmed": 0,
+  "requested": 10,
+  "stop": "Marketplace not a browsing surface after tab navigation",
+  "events": []
+}

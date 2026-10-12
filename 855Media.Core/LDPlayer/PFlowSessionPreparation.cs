@@ -123,6 +123,57 @@ public sealed class PFlowSessionPreparation(ILDPlayerService ld, string path)
         );
     }
 
+    public async Task RestorePostForegroundFromLauncherAsync(
+        PFlowAccountBinding binding,
+        CancellationToken ct
+    )
+    {
+        await RequireWorkerAsync(binding, ct);
+        var activity = await ld.GetCurrentFocusedActivityAsync(binding.DeviceIndex, path, ct) ?? "";
+        if (
+            !System.Text.RegularExpressions.Regex.IsMatch(
+                activity,
+                @"(?<![\w.])(?:com\.ldmnq\.launcher3|com\.android\.launcher3)/"
+            )
+        )
+            return;
+        // Per-job cleanup can leave Android Home active. Restore only the assigned
+        // app from that known surface; do not dismiss other apps or challenges.
+        await PFlowTrace.SessionAsync(
+            binding.DeviceIndex,
+            "post.foreground.restore",
+            "from=AndroidHome",
+            ct
+        );
+        if (!await ld.LaunchAppAsync(binding.DeviceIndex, binding.AppPackage, path, ct))
+            throw new InvalidOperationException(
+                "Assigned Facebook app could not be reopened after cleanup."
+            );
+        for (var attempt = 0; attempt < 8; attempt++)
+        {
+            activity = await ld.GetCurrentFocusedActivityAsync(binding.DeviceIndex, path, ct) ?? "";
+            if (
+                System.Text.RegularExpressions.Regex.IsMatch(
+                    activity,
+                    @"(?<![\w.])com\.facebook\.katana/"
+                )
+            )
+                break;
+            if (
+                !string.IsNullOrWhiteSpace(activity)
+                && !System.Text.RegularExpressions.Regex.IsMatch(
+                    activity,
+                    @"(?<![\w.])(?:com\.ldmnq\.launcher3|com\.android\.launcher3)/"
+                )
+            )
+                throw new InvalidOperationException(
+                    "Another app appeared while restoring Facebook after cleanup."
+                );
+            await Task.Delay(500, ct);
+        }
+        await ReadFacebookScreenAsync(binding, ct);
+    }
+
     public async Task EnsureTextInputAsync(
         PFlowAccountBinding binding,
         Func<string, Task> progress,

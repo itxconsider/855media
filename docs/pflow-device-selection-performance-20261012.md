@@ -17,6 +17,15 @@ These timings measure view-model processing, not rendered screen latency. The ha
 
 Unselect All now produces an empty target list when filtering to checked LDs, regardless of the highlighted device. Both account-fetch commands require a checked LD and disable when none are checked or the app is busy/running. Explicitly fetching an unchecked highlighted LD is refused even when another LD is checked; Page-based refresh also excludes unchecked devices. The harness verifies command eligibility, direct no-selection calls, empty collections, retained cached targets and restoration after checking devices again.
 
+`Show running devices only` now applies to the Targets & media device sidebar,
+profile groups, personal-account rows and Page table. It intersects with the
+checked-device filter; disabling the checked filter still respects running-only.
+Start/stop notifications refresh these views through the coalesced callback.
+Select All and its count operate on visible devices. Fetch eligibility and batch
+planning also exclude stopped LDs while running-only is enabled. The synthetic
+view-model check covers these combinations and refuses device calls when all LDs
+are stopped.
+
 ```powershell
 dotnet run --project tools/PFlowSelectionCheck/PFlowSelectionCheck.csproj --artifacts-path "$env:TEMP/855Media-selection-check-20261012" --verbosity quiet
 dotnet test 855Media.Core.Tests/855Media.Core.Tests.csproj --filter "FullyQualifiedName~TargetRefreshTests|FullyQualifiedName~PFlow|FullyQualifiedName~ScreenTime|FullyQualifiedName~AtxAgentClient" --verbosity quiet

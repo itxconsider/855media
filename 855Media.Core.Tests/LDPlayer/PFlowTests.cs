@@ -11,7 +11,7 @@ using Xunit;
 
 namespace _855Media.Core.Tests.LDPlayer;
 
-public sealed class PFlowTests : IDisposable
+public sealed partial class PFlowTests : IDisposable
 {
     private readonly string _dir = Path.Combine(
         Path.GetTempPath(),
@@ -610,6 +610,7 @@ public sealed class PFlowTests : IDisposable
             WrongActor,
             NotificationSuccess;
         public CancellationTokenSource? CancelOnShare;
+        public string PublicationError = "";
         private bool _composerOpened;
 
         public static ILDPlayerService Create(PFlowJob job)
@@ -648,6 +649,8 @@ public sealed class PFlowTests : IDisposable
                     return Task.FromResult<string?>(
                         !_composerOpened
                             ? "<hierarchy><node text='Target'/><node text='Professional dashboard'/></hierarchy>"
+                        : ShareTaps > 0 && PublicationError.Length > 0
+                            ? $"<hierarchy><node text='{PublicationError}'/></hierarchy>"
                         : ShareTaps > 0 && NotificationSuccess
                             ? "<hierarchy><node text='Home'/></hierarchy>"
                         : ShareTaps > 0 && SuccessMessage

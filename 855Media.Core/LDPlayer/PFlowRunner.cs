@@ -62,7 +62,7 @@ public static class PFlowDeviceLease
     }
 }
 
-public sealed class PFlowRunner
+public sealed partial class PFlowRunner
 {
     private readonly ILDPlayerService _ld;
     private readonly PFlowHistoryStore _history;
@@ -123,14 +123,23 @@ public sealed class PFlowRunner
                 await progress(
                     "Skipped: confirmed, uncertain, or active history exists for this Page/file."
                 );
+                job.State = PFlowState.CancelledBeforeSubmission;
+                job.Error = "History or daily capacity blocked this planned job.";
                 if (planned)
                 {
-                    job.State = PFlowState.CancelledBeforeSubmission;
-                    job.Error = "History or daily capacity blocked this planned job.";
                     await _history.SaveAsync(job, CancellationToken.None);
                 }
                 return false;
             }
+            // Persisted prior history authorized this pre-submit/manual-review retry.
+            // A new attempt must not inherit a prior error or submission timestamp.
+            job.Error = "";
+            job.Evidence = "";
+            job.IdentityEvidence = "";
+            job.SubmittedUtc = null;
+            job.NoPublicationVerified = false;
+            job.ConfirmedUtc = null;
+            job.RemoteCleanupState = "Pending";
             try
             {
                 job.CurrentStep = "Verifying target identity";
@@ -201,55 +210,11 @@ public sealed class PFlowRunner
             job.Error = job.Error.Length == 0 ? error : job.Error + " | " + error;
     }
 
-    public async Task BackupAsync(PFlowJob job, CancellationToken ct)
-    {
-        if (
-            !job.BackupRequested
-            || job.State != PFlowState.Confirmed
-            || job.BackupState == "Verified"
-        )
-            return;
-        try
-        {
-            var directory = Path.Combine(
-                Path.GetDirectoryName(job.SourcePath)!,
-                "backup",
-                job.JobId
-            );
-            Directory.CreateDirectory(directory);
-            var destination = Path.Combine(directory, Path.GetFileName(job.SourcePath));
-            if (!File.Exists(destination))
-                File.Copy(job.SourcePath, destination, false);
-            var copy = new PFlowJob { SourcePath = destination };
-            await PFlowJob.FingerprintAsync(copy, ct);
-            if (copy.Sha256 != job.Sha256)
-                throw new IOException("Backup checksum mismatch.");
-            var caption = Path.ChangeExtension(job.SourcePath, ".txt");
-            if (File.Exists(caption))
-            {
-                var dest = Path.Combine(directory, Path.GetFileName(caption));
-                if (!File.Exists(dest))
-                    File.Copy(caption, dest, false);
-                var a = new PFlowJob { SourcePath = caption };
-                var b = new PFlowJob { SourcePath = dest };
-                await PFlowJob.FingerprintAsync(a, ct);
-                await PFlowJob.FingerprintAsync(b, ct);
-                if (a.Sha256 != b.Sha256)
-                    throw new IOException("Caption backup checksum mismatch.");
-            }
-            job.BackupPath = destination;
-            job.BackupState = "Verified";
-        }
-        catch (Exception ex)
-        {
-            job.BackupState = "Pending";
-            AppendError(job, "Backup: " + ex.Message);
-        }
-    }
+    public Task BackupAsync(PFlowJob job, CancellationToken ct) => BackupFilesAsync(job, ct);
 
     public async Task CleanupRemoteAsync(PFlowJob job, string? ldPath, CancellationToken ct)
     {
-        if (job.State is PFlowState.Unknown or PFlowState.SubmitRequested or PFlowState.Submitted)
+        if (job.MayHaveSubmitted && job.State != PFlowState.Confirmed)
             return;
         try
         {
@@ -346,6 +311,34 @@ public sealed class PFlowRunner
                 await _history.SaveAsync(job, ct);
                 return;
             }
+            foreach (
+                var backup in history.Where(h =>
+                    h.SourcePath.Equals(job.SourcePath, StringComparison.OrdinalIgnoreCase)
+                    && h.Sha256 == job.Sha256
+                    && h.State == PFlowState.Confirmed
+                    && h.BackupRequested
+                )
+            )
+            {
+                try
+                {
+                    await VerifyBackupFilesAsync(backup, ct);
+                }
+                catch (Exception ex)
+                {
+                    backup.BackupState = "Pending";
+                    AppendError(backup, "Backup: " + ex.Message);
+                    await _history.SaveAsync(backup, CancellationToken.None);
+                    if (backup.JobId == job.JobId)
+                    {
+                        job.BackupState = backup.BackupState;
+                        job.Error = backup.Error;
+                    }
+                    job.LocalDeleteState = "Waiting for backup";
+                    await _history.SaveAsync(job, CancellationToken.None);
+                    return;
+                }
+            }
             if (File.Exists(job.SourcePath))
             {
                 var current = new PFlowJob { SourcePath = job.SourcePath };
@@ -353,7 +346,11 @@ public sealed class PFlowRunner
                 if (current.Sha256 != job.Sha256)
                     throw new IOException("Source changed; preserving file.");
                 File.Delete(job.SourcePath);
-                var caption = Path.ChangeExtension(job.SourcePath, ".txt");
+            }
+            var captionRetained = false;
+            var caption = Path.ChangeExtension(job.SourcePath, ".txt");
+            if (File.Exists(caption))
+            {
                 bool otherMedia = Directory
                     .EnumerateFiles(Path.GetDirectoryName(job.SourcePath)!)
                     .Any(f =>
@@ -364,10 +361,16 @@ public sealed class PFlowRunner
                                 StringComparison.OrdinalIgnoreCase
                             )
                     );
-                if (!otherMedia && File.Exists(caption))
+                if (
+                    !otherMedia
+                    && job.CaptionFileSha256.Length > 0
+                    && await FileHashAsync(caption, ct) == job.CaptionFileSha256
+                )
                     File.Delete(caption);
+                else
+                    captionRetained = true;
             }
-            job.LocalDeleteState = "Verified";
+            job.LocalDeleteState = captionRetained ? "Verified; caption retained" : "Verified";
             await _history.SaveAsync(job, ct);
         }
         catch (Exception ex)

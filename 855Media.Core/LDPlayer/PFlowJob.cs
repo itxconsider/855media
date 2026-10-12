@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
@@ -35,6 +36,7 @@ public sealed class PFlowJob
     public string AppPackage { get; set; } = "com.facebook.katana";
     public string SourcePath { get; set; } = "";
     public string Sha256 { get; set; } = "";
+    public string CaptionFileSha256 { get; set; } = "";
     public long Size { get; set; }
     public DateTime ModifiedUtc { get; set; }
     public string PostType { get; set; } = "Reel";
@@ -44,6 +46,7 @@ public sealed class PFlowJob
     public DateTime UpdatedUtc { get; set; } = DateTime.UtcNow;
     public DateTime? ConfirmedUtc { get; set; }
     public DateTime? SubmittedUtc { get; set; }
+    public bool NoPublicationVerified { get; set; }
     public string Evidence { get; set; } = "";
     public string IdentityEvidence { get; set; } = "";
     public string CurrentStep { get; set; } = "";
@@ -61,12 +64,27 @@ public sealed class PFlowJob
         $"/sdcard/DCIM/855Media/{JobId}{Path.GetExtension(SourcePath).ToLowerInvariant()}";
     public string DuplicateKey =>
         $"{(IsProfile ? "Profile" : "Page")}:{TargetId}:{(PostType == "Video" ? "Reel" : PostType)}:{Sha256}";
+    public bool CanRetry =>
+        State is PFlowState.Failed or PFlowState.CancelledBeforeSubmission
+        && (
+            !SubmittedUtc.HasValue
+            || State == PFlowState.Failed
+                && (
+                    NoPublicationVerified
+                    || Evidence.StartsWith("Manual review: ", StringComparison.Ordinal)
+                        && Error.StartsWith(
+                            "Manual review verified no publication; a new attempt is permitted.",
+                            StringComparison.Ordinal
+                        )
+                )
+        );
     public bool MayHaveSubmitted =>
         State
             is PFlowState.SubmitRequested
                 or PFlowState.Submitted
                 or PFlowState.Unknown
-                or PFlowState.Confirmed;
+                or PFlowState.Confirmed
+        || SubmittedUtc.HasValue && !CanRetry;
 
     public static async Task FingerprintAsync(PFlowJob job, CancellationToken ct)
     {
@@ -80,7 +98,35 @@ public sealed class PFlowJob
             true
         );
         job.Size = stream.Length;
+        if (
+            job.Size == 0
+            && (
+                FacebookPageTarget.ReelExtensions.Contains(
+                    Path.GetExtension(job.SourcePath),
+                    StringComparer.OrdinalIgnoreCase
+                )
+                || FacebookPageTarget.PhotoExtensions.Contains(
+                    Path.GetExtension(job.SourcePath),
+                    StringComparer.OrdinalIgnoreCase
+                )
+            )
+        )
+            throw new IOException("Media file is empty; no upload was started.");
         job.ModifiedUtc = File.GetLastWriteTimeUtc(job.SourcePath);
         job.Sha256 = Convert.ToHexString(await SHA256.HashDataAsync(stream, ct));
+        var caption = Path.ChangeExtension(job.SourcePath, ".txt");
+        if (
+            !job.SourcePath.Equals(caption, StringComparison.OrdinalIgnoreCase)
+            && File.Exists(caption)
+        )
+        {
+            await using var text = new FileStream(
+                caption,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read
+            );
+            job.CaptionFileSha256 = Convert.ToHexString(await SHA256.HashDataAsync(text, ct));
+        }
     }
 }

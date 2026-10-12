@@ -152,7 +152,13 @@ public partial class AutoPostViewModel
         BulkPathsError = string.Empty;
         BulkPathEdits.Clear();
         BulkPathEdits.Add(
-            new("VideoReelPath", "Reels", false, [".mp4", ".mov", ".webm"], BrowseBulkPathAsync)
+            new(
+                "VideoReelPath",
+                "Reels",
+                false,
+                FacebookPageTarget.ReelExtensions,
+                BrowseBulkPathAsync
+            )
         );
         BulkPathEdits.Add(
             new(
@@ -166,9 +172,9 @@ public partial class AutoPostViewModel
         BulkPathEdits.Add(
             new(
                 "VideoLongPath",
-                "Long videos",
+                "Additional Reels",
                 false,
-                [".mp4", ".mkv", ".mov"],
+                FacebookPageTarget.ReelExtensions,
                 BrowseBulkPathAsync
             )
         );
@@ -186,16 +192,16 @@ public partial class AutoPostViewModel
                 "GroupReelPath",
                 "Group reels",
                 true,
-                [".mp4", ".mov", ".webm"],
+                FacebookPageTarget.ReelExtensions,
                 BrowseBulkPathAsync
             )
         );
         BulkPathEdits.Add(
             new(
                 "GroupVideoPath",
-                "Group videos",
+                "Additional group Reels",
                 true,
-                [".mp4", ".mkv", ".mov"],
+                FacebookPageTarget.ReelExtensions,
                 BrowseBulkPathAsync
             )
         );

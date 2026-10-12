@@ -181,7 +181,18 @@ public sealed class PFlowNativeAccountNavigator(
             .Distinct()
             .ToArray();
         // Reject vanity URLs and extra links rather than borrowing a UID from cached root records.
-        if (urls.Length != 1 || !Uri.TryCreate(urls[0], UriKind.Absolute, out var url))
+        return urls.Length == 1 ? ReadNumericProfileLinkUid(urls[0]) : null;
+    }
+
+    public static string? ReadNumericProfileLinkUid(string? link)
+    {
+        if (
+            !Uri.TryCreate(link?.Trim(), UriKind.Absolute, out var url)
+            || url.Scheme != Uri.UriSchemeHttps
+            || !url.IsDefaultPort
+            || !string.IsNullOrEmpty(url.UserInfo)
+            || url.Host is not ("facebook.com" or "www.facebook.com" or "m.facebook.com")
+        )
             return null;
         string? uid = null;
         if (url.AbsolutePath == "/profile.php")
@@ -196,7 +207,7 @@ public sealed class PFlowNativeAccountNavigator(
         }
         else
         {
-            var match = Regex.Match(url.AbsolutePath, @"^/people/[^/]+/(\d+)/?$");
+            var match = Regex.Match(url.AbsolutePath, @"^/(?:people/[^/]+/)?(\d+)/?$");
             if (match.Success)
                 uid = match.Groups[1].Value;
         }
@@ -204,6 +215,17 @@ public sealed class PFlowNativeAccountNavigator(
             ? uid
             : null;
     }
+
+    public static (int X, int Y)? CopyProfileLinkControl(string xml) =>
+        !PFlowUiPrivacy.ContainsInput(xml)
+        && !PFlowLoginScreen.RequiresAuthentication(PFlowLoginScreen.Classify(xml))
+        && !PFlowPersonaSwitcherService.IsNativeSwitcherSheetOpen(xml)
+        && (Has(xml, "Profile settings") || Has(xml, "Profile Settings"))
+        && !Has(xml, "Page Settings")
+        && !Has(xml, "Your Page link")
+        && !Has(xml, "Copy Page link")
+            ? FindControl(xml, "Copy profile link")
+            : null;
 
     public static bool LoginLanding(string xml) =>
         !PFlowUiPrivacy.ContainsInput(xml)
@@ -376,18 +398,64 @@ public sealed class PFlowNativeAccountNavigator(
         )
             return Missing(xml);
         string? uid = null;
+        var copyAttempted = false;
         for (var i = 0; i < 12; i++)
         {
             await _delay(TimeSpan.FromMilliseconds(400), ct);
             xml = await Screen(binding, ct);
             uid = ReadOwnProfileUid(xml);
+            if (uid == null && !copyAttempted && CopyProfileLinkControl(xml) != null)
+            {
+                copyAttempted = true;
+                if (await ld.PrepareProfileLinkClipboardAsync(binding.DeviceIndex, path, ct))
+                {
+                    // Reset succeeded. Re-read the settings before tapping their Copy control.
+                    xml = await Screen(binding, ct);
+                    var copy = CopyProfileLinkControl(xml);
+                    if (
+                        copy != null
+                        && await ld.TapAsync(
+                            binding.DeviceIndex,
+                            copy.Value.X,
+                            copy.Value.Y,
+                            path,
+                            ct
+                        )
+                    )
+                    {
+                        for (var poll = 0; poll < 5 && uid == null; poll++)
+                        {
+                            await _delay(TimeSpan.FromMilliseconds(200), ct);
+                            xml = await Screen(binding, ct);
+                            if (CopyProfileLinkControl(xml) == null)
+                                break;
+                            var copiedLink = await ld.ReadCopiedProfileLinkAsync(
+                                binding.DeviceIndex,
+                                path,
+                                ct
+                            );
+                            if (copiedLink != null)
+                            {
+                                using var resolver = new PFlowProfileLinkResolver();
+                                uid = await resolver.ResolveUidAsync(copiedLink, ct);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
             if (
                 uid != null
                 || PageSettings(xml)
                 || PFlowLoginScreen.RequiresAuthentication(PFlowLoginScreen.Classify(xml))
             )
                 break;
-            if (i % 3 == 2 && PersonalSettings(xml) && !HasProfileUrl(xml))
+            if (
+                i % 3 == 2
+                && PersonalSettings(xml)
+                && !HasProfileUrl(xml)
+                && CopyProfileLinkControl(xml) == null
+            )
             {
                 var (width, height) = PFlowPersonaSwitcherService.ParseScreenDimensions(xml);
                 if (

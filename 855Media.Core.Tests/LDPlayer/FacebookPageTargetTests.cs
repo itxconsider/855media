@@ -136,8 +136,8 @@ public class FacebookPageTargetTests : IDisposable
         Assert.Equal(40, target.ReelsCount);
         Assert.Equal(12, target.VideosCount);
         Assert.Equal(25, target.PictureCount);
-        Assert.Equal(2, target.UploadReelsCount);
-        Assert.Equal(1, target.UploadVideosCount);
+        Assert.Equal(3, target.UploadReelsCount);
+        Assert.Equal(0, target.UploadVideosCount);
         Assert.Equal(3, target.UploadPictureCount);
         Assert.Equal("1", target.FileInGroup);
     }

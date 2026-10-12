@@ -1,0 +1,181 @@
+{
+  "device": 4,
+  "mode": "test",
+  "confirmed": 10,
+  "requested": 10,
+  "stop": "Completed",
+  "events": [
+    {
+      "step": "internal tab",
+      "tab": "For you",
+      "recognized": true,
+      "selected": true
+    },
+    {
+      "step": "scroll",
+      "tab": "For you",
+      "scroll": 1,
+      "changed": true,
+      "evidence": "shared listing anchor moved upward 467px",
+      "durationMs": 400,
+      "start": [
+        360,
+        960
+      ],
+      "end": [
+        360,
+        426
+      ]
+    },
+    {
+      "step": "scroll",
+      "tab": "For you",
+      "scroll": 2,
+      "changed": true,
+      "evidence": "shared listing anchor moved upward 400px",
+      "durationMs": 400,
+      "start": [
+        360,
+        960
+      ],
+      "end": [
+        360,
+        426
+      ]
+    },
+    {
+      "step": "scroll",
+      "tab": "For you",
+      "scroll": 3,
+      "changed": true,
+      "evidence": "shared listing anchor moved upward 402px",
+      "durationMs": 400,
+      "start": [
+        360,
+        960
+      ],
+      "end": [
+        360,
+        426
+      ]
+    },
+    {
+      "step": "scroll",
+      "tab": "For you",
+      "scroll": 4,
+      "changed": true,
+      "evidence": "shared listing anchor moved upward 469px",
+      "durationMs": 400,
+      "start": [
+        360,
+        960
+      ],
+      "end": [
+        360,
+        426
+      ]
+    },
+    {
+      "step": "scroll",
+      "tab": "For you",
+      "scroll": 5,
+      "changed": true,
+      "evidence": "shared listing anchor moved upward 476px",
+      "durationMs": 400,
+      "start": [
+        360,
+        960
+      ],
+      "end": [
+        360,
+        426
+      ]
+    },
+    {
+      "step": "internal tab",
+      "tab": "Local",
+      "recognized": true,
+      "selected": true
+    },
+    {
+      "step": "scroll",
+      "tab": "Local",
+      "scroll": 1,
+      "changed": true,
+      "evidence": "shared listing anchor moved upward 467px",
+      "durationMs": 400,
+      "start": [
+        360,
+        960
+      ],
+      "end": [
+        360,
+        426
+      ]
+    },
+    {
+      "step": "scroll",
+      "tab": "Local",
+      "scroll": 2,
+      "changed": true,
+      "evidence": "shared listing anchor moved upward 467px",
+      "durationMs": 400,
+      "start": [
+        360,
+        960
+      ],
+      "end": [
+        360,
+        426
+      ]
+    },
+    {
+      "step": "scroll",
+      "tab": "Local",
+      "scroll": 3,
+      "changed": true,
+      "evidence": "shared listing anchor moved upward 468px",
+      "durationMs": 400,
+      "start": [
+        360,
+        960
+      ],
+      "end": [
+        360,
+        426
+      ]
+    },
+    {
+      "step": "scroll",
+      "tab": "Local",
+      "scroll": 4,
+      "changed": true,
+      "evidence": "shared listing anchor moved upward 469px",
+      "durationMs": 400,
+      "start": [
+        360,
+        960
+      ],
+      "end": [
+        360,
+        426
+      ]
+    },
+    {
+      "step": "scroll",
+      "tab": "Local",
+      "scroll": 5,
+      "changed": true,
+      "evidence": "shared listing anchor moved upward 469px",
+      "durationMs": 400,
+      "start": [
+        360,
+        960
+      ],
+      "end": [
+        360,
+        426
+      ]
+    }
+  ]
+}

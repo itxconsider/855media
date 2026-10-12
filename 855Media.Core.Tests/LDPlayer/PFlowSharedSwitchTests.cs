@@ -77,6 +77,28 @@ public class PFlowSharedSwitchTests
     }
 
     [Fact]
+    public async Task SelectedPageWithPaddedHeaderConfirmsWithoutRestart()
+    {
+        var (service, device) = Harness("dropdown");
+        device.PageActor = true;
+        device.PaddedHeader = true;
+        Assert.True(
+            await service.SwitchToPersonaAsync(
+                959,
+                new FacebookPageTarget
+                {
+                    Type = "Page",
+                    PageName = "KC Waterheaters",
+                    PageId = "1007497349108596",
+                }
+            )
+        );
+        Assert.Equal("own", device.State);
+        Assert.Equal(0, device.Stops);
+        Assert.Equal(0, device.CacheClears);
+    }
+
+    [Fact]
     public async Task PageIdOverloadsUseTheSameNativeSwitcher()
     {
         foreach (var byId in new[] { false, true })
@@ -189,6 +211,7 @@ public class PFlowSharedSwitchTests
             WrongActor;
         public bool FreshReadAfterReveal = true;
         public bool BackLeavesSheet;
+        public bool PaddedHeader;
         public int Reveals,
             Stops,
             Launches,
@@ -224,7 +247,17 @@ public class PFlowSharedSwitchTests
             if (WrongActor)
                 return "<hierarchy><node text='Different Actor'/><node text='Professional dashboard'/></hierarchy>";
             return PageActor
-                ? "<hierarchy><node text='KC Waterheaters'/><node text='Professional dashboard'/></hierarchy>"
+                ? new XElement(
+                    "hierarchy",
+                    new XElement(
+                        "node",
+                        new XAttribute(
+                            "text",
+                            PaddedHeader ? "KC Waterheaters\n\u00a0\u00a0" : "KC Waterheaters"
+                        )
+                    ),
+                    new XElement("node", new XAttribute("text", "Professional dashboard"))
+                ).ToString()
                 : Fixture("ld2-personal-professional");
         }
 

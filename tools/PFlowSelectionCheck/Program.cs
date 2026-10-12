@@ -182,14 +182,125 @@ Require(vm.DisplayedManagePages.Count == 0, "Restoring checked-device filter sta
 vm.IsAllManageInstancesSelected = true;
 Dispatcher.UIThread.RunJobs();
 Require(vm.DisplayedManagePages.Count == 140, "Rechecking devices restores targets");
+vm.Instances[0].IsAndroidStarted = true;
+vm.ShowOnlyOpen = true;
+Dispatcher.UIThread.RunJobs();
+Require(
+    vm.DisplayedManagePages.Count == 3
+        && vm.DisplayedProfileGroups.Count == 1
+        && vm.DisplayedPersonalAccounts.Count == 1,
+    "Running-only filter applies to all target views"
+);
+vm.FilterBySelectedDevice = false;
+Require(
+    vm.DisplayedManagePages.Count == 3,
+    "Running-only applies even without checked-device filter"
+);
+vm.Instances[0].IsAndroidStarted = false;
+Dispatcher.UIThread.RunJobs();
+Require(
+    vm.DisplayedManagePages.Count == 0 && vm.IsManagePagesEmpty,
+    "Stopping the last running LD clears targets"
+);
+Require(
+    !vm.FetchSelectedPagesInfoCommand.CanExecute(null)
+        && !vm.FetchDevicePagesCommand.CanExecute(vm.Instances[0]),
+    "Running-only filter blocks fetching stopped LDs"
+);
+vm.FetchDevicePagesAsync(vm.Instances[0]).GetAwaiter().GetResult();
+vm.FetchSelectedPagesInfoAsync().GetAwaiter().GetResult();
+vm.Instances[1].IsAndroidStarted = true;
+Dispatcher.UIThread.RunJobs();
+Require(
+    vm.DisplayedManagePages.Count == 3 && vm.DisplayedManagePages.All(p => p.DeviceName == "LD-2"),
+    "Starting LD updates targets automatically"
+);
+vm.FilterBySelectedDevice = true;
+vm.Instances[1].IsSelected = false;
+Dispatcher.UIThread.RunJobs();
+Require(vm.DisplayedManagePages.Count == 0, "Running and checked-device filters intersect");
+vm.ShowOnlyOpen = false;
+Dispatcher.UIThread.RunJobs();
+Require(
+    vm.DisplayedManagePages.Count == 137,
+    "Disabling running-only restores checked stopped devices"
+);
+vm.IsAllManageInstancesSelected = true;
+Dispatcher.UIThread.RunJobs();
 vm.Pages.Remove(profile);
 vm.RefreshDisplayedManagePages();
 Require(
     vm.DisplayedProfileGroups.All(g => !ReferenceEquals(g.Profile, profile)),
     "Deleted profile retired"
 );
+var mediaFixture = Path.Combine(
+    Path.GetTempPath(),
+    "855Media-media-columns-" + Guid.NewGuid().ToString("N")
+);
+Directory.CreateDirectory(mediaFixture);
+try
+{
+    File.WriteAllText(Path.Combine(mediaFixture, "clip.mp4"), "synthetic");
+    File.WriteAllText(Path.Combine(mediaFixture, "photo.jpg"), "synthetic");
+    var mediaPage = vm.Pages.First(p => p.IsPage);
+    mediaPage.VideoReelPath = mediaFixture;
+    mediaPage.ImagePath = mediaFixture;
+    mediaPage.GroupReelPath = mediaFixture;
+    mediaPage.GroupPicturePath = mediaFixture;
+    Require(
+        mediaPage.UploadReelsCount == 1
+            && mediaPage.UploadPictureCount == 1
+            && mediaPage.FileInGroup == "2",
+        "Columns count configured upload sources"
+    );
+    var countNotifications = 0;
+    mediaPage.PropertyChanged += (_, e) =>
+        countNotifications += e.PropertyName == nameof(mediaPage.UploadReelsCount) ? 1 : 0;
+    File.WriteAllText(Path.Combine(mediaFixture, "next.mkv"), "synthetic");
+    var refreshCounts = vm.RefreshVisibleMediaCountsAsync();
+    var refreshDeadline = DateTime.UtcNow.AddSeconds(10);
+    while (!refreshCounts.IsCompleted && DateTime.UtcNow < refreshDeadline)
+    {
+        Dispatcher.UIThread.RunJobs();
+        Thread.Sleep(5);
+    }
+    Require(refreshCounts.IsCompleted, "Media counts finish without blocking the UI thread");
+    refreshCounts.GetAwaiter().GetResult();
+    Require(
+        mediaPage.UploadReelsCount == 2 && mediaPage.FileInGroup == "3" && countNotifications > 0,
+        "Folder changes refresh file-count columns"
+    );
+    Require(
+        !vm.IsGroupedView && vm.IsLdPanelVisible && !vm.IsPostQueuePanelVisible,
+        "Readable table and collapsed queue are the default"
+    );
+    mediaPage.VideoReelPath = Path.Combine(mediaFixture, "missing-folder");
+    Require(
+        mediaPage.ReelFilesDisplay == "Unavailable",
+        "Missing folders are not shown as zero available files"
+    );
+    mediaPage.VideoReelPath = mediaFixture;
+    var staleRefresh = vm.RefreshVisibleMediaCountsAsync();
+    mediaPage.VideoReelPath = Path.Combine(mediaFixture, "clip.mp4");
+    var staleDeadline = DateTime.UtcNow.AddSeconds(10);
+    while (!staleRefresh.IsCompleted && DateTime.UtcNow < staleDeadline)
+    {
+        Dispatcher.UIThread.RunJobs();
+        Thread.Sleep(5);
+    }
+    Require(staleRefresh.IsCompleted, "Changing paths during a refresh completes");
+    staleRefresh.GetAwaiter().GetResult();
+    Require(
+        mediaPage.UploadReelsCount == 1 && mediaPage.ReelFilesDisplay == "1",
+        "Old folder counts cannot overwrite a changed source path"
+    );
+}
+finally
+{
+    Directory.Delete(mediaFixture, true);
+}
 Console.WriteLine(
-    "PASS: device filtering, search, group retention, row notifications, cache pruning; no LD commands called."
+    "PASS: selection performance, filters, group retention, live media columns; no LD commands called."
 );
 
 static void Require(bool condition, string label)

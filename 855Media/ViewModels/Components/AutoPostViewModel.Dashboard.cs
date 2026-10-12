@@ -81,6 +81,26 @@ public partial class AutoPostViewModel
     private void DashboardRowChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (
+            sender is LDInstanceItemViewModel startedRow
+            && e.PropertyName == nameof(LDInstanceItemViewModel.IsAndroidStarted)
+            && startedRow.IsAndroidStarted
+            && _networkTimer != null
+            && !_networkLifetime.IsCancellationRequested
+        )
+        {
+            _networkInfoService ??= new(_ldPlayerService);
+            _ = startedRow.RefreshNetworkAsync(_networkInfoService, _networkLifetime.Token);
+        }
+        if (
+            sender is LDInstanceItemViewModel
+            && e.PropertyName == nameof(LDInstanceItemViewModel.IsAndroidStarted)
+            && ShowOnlyOpen
+        )
+        {
+            OnPropertyChanged(nameof(DisplayedInstances));
+            RequestManageSelectionRefresh();
+        }
+        if (
             sender is LDInstanceItemViewModel
             && e.PropertyName == nameof(LDInstanceItemViewModel.IsSelected)
         )

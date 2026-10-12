@@ -79,6 +79,24 @@ public sealed class PFlowHistoryStore
         using var transaction = connection.BeginTransaction(deferred: false);
         using var command = connection.CreateCommand();
         command.Transaction = transaction;
+        command.CommandText = "SELECT json FROM jobs WHERE dedupe=$key OR id=$id";
+        command.Parameters.AddWithValue("$key", job.DuplicateKey);
+        command.Parameters.AddWithValue("$id", job.JobId);
+        using (var reader = await command.ExecuteReaderAsync(ct))
+        {
+            while (await reader.ReadAsync(ct))
+            {
+                var prior = JsonSerializer.Deserialize<PFlowJob>(reader.GetString(0))!;
+                if (
+                    prior.JobId == job.JobId
+                        ? prior.DuplicateKey != job.DuplicateKey
+                            || !(prior.State == PFlowState.Queued || prior.CanRetry)
+                        : !prior.CanRetry
+                )
+                    return false;
+            }
+        }
+        command.Parameters.Clear();
         command.CommandText = "SELECT json FROM jobs WHERE json_extract(json,'$.TargetId')=$target";
         command.Parameters.AddWithValue("$target", job.TargetId);
         int occupied = 0;
@@ -114,7 +132,7 @@ public sealed class PFlowHistoryStore
         }
         command.Parameters.Clear();
         command.CommandText =
-            "INSERT OR IGNORE INTO jobs VALUES($id,$key,$state,$pid,$start,$json) ON CONFLICT(id) DO UPDATE SET state=excluded.state,pid=excluded.pid,processStart=excluded.processStart,json=excluded.json WHERE jobs.state='Queued'";
+            "INSERT OR IGNORE INTO jobs VALUES($id,$key,$state,$pid,$start,$json) ON CONFLICT(id) DO UPDATE SET state=excluded.state,pid=excluded.pid,processStart=excluded.processStart,json=excluded.json WHERE jobs.state IN ('Queued','Failed','CancelledBeforeSubmission') AND jobs.dedupe=excluded.dedupe";
         command.Parameters.AddWithValue("$id", job.JobId);
         command.Parameters.AddWithValue("$key", job.DuplicateKey);
         command.Parameters.AddWithValue("$state", job.State.ToString());
@@ -132,6 +150,13 @@ public sealed class PFlowHistoryStore
     public async Task SaveAsync(PFlowJob job, CancellationToken ct = default)
     {
         job.UpdatedUtc = DateTime.UtcNow;
+        if (
+            job.NoPublicationVerified
+            && (job.State != PFlowState.Failed || string.IsNullOrWhiteSpace(job.Evidence))
+        )
+            throw new InvalidOperationException(
+                "A not-published review requires a failed outcome and review evidence."
+            );
         if (
             job.State == PFlowState.Confirmed
             && (job.ConfirmedUtc == null || string.IsNullOrWhiteSpace(job.Evidence))
@@ -186,12 +211,19 @@ public sealed class PFlowHistoryStore
         using var connection = Open();
         using var command = connection.CreateCommand();
         command.CommandText =
-            "SELECT pid,processStart,json FROM jobs WHERE state NOT IN ('Confirmed','Failed','Unknown','CancelledBeforeSubmission')";
+            "SELECT pid,processStart,json FROM jobs WHERE state NOT IN ('Confirmed','Failed','Unknown','CancelledBeforeSubmission') OR (state='Failed' AND json_extract(json,'$.SubmittedUtc') IS NOT NULL)";
         var abandoned = new List<PFlowJob>();
         using (var reader = await command.ExecuteReaderAsync(ct))
         {
             while (await reader.ReadAsync(ct))
             {
+                var record = JsonSerializer.Deserialize<PFlowJob>(reader.GetString(2))!;
+                if (record.State == PFlowState.Failed)
+                {
+                    if (!record.CanRetry)
+                        abandoned.Add(record);
+                    continue;
+                }
                 bool alive;
                 try
                 {
@@ -209,16 +241,18 @@ public sealed class PFlowHistoryStore
                     alive = true;
                 } // Inaccessible process is not proof of abandonment.
                 if (!alive)
-                    abandoned.Add(JsonSerializer.Deserialize<PFlowJob>(reader.GetString(2))!);
+                    abandoned.Add(record);
             }
         }
         foreach (var job in abandoned)
         {
+            var reportedFailure = job.State == PFlowState.Failed;
             job.State = job.MayHaveSubmitted
                 ? PFlowState.Unknown
                 : PFlowState.CancelledBeforeSubmission;
-            job.Error =
-                "Previous process ended; publication requires reconciliation if submission was possible.";
+            job.Error = reportedFailure
+                ? "Earlier run reported an upload error after submission; publication requires review."
+                : "Previous process ended; publication requires reconciliation if submission was possible.";
             await SaveAsync(job, ct);
         }
     }

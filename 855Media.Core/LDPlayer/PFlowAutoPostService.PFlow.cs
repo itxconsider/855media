@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
@@ -245,38 +246,56 @@ public partial class PFlowAutoPostService
         {
             ct.ThrowIfCancellationRequested();
             xml = await _ldPlayer.DumpUiHierarchyAsync(job.DeviceIndex, customPath, ct) ?? "";
-            if (IsComposer(xml, job.PostType))
+            if (!PFlowShareDestination.IsChooser(xml) && IsComposer(xml, job.PostType))
                 break;
             if (PFlowShareDestination.IsChooser(xml))
             {
                 if (!shareDestinationSelected)
                 {
-                    var destination = PFlowShareDestination.Destination(xml, job.PostType);
-                    var point = ScreenTimeHierarchy.Center(destination);
-                    if (!point.HasValue)
-                        throw new InvalidOperationException(
-                            $"Share destination {(job.PostType == "Reel" ? "Reels" : "Feed")} is missing or ambiguous."
+                    if (PFlowShareDestination.IsDestinationSelected(xml, job.PostType))
+                    {
+                        await Step(
+                            "Share destination already selected: "
+                                + (job.PostType == "Picture" ? "Feed" : "Reels")
                         );
-                    await Step(
-                        "Selecting share destination: "
-                            + (job.PostType == "Reel" ? "Reels" : "Feed")
-                    );
-                    if (
-                        !await _ldPlayer.TapAsync(
-                            job.DeviceIndex,
-                            point.Value.X,
-                            point.Value.Y,
-                            customPath,
-                            ct
+                        shareDestinationSelected = true;
+                    }
+                    else
+                    {
+                        var destination = PFlowShareDestination.Destination(xml, job.PostType);
+                        var point = ScreenTimeHierarchy.Center(destination);
+                        if (!point.HasValue)
+                            throw new InvalidOperationException(
+                                $"Share destination {(job.PostType == "Reel" ? "Reels" : "Feed")} is missing or ambiguous."
+                            );
+                        await Step(
+                            "Selecting share destination: "
+                                + (job.PostType == "Reel" ? "Reels" : "Feed")
+                        );
+                        if (
+                            !await _ldPlayer.TapAsync(
+                                job.DeviceIndex,
+                                point.Value.X,
+                                point.Value.Y,
+                                customPath,
+                                ct
+                            )
                         )
-                    )
-                        throw new InvalidOperationException(
-                            "Share destination tap was not acknowledged."
-                        );
-                    shareDestinationSelected = true;
+                            throw new InvalidOperationException(
+                                "Share destination tap was not acknowledged."
+                            );
+                        shareDestinationSelected = true;
+                    }
                 }
                 else if (!shareOnceTapped)
                 {
+                    if (
+                        PFlowShareDestination.HasSelectedDestination(xml)
+                        && !PFlowShareDestination.IsDestinationSelected(xml, job.PostType)
+                    )
+                        throw new InvalidOperationException(
+                            "Selected share destination changed before Just once."
+                        );
                     var once = ScreenTimeHierarchy.Center(PFlowShareDestination.JustOnce(xml));
                     if (once.HasValue)
                     {
@@ -395,25 +414,14 @@ public partial class PFlowAutoPostService
                 ? new[] { "Post", "POST", "Publish" }
                 : new[] { "Share now", "Share reel", "Share Reel", "Share" };
         await Step("Waiting for composer readiness");
-        var readinessWait = Stopwatch.StartNew();
-        while (
-            !HasEnabledPublishControl(xml, buttons)
-            && readinessWait.Elapsed < TimeSpan.FromSeconds(30)
-        )
-        {
-            await Task.Delay(500, ct);
-            xml = await _ldPlayer.DumpUiHierarchyAsync(job.DeviceIndex, customPath, ct) ?? "";
-        }
-        if (!HasEnabledPublishControl(xml, buttons))
-            throw new InvalidOperationException(
-                "Publish control did not become enabled; no Share tap was made."
-            );
-        if (!IsComposer(xml, job.PostType) || !await ComposerIdentityMatchesAsync(xml))
-            throw new InvalidOperationException(
-                "Composer identity changed while waiting for readiness."
-            );
-        if (!string.IsNullOrWhiteSpace(job.Caption) && !CaptionTextMatches(xml, job.Caption))
-            throw new InvalidOperationException("Caption did not remain in the ready composer.");
+        xml = await PrepareComposerReadinessAsync(
+            job,
+            xml,
+            buttons,
+            ComposerIdentityMatchesAsync,
+            customPath,
+            ct
+        );
         await Stage(PFlowState.ComposerReady);
         if (dryRun)
         {
@@ -439,8 +447,32 @@ public partial class PFlowAutoPostService
         var toastAvailable =
             _atxClient != null && await _atxClient.ClearLastToastAsync(job.DeviceIndex, ct);
         await PFlowJobBindingGuard.RequireAsync(_ldPlayer, job, customPath, ct);
+        xml = await _ldPlayer.DumpUiHierarchyAsync(job.DeviceIndex, customPath, ct) ?? "";
+        if (
+            !IsComposer(xml, job.PostType)
+            || !await ComposerIdentityMatchesAsync(xml)
+            || FindVisiblePublishControl(xml, buttons) == null
+            || (
+                !string.IsNullOrWhiteSpace(job.Caption)
+                && FindPFlowCaptionField(xml) != null
+                && !CaptionTextMatches(xml, job.Caption)
+            )
+        )
+            throw new InvalidOperationException(
+                "Ready composer changed before submission; no Share tap was made."
+            );
         await Stage(PFlowState.SubmitRequested); // Durable boundary before any irreversible input.
-        if (!await ClickElementByMatchingTextAsync(job.DeviceIndex, xml, buttons, customPath, ct))
+        var publishPoint = ScreenTimeHierarchy.Center(FindVisiblePublishControl(xml, buttons));
+        if (
+            !publishPoint.HasValue
+            || !await _ldPlayer.TapAsync(
+                job.DeviceIndex,
+                publishPoint.Value.X,
+                publishPoint.Value.Y,
+                customPath,
+                ct
+            )
+        )
         {
             job.State = PFlowState.Unknown;
             job.Error = "Share action could not be confirmed.";
@@ -457,8 +489,11 @@ public partial class PFlowAutoPostService
             xml = await _ldPlayer.DumpUiHierarchyAsync(job.DeviceIndex, customPath, ct) ?? "";
             if (HasLabel(xml, ["Couldn't post", "Upload failed", "Unable to publish"]))
             {
-                job.State = PFlowState.Failed;
-                job.Error = "Facebook reported a publication error.";
+                // Facebook may keep/retry a background upload despite the visible error.
+                // A Share tap has happened, so neither another tap nor file cleanup is safe.
+                job.State = PFlowState.Unknown;
+                job.Error =
+                    "Facebook reported a publication error after Share. Verify the target's posts before retrying.";
                 await checkpoint(job);
                 return;
             }
@@ -528,8 +563,8 @@ public partial class PFlowAutoPostService
             if (
                 job.PostType == "Picture"
                 || !HasLabel(hierarchy, ["Reel Settings"])
-                || !HasLabel(hierarchy, ["Share now"])
                 || Labels(hierarchy)
+                    .Select(label => label.Trim())
                     .Any(label =>
                         label.StartsWith("Posting as ", StringComparison.OrdinalIgnoreCase)
                         || label.StartsWith("Sharing as ", StringComparison.OrdinalIgnoreCase)
@@ -603,14 +638,22 @@ public partial class PFlowAutoPostService
                     || x.Equals("Reel Settings", StringComparison.OrdinalIgnoreCase)
                 );
 
-    public static bool ComposerMatchesTarget(string xml, string name) =>
-        !string.IsNullOrWhiteSpace(name)
-        && Labels(xml)
-            .Any(x =>
-                x.Equals(name, StringComparison.OrdinalIgnoreCase)
-                || x.Equals("Posting as " + name, StringComparison.OrdinalIgnoreCase)
-                || x.Equals("Sharing as " + name, StringComparison.OrdinalIgnoreCase)
+    public static bool ComposerMatchesTarget(string xml, string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return false;
+        // Native profile headers can expose line breaks and nonbreaking spaces.
+        // Preserve exact actor matching after normalizing presentation whitespace.
+        static string Normalize(string label) => Regex.Replace(label.Trim(), @"\s+", " ");
+        var expected = Normalize(name);
+        return Labels(xml)
+            .Select(Normalize)
+            .Any(label =>
+                label.Equals(expected, StringComparison.OrdinalIgnoreCase)
+                || label.Equals("Posting as " + expected, StringComparison.OrdinalIgnoreCase)
+                || label.Equals("Sharing as " + expected, StringComparison.OrdinalIgnoreCase)
             );
+    }
 
     internal static string? NewPublicationEvidence(string xml, ISet<string> before, string type)
     {

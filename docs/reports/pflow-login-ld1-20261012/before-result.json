@@ -1,0 +1,11 @@
+{
+  "DeviceIndex": 1,
+  "ExpectedOwnerUid": "61586742627455",
+  "BeforeUid": "61586742627455",
+  "AfterUid": null,
+  "Stage": "observe-before",
+  "LogoutConfirmed": false,
+  "Success": true,
+  "PublishingActions": 0,
+  "FinishedUtc": "2026-10-12T09:08:23.2840513+00:00"
+}

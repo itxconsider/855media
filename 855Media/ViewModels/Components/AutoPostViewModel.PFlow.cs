@@ -121,7 +121,7 @@ public partial class AutoPostViewModel
                     continue;
                 var targetModel =
                     page.Model ?? throw new InvalidOperationException("Target model is missing.");
-                foreach (var type in new[] { "Reel", "Picture", "Video" })
+                foreach (var type in new[] { "Reel", "Picture" })
                 {
                     if (
                         !(
@@ -140,7 +140,11 @@ public partial class AutoPostViewModel
                                 targetModel,
                                 devicePages.Select(p => p.Model)
                             )
-                            && (t.Type == type || type == "Picture" && t.Type == "Photo")
+                            && (
+                                t.Type == type
+                                || type == "Picture" && t.Type == "Photo"
+                                || type == "Reel" && t.Type == "Video"
+                            )
                         )
                         .ToList();
                     if (queued.Count == 0 && !page.IsSelected)
@@ -150,28 +154,22 @@ public partial class AutoPostViewModel
                         Instances.Select(i => i.Model).ToArray(),
                         LdFolder
                     );
-                    string source = (
-                        type == "Reel" ? page.VideoReelPath
-                        : type == "Picture" ? page.ImagePath
-                        : page.VideoLongPath
-                    ).Trim().Trim('"', '\'');
+                    var sources = targetModel.GetUploadMediaPaths(type);
+                    var mediaSnapshot = targetModel.ReadUploadMediaSnapshot(type);
+                    if (queued.Count == 0 && mediaSnapshot.Error.Length > 0)
+                        throw new IOException(mediaSnapshot.Error);
                     var candidates =
-                        queued.Count > 0 ? queued.Select(t => t.FilePath).ToList()
-                        : File.Exists(source) ? new List<string> { source }
-                        : Directory.Exists(source)
-                            ? Directory
-                                .EnumerateFiles(source, "*", SearchOption.TopDirectoryOnly)
+                        queued.Count > 0
+                            ? queued
+                                .Select(t => t.FilePath)
                                 .Where(f => IsPFlowMedia(f, type))
-                                .OrderBy(f => f)
                                 .ToList()
-                        : new List<string>();
+                            : mediaSnapshot.Files.ToList();
                     if (
                         queued.Count == 0
-                        && source.Length > 0
-                        && !File.Exists(source)
-                        && !Directory.Exists(source)
+                        && sources.Any(s => !File.Exists(s) && !Directory.Exists(s))
                     )
-                        throw new IOException("Media path is missing: " + source);
+                        throw new IOException("A configured media path is missing.");
                     if (candidates.Count == 0)
                         continue;
                     if (page.AppClone != "FB-01")
@@ -241,7 +239,7 @@ public partial class AutoPostViewModel
                                 ? task.Title
                                 : ResolveCaptionForMedia(
                                     file,
-                                    type == "Reel" ? page.TitleVideoReel
+                                    type == "Reel" ? targetModel.GetReelCaptionForFile(file)
                                         : type == "Picture" ? page.TitleImage
                                         : page.TitleVideoLong,
                                     page.UseTitleFromTextFile,
@@ -257,16 +255,7 @@ public partial class AutoPostViewModel
                                 : config.DeleteVideoFile,
                         };
                         await PFlowJob.FingerprintAsync(job, CancellationToken.None);
-                        if (
-                            history.Any(h =>
-                                h.DuplicateKey == job.DuplicateKey
-                                && h.State
-                                    is not (
-                                        PFlowState.Failed
-                                        or PFlowState.CancelledBeforeSubmission
-                                    )
-                            )
-                        )
+                        if (history.Any(h => h.DuplicateKey == job.DuplicateKey && !h.CanRetry))
                         {
                             if (task != null)
                                 task.Status = "Skipped (P-Flow history)";
@@ -315,7 +304,7 @@ public partial class AutoPostViewModel
     private static bool IsPFlowMedia(string path, string type) =>
         (
             type == "Picture" ? new[] { ".jpg", ".jpeg", ".png", ".webp" }
-            : type == "Reel" ? new[] { ".mp4", ".mov", ".webm" }
+            : type == "Reel" ? FacebookPageTarget.ReelExtensions
             : new[] { ".mp4", ".mkv", ".mov" }
         ).Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);
 
@@ -450,9 +439,6 @@ public partial class AutoPostViewModel
         CancellationToken ct
     )
     {
-        var sessionScreen = PFlowLoginScreen.Classify(
-            await _ldPlayerService.DumpUiHierarchyAsync(worker.Index, LdFolder, ct)
-        );
         var account =
             _pFlowRunAccounts.SingleOrDefault(a =>
                 a.Binding.DeviceIndex == worker.Index
@@ -462,6 +448,13 @@ public partial class AutoPostViewModel
             ?? throw new InvalidOperationException(
                 "Target has no account in the immutable run plan."
             );
+        await new PFlowSessionPreparation(
+            _ldPlayerService,
+            LdFolder
+        ).RestorePostForegroundFromLauncherAsync(account.Binding, ct);
+        var sessionScreen = PFlowLoginScreen.Classify(
+            await _ldPlayerService.DumpUiHierarchyAsync(worker.Index, LdFolder, ct)
+        );
         if (
             PFlowLoginScreen.RequiresAuthentication(sessionScreen)
             && sessionScreen != PFlowLoginScreenKind.LoginRequired
@@ -558,11 +551,9 @@ public partial class AutoPostViewModel
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
             await runner.DeleteSharedSourceAsync(job, _pFlowJobs, timeout.Token);
         }
-        await Dispatcher.UIThread.InvokeAsync(() =>
-        {
-            foreach (var page in Pages)
-                page.RefreshMediaCounts();
-        });
+        await RefreshMediaCountsForPagesAsync(
+            await Dispatcher.UIThread.InvokeAsync(() => Pages.ToArray())
+        );
     }
 
     [RelayCommand]
@@ -573,7 +564,8 @@ public partial class AutoPostViewModel
             _ldPlayerService,
             _atxClient,
             LdFolder,
-            () => IsRunning || IsBusy
+            () => IsRunning || IsBusy,
+            async () => await RefreshMediaCountsForPagesAsync(Pages.ToArray())
         );
         await window.RefreshAsync();
         if (

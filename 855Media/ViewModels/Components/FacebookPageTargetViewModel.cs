@@ -20,7 +20,21 @@ public partial class FacebookPageTargetViewModel : ObservableObject
                 _ => "Cached access · confirm before posting",
             };
 
-    public void RefreshAccessStatus() => OnPropertyChanged(nameof(AccessStatus));
+    public string TableStatus =>
+        IsProfile
+            ? "Personal profile"
+            : Model.LivePageAccessVerified switch
+            {
+                true => "Verified",
+                false => "Not verified",
+                _ => "Cached",
+            };
+
+    public void RefreshAccessStatus()
+    {
+        OnPropertyChanged(nameof(AccessStatus));
+        OnPropertyChanged(nameof(TableStatus));
+    }
 
     [ObservableProperty]
     private bool _isSelected = true;
@@ -67,6 +81,7 @@ public partial class FacebookPageTargetViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(IsProfile));
         OnPropertyChanged(nameof(IsPage));
+        OnPropertyChanged(nameof(TableStatus));
         if (Model != null)
         {
             Model.Type = value;
@@ -243,6 +258,12 @@ public partial class FacebookPageTargetViewModel : ObservableObject
     public int UploadReelsCount => Model?.UploadReelsCount ?? 0;
     public int UploadVideosCount => Model?.UploadVideosCount ?? 0;
     public int UploadPictureCount => Model?.UploadPictureCount ?? 0;
+    public string ReelFilesDisplay =>
+        string.IsNullOrEmpty(Model.ReelFilesError) ? UploadReelsCount.ToString() : "Unavailable";
+    public string PhotoFilesDisplay =>
+        string.IsNullOrEmpty(Model.PhotoFilesError) ? UploadPictureCount.ToString() : "Unavailable";
+    public string GroupFilesDisplay =>
+        string.IsNullOrEmpty(Model.GroupFilesError) ? FileInGroup : "Unavailable";
 
     [ObservableProperty]
     private int _customMaxDailyPosts;
@@ -258,7 +279,7 @@ public partial class FacebookPageTargetViewModel : ObservableObject
     }
 
     public string ReelPathStatus =>
-        PageMediaPathEdit.Describe(VideoReelPath, [".mp4", ".mov", ".webm"]);
+        PageMediaPathEdit.Describe(VideoReelPath, FacebookPageTarget.ReelExtensions);
     public string ImagePathStatus =>
         PageMediaPathEdit.Describe(ImagePath, [".jpg", ".jpeg", ".png", ".webp"]);
     public string VideoPathStatus =>
@@ -267,7 +288,10 @@ public partial class FacebookPageTargetViewModel : ObservableObject
     public string GroupPicturePathStatus =>
         PageMediaPathEdit.Describe(GroupPicturePath, [".jpg", ".jpeg", ".png", ".webp"], true);
     public string GroupReelPathStatus =>
-        PageMediaPathEdit.Describe(GroupReelPath, [".mp4", ".mov", ".webm"], true);
+        PageMediaPathEdit.Describe(GroupReelPath, FacebookPageTarget.ReelExtensions, true);
+
+    public bool HasAdditionalReelSource => !string.IsNullOrWhiteSpace(VideoLongPath);
+    public bool HasAdditionalGroupReelSource => !string.IsNullOrWhiteSpace(GroupVideoPath);
     public string GroupVideoPathStatus =>
         PageMediaPathEdit.Describe(GroupVideoPath, [".mp4", ".mkv", ".mov"], true);
 
@@ -321,6 +345,7 @@ public partial class FacebookPageTargetViewModel : ObservableObject
     {
         RefreshMediaCounts();
         OnPropertyChanged(nameof(VideoPathStatus));
+        OnPropertyChanged(nameof(HasAdditionalReelSource));
     }
 
     [ObservableProperty]
@@ -354,10 +379,12 @@ public partial class FacebookPageTargetViewModel : ObservableObject
     {
         RefreshMediaCounts();
         OnPropertyChanged(nameof(GroupVideoPathStatus));
+        OnPropertyChanged(nameof(HasAdditionalGroupReelSource));
     }
 
     public FacebookPageTargetViewModel(FacebookPageTarget model, int number = 1)
     {
+        model.NormalizeLegacyVideoSources();
         Model = model;
         Number = number;
 
@@ -457,10 +484,37 @@ public partial class FacebookPageTargetViewModel : ObservableObject
         OnPropertyChanged(nameof(UploadReelsCount));
         OnPropertyChanged(nameof(UploadVideosCount));
         OnPropertyChanged(nameof(UploadPictureCount));
+        RefreshMediaCountLabels();
         RefreshMaturityStatus();
     }
 
     public int GetPostsToday() => Model?.GetPostsToday() ?? 0;
+
+    public void ApplyMediaCounts(int reels, int photos, string groupFiles)
+    {
+        Model.ApplyMediaCounts(reels, photos, groupFiles);
+        FileInGroup = groupFiles;
+        OnPropertyChanged(nameof(UploadReelsCount));
+        OnPropertyChanged(nameof(UploadVideosCount));
+        OnPropertyChanged(nameof(UploadPictureCount));
+        RefreshMediaCountLabels();
+    }
+
+    public void ApplyMediaSnapshot(FacebookPageTarget snapshot)
+    {
+        Model.ApplyMediaSnapshot(snapshot);
+        FileInGroup = Model.FileInGroup;
+        OnPropertyChanged(nameof(UploadReelsCount));
+        OnPropertyChanged(nameof(UploadPictureCount));
+        RefreshMediaCountLabels();
+    }
+
+    private void RefreshMediaCountLabels()
+    {
+        OnPropertyChanged(nameof(ReelFilesDisplay));
+        OnPropertyChanged(nameof(PhotoFilesDisplay));
+        OnPropertyChanged(nameof(GroupFilesDisplay));
+    }
 
     public void RecordPostToday()
     {
