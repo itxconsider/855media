@@ -29,6 +29,12 @@
   <ItemGroup>
     <AvaloniaResource Include="../favicon.ico" Link="favicon.ico" />
     <EmbeddedResource Include="Resources/facebook-scraper-bridge.js" />
+    <Content
+      Include="Resources/facebook-layouts.default.json"
+      Link="layouts/facebook-layouts.json"
+      CopyToOutputDirectory="PreserveNewest"
+      CopyToPublishDirectory="PreserveNewest"
+    />
   </ItemGroup>
 
   <ItemGroup>

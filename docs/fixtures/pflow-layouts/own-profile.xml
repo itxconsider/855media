@@ -1,0 +1,7 @@
+<!-- Synthetic regression fixture. Name is not UID evidence. -->
+<hierarchy><node package="com.facebook.katana" bounds="[0,0][720,1280]">
+  <node text="W500 PH" bounds="[50,400][650,480]" />
+  <node text="Edit profile" clickable="true" enabled="true" bounds="[360,600][680,680]" />
+  <node text="Professional dashboard" clickable="true" enabled="true" bounds="[40,600][340,680]" />
+  <node text="95 followers" bounds="[50,500][400,550]" />
+</node></hierarchy>

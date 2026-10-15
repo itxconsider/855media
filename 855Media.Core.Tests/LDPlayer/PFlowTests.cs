@@ -557,7 +557,8 @@ public sealed partial class PFlowTests : IDisposable
             dryRun: true
         );
         Assert.Equal(PFlowState.CancelledBeforeSubmission, a.State);
-        Assert.Contains("Native switcher", a.IdentityEvidence);
+        Assert.Contains("Live UID verification", a.IdentityEvidence);
+        Assert.Contains("own-profile", a.IdentityEvidence);
         Assert.Equal(0, ((FakeLd)(object)ld).ShareTaps);
     }
 
@@ -612,6 +613,7 @@ public sealed partial class PFlowTests : IDisposable
         public CancellationTokenSource? CancelOnShare;
         public string PublicationError = "";
         private bool _composerOpened;
+        private bool _chooserAccepted;
 
         public static ILDPlayerService Create(PFlowJob job)
         {
@@ -646,6 +648,10 @@ public sealed partial class PFlowTests : IDisposable
                     Transfers++;
                     return Task.FromResult(TransferOk);
                 case "DumpUiHierarchyAsync":
+                    if (_composerOpened && !_chooserAccepted)
+                        return Task.FromResult<string?>(
+                            PFlowShareDestinationTests.SelectedReelsXml
+                        );
                     return Task.FromResult<string?>(
                         !_composerOpened
                             ? "<hierarchy><node text='Target'/><node text='Professional dashboard'/></hierarchy>"
@@ -664,8 +670,14 @@ public sealed partial class PFlowTests : IDisposable
                 case "ShareVideoToFacebookAsync":
                 case "ShareImageToFacebookAsync":
                     _composerOpened = true;
+                    _chooserAccepted = false;
                     return Task.FromResult(true);
                 case "TapAsync":
+                    if (!_chooserAccepted && _composerOpened)
+                    {
+                        _chooserAccepted = true;
+                        return Task.FromResult(true);
+                    }
                     ShareTaps++;
                     CancelOnShare?.Cancel();
                     return Task.FromResult(true);

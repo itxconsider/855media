@@ -1,0 +1,7 @@
+<!-- Synthetic regression fixture based on the supplied Reel Settings screenshot. -->
+<hierarchy><node package="com.facebook.katana" bounds="[0,0][720,1280]">
+  <node text="Reel Settings" bounds="[180,30][540,90]" />
+  <node text="Describe your reel" class="android.widget.EditText" clickable="true" enabled="true" bounds="[210,160][680,400]" />
+  <node text="Location" bounds="[30,460][680,540]" />
+  <node text="Share now" clickable="true" enabled="true" bounds="[160,1160][680,1240]" />
+</node></hierarchy>

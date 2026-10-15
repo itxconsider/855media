@@ -29,6 +29,17 @@ public partial class AutoPostViewModel
             .Where(w => w.IsSelected)
             .Select(w => w.Index)
             .ToArray();
+        if (
+            !config.ScreenTimeOnly
+            && !config.ScreenTime.HasActions
+            && !Tasks.Any(t =>
+                PFlowTaskRouting.IsQueuedPost(t)
+                && selectedDeviceIndices.Contains(ResolveDeviceIndex(t.DeviceName))
+            )
+        )
+            throw new InvalidOperationException(
+                "No queued posts for the selected LDs. Prepare the post queue before starting PFlow again."
+            );
         await PersistAccountSelectionDraftsAsync(selectedDeviceIndices);
         await LoadAccountMappingsAsync();
         _pFlowRunAccounts = System.Text.Json.JsonSerializer.Deserialize<PFlowPersonalAccount[]>(
@@ -121,11 +132,12 @@ public partial class AutoPostViewModel
                     continue;
                 var targetModel =
                     page.Model ?? throw new InvalidOperationException("Target model is missing.");
-                foreach (var type in new[] { "Reel", "Picture" })
+                foreach (var type in new[] { "Reel", "Picture", "Story" })
                 {
                     if (
                         !(
-                            type == "Reel" ? config.PostReel
+                            type == "Story" ? config.PostStory
+                            : type == "Reel" ? config.PostReel
                             : type == "Picture" ? config.PostPicture
                             : config.PostVideo
                         )
@@ -147,29 +159,17 @@ public partial class AutoPostViewModel
                             )
                         )
                         .ToList();
-                    if (queued.Count == 0 && !page.IsSelected)
+                    if (queued.Count == 0)
                         continue;
                     PFlowAccountStore.RequireCurrentBinding(
                         account.Binding,
                         Instances.Select(i => i.Model).ToArray(),
                         LdFolder
                     );
-                    var sources = targetModel.GetUploadMediaPaths(type);
-                    var mediaSnapshot = targetModel.ReadUploadMediaSnapshot(type);
-                    if (queued.Count == 0 && mediaSnapshot.Error.Length > 0)
-                        throw new IOException(mediaSnapshot.Error);
-                    var candidates =
-                        queued.Count > 0
-                            ? queued
-                                .Select(t => t.FilePath)
-                                .Where(f => IsPFlowMedia(f, type))
-                                .ToList()
-                            : mediaSnapshot.Files.ToList();
-                    if (
-                        queued.Count == 0
-                        && sources.Any(s => !File.Exists(s) && !Directory.Exists(s))
-                    )
-                        throw new IOException("A configured media path is missing.");
+                    var candidates = queued
+                        .Select(t => t.FilePath)
+                        .Where(f => IsPFlowMedia(f, type))
+                        .ToList();
                     if (candidates.Count == 0)
                         continue;
                     if (page.AppClone != "FB-01")
@@ -235,8 +235,9 @@ public partial class AutoPostViewModel
                             IsProfile = page.IsProfile,
                             SourcePath = file,
                             PostType = type,
-                            Caption = task?.Title is { Length: > 0 }
-                                ? task.Title
+                            Caption =
+                                type == "Story" ? ""
+                                : task?.Title is { Length: > 0 } ? task.Title
                                 : ResolveCaptionForMedia(
                                     file,
                                     type == "Reel" ? targetModel.GetReelCaptionForFile(file)
@@ -246,11 +247,13 @@ public partial class AutoPostViewModel
                                     page.UseCaptionFromFilename
                                 ),
                             BackupRequested =
-                                type == "Reel" ? config.BackupReelFile
+                                type == "Story" ? config.BackupStoryFile
+                                : type == "Reel" ? config.BackupReelFile
                                 : type == "Picture" ? config.BackupPictureFile
                                 : config.BackupVideoFile,
                             DeleteRequested =
-                                type == "Reel" ? config.DeleteReelFile
+                                type == "Story" ? config.DeleteStoryFile
+                                : type == "Reel" ? config.DeleteReelFile
                                 : type == "Picture" ? config.DeletePictureFile
                                 : config.DeleteVideoFile,
                         };
@@ -279,8 +282,6 @@ public partial class AutoPostViewModel
                         _pFlowJobs.Add(job);
                         if (task != null)
                             _pFlowTasks[job.JobId] = task;
-                        if (queued.Count == 0)
-                            break; // Legacy folder mode posts one eligible file per enabled type.
                     }
                     if (page.Model != null)
                     {
@@ -303,7 +304,8 @@ public partial class AutoPostViewModel
 
     private static bool IsPFlowMedia(string path, string type) =>
         (
-            type == "Picture" ? new[] { ".jpg", ".jpeg", ".png", ".webp" }
+            type == "Story" ? FacebookPageTarget.StoryExtensions
+            : type == "Picture" ? new[] { ".jpg", ".jpeg", ".png", ".webp" }
             : type == "Reel" ? FacebookPageTarget.ReelExtensions
             : new[] { ".mp4", ".mkv", ".mov" }
         ).Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);
@@ -352,7 +354,7 @@ public partial class AutoPostViewModel
             async Task<bool> RunJob() =>
                 await runner.RunAsync(
                     job,
-                    c => VerifyPFlowIdentityAsync(worker, page, c),
+                    c => VerifyPFlowIdentityAsync(worker, page, c, job),
                     async step =>
                     {
                         await Dispatcher.UIThread.InvokeAsync(() =>
@@ -391,6 +393,7 @@ public partial class AutoPostViewModel
                     throw new InvalidOperationException(PFlowLoginScreen.Message(authentication));
                 }
             }
+            await RefreshMediaCountsForPagesAsync(new[] { page });
             if (_pFlowAccountAttention.ContainsKey(worker.Index))
                 throw new InvalidOperationException(
                     "Account authentication needs attention; remaining tasks on this LD were stopped."
@@ -436,9 +439,24 @@ public partial class AutoPostViewModel
     private async Task<bool> VerifyPFlowIdentityAsync(
         LDInstanceItemViewModel worker,
         FacebookPageTargetViewModel page,
-        CancellationToken ct
+        CancellationToken ct,
+        PFlowJob? expectedJob = null
     )
     {
+        var plannedTarget = page.Model.CreateSnapshot();
+        if (
+            expectedJob != null
+            && (
+                plannedTarget.PageId != expectedJob.TargetId
+                || plannedTarget.UserUid != expectedJob.OwnerUid
+                || plannedTarget.PersonaUid != expectedJob.PersonaUid
+                || plannedTarget.IsPrimaryProfile != expectedJob.IsProfile
+                || plannedTarget.PageName != expectedJob.TargetName
+            )
+        )
+            throw new InvalidOperationException(
+                "Target mapping changed after queue preparation. Rebuild the queue before starting work."
+            );
         var account =
             _pFlowRunAccounts.SingleOrDefault(a =>
                 a.Binding.DeviceIndex == worker.Index
@@ -448,10 +466,8 @@ public partial class AutoPostViewModel
             ?? throw new InvalidOperationException(
                 "Target has no account in the immutable run plan."
             );
-        await new PFlowSessionPreparation(
-            _ldPlayerService,
-            LdFolder
-        ).RestorePostForegroundFromLauncherAsync(account.Binding, ct);
+        await CreateRunSessionPreparation()
+            .RestorePostForegroundFromLauncherAsync(account.Binding, ct);
         var sessionScreen = PFlowLoginScreen.Classify(
             await _ldPlayerService.DumpUiHierarchyAsync(worker.Index, LdFolder, ct)
         );
@@ -469,67 +485,25 @@ public partial class AutoPostViewModel
             || verifiedBinding != account.Binding
         )
             await EnsureRunAccountAsync(worker, account, ct);
-        var personalSelected = false;
-        if (!_pFlowOwners.TryGetValue(worker.Index, out var owner) || owner != page.UserUid)
+        // Both ScreenTime's startup callback and every PFlow job enter here.
+        // This fresh check deliberately runs even for a cached active binding.
+        try
         {
-            worker.Status = "P-Flow: verifying root owner and managed target IDs";
-            var root = await _ldPlayerService.ExtractFacebookAccountsFromRootShellAsync(
-                worker.Index,
-                "com.facebook.katana",
-                LdFolder,
-                ct
+            return await VerifyLiveTargetUidAsync(
+                worker,
+                page,
+                plannedTarget,
+                account,
+                ct,
+                requireOwnProfile: expectedJob != null
             );
-            if (!root.Any(a => a.Type == "Profile" && a.Uid == page.UserUid))
-                return false;
-            if (
-                !page.IsProfile
-                && !root.Any(a =>
-                    a.Type == "Page" && a.PageId == page.PageId && a.UserUid == page.UserUid
-                )
-            )
-                return false;
-            var profile = Pages.SingleOrDefault(p =>
-                ResolveDeviceIndex(p.DeviceName) == worker.Index
-                && p.IsProfile
-                && p.UserUid == page.UserUid
-            );
-            if (profile == null)
-                return false;
-            worker.Status = $"P-Flow: selecting owner profile [{profile.PageName}]";
-            if (
-                !await _ldPlayerService.EnsureSwitchedToPersonalProfileAsync(
-                    worker.Index,
-                    profile.PageName,
-                    LdFolder,
-                    ct
-                )
-            )
-                return false;
-            _pFlowOwners[worker.Index] = page.UserUid;
-            personalSelected = page.IsProfile;
         }
-        // The shared switcher owns recovery. A personal target already selected above
-        // needs a fresh identity check, not another trip through the dropdown.
-        worker.Status = $"P-Flow: confirming [{page.PageName}]";
-        if (!personalSelected && !await EnsureTargetPersonaActiveAsync(worker, page, ct))
+        catch
         {
             _pFlowOwners.TryRemove(worker.Index, out _);
-            return false;
+            _pFlowActiveBindings.TryRemove(worker.Index, out _);
+            throw;
         }
-        var xml = await _ldPlayerService.DumpUiHierarchyAsync(worker.Index, LdFolder, ct) ?? "";
-        bool own = page.IsProfile
-            ? xml.Contains("Edit profile", StringComparison.OrdinalIgnoreCase)
-            : xml.Contains("Professional dashboard", StringComparison.OrdinalIgnoreCase)
-                || xml.Contains("Manage Page", StringComparison.OrdinalIgnoreCase);
-        var confirmed =
-            own
-            && !PFlowLoginScreen.RequiresAuthentication(PFlowLoginScreen.Classify(xml))
-            && !PFlowPersonaSwitcherService.IsNativeSwitcherSheetOpen(xml)
-            && !xml.Contains("Admin quick access", StringComparison.OrdinalIgnoreCase)
-            && PFlowAutoPostService.ComposerMatchesTarget(xml, page.PageName);
-        if (!confirmed)
-            _pFlowOwners.TryRemove(worker.Index, out _);
-        return confirmed;
     }
 
     private async Task FinishPFlowFilesAsync()

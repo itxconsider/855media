@@ -25,9 +25,43 @@ public class PFlowProfileDatesTests
             Path.Combine(AppContext.BaseDirectory, "Fixtures", "PFlowScreenTime", name + ".xml")
         );
 
+    private static XElement ProfileTab(string name, int ordinal, int y) =>
+        new(
+            "node",
+            new XAttribute("package", "com.facebook.katana"),
+            new XAttribute("content-desc", $"{name}, tab {ordinal} of 4"),
+            new XAttribute("clickable", "true"),
+            new XAttribute("bounds", $"[10,{y}][600,{y + 40}]"),
+            Node(name, y + 1)
+        );
+
+    [Fact]
+    public void ProfileNavigationTabsDoNotEndBirthdayScrolling()
+    {
+        var screen = Screen(ProfileTab("Posts", 1, 40), ProfileTab("Friends", 2, 40));
+        Assert.False(PFlowProfileDates.ReachedProfileFeed(screen));
+    }
+
+    [Fact]
+    public void StickyProfileTabsDoNotHideBornRowAboveTheRealFriendsSection()
+    {
+        var screen = Screen(
+            ProfileTab("Posts", 1, 40),
+            ProfileTab("Friends", 2, 40),
+            Node("Born on April 10, 1992", 200),
+            Node("Friends", 400)
+        );
+        Assert.Equal(
+            "April 10, 1992",
+            PFlowProfileDates.Birthdate(screen, confirmedProfileContext: true)
+        );
+        Assert.True(PFlowProfileDates.ReachedProfileFeed(screen));
+    }
+
     [Theory]
     [InlineData("At a glance", "Born July 8, 1996", "July 8, 1996")]
     [InlineData("At a glance", "Born April 10, 1992", "April 10, 1992")]
+    [InlineData("At a glance", "Born on April 10, 1992", "April 10, 1992")]
     [InlineData("At a glance", "Born July 7, 1999", "July 7, 1999")]
     [InlineData("Personal details", "March 3, 1995", "March 3, 1995")]
     [InlineData("Personal details", "December 5, 1984", "December 5, 1984")]
@@ -71,6 +105,32 @@ public class PFlowProfileDatesTests
                     Node("April 4, 1996", 250),
                     Node("Friends", 400)
                 )
+            )
+        );
+    }
+
+    [Fact]
+    public void ScrolledBirthdayIsReadBeforeStoppingAtFriendsOrComposer()
+    {
+        foreach (
+            var boundary in new[]
+            {
+                new[] { Node("Friends", 400) },
+                new[] { Node("Reel", 400), Node("Live", 400) },
+            }
+        )
+        {
+            var screen = Screen(
+                new[] { Node("Born on April 10, 1992", 200) }.Concat(boundary).ToArray()
+            );
+            Assert.Equal("April 10, 1992", PFlowProfileDates.Birthdate(screen, true));
+            Assert.True(PFlowProfileDates.ReachedProfileFeed(screen));
+        }
+        Assert.False(PFlowProfileDates.ReachedProfileFeed(Screen(Node("Reels", 100))));
+        Assert.Empty(
+            PFlowProfileDates.Birthdate(
+                Screen(Node("Friends", 100), Node("Born on April 10, 1992", 200)),
+                true
             )
         );
     }

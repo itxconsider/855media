@@ -19,7 +19,7 @@ internal static class PFlowProfileDetailsReader
         Func<TimeSpan, CancellationToken, Task>? delay = null
     )
     {
-        delay ??= Task.Delay;
+        delay ??= PFlowFetchPacing.DelayAsync;
         if (!PFlowProfileDates.MatchesName(details, name))
             return string.Empty;
         BloksElement? FindEntry(BloksScreenInfo current) =>
@@ -127,14 +127,13 @@ internal static class PFlowProfileDetailsReader
         Func<TimeSpan, CancellationToken, Task>? delay = null
     )
     {
-        delay ??= Task.Delay;
+        delay ??= PFlowFetchPacing.DelayAsync;
         var result = new FacebookAccountDetails();
         var xml = await ld.DumpUiHierarchyAsync(index, path, ct);
         var screen = AtxAgentClient.ParseBloksHierarchy(xml);
         var own = profile
             ? xml?.Contains("Edit profile", StringComparison.OrdinalIgnoreCase) == true
-            : xml?.Contains("Professional dashboard", StringComparison.OrdinalIgnoreCase) == true
-                || xml?.Contains("Manage Page", StringComparison.OrdinalIgnoreCase) == true;
+            : PFlowOwnProfileNavigation.IsOwnPageProfile(screen, name);
         if (
             !own
             || AtxAgentClient.IsMenuPageInBloks(screen)
@@ -206,10 +205,7 @@ internal static class PFlowProfileDetailsReader
             if (PFlowLoginScreen.RequiresAuthentication(PFlowLoginScreen.Classify(xml)))
                 break;
             result.Birthdate = PFlowProfileDates.Birthdate(screen, confirmedProfileContext: true);
-            if (
-                result.Birthdate.Length > 0
-                || screen.AllElements.Any(e => e.Matches("All posts", false))
-            )
+            if (result.Birthdate.Length > 0 || PFlowProfileDates.ReachedProfileFeed(screen))
                 break;
             // Vertical navigation only: never tap Add/Add friend or a suggestion's X.
             if (!await ScrollAsync(ld, index, screen, path, ct))

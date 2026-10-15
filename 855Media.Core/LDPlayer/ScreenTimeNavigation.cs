@@ -7,6 +7,65 @@ namespace _855Media.Core.LDPlayer;
 
 internal static partial class ScreenTimeNavigation
 {
+    internal static bool IsFinishedFeedVideo(string? xml)
+    {
+        var labels = ScreenTimeHierarchy
+            .Nodes(xml)
+            .Where(n =>
+                n.Attribute("package")?.Value == "com.facebook.katana"
+                && n.Attribute("visible-to-user")?.Value != "false"
+            )
+            .SelectMany(Labels)
+            .ToArray();
+        return labels.Contains("Go to Reels", StringComparer.OrdinalIgnoreCase)
+            && labels.Contains("Watch again", StringComparer.OrdinalIgnoreCase);
+    }
+
+    internal static bool IsReelsInterruption(string? xml)
+    {
+        var labels = ScreenTimeHierarchy
+            .Nodes(xml)
+            .Where(n =>
+                n.Attribute("package")?.Value == "com.facebook.katana"
+                && n.Attribute("visible-to-user")?.Value != "false"
+            )
+            .SelectMany(Labels)
+            .ToArray();
+        return (
+                labels.Contains("Go to Reels", StringComparer.OrdinalIgnoreCase)
+                && labels.Contains("Watch again", StringComparer.OrdinalIgnoreCase)
+            )
+            || (
+                labels.Contains("Reels", StringComparer.OrdinalIgnoreCase)
+                && labels.Contains("Confirm", StringComparer.OrdinalIgnoreCase)
+                && labels.Contains("Delete", StringComparer.OrdinalIgnoreCase)
+            );
+    }
+
+    internal static bool ReelsHasTopNavigation(string xml, int height) =>
+        height > 0
+        && ScreenTimeService.IsScreen(xml, "Reels")
+        && ScreenTimeHierarchy
+            .Nodes(xml)
+            .Any(n =>
+                n.Attribute("package")?.Value == "com.facebook.katana"
+                && n.Attribute("selected")?.Value == "true"
+                && n.Attribute("clickable")?.Value == "true"
+                && n.Attribute("enabled")?.Value != "false"
+                && n.Attribute("visible-to-user")?.Value != "false"
+                && Labels(n)
+                    .Any(v =>
+                        Regex.IsMatch(
+                            v,
+                            @"^Reels,\s*tab\s+\d+\s+of\s+\d+$",
+                            RegexOptions.IgnoreCase
+                        )
+                    )
+                && Bounds(n) is { } b
+                && b.Bottom <= height / 4
+                && b.Bottom - b.Top >= height / 40
+            );
+
     internal static (int X, int Y) ReelsSwipeStart(string xml, int width, int height)
     {
         var x = width / 2;
@@ -39,11 +98,47 @@ internal static partial class ScreenTimeNavigation
             .Where(v => v.Length > 0)
             .ToArray();
 
+    // Full-screen viewer on LD-9 has no Reels heading or selected navigation tab.
+    internal static bool IsFullscreenReels(string? xml) =>
+        FacebookHierarchyCache.Memo(xml, "fullscreen-reels", () => IsFullscreenReelsCore(xml));
+
+    private static bool IsFullscreenReelsCore(string? xml)
+    {
+        var nodes = ScreenTimeHierarchy
+            .Nodes(xml)
+            .Where(n =>
+                n.Attribute("package")?.Value == "com.facebook.katana"
+                && n.Attribute("visible-to-user")?.Value != "false"
+            )
+            .ToArray();
+        var details = nodes
+            .Where(n => n.Attribute("content-desc")?.Value == "Reel details")
+            .ToArray();
+        if (
+            details.Length != 1
+            || Bounds(details[0]) is not { } area
+            || area.Bottom - area.Top <= area.Right - area.Left
+        )
+            return false;
+        var labels = nodes.SelectMany(Labels).ToArray();
+        return labels.Any(v => Regex.IsMatch(v, @"^View .+['’]s reels$", RegexOptions.IgnoreCase))
+            && labels.Contains("Tap to show video controls")
+            && labels.Any(v => v == "Comment" || Regex.IsMatch(v, @"^\d[\d.,KMBkmb ]* comments?$"))
+            && labels.Any(v =>
+                v == "Share" || Regex.IsMatch(v, @"^Share, \d[\d.,KMBkmb ]* shares?$")
+            )
+            && labels.Contains("Navigate to your Reels profile");
+    }
+
     internal static string? ReelContentKey(string? xml)
     {
+        var fullscreen = IsFullscreenReels(xml);
         var details = ScreenTimeHierarchy
             .Nodes(xml)
-            .Where(n => n.Attribute("content-desc")?.Value == "Reels tab details")
+            .Where(n =>
+                n.Attribute("content-desc")?.Value == "Reels tab details"
+                || (n.Attribute("content-desc")?.Value == "Reel details" && fullscreen)
+            )
             .ToArray();
         if (details.Length == 0)
         {
@@ -108,10 +203,13 @@ internal static partial class ScreenTimeNavigation
 
     internal static bool IsBrowseOnlyCard(string? xml, string name)
     {
+        if (name == "Feed" && HasInlineFeedStory(xml))
+            return true;
         if (HasInlineCardDismissal(xml, name))
             return true;
         if (name == "Feed")
-            return HasFeedPreviewCarousel(xml)
+            return IsFinishedFeedVideo(xml)
+                || HasFeedPreviewCarousel(xml)
                 || ScreenTimeHierarchy.Nodes(xml).SelectMany(Labels).Any(IsFeedBrowseOnlyLabel);
         if (name != "Reels")
             return false;
@@ -275,7 +373,7 @@ internal static partial class ScreenTimeNavigation
             return false;
         var feed = node.Ancestors("node").Any(IsFeedList);
         var reels = node.Ancestors("node")
-            .Any(n => n.Attribute("content-desc")?.Value == "Reels tab details");
+            .Any(n => n.Attribute("content-desc")?.Value is "Reels tab details" or "Reel details");
         if (!(name == "Feed" ? feed : reels))
             return false;
         if (
@@ -321,6 +419,9 @@ internal static partial class ScreenTimeNavigation
                             name == "Feed"
                             && (
                                 IsFeedBrowseOnlyLabel(label)
+                                || IsFinishedFeedVideo(parent.ToString())
+                                || node.Ancestors("node")
+                                    .Any(a => IsFeedList(a) && IsFinishedFeedVideo(a.ToString()))
                                 || IsPostOptionsLabel(label)
                                 || Regex.IsMatch(
                                     label,
@@ -359,9 +460,9 @@ internal static partial class ScreenTimeNavigation
 
     // Only continuity after a separately confirmed Feed may use this container identity.
     // An arbitrary Facebook list cannot establish Feed or authorize a public action.
-    internal static string? FeedViewportSignature(string? xml)
+    internal static string? FeedViewportSignature(string? xml, bool scrollOnly = false)
     {
-        if (IsBlockingScreen(xml, "Feed") || HasConflictingTab(xml, "Feed"))
+        if (IsBlockingScreen(xml, "Feed", scrollOnly) || HasConflictingTab(xml, "Feed"))
             return null;
         var lists = ScreenTimeHierarchy.Nodes(xml).Where(IsFeedList).Take(2).ToArray();
         if (lists.Length != 1)
@@ -372,7 +473,6 @@ internal static partial class ScreenTimeNavigation
                 .Any(n =>
                     n.Attribute("package")?.Value == "com.facebook.katana"
                     && n.Attribute("visible-to-user")?.Value != "false"
-                    && !string.IsNullOrWhiteSpace(ScreenTimeHierarchy.Label(n))
                     && Regex.IsMatch(
                         n.Attribute("bounds")?.Value ?? "",
                         @"^\[\d+,\d+\]\[\d+,\d+\]$"
@@ -407,15 +507,92 @@ internal static partial class ScreenTimeNavigation
                 && a.Attribute("package")?.Value == "com.facebook.katana"
             );
 
-    internal static bool IsBlockingScreen(string? xml, string name)
+    private static bool IsCompactFeedDismissal(XElement node) =>
+        node.Attribute("package")?.Value == "com.facebook.katana"
+        && node.Ancestors("node")
+            .Take(4)
+            .Any(parent =>
+                Bounds(parent) is { } card
+                && card.Bottom - card.Top <= 480
+                && node.Ancestors("node")
+                    .Where(IsFeedList)
+                    .Any(list =>
+                        Bounds(list) is { } area
+                        && card.Left >= area.Left
+                        && card.Right <= area.Right
+                        && card.Top >= area.Top
+                        && card.Bottom <= area.Bottom
+                    )
+            );
+
+    private static bool IsInlineStoryReply(XElement node)
+    {
+        if (
+            node.Attribute("package")?.Value != "com.facebook.katana"
+            || node.Attribute("class")?.Value != "android.widget.EditText"
+            || node.Attribute("focused")?.Value == "true"
+            || node.Attribute("password")?.Value == "true"
+            || !string.IsNullOrWhiteSpace(node.Attribute("text")?.Value)
+            || !(node.Attribute("content-desc")?.Value ?? "").StartsWith(
+                "Send message. Use this to reply to ",
+                StringComparison.Ordinal
+            )
+            || !node.Ancestors("node").Any(IsFeedList)
+        )
+            return false;
+        return node.Ancestors("node")
+            .TakeWhile(n => !IsFeedList(n))
+            .Any(card =>
+            {
+                var labels = card.Descendants("node").SelectMany(Labels).ToArray();
+                return labels.Any(v => Regex.IsMatch(v, @"^Story \d+ of \d+$"))
+                    && labels.Contains("Like Reaction")
+                    && labels.Contains("Love Reaction");
+            });
+    }
+
+    internal static bool HasInlineFeedStory(string? xml) =>
+        ScreenTimeHierarchy.Nodes(xml).Any(IsInlineStoryReply);
+
+    internal static (int X, int Y) FeedSwipeStart(string? xml, int width, int height)
+    {
+        var replies = ScreenTimeHierarchy
+            .Nodes(xml)
+            .Where(IsInlineStoryReply)
+            .Select(Bounds)
+            .Where(b => b.HasValue)
+            .Select(b => b!.Value)
+            .ToArray();
+        var y = height * 3 / 4;
+        if (replies.Length > 0)
+            y = Math.Min(y, replies.Min(b => b.Top) - height / 12);
+        if (y <= height / 6)
+            throw new InvalidOperationException("No clear Feed story scroll area is visible.");
+        return (width / 2, y);
+    }
+
+    internal static bool IsBlockingScreen(string? xml, string name, bool scrollOnly = false) =>
+        FacebookHierarchyCache.Memo(
+            xml,
+            ("blocking", name, scrollOnly),
+            () => IsBlockingScreenCore(xml, name, scrollOnly)
+        );
+
+    private static bool IsBlockingScreenCore(string? xml, string name, bool scrollOnly)
     {
         var nodes = ScreenTimeHierarchy.Nodes(xml);
         return IsReelsChaptersSheet(xml)
+            || AtxAgentClient.IsMenuPageInBloks(AtxAgentClient.ParseBloksHierarchy(xml ?? ""))
+            || (name == "Reels" && IsReelsInterruption(xml))
             || (name == "Marketplace" && IsMarketplaceNonBrowsingScreen(xml))
             || PFlowLoginScreen.RequiresAuthentication(PFlowLoginScreen.Classify(xml))
             || PFlowPersonaSwitcherService.IsNativeSwitcherSheetOpen(xml)
             || nodes.Any(n =>
-                n.Attribute("class")?.Value?.Contains("EditText", StringComparison.Ordinal) == true
+                (
+                    n.Attribute("class")?.Value?.Contains("EditText", StringComparison.Ordinal)
+                        == true
+                    && !(name == "Feed" && IsInlineStoryReply(n))
+                )
                 || n.Attribute("password")?.Value == "true"
                 || new[] { n.Attribute("text")?.Value, n.Attribute("content-desc")?.Value }.Any(v =>
                     v != null
@@ -433,7 +610,11 @@ internal static partial class ScreenTimeNavigation
                             "Manage Page",
                             "Get support",
                         }.Any(x => v.Trim().Equals(x, StringComparison.OrdinalIgnoreCase))
-                    || (v?.Trim() is "Close" or "Dismiss" && !IsInlineCardDismissal(n, name))
+                    || (
+                        v?.Trim() is "Close" or "Dismiss"
+                        && !IsInlineCardDismissal(n, name)
+                        && !(scrollOnly && name == "Feed" && IsCompactFeedDismissal(n))
+                    )
                     || (name == "Feed" && v?.Trim() is "Back" or "Go back")
                 )
             );
@@ -469,12 +650,17 @@ internal static partial class ScreenTimeNavigation
     // Require its tabbed Facebook list and an observed post header, action row or ad card.
     // This is browsing-screen evidence only; it never identifies an actor or permits an action.
     internal static bool IsScrolledFeed(string? xml) =>
+        FacebookHierarchyCache.Memo(xml, "scrolled-feed", () => IsScrolledFeedCore(xml));
+
+    private static bool IsScrolledFeedCore(string? xml) =>
         ScreenTimeHierarchy
             .Nodes(xml)
             .Any(list =>
                 IsFeedList(list)
                 && (
                     HasPostActionRow(list)
+                    || list.Descendants("node").Any(IsInlineStoryReply)
+                    || IsFinishedFeedVideo(list.ToString())
                     || HasSponsoredReelCard(list)
                     || list.Descendants("node")
                         .Any(header =>

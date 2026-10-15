@@ -22,6 +22,7 @@ public enum PageMaturityLevel
 
 public partial class FacebookPageTarget
 {
+    public string ProfilePictureUrl { get; set; } = string.Empty;
     public PFlowAccountBinding? AccountBinding { get; set; }
     public bool IsSelected { get; set; } = true;
 
@@ -73,6 +74,7 @@ public partial class FacebookPageTarget
     public string TitleImage { get; set; } = string.Empty;
     public string TitleImageMode { get; set; } = "Replace All";
     public string ImagePath { get; set; } = string.Empty;
+    public string StoryPath { get; set; } = string.Empty;
 
     public string TitleVideoLong { get; set; } = string.Empty;
     public string TitleVideoLongMode { get; set; } = "Replace All";
@@ -451,6 +453,7 @@ public class AutoPostTaskItem : INotifyPropertyChanged
 
 public class FacebookPageInfo
 {
+    public string ProfilePictureUrl { get; set; } = string.Empty;
     public bool? LivePageAccessVerified { get; set; }
     public string PageId { get; set; } = string.Empty;
     public string PersonaUid { get; set; } = string.Empty;
@@ -491,6 +494,7 @@ public class FacebookDeviceAccountInfo
 
 public class FacebookAccountDetails
 {
+    public string ProfilePictureUrl { get; set; } = string.Empty;
     public string DeviceName { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string Uid { get; set; } = string.Empty;
@@ -606,6 +610,7 @@ public class FacebookAccountInfo
             PageName = Name,
             Type = Type,
             Email = Email,
+            ProfilePictureUrl = PicUrl,
             ManagedBy = string.Equals(Type, "Page", StringComparison.OrdinalIgnoreCase)
                 ? UserUid
                 : string.Empty,
@@ -622,6 +627,7 @@ public class FacebookAccountInfo
             PageName = Name,
             Type = Type,
             Email = Email,
+            ProfilePictureUrl = PicUrl,
             IsActiveProfile = IsActive,
         };
     }

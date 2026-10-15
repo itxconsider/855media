@@ -258,10 +258,44 @@ public partial class FacebookPageTargetViewModel : ObservableObject
     public int UploadReelsCount => Model?.UploadReelsCount ?? 0;
     public int UploadVideosCount => Model?.UploadVideosCount ?? 0;
     public int UploadPictureCount => Model?.UploadPictureCount ?? 0;
+    private PFlowAvailableMedia? _reelAvailability;
+    private PFlowAvailableMedia? _photoAvailability;
+    private PFlowAvailableMedia? _storyAvailability;
+    public string StoryFilesDisplay => _storyAvailability?.Display ?? "… / …";
+    public string StoryFilesTooltip =>
+        _storyAvailability?.Summary ?? "Calculating Story availability from posting history.";
     public string ReelFilesDisplay =>
-        string.IsNullOrEmpty(Model.ReelFilesError) ? UploadReelsCount.ToString() : "Unavailable";
+        string.IsNullOrEmpty(Model.ReelFilesError)
+            ? _reelAvailability?.Display ?? $"… / {UploadReelsCount:N0}"
+            : "Unavailable";
     public string PhotoFilesDisplay =>
-        string.IsNullOrEmpty(Model.PhotoFilesError) ? UploadPictureCount.ToString() : "Unavailable";
+        string.IsNullOrEmpty(Model.PhotoFilesError)
+            ? _photoAvailability?.Display ?? $"… / {UploadPictureCount:N0}"
+            : "Unavailable";
+    public string ReelFilesTooltip =>
+        _reelAvailability?.Summary
+        ?? "Calculating available files from this target's posting history.";
+    public string PhotoFilesTooltip =>
+        _photoAvailability?.Summary
+        ?? "Calculating available files from this target's posting history.";
+
+    public PFlowAvailableMedia? AvailableMedia(string type) =>
+        type == "Story" ? _storyAvailability
+        : type is "Reel" or "Video" ? _reelAvailability
+        : _photoAvailability;
+
+    public void ApplyAvailability(
+        PFlowAvailableMedia reels,
+        PFlowAvailableMedia photos,
+        PFlowAvailableMedia stories
+    )
+    {
+        _reelAvailability = reels;
+        _photoAvailability = photos;
+        _storyAvailability = stories;
+        RefreshMediaCountLabels();
+    }
+
     public string GroupFilesDisplay =>
         string.IsNullOrEmpty(Model.GroupFilesError) ? FileInGroup : "Unavailable";
 
@@ -280,6 +314,8 @@ public partial class FacebookPageTargetViewModel : ObservableObject
 
     public string ReelPathStatus =>
         PageMediaPathEdit.Describe(VideoReelPath, FacebookPageTarget.ReelExtensions);
+    public string StoryPathStatus =>
+        PageMediaPathEdit.Describe(StoryPath, FacebookPageTarget.StoryExtensions);
     public string ImagePathStatus =>
         PageMediaPathEdit.Describe(ImagePath, [".jpg", ".jpeg", ".png", ".webp"]);
     public string VideoPathStatus =>
@@ -325,6 +361,15 @@ public partial class FacebookPageTargetViewModel : ObservableObject
 
     [ObservableProperty]
     private string _imagePath = string.Empty;
+
+    [ObservableProperty]
+    private string _storyPath = string.Empty;
+
+    partial void OnStoryPathChanged(string value)
+    {
+        RefreshMediaCounts();
+        OnPropertyChanged(nameof(StoryPathStatus));
+    }
 
     partial void OnImagePathChanged(string value)
     {
@@ -434,6 +479,7 @@ public partial class FacebookPageTargetViewModel : ObservableObject
         TitleImage = model.TitleImage;
         TitleImageMode = model.TitleImageMode;
         ImagePath = model.ImagePath;
+        StoryPath = model.StoryPath;
 
         TitleVideoLong = model.TitleVideoLong;
         TitleVideoLongMode = model.TitleVideoLongMode;
@@ -455,11 +501,15 @@ public partial class FacebookPageTargetViewModel : ObservableObject
     {
         if (_initializing)
             return;
+        _reelAvailability = null;
+        _photoAvailability = null;
+        _storyAvailability = null;
         if (Model != null)
         {
             Model.VideoReelPath = VideoReelPath;
             Model.VideoLongPath = VideoLongPath;
             Model.ImagePath = ImagePath;
+            Model.StoryPath = StoryPath;
             Model.GroupReelPath = GroupReelPath;
             Model.GroupPicturePath = GroupPicturePath;
             Model.GroupVideoPath = GroupVideoPath;
@@ -514,6 +564,10 @@ public partial class FacebookPageTargetViewModel : ObservableObject
         OnPropertyChanged(nameof(ReelFilesDisplay));
         OnPropertyChanged(nameof(PhotoFilesDisplay));
         OnPropertyChanged(nameof(GroupFilesDisplay));
+        OnPropertyChanged(nameof(ReelFilesTooltip));
+        OnPropertyChanged(nameof(PhotoFilesTooltip));
+        OnPropertyChanged(nameof(StoryFilesDisplay));
+        OnPropertyChanged(nameof(StoryFilesTooltip));
     }
 
     public void RecordPostToday()
@@ -581,6 +635,7 @@ public partial class FacebookPageTargetViewModel : ObservableObject
         Model.TitleImage = TitleImage;
         Model.TitleImageMode = TitleImageMode;
         Model.ImagePath = ImagePath;
+        Model.StoryPath = StoryPath;
 
         Model.TitleVideoLong = TitleVideoLong;
         Model.TitleVideoLongMode = TitleVideoLongMode;

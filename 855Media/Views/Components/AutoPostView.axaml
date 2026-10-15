@@ -4,6 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:ld="clr-namespace:_855Media.Core.LDPlayer;assembly=855Media.Core"
     xmlns:components="clr-namespace:_855Media.ViewModels.Components"
+    xmlns:views="clr-namespace:_855Media.Views.Components"
     xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
     x:Name="RootView"
     x:DataType="components:AutoPostViewModel">
@@ -11,7 +12,7 @@
     <UserControl.Resources>
         <DataTemplate x:Key="TargetRowDetails" x:DataType="components:FacebookPageTargetViewModel">
             <Border Background="{DynamicResource AntigravityElevatedBrush}" Padding="18,12" BorderThickness="0,0,0,1" BorderBrush="{DynamicResource AntigravityBorderBrush}">
-                <Expander Header="Account and Page details" IsExpanded="True" HorizontalAlignment="Stretch" FontSize="13">
+                <Expander Header="Account and Page details" IsExpanded="True" Collapsed="OnAccountDetailsCollapsed" HorizontalAlignment="Stretch" FontSize="13">
                     <WrapPanel Margin="0,12,0,0">
                         <StackPanel Width="240" Margin="0,0,16,14" Spacing="4"><TextBlock Text="User UID" Foreground="{DynamicResource AntigravityMutedBrush}" FontSize="12" /><SelectableTextBlock Text="{Binding UserUid}" FontSize="13" TextWrapping="Wrap" /></StackPanel>
                         <StackPanel Width="240" Margin="0,0,16,14" Spacing="4"><TextBlock Text="Page ID" Foreground="{DynamicResource AntigravityMutedBrush}" FontSize="12" /><SelectableTextBlock Text="{Binding PageId}" FontSize="13" TextWrapping="Wrap" /></StackPanel>
@@ -29,6 +30,7 @@
                         <StackPanel Width="240" Margin="0,0,16,14" Spacing="4"><TextBlock Text="Access" Foreground="{DynamicResource AntigravityMutedBrush}" FontSize="12" /><SelectableTextBlock Text="{Binding AccessStatus}" FontSize="13" TextWrapping="Wrap" /></StackPanel>
                         <StackPanel Width="320" Margin="0,0,16,14" Spacing="4"><TextBlock Text="Reel source" Foreground="{DynamicResource AntigravityMutedBrush}" FontSize="12" /><SelectableTextBlock Text="{Binding VideoReelPath}" FontSize="13" TextWrapping="Wrap" /></StackPanel>
                         <StackPanel Width="320" Margin="0,0,16,14" Spacing="4"><TextBlock Text="Photo source" Foreground="{DynamicResource AntigravityMutedBrush}" FontSize="12" /><SelectableTextBlock Text="{Binding ImagePath}" FontSize="13" TextWrapping="Wrap" /></StackPanel>
+                        <StackPanel Width="320" Margin="0,0,16,14" Spacing="4"><TextBlock Text="Story source" Foreground="{DynamicResource AntigravityMutedBrush}" FontSize="12" /><SelectableTextBlock Text="{Binding StoryPath}" FontSize="13" TextWrapping="Wrap" /></StackPanel>
                         <StackPanel Width="320" Margin="0,0,16,14" Spacing="4"><TextBlock Text="Group Reel source" Foreground="{DynamicResource AntigravityMutedBrush}" FontSize="12" /><SelectableTextBlock Text="{Binding GroupReelPath}" FontSize="13" TextWrapping="Wrap" /></StackPanel>
                         <StackPanel Width="320" Margin="0,0,16,14" Spacing="4"><TextBlock Text="Group photo source" Foreground="{DynamicResource AntigravityMutedBrush}" FontSize="12" /><SelectableTextBlock Text="{Binding GroupPicturePath}" FontSize="13" TextWrapping="Wrap" /></StackPanel>
                         <StackPanel Width="320" Margin="0,0,16,14" Spacing="4"><TextBlock Text="Additional Reel source" Foreground="{DynamicResource AntigravityMutedBrush}" FontSize="12" /><SelectableTextBlock Text="{Binding VideoLongPath}" FontSize="13" TextWrapping="Wrap" /></StackPanel>
@@ -271,6 +273,7 @@
                                 <Button Content="Stop fetch" Command="{Binding CancelFetchCommand}" IsVisible="{Binding IsBusy}" Classes="action-btn btn-danger" Margin="0,0,8,4" />
                                 <Button Content="Assign media to checked targets" Command="{Binding OpenBulkPathsCommand}" Classes="action-btn" Margin="0,0,8,4" />
                                 <ToggleButton Content="LD list" IsChecked="{Binding IsLdPanelVisible, Mode=TwoWay}" Margin="0,0,8,4" Padding="12,6" ToolTip.Tip="Show or hide the device list" /><ToggleButton Content="Post queue" IsChecked="{Binding IsPostQueuePanelVisible, Mode=TwoWay}" Margin="0,0,8,4" Padding="12,6" ToolTip.Tip="Show or hide queue settings" /><Button Content="Refresh media counts" Command="{Binding RefreshVisibleMediaCountsCommand}" IsEnabled="{Binding !IsRefreshingMediaCounts}" Classes="action-btn" Margin="0,0,8,4" /><Button Content="Add target" Command="{Binding AddNewPageCommand}" Classes="action-btn" Margin="0,0,8,4" />
+                                <Button Content="Review / bulk delete posts" Command="{Binding ReviewPagePostsCommand}" IsEnabled="{Binding !IsBusy}" Classes="action-btn" Margin="0,0,8,4" />
                                 <Button Content="Remove checked" Command="{Binding DeleteSelectedPagesCommand}" Classes="action-btn" Margin="0,0,8,4" />
                             </WrapPanel>
                             <TextBlock Grid.Column="1" Text="{Binding PFlowTargetSummary}" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityMutedBrush}" />
@@ -280,7 +283,7 @@
                     <!-- Master-Detail: LD Instances on Left, Facebook Account & Pages on Right -->
                     <Grid Grid.Row="2" ColumnDefinitions="Auto, Auto, *, Auto, Auto">
                         <!-- LEFT PANEL: LD Instances Table -->
-                        <Border Grid.Column="0" Width="230" IsVisible="{Binding IsLdPanelVisible}" BorderThickness="1" BorderBrush="{DynamicResource AntigravityBorderBrush}" CornerRadius="8" Background="{DynamicResource AntigravityCardBrush}">
+                        <Border Grid.Column="0" Width="390" IsVisible="{Binding IsLdPanelVisible}" BorderThickness="1" BorderBrush="{DynamicResource AntigravityBorderBrush}" CornerRadius="8" Background="{DynamicResource AntigravityCardBrush}">
                             <Grid RowDefinitions="Auto, *">
                                 <Border Grid.Row="0" Background="{DynamicResource AntigravityElevatedBrush}" Padding="10,8" CornerRadius="8,8,0,0">
                                     <Grid ColumnDefinitions="*, Auto">
@@ -297,11 +300,15 @@
                                     AutoGenerateColumns="False"
                                     GridLinesVisibility="Horizontal"
                                     VerticalScrollBarVisibility="Visible"
-                                    HorizontalScrollBarVisibility="Disabled"
+                                    HorizontalScrollBarVisibility="Auto"
+                                    RowHeight="NaN"
                                     CanUserSortColumns="True"
                                     CanUserResizeColumns="True"
                                     BorderThickness="0">
                                     <DataGrid.Styles>
+                                        <Style Selector="DataGridRow">
+                                            <Setter Property="MinHeight" Value="54" />
+                                        </Style>
                                         <Style Selector="DataGridColumnHeader">
                                             <Setter Property="Padding" Value="4,4" />
                                             <Setter Property="FontSize" Value="11" />
@@ -346,15 +353,16 @@
                                             </DataGridTemplateColumn.CellTemplate>
                                         </DataGridTemplateColumn>
                                         <DataGridTextColumn Header="No" Binding="{Binding Index}" Width="50" MinWidth="44" IsReadOnly="True" />
-                                        <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="80" FontWeight="Bold" IsReadOnly="True" />
-                                        <DataGridTemplateColumn Header="Status" Width="*">
+                                        <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="90" MinWidth="90" FontWeight="Bold" IsReadOnly="True" />
+                                        <DataGridTemplateColumn Header="Status" Width="*" MinWidth="180">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate DataType="components:LDInstanceItemViewModel">
                                                     <TextBlock Text="{Binding Status}"
-                                                               FontSize="11"
+                                                               FontSize="12"
                                                                VerticalAlignment="Center"
-                                                               Margin="4,0"
-                                                               TextTrimming="CharacterEllipsis"
+                                                               Margin="4,8"
+                                                               TextWrapping="Wrap"
+                                                               ToolTip.Tip="{Binding Status}"
                                                                Foreground="#10B981" />
                                                 </DataTemplate>
                                             </DataGridTemplateColumn.CellTemplate>
@@ -379,7 +387,7 @@
                                             <TextBlock Text="Account identities" ToolTip.Tip="{Binding ManagePagesHeaderTitle}" FontWeight="Bold" FontSize="12.5" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
                                         </StackPanel>
 
-                                        <TextBlock Grid.Column="1" Text="Click a row for details · Right-click to update" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" HorizontalAlignment="Center" TextWrapping="Wrap" />
+                                        <TextBlock Grid.Column="1" Text="Files: available / total · Click for details · Right-click to update" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" HorizontalAlignment="Center" TextWrapping="Wrap" />
                                         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
 
 
@@ -649,8 +657,9 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
 </DataGridTemplateColumn>
 <DataGridTextColumn Header="Device" Binding="{Binding DeviceName}" Width="100" />
 <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="100" />
-<DataGridTextColumn Header="Reel files" Binding="{Binding ReelFilesDisplay}" Width="100" />
-<DataGridTextColumn Header="Photo files" Binding="{Binding PhotoFilesDisplay}" Width="100" />
+<DataGridTemplateColumn Header="Reel files" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding ReelFilesDisplay}" ToolTip.Tip="{Binding ReelFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+<DataGridTemplateColumn Header="Photo files" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding PhotoFilesDisplay}" ToolTip.Tip="{Binding PhotoFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+<DataGridTemplateColumn Header="Story files" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding StoryFilesDisplay}" ToolTip.Tip="{Binding StoryFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
 <DataGridTextColumn Header="Group files" Binding="{Binding GroupFilesDisplay}" Width="100" />
 <DataGridTextColumn Header="Followers" Binding="{Binding FollowersDisplay}" Width="110" />
 <DataGridTextColumn Header="Views" Binding="{Binding ViewsDisplay}" Width="110" />
@@ -690,8 +699,9 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
 <DataGridTextColumn Header="Name" Binding="{Binding ProfileName}" Width="*" MinWidth="240" FontWeight="SemiBold" />
 <DataGridTextColumn Header="Device" Binding="{Binding DeviceName}" Width="100" />
 <DataGridTextColumn Header="Type" Binding="{Binding Profile.Type}" Width="100" />
-<DataGridTextColumn Header="Reel files" Binding="{Binding Profile.ReelFilesDisplay}" Width="100" />
-<DataGridTextColumn Header="Photo files" Binding="{Binding Profile.PhotoFilesDisplay}" Width="100" />
+<DataGridTemplateColumn Header="Reel files" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookProfileGroupViewModel"><TextBlock Text="{Binding Profile.ReelFilesDisplay}" ToolTip.Tip="{Binding Profile.ReelFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+<DataGridTemplateColumn Header="Photo files" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookProfileGroupViewModel"><TextBlock Text="{Binding Profile.PhotoFilesDisplay}" ToolTip.Tip="{Binding Profile.PhotoFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+<DataGridTemplateColumn Header="Story files" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookProfileGroupViewModel"><TextBlock Text="{Binding Profile.StoryFilesDisplay}" ToolTip.Tip="{Binding Profile.StoryFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
 <DataGridTextColumn Header="Group files" Binding="{Binding Profile.GroupFilesDisplay}" Width="100" />
 <DataGridTextColumn Header="Followers" Binding="{Binding Profile.FollowersDisplay}" Width="110" />
 <DataGridTextColumn Header="Views" Binding="{Binding Profile.ViewsDisplay}" Width="110" />
@@ -739,8 +749,9 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
 </DataGridTemplateColumn>
 <DataGridTextColumn Header="Device" Binding="{Binding DeviceName}" Width="100" />
 <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="100" />
-<DataGridTextColumn Header="Reel files" Binding="{Binding ReelFilesDisplay}" Width="100" />
-<DataGridTextColumn Header="Photo files" Binding="{Binding PhotoFilesDisplay}" Width="100" />
+<DataGridTemplateColumn Header="Reel files" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding ReelFilesDisplay}" ToolTip.Tip="{Binding ReelFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+<DataGridTemplateColumn Header="Photo files" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding PhotoFilesDisplay}" ToolTip.Tip="{Binding PhotoFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+<DataGridTemplateColumn Header="Story files" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding StoryFilesDisplay}" ToolTip.Tip="{Binding StoryFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
 <DataGridTextColumn Header="Group files" Binding="{Binding GroupFilesDisplay}" Width="100" />
 <DataGridTextColumn Header="Followers" Binding="{Binding FollowersDisplay}" Width="110" />
 <DataGridTextColumn Header="Views" Binding="{Binding ViewsDisplay}" Width="110" />
@@ -778,20 +789,36 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
                         </Border></TabItem>
                             <TabItem Header="Personal accounts">
                                 <Border BorderThickness="1" BorderBrush="{DynamicResource AntigravityBorderBrush}" CornerRadius="8" Padding="12" Background="{DynamicResource AntigravityCardBrush}">
-                                    <Grid RowDefinitions="Auto,Auto,Auto,*">
+                                    <Grid RowDefinitions="Auto,Auto,Auto,Auto,*">
                                         <TextBlock Text="Mapped personal accounts" FontWeight="Bold" FontSize="16" />
                                         <TextBlock Grid.Row="1" Text="{Binding AccountMappingStatus}" TextWrapping="Wrap" Margin="0,8" />
-                                        <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8" Margin="0,0,0,12">
-                                            <Button Content="Refresh mappings" Classes="action-btn" Command="{Binding RefreshAccountMappingsCommand}" />
-                                            <Button Content="Save account selections" Classes="action-btn" Command="{Binding SaveAccountSelectionsCommand}" />
+                                        <WrapPanel Grid.Row="2" Margin="0,0,0,8">
+                                            <Button Content="Refresh mappings" Classes="action-btn" Command="{Binding RefreshAccountMappingsCommand}" IsEnabled="{Binding CanEditAccountBulkSelection}" Margin="0,0,8,4" />
+                                            <Button Content="Save all account options" Classes="action-btn" Command="{Binding SaveAccountSelectionsCommand}" IsEnabled="{Binding CanEditAccountBulkSelection}" Margin="0,0,8,4" />
+                                            <Button Content="Select all" Classes="action-btn" Command="{Binding SelectAllMappedAccountsCommand}" IsEnabled="{Binding CanEditAccountBulkSelection}" Margin="0,0,8,4" />
+                                            <Button Content="Clear selection" Classes="action-btn" Command="{Binding ClearMappedAccountSelectionCommand}" IsEnabled="{Binding CanEditAccountBulkSelection}" Margin="0,0,8,4" />
+                                            <TextBlock Text="{Binding BulkAccountSelectionSummary}" VerticalAlignment="Center" Margin="8,0,0,4" />
+                                        </WrapPanel>
+                                        <StackPanel Grid.Row="3" Spacing="6" Margin="0,0,0,12">
+                                            <WrapPanel>
+                                                <TextBlock Text="Apply to selected:" VerticalAlignment="Center" Margin="0,0,12,4" />
+                                                <Button Content="Fetch on" Classes="action-btn" Command="{Binding ApplySelectedAccountOptionCommand}" CommandParameter="Fetch:on" IsEnabled="{Binding CanApplyAccountBulkSelection}" Margin="0,0,6,4" />
+                                                <Button Content="Fetch off" Classes="action-btn" Command="{Binding ApplySelectedAccountOptionCommand}" CommandParameter="Fetch:off" IsEnabled="{Binding CanApplyAccountBulkSelection}" Margin="0,0,12,4" />
+                                                <Button Content="ScreenTime on" Classes="action-btn" Command="{Binding ApplySelectedAccountOptionCommand}" CommandParameter="ScreenTime:on" IsEnabled="{Binding CanApplyAccountBulkSelection}" Margin="0,0,6,4" />
+                                                <Button Content="ScreenTime off" Classes="action-btn" Command="{Binding ApplySelectedAccountOptionCommand}" CommandParameter="ScreenTime:off" IsEnabled="{Binding CanApplyAccountBulkSelection}" Margin="0,0,12,4" />
+                                                <Button Content="Posting on" Classes="action-btn" Command="{Binding ApplySelectedAccountOptionCommand}" CommandParameter="Posting:on" IsEnabled="{Binding CanApplyAccountBulkSelection}" Margin="0,0,6,4" />
+                                                <Button Content="Posting off" Classes="action-btn" Command="{Binding ApplySelectedAccountOptionCommand}" CommandParameter="Posting:off" IsEnabled="{Binding CanApplyAccountBulkSelection}" Margin="0,0,12,4" />
+                                                <Button Content="Save selected accounts" Classes="action-btn btn-success" Command="{Binding SaveSelectedAccountOptionsCommand}" IsEnabled="{Binding CanApplyAccountBulkSelection}" Margin="0,0,0,4" />
+                                            </WrapPanel>
+                                            <TextBlock Text="{Binding BulkAccountSelectionStatus}" TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                         </StackPanel>
-                                        <ScrollViewer Grid.Row="3" HorizontalScrollBarVisibility="Disabled">
-                                            <ItemsControl ItemsSource="{Binding MappedAccounts}">
+                                        <ScrollViewer Grid.Row="4" HorizontalScrollBarVisibility="Disabled">
+                                            <ItemsControl ItemsSource="{Binding MappedAccounts}" IsEnabled="{Binding CanEditAccountBulkSelection}">
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate DataType="components:PFlowAccountItemViewModel">
                                                         <Border BorderThickness="1" BorderBrush="{DynamicResource AntigravityBorderBrush}" CornerRadius="8" Padding="12" Margin="0,0,0,8">
                                                             <StackPanel Spacing="6">
-                                                                <TextBlock Text="{Binding Name}" FontWeight="Bold" />
+                                                                <CheckBox Content="{Binding Name}" IsChecked="{Binding IsSelectedForBulk, Mode=TwoWay}" IsEnabled="{Binding IsMappingValid}" FontWeight="Bold" ToolTip.Tip="Select this account for bulk options. Selection alone does not enable any tasks." />
                                                                 <StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="{Binding DeviceName}" /><TextBlock Text="{Binding OwnerUid}" /><TextBlock Text="{Binding AppPackage}" /></StackPanel>
                                                                 <TextBlock Text="{Binding BindingStatus}" TextWrapping="Wrap" />
                                                                 <Button Content="{Binding CredentialButtonLabel}" IsEnabled="{Binding CanOpenCredentials}" Classes="action-btn" HorizontalAlignment="Left" Command="{Binding $parent[UserControl].((components:AutoPostViewModel)DataContext).OpenCredentialImportCommand}" CommandParameter="{Binding}" />
@@ -833,7 +860,7 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
                                                                 <Button Grid.Column="2" Content="Edit media" Classes="action-btn" Command="{Binding $parent[UserControl].((components:AutoPostViewModel)DataContext).EditPageConfigCommand}" CommandParameter="{Binding}" />
                                                                 <TextBlock Grid.Row="1" Grid.ColumnSpan="3" Text="Reels source" FontSize="11" FontWeight="SemiBold" Margin="0,12,0,4" />
                                                                 <TextBlock Grid.Row="2" Grid.ColumnSpan="3" Text="{Binding VideoReelPath}" ToolTip.Tip="{Binding VideoReelPath}" TextTrimming="CharacterEllipsis" />
-                                                                <StackPanel Grid.Row="3" Grid.ColumnSpan="3" Spacing="4" Margin="0,4,0,0"><TextBlock Text="{Binding ReelPathStatus}" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" /><TextBlock Text="Photo source" FontSize="11" FontWeight="SemiBold" Margin="0,8,0,0" /><TextBlock Text="{Binding ImagePath}" ToolTip.Tip="{Binding ImagePath}" TextTrimming="CharacterEllipsis" /><TextBlock Text="{Binding ImagePathStatus}" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" /></StackPanel>
+                                                                <StackPanel Grid.Row="3" Grid.ColumnSpan="3" Spacing="4" Margin="0,4,0,0"><TextBlock Text="{Binding ReelPathStatus}" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" /><TextBlock Text="Photo source" FontSize="11" FontWeight="SemiBold" Margin="0,8,0,0" /><TextBlock Text="{Binding ImagePath}" ToolTip.Tip="{Binding ImagePath}" TextTrimming="CharacterEllipsis" /><TextBlock Text="{Binding ImagePathStatus}" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" /><TextBlock Text="Story source" FontSize="11" FontWeight="SemiBold" Margin="0,8,0,0" /><TextBlock Text="{Binding StoryPath}" ToolTip.Tip="{Binding StoryPath}" TextTrimming="CharacterEllipsis" /><TextBlock Text="{Binding StoryPathStatus}" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" /></StackPanel>
                                                             </Grid>
                                                         </Border>
                                                     </DataTemplate>
@@ -850,7 +877,7 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
                                     <StackPanel Spacing="14">
                                         <TextBlock Text="PREPARE POST QUEUE" Classes="section-title" />
                                         <TextBlock Text="Choose targets and assign media first. Preparing the queue does not publish posts." TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                        <StackPanel Spacing="6"><TextBlock Text="Post type" FontWeight="SemiBold" /><ComboBox SelectedIndex="{Binding SelectedPostTypeIndex}" HorizontalAlignment="Stretch"><ComboBoxItem Content="Reel" /><ComboBoxItem Content="Photo" /></ComboBox></StackPanel>
+                                        <StackPanel Spacing="6"><TextBlock Text="Post type" FontWeight="SemiBold" /><ComboBox SelectedIndex="{Binding SelectedPostTypeIndex}" HorizontalAlignment="Stretch"><ComboBoxItem Content="Reel" /><ComboBoxItem Content="Photo" /><ComboBoxItem Content="Story" /></ComboBox></StackPanel>
                                         <StackPanel Spacing="6"><TextBlock Text="File selection" FontWeight="SemiBold" /><ComboBox SelectedIndex="{Binding SelectedFileByIndex}" HorizontalAlignment="Stretch"><ComboBoxItem Content="Random" /><ComboBoxItem Content="Sequential" /></ComboBox></StackPanel>
                                         <StackPanel Spacing="6"><TextBlock Text="Posts per target · min / max" FontWeight="SemiBold" /><Grid ColumnDefinitions="*,*"><NumericUpDown Value="{Binding PostFromCount}" Minimum="1" Maximum="50" FormatString="0" Margin="0,0,4,0" /><NumericUpDown Grid.Column="1" Value="{Binding PostToCount}" Minimum="1" Maximum="50" FormatString="0" Margin="4,0,0,0" /></Grid></StackPanel>
                                         <CheckBox Content="Use each file once across targets" IsChecked="{Binding UploadUniqueFile}" />
@@ -958,6 +985,16 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
                             </Border>
 
                             <TextBlock Text="Media sources • choose a file or shared folder. Counts include matching files in the folder’s top level." TextWrapping="Wrap" FontSize="12" />
+                            <StackPanel Spacing="6" Margin="0,0,0,12">
+                                <TextBlock Text="Story source (photo/video file or folder)" FontWeight="SemiBold" />
+                                <Grid ColumnDefinitions="*,Auto,Auto">
+                                    <TextBox Text="{Binding SelectedPageForEdit.StoryPath, Mode=TwoWay}" Watermark="Choose Story media…" />
+                                    <Button Grid.Column="1" Command="{Binding BrowseStoryFileCommand}" Content="File…" Margin="4,0,0,0" />
+                                    <Button Grid.Column="2" Command="{Binding BrowseStoryFolderCommand}" Content="Folder…" Margin="4,0,0,0" />
+                                </Grid>
+                                <TextBlock Text="{Binding SelectedPageForEdit.StoryPathStatus}" FontSize="11" TextWrapping="Wrap" />
+                                <TextBlock Text="Stories use the current Facebook audience. File backup/deletion follows Run settings. Text overlays are not added." FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                            </StackPanel>
                             <!-- Posting sources: Reels and photos -->
                             <Grid ColumnDefinitions="*, *" RowDefinitions="Auto, Auto">
                                  <!-- Reel Column -->
@@ -1121,197 +1158,7 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
             </Border>
         </Border>
 
-        <!-- 6. MODAL OVERLAY: AUTOMATION & WARMUP CONFIGURATION -->
-        <Border
-            IsVisible="{Binding IsConfigOpen}"
-            Background="#D0000000"
-            HorizontalAlignment="Stretch"
-            VerticalAlignment="Stretch">
-            <Border Classes="modal-window">
-                <Grid RowDefinitions="Auto, *, Auto">
-                    <!-- Modal Header -->
-                    <Grid Grid.Row="0" ColumnDefinitions="*, Auto" Margin="0,0,0,14">
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <materialIcons:MaterialIcon Kind="TuneVertical" Width="22" Height="22" Foreground="#818CF8" VerticalAlignment="Center" />
-                            <StackPanel Spacing="2">
-                                <TextBlock Text="Run settings" FontSize="17" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
-                                <TextBlock Text="Configure a personal-profile session before optional posting on managed Pages" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                            </StackPanel>
-                        </StackPanel>
-                        <Button Grid.Column="1" Command="{Binding CloseConfigCommand}" Padding="6" CornerRadius="6">
-                            <materialIcons:MaterialIcon Kind="Close" Width="18" Height="18" />
-                        </Button>
-                    </Grid>
-
-                    <!-- Content Layout: Scrollable Cards Grid -->
-                    <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-                        <StackPanel Spacing="12">
-                            <TextBlock Text="Choose what runs on each selected device. ScreenTime uses the personal profile; posting verifies each target before sharing. Save applies these settings to the next run." TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                            <TabControl>
-                                <TabItem Header="ScreenTime session"><Border Classes="card-panel" Margin="0">
-                                <StackPanel Spacing="12">
-                                    <TextBlock Text="SCREENTIME SESSION" Classes="section-title" />
-                                    <!-- Watch Video -->
-                                    <Grid ColumnDefinitions="Auto, *, Auto, *">
-                                        <CheckBox Grid.Column="0" IsChecked="{Binding IsWatchVideo}" Content="Reels (seconds)" VerticalAlignment="Center" />
-                                        <NumericUpDown Grid.Column="1" Value="{Binding WatchVideoMin}" Minimum="1" Maximum="3600" Height="30" Margin="6,0,4,0" FormatString="0" />
-                                        <TextBlock Grid.Column="2" Text="To" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                        <NumericUpDown Grid.Column="3" Value="{Binding WatchVideoMax}" Minimum="1" Maximum="3600" Height="30" Margin="4,0,0,0" FormatString="0" />
-                                    </Grid>
-
-                                    <!-- Market Place -->
-                                    <Grid ColumnDefinitions="Auto, *, Auto, *">
-                                        <CheckBox Grid.Column="0" IsChecked="{Binding IsMarketPlace}" Content="Marketplace (seconds)" VerticalAlignment="Center" />
-                                        <NumericUpDown Grid.Column="1" Value="{Binding MarketPlaceMin}" Minimum="1" Maximum="3600" Height="30" Margin="6,0,4,0" FormatString="0" />
-                                        <TextBlock Grid.Column="2" Text="To" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                        <NumericUpDown Grid.Column="3" Value="{Binding MarketPlaceMax}" Minimum="1" Maximum="3600" Height="30" Margin="4,0,0,0" FormatString="0" />
-                                    </Grid>
-
-                                    <!-- Like Post -->
-                                    <Grid ColumnDefinitions="Auto, *, Auto, *">
-                                        <CheckBox Grid.Column="0" IsChecked="{Binding IsLikePost}" IsEnabled="{Binding !ScreenTimeOptions.Reactions}" Content="Likes / session (count)" VerticalAlignment="Center" />
-                                        <NumericUpDown Grid.Column="1" Value="{Binding LikePostMin}" Minimum="1" Maximum="50" Height="30" Margin="6,0,4,0" FormatString="0" />
-                                        <TextBlock Grid.Column="2" Text="To" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                        <NumericUpDown Grid.Column="3" Value="{Binding LikePostMax}" Minimum="1" Maximum="50" Height="30" Margin="4,0,0,0" FormatString="0" />
-                                    </Grid>
-
-                                    <!-- NewsFeed -->
-                                    <Grid ColumnDefinitions="Auto, *, Auto, *">
-                                        <CheckBox Grid.Column="0" IsChecked="{Binding IsNewsFeed}" Content="Feed (seconds)" VerticalAlignment="Center" />
-                                        <NumericUpDown Grid.Column="1" Value="{Binding NewsFeedMin}" Minimum="1" Maximum="3600" Height="30" Margin="6,0,4,0" FormatString="0" />
-                                        <TextBlock Grid.Column="2" Text="To" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                        <NumericUpDown Grid.Column="3" Value="{Binding NewsFeedMax}" Minimum="1" Maximum="3600" Height="30" Margin="4,0,0,0" FormatString="0" />
-                                    </Grid>
-
-                                    <CheckBox IsChecked="{Binding IsReadNotification}" Content="Read notifications" />
-                                    <CheckBox IsChecked="{Binding IsClearRecentApp}" Content="Clear apps once at session end" />
-                                    <TextBlock Text="Likes are optional and capped across Feed + Reels. Other browsing actions do not publish content." TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                    <TextBlock Text="STORIES &amp; SESSION LIMITS" Classes="section-title" Foreground="{DynamicResource AntigravityTextBrush}" />
-                                    <CheckBox Content="View stories · your view can be visible to the author" IsChecked="{Binding ScreenTimeOptions.Stories}" />
-                                    <Grid ColumnDefinitions="180,110,180,110"><TextBlock Text="Maximum stories" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityTextBrush}" /><NumericUpDown Grid.Column="1" Value="{Binding ScreenTimeOptions.StoryLimit}" Minimum="1" Maximum="20" FormatString="0" IsEnabled="{Binding ScreenTimeOptions.Stories}" /><TextBlock Grid.Column="2" Text="Seconds per story" Margin="12,0,0,0" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityTextBrush}" /><NumericUpDown Grid.Column="3" Value="{Binding ScreenTimeOptions.StoryDwellSeconds}" Minimum="3" Maximum="30" FormatString="0" IsEnabled="{Binding ScreenTimeOptions.Stories}" /></Grid>
-                                    <Grid ColumnDefinitions="180,110,180,110"><TextBlock Text="Session cap (seconds)" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityTextBrush}" /><NumericUpDown Grid.Column="1" Value="{Binding ScreenTimeOptions.MaxSessionSeconds}" Minimum="1" Maximum="14400" FormatString="0" /><TextBlock Grid.Column="2" Text="Feed dwell (seconds)" VerticalAlignment="Center" Margin="12,0,0,0" Foreground="{DynamicResource AntigravityTextBrush}" /><NumericUpDown Grid.Column="3" Value="{Binding ScreenTimeOptions.FeedDwellSeconds}" Minimum="1" Maximum="30" FormatString="0" /></Grid>
-                                    <Grid ColumnDefinitions="180,110"><TextBlock Text="Reel dwell (seconds)" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityTextBrush}" /><NumericUpDown Grid.Column="1" Value="{Binding ScreenTimeOptions.ReelDwellSeconds}" Minimum="1" Maximum="60" FormatString="0" /></Grid>
-                                    <Expander Foreground="{DynamicResource AntigravityTextBrush}" Background="{DynamicResource AntigravityElevatedBrush}" Header="Reactions · optional public interaction" IsExpanded="True">
-                                        <StackPanel Spacing="8" Margin="0,10,0,0">
-                                            <CheckBox IsChecked="{Binding ScreenTimeOptions.Reactions}" Content="React to verified Feed / Reel posts" />
-                                            <Grid ColumnDefinitions="180,160,160,110"><TextBlock Text="Allowed reaction" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityTextBrush}" /><ComboBox Grid.Column="1" ItemsSource="{x:Static ld:ScreenTimeOptions.ReactionTypes}" SelectedItem="{Binding ScreenTimeOptions.Reaction}" IsEnabled="{Binding ScreenTimeOptions.Reactions}" /><TextBlock Grid.Column="2" Text="Session maximum" VerticalAlignment="Center" Margin="12,0,0,0" Foreground="{DynamicResource AntigravityTextBrush}" /><NumericUpDown Grid.Column="3" Value="{Binding ScreenTimeOptions.ReactionLimit}" Minimum="1" Maximum="20" FormatString="0" IsEnabled="{Binding ScreenTimeOptions.Reactions}" /></Grid>
-                                            <CheckBox Content="Random public Feed / Reel reactions · allow visible-content fingerprint when post ID is unavailable" IsChecked="{Binding ScreenTimeOptions.RandomFeedReactions}" IsEnabled="{Binding ScreenTimeOptions.Reactions}" />
-                                            <TextBlock Text="Visible-content fingerprints have reduced duplicate reliability. Unrecognized audience, author, content or controls are skipped." TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                            <TextBlock Text="Requires verified content and selected state. Reactions replace the legacy Like action when enabled; ambiguous posts are skipped." TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                        </StackPanel>
-                                    </Expander>
-                                    <Expander Foreground="{DynamicResource AntigravityTextBrush}" Background="{DynamicResource AntigravityElevatedBrush}" Header="Comments · approved posts and reviewed drafts">
-                                        <StackPanel Spacing="10" Margin="0,10,0,0">
-                                            <CheckBox IsChecked="{Binding ScreenTimeOptions.Comments}" Content="Enable reviewed comments as the personal account" />
-                                            <Grid ColumnDefinitions="180,110,180,110"><TextBlock Text="Maximum comments" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityTextBrush}" /><NumericUpDown Grid.Column="1" Value="{Binding ScreenTimeOptions.CommentLimit}" Minimum="1" Maximum="5" FormatString="0" /><TextBlock Grid.Column="2" Text="Review timeout (sec)" Margin="12,0,0,0" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityTextBrush}" /><NumericUpDown Grid.Column="3" Value="{Binding ScreenTimeOptions.ReviewTimeoutSeconds}" Minimum="15" Maximum="600" FormatString="0" /></Grid>
-                                            <TextBlock Text="Add Facebook /posts/ or story_fbid links and a draft. Each send requires an account-specific review window during the run. Missing identity or confirmation is never counted as success." TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                            <ItemsControl ItemsSource="{Binding ScreenTimeOptions.Drafts}"><ItemsControl.ItemTemplate><DataTemplate DataType="ld:ScreenTimeCommentDraft"><Border Padding="10" Margin="0,0,0,8" CornerRadius="6" Background="{DynamicResource AntigravityElevatedBrush}"><StackPanel Spacing="6"><TextBox Text="{Binding PostUrl}" Watermark="https://www.facebook.com/.../posts/123..." /><TextBox Text="{Binding Text}" Watermark="Comment draft · reviewed before sending" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="60" /><Button Content="Remove draft" HorizontalAlignment="Left" Command="{Binding $parent[UserControl].((components:AutoPostViewModel)DataContext).RemoveScreenTimeCommentCommand}" CommandParameter="{Binding}" /></StackPanel></Border></DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
-                                            <Button Content="Add approved post &amp; draft" Command="{Binding AddScreenTimeCommentCommand}" HorizontalAlignment="Left" />
-                                        </StackPanel>
-                                    </Expander>
-                                    <Expander Header="Random Feed / Reel comments · optional" Foreground="{DynamicResource AntigravityTextBrush}" Background="{DynamicResource AntigravityElevatedBrush}">
-                                        <StackPanel Spacing="10" Margin="0,10,0,0">
-                                            <CheckBox Content="Comment on random public Feed posts and Reels" IsChecked="{Binding ScreenTimeOptions.RandomFeedComments}" />
-                                            <CheckBox Content="Require approval before each random comment · turn off to send automatically from the saved list" IsChecked="{Binding ScreenTimeOptions.ReviewEachRandomComment}" IsEnabled="{Binding ScreenTimeOptions.RandomFeedComments}" />
-                                            <TextBox Text="{Binding ScreenTimeOptions.RandomCommentTexts}" Watermark="Saved comment list · one comment per line" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="100" IsEnabled="{Binding ScreenTimeOptions.RandomFeedComments}" />
-                                            <Grid ColumnDefinitions="180,110,180,110"><TextBlock Text="Shared comment cap" Foreground="{DynamicResource AntigravityTextBrush}" /><NumericUpDown Grid.Column="1" Value="{Binding ScreenTimeOptions.CommentLimit}" Minimum="1" Maximum="5" FormatString="0" /><TextBlock Grid.Column="2" Text="Chance per item (%)" Foreground="{DynamicResource AntigravityTextBrush}" Margin="12,0,0,0" /><NumericUpDown Grid.Column="3" Value="{Binding ScreenTimeOptions.InteractionChancePercent}" Minimum="1" Maximum="100" FormatString="0" /></Grid>
-                                            <TextBlock Text="Chance applies to random reactions and comments during enabled Feed/Reels browsing. The comment cap is shared with approved-link comments. Automatic mode sends publicly as your personal account. Missing confirmation stops the session for review." TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                        </StackPanel>
-                                    </Expander>
-                                    <Button Content="ScreenTime history &amp; review" Command="{Binding ShowScreenTimeHistoryCommand}" HorizontalAlignment="Left" Classes="action-btn" />
-
-
-                                    <Border Background="{DynamicResource AntigravityElevatedBrush}" Padding="10" CornerRadius="8">
-                                        <StackPanel Spacing="6">
-                                            <TextBlock Text="SESSION PREVIEW" FontWeight="SemiBold" FontSize="11" Foreground="{DynamicResource AntigravityTextBrush}" />
-                                            <TextBlock Text="{Binding ScreenTimeSummary}" TextWrapping="Wrap" Foreground="{DynamicResource AntigravityTextBrush}" />
-                                            <TextBlock Text="{Binding ScreenTimeValidation}" TextWrapping="Wrap" Foreground="#F59E0B" />
-                                        </StackPanel>
-                                    </Border>
-                                    <TextBlock Text="LEGACY OPTIONS • NOT IMPLEMENTED" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                    <TextBlock Text="Saved values are preserved. Disable these options to run a session; friend changes and check-in do not have a verified workflow yet." TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                    <CheckBox IsChecked="{Binding IsCheckIn}" Content="Check-in (unavailable)" />
-                                    <CheckBox IsChecked="{Binding AddFriendSuggest}" Content="Send friend requests (unavailable)" />
-                                    <CheckBox IsChecked="{Binding AcceptFriends}" Content="Accept friend requests (unavailable)" />
-                                    <CheckBox IsChecked="{Binding DeleteFriendRequest}" Content="Delete friend requests (unavailable)" />
-                                </StackPanel>
-                            </Border></TabItem>
-                                <TabItem Header="Posting &amp; device behavior"><Border Classes="card-panel" Margin="0">
-                                <StackPanel Spacing="12">
-                                    <TextBlock Text="POSTING CONFIG &amp; DELAYS" Classes="section-title" />
-
-                                    <!-- Post Reel -->
-                                    <StackPanel Spacing="6">
-                                        <CheckBox IsChecked="{Binding IsPostReel}" Content="Post Reel" FontWeight="SemiBold" />
-                                        <StackPanel Orientation="Horizontal" Spacing="16" Margin="24,0,0,0">
-                                            <CheckBox IsChecked="{Binding IsDeleteReelFile}" Content="Delete File" FontSize="11.5" />
-                                            <CheckBox IsChecked="{Binding IsBackupReelFile}" Content="Backup File" FontSize="11.5" />
-                                        </StackPanel>
-                                    </StackPanel>
-
-                                    <!-- Post Picture -->
-                                    <StackPanel Spacing="6">
-                                        <CheckBox IsChecked="{Binding IsPostPicture}" Content="Post Picture" FontWeight="SemiBold" />
-                                        <StackPanel Orientation="Horizontal" Spacing="16" Margin="24,0,0,0">
-                                            <CheckBox IsChecked="{Binding IsDeletePictureFile}" Content="Delete File" FontSize="11.5" />
-                                            <CheckBox IsChecked="{Binding IsBackupPictureFile}" Content="Backup File" FontSize="11.5" />
-                                        </StackPanel>
-                                    </StackPanel>
-
-                                    <Separator Height="1" Background="{DynamicResource AntigravityBorderBrush}" Margin="0,4" />
-
-                                    <!-- Delays Grid -->
-                                    <Grid ColumnDefinitions="*, *" RowDefinitions="Auto, Auto, Auto, Auto" Margin="0,2,0,0">
-                                        <StackPanel Grid.Row="0" Grid.Column="0" Spacing="2" Margin="0,0,6,8">
-                                            <TextBlock Text="Delay Upload (s)" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                            <NumericUpDown Value="{Binding DelayUpload}" Minimum="1" Maximum="600" Height="30" FormatString="0" />
-                                        </StackPanel>
-                                        <StackPanel Grid.Row="0" Grid.Column="1" Spacing="2" Margin="6,0,0,8">
-                                            <TextBlock Text="Delay Open App (s)" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                            <NumericUpDown Value="{Binding DelayOpenApp}" Minimum="1" Maximum="600" Height="30" FormatString="0" />
-                                        </StackPanel>
-
-                                        <StackPanel Grid.Row="1" Grid.Column="0" Spacing="2" Margin="0,0,6,8">
-                                            <TextBlock Text="Delay After Open (s)" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                            <NumericUpDown Value="{Binding DelayAfterOpenLD}" Minimum="1" Maximum="600" Height="30" FormatString="0" />
-                                        </StackPanel>
-                                        <StackPanel Grid.Row="1" Grid.Column="1" Spacing="2" Margin="6,0,0,8">
-                                            <TextBlock Text="Delay Open Each (s)" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                            <NumericUpDown Value="{Binding DelayOpenEachLD}" Minimum="1" Maximum="600" Height="30" FormatString="0" />
-                                        </StackPanel>
-
-                                        <StackPanel Grid.Row="2" Grid.Column="0" Spacing="2" Margin="0,0,6,8">
-                                            <TextBlock Text="Delay Before Close (s)" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                            <NumericUpDown Value="{Binding DelayBeforeCloseLD}" Minimum="1" Maximum="600" Height="30" FormatString="0" />
-                                        </StackPanel>
-                                        <StackPanel Grid.Row="2" Grid.Column="1" Spacing="2" Margin="6,0,0,8">
-                                            <TextBlock Text="Delay Switch Page (s)" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                            <NumericUpDown Value="{Binding DelayBeforeSwitchPage}" Minimum="1" Maximum="600" Height="30" FormatString="0" />
-                                        </StackPanel>
-                                    </Grid>
-
-                                    <CheckBox IsChecked="{Binding CloseLDAfterAction}" Content="Close LDPlayer After Action" />
-                                    <CheckBox IsChecked="{Binding ClearCacheFBBeforeOpen}" Content="Clear Cache FB Before Open" />
-                                    <CheckBox IsChecked="{Binding AfterPostCheckCopyRight}" Content="After Post Check CopyRight" />
-                                    <CheckBox IsChecked="{Binding SwitchToProfileAfterPost}" Content="Switch To Profile After Post" />
-                                    <CheckBox IsChecked="{Binding SleepPcAfterActionDone}" Content="Sleep PC After Action Done" />
-                                </StackPanel>
-                            </Border></TabItem>
-                            </TabControl>
-                        </StackPanel>
-                    </ScrollViewer>
-
-                    <!-- Modal Footer -->
-                    <Grid Grid.Row="2" ColumnDefinitions="Auto, *, Auto" Margin="0,14,0,0">
-                        <TextBlock Grid.Column="0" Text="Saved to %AppData%/855Media/autopost_config.json" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
-                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10">
-                            <Button Command="{Binding CloseConfigCommand}" Content="Cancel" Classes="action-btn btn-secondary" Width="90" />
-                            <Button Command="{Binding SaveConfigCommand}" Content="Save Configuration" Classes="action-btn btn-primary" Width="150" />
-                        </StackPanel>
-                    </Grid>
-                </Grid>
-            </Border>
-        </Border>
+        <views:RunSettingsView IsVisible="{Binding IsConfigOpen}" />
         <Border IsVisible="{Binding IsAccountRemapOpen}" Background="#D0000000" ZIndex="410">
             <Border Classes="modal-window" MaxWidth="720" VerticalAlignment="Center" Margin="24">
                 <StackPanel Spacing="12">

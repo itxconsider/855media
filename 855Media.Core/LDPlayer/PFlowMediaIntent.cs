@@ -28,7 +28,9 @@ internal static class PFlowMediaIntent
             || string.IsNullOrWhiteSpace(package)
         )
             return null;
-        return "am start -a android.intent.action.SEND -t "
+        // Invoke the installed Android resolver explicitly so a saved Always
+        // preference cannot route the payload straight into a different composer.
+        return "am start -n android/com.android.internal.app.ResolverActivity -a android.intent.action.SEND -t "
             + PFlowAutoPostService.ShellQuote(mime)
             + " --eu android.intent.extra.STREAM "
             + PFlowAutoPostService.ShellQuote("file://" + path)

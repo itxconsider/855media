@@ -49,6 +49,9 @@ public sealed class PFlowJob
     public bool NoPublicationVerified { get; set; }
     public string Evidence { get; set; } = "";
     public string IdentityEvidence { get; set; } = "";
+    public string MediaSelectionEvidence { get; set; } = "";
+    public int? StoryCountBefore { get; set; }
+    public int? StoryCountAfter { get; set; }
     public string CurrentStep { get; set; } = "";
     public DateTime StepStartedUtc { get; set; } = DateTime.UtcNow;
     public string PostId { get; set; } = "";
@@ -61,7 +64,7 @@ public sealed class PFlowJob
     public bool BackupRequested { get; set; }
     public bool DeleteRequested { get; set; }
     public string RemotePath =>
-        $"/sdcard/DCIM/855Media/{JobId}{Path.GetExtension(SourcePath).ToLowerInvariant()}";
+        $"/sdcard/DCIM/855Media/{(PostType == "Story" ? "Story_" + JobId + "/" : "")}{JobId}{Path.GetExtension(SourcePath).ToLowerInvariant()}";
     public string DuplicateKey =>
         $"{(IsProfile ? "Profile" : "Page")}:{TargetId}:{(PostType == "Video" ? "Reel" : PostType)}:{Sha256}";
     public bool CanRetry =>

@@ -25,8 +25,8 @@ public partial class PFlowAutoPostService
     {
         try
         {
-            var nodes = XDocument
-                .Parse(xml ?? "")
+            var nodes = FacebookHierarchyCache
+                .ParseStrict(xml ?? "")
                 .Descendants("node")
                 .Where(n =>
                     n.Attribute("enabled")?.Value != "false"
@@ -139,6 +139,16 @@ public partial class PFlowAutoPostService
 
     public TimeSpan PublicationTimeout { get; set; } = TimeSpan.FromSeconds(180);
 
+    internal static TimeSpan UploadConfirmationWindow(long bytes, TimeSpan minimum)
+    {
+        if (minimum <= TimeSpan.Zero)
+            return TimeSpan.Zero;
+        // Budget transfer at 256 KiB/s plus three minutes for Facebook processing.
+        // This is a waiting allowance, never evidence that publication succeeded.
+        var seconds = Math.Clamp(Math.Max(0, bytes) / (256d * 1024) + 180, 180, 3600);
+        return TimeSpan.FromSeconds(Math.Max(minimum.TotalSeconds, seconds));
+    }
+
     public async Task PublishAsync(
         PFlowJob job,
         Func<PFlowJob, Task> checkpoint,
@@ -149,6 +159,8 @@ public partial class PFlowAutoPostService
     {
         if (job.State != PFlowState.IdentityVerified)
             throw new InvalidOperationException("A verified target session is required.");
+        if (job.PostType is not ("Reel" or "Video" or "Picture" or "Story"))
+            throw new InvalidOperationException("Unsupported publication type.");
         await PFlowJobBindingGuard.RequireAsync(_ldPlayer, job, customPath, ct);
         var identityXml =
             await _ldPlayer.DumpUiHierarchyAsync(job.DeviceIndex, customPath, ct) ?? "";
@@ -168,8 +180,13 @@ public partial class PFlowAutoPostService
                 "Active own-profile identity changed before media transfer."
             );
         job.IdentityEvidence =
-            $"Native switcher and own-profile controls verified {job.TargetId} ({job.TargetName}) before share intent.";
+            $"Live UID verification and own-profile controls verified {job.TargetId} ({job.TargetName}) before media staging.";
         await checkpoint(job);
+        if (job.PostType == "Story")
+        {
+            await PublishStoryAsync(job, checkpoint, customPath, ct, dryRun);
+            return;
+        }
         async Task Step(string name)
         {
             job.CurrentStep = name;
@@ -247,7 +264,13 @@ public partial class PFlowAutoPostService
             ct.ThrowIfCancellationRequested();
             xml = await _ldPlayer.DumpUiHierarchyAsync(job.DeviceIndex, customPath, ct) ?? "";
             if (!PFlowShareDestination.IsChooser(xml) && IsComposer(xml, job.PostType))
+            {
+                if (!shareDestinationSelected || !shareOnceTapped)
+                    throw new InvalidOperationException(
+                        "Share chooser and Just once were not verified for this job."
+                    );
                 break;
+            }
             if (PFlowShareDestination.IsChooser(xml))
             {
                 if (!shareDestinationSelected)
@@ -266,11 +289,11 @@ public partial class PFlowAutoPostService
                         var point = ScreenTimeHierarchy.Center(destination);
                         if (!point.HasValue)
                             throw new InvalidOperationException(
-                                $"Share destination {(job.PostType == "Reel" ? "Reels" : "Feed")} is missing or ambiguous."
+                                $"Share destination {(job.PostType == "Picture" ? "Feed" : "Reels")} is missing or ambiguous."
                             );
                         await Step(
                             "Selecting share destination: "
-                                + (job.PostType == "Reel" ? "Reels" : "Feed")
+                                + (job.PostType == "Picture" ? "Feed" : "Reels")
                         );
                         if (
                             !await _ldPlayer.TapAsync(
@@ -448,8 +471,22 @@ public partial class PFlowAutoPostService
             _atxClient != null && await _atxClient.ClearLastToastAsync(job.DeviceIndex, ct);
         await PFlowJobBindingGuard.RequireAsync(_ldPlayer, job, customPath, ct);
         xml = await _ldPlayer.DumpUiHierarchyAsync(job.DeviceIndex, customPath, ct) ?? "";
+        var readyLayout = FacebookLayoutRegistry.Match(
+            xml,
+            job.PostType == "Picture"
+                ? FacebookScreenKind.PhotoComposer
+                : FacebookScreenKind.ReelComposer,
+            new(job.TargetName, job.TargetId, job.PostType)
+        );
+        await PFlowTrace.SessionAsync(
+            job.DeviceIndex,
+            "layout.publish",
+            readyLayout.Diagnostic,
+            ct
+        );
         if (
-            !IsComposer(xml, job.PostType)
+            !readyLayout.IsMatch
+            || readyLayout.Control(FacebookControlRole.Publish) == null
             || !await ComposerIdentityMatchesAsync(xml)
             || FindVisiblePublishControl(xml, buttons) == null
             || (
@@ -462,13 +499,13 @@ public partial class PFlowAutoPostService
                 "Ready composer changed before submission; no Share tap was made."
             );
         await Stage(PFlowState.SubmitRequested); // Durable boundary before any irreversible input.
-        var publishPoint = ScreenTimeHierarchy.Center(FindVisiblePublishControl(xml, buttons));
+        var publishPoint = readyLayout.Control(FacebookControlRole.Publish);
         if (
-            !publishPoint.HasValue
+            publishPoint == null
             || !await _ldPlayer.TapAsync(
                 job.DeviceIndex,
-                publishPoint.Value.X,
-                publishPoint.Value.Y,
+                publishPoint.X,
+                publishPoint.Y,
                 customPath,
                 ct
             )
@@ -481,9 +518,13 @@ public partial class PFlowAutoPostService
         }
         await Stage(PFlowState.Submitted);
         await Step("Confirming publication");
+        var confirmationWindow = UploadConfirmationWindow(job.Size, PublicationTimeout);
         wait.Restart();
         var nextNotificationPoll = TimeSpan.Zero;
-        while (wait.Elapsed < PublicationTimeout)
+        var nextBrowse = TimeSpan.FromSeconds(8);
+        var browsedWhileWaiting = false;
+        FacebookBrowseStateMachine? waitingBrowse = null;
+        while (wait.Elapsed < confirmationWindow)
         {
             ct.ThrowIfCancellationRequested();
             xml = await _ldPlayer.DumpUiHierarchyAsync(job.DeviceIndex, customPath, ct) ?? "";
@@ -497,7 +538,10 @@ public partial class PFlowAutoPostService
                 await checkpoint(job);
                 return;
             }
-            var evidence = NewPublicationEvidence(xml, before, job.PostType);
+            // A newly visited feed item must never be mistaken for this upload's result.
+            var evidence = browsedWhileWaiting
+                ? null
+                : NewPublicationEvidence(xml, before, job.PostType);
             if (evidence == null && toastAvailable)
             {
                 var toast = await _atxClient!.ReadLastToastAsync(job.DeviceIndex, ct);
@@ -540,11 +584,78 @@ public partial class PFlowAutoPostService
                 await Stage(PFlowState.Confirmed);
                 return;
             }
+            if (
+                job.PostType is "Reel" or "Video"
+                && notificationBaselineAvailable
+                && wait.Elapsed >= nextBrowse
+                && waitingBrowse?.State != FacebookBrowseState.Stopped
+            )
+            {
+                nextBrowse = wait.Elapsed + TimeSpan.FromSeconds(8);
+                var surface = WaitingBrowseSurface(xml);
+                if (surface != null)
+                {
+                    var expectedScreen =
+                        surface == "Feed"
+                            ? FacebookScreenKind.NewsFeed
+                            : FacebookScreenKind.ReelsFeed;
+                    if (waitingBrowse?.Screen != expectedScreen)
+                    {
+                        waitingBrowse?.Stop();
+                        waitingBrowse = new FacebookBrowseStateMachine(expectedScreen);
+                    }
+                    var decision = waitingBrowse.Observe(new FacebookLayoutObservation(xml));
+                    await PFlowTrace.SessionAsync(
+                        job.DeviceIndex,
+                        "layout.upload-wait.browse",
+                        decision.Diagnostic,
+                        ct
+                    );
+                    var (width, height) = PFlowPersonaSwitcherService.ParseScreenDimensions(xml);
+                    if (
+                        decision.Allowed
+                        && width > 0
+                        && height > 0
+                        && waitingBrowse.TryBeginInput(FacebookBrowseAction.Scroll)
+                    )
+                    {
+                        var start =
+                            surface == "Reels"
+                                ? ScreenTimeNavigation.ReelsSwipeStart(xml, width, height)
+                                : ScreenTimeNavigation.FeedSwipeStart(xml, width, height);
+                        // Disable UI text confirmation before input, including an uncertain swipe result.
+                        browsedWhileWaiting = true;
+                        await _ldPlayer.SwipeAsync(
+                            job.DeviceIndex,
+                            start.X,
+                            start.Y,
+                            width / 2,
+                            height / 3,
+                            400,
+                            customPath,
+                            ct
+                        );
+                    }
+                }
+                else if (waitingBrowse != null)
+                {
+                    // Authentication/foreign-app observations stop further browsing,
+                    // while upload confirmation can still arrive independently.
+                    var decision = waitingBrowse.Observe(new FacebookLayoutObservation(xml));
+                    await PFlowTrace.SessionAsync(
+                        job.DeviceIndex,
+                        "layout.upload-wait.browse",
+                        decision.Diagnostic,
+                        ct
+                    );
+                    waitingBrowse.BeginRecovery();
+                }
+            }
             await Task.Delay(400, ct);
         }
         job.State = PFlowState.Unknown;
         job.Error =
-            $"No new publication confirmation was exposed within {PublicationTimeout.TotalSeconds:F0} seconds.";
+            $"No new publication confirmation was exposed within {confirmationWindow.TotalSeconds:F0} seconds. The upload may still finish; verify the target's posts before retrying.";
         await checkpoint(job);
         await PFlowDiagnostics.CaptureAsync(
             _ldPlayer,
@@ -589,25 +700,39 @@ public partial class PFlowAutoPostService
         }
     }
 
+    internal static string? WaitingBrowseSurface(string xml)
+    {
+        foreach (var surface in new[] { "Reels", "Feed" })
+            if (
+                ScreenTimeService.IsScreen(xml, surface)
+                && !ScreenTimeNavigation.IsBlockingScreen(xml, surface, scrollOnly: true)
+            )
+                return surface;
+        return null;
+    }
+
     public static string ShellQuote(string value) => "'" + value.Replace("'", "'\"'\"'") + "'";
 
-    internal static IEnumerable<string> Labels(string? xml)
+    internal static IEnumerable<string> Labels(string? xml) =>
+        FacebookHierarchyCache.Memo(xml, "labels", () => ReadLabels(xml));
+
+    private static string[] ReadLabels(string? xml)
     {
         if (string.IsNullOrWhiteSpace(xml))
             return [];
         try
         {
-            return SafeParseXmlDocuments(xml)
-                .SelectMany(d => d.Descendants("node"))
-                .SelectMany(n =>
-                    new[]
-                    {
-                        n.Attribute("text")?.Value ?? "",
-                        n.Attribute("content-desc")?.Value ?? "",
-                    }
-                )
-                .Where(s => s.Length > 0)
-                .ToArray();
+            var labels = new List<string>();
+            foreach (var node in ScreenTimeHierarchy.Nodes(xml))
+            {
+                var text = node.Attribute("text")?.Value;
+                var description = node.Attribute("content-desc")?.Value;
+                if (!string.IsNullOrEmpty(text))
+                    labels.Add(text);
+                if (!string.IsNullOrEmpty(description))
+                    labels.Add(description);
+            }
+            return labels.ToArray();
         }
         catch
         {
@@ -622,6 +747,17 @@ public partial class PFlowAutoPostService
             );
 
     internal static bool IsComposer(string xml, string type) =>
+        FacebookLayoutRegistry
+            .Match(
+                xml,
+                type == "Picture"
+                    ? FacebookScreenKind.PhotoComposer
+                    : FacebookScreenKind.ReelComposer,
+                new(PostType: type)
+            )
+            .IsMatch;
+
+    internal static bool HasComposerLayoutEvidence(string xml, string type) =>
         type == "Picture"
             ? Labels(xml)
                 .Any(x =>
@@ -658,14 +794,17 @@ public partial class PFlowAutoPostService
     internal static string? NewPublicationEvidence(string xml, ISet<string> before, string type)
     {
         var allowed =
-            type == "Picture"
-                ? new[] { "Your post has been shared", "Your post was published", "Post published" }
-                : new[]
+            type == "Story"
+                ? new[]
                 {
-                    "Your reel has been shared",
-                    "Your reel was published",
-                    "Reel published",
-                };
+                    "Your story has been shared",
+                    "Your story was shared",
+                    "Your story was published",
+                    "Story shared",
+                }
+            : type == "Picture"
+                ? new[] { "Your post has been shared", "Your post was published", "Post published" }
+            : new[] { "Your reel has been shared", "Your reel was published", "Reel published" };
         return Labels(xml)
             .FirstOrDefault(x =>
                 !before.Contains(x)

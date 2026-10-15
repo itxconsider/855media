@@ -6,8 +6,107 @@ using System.Threading.Tasks;
 namespace _855Media.Core.LDPlayer;
 
 // Preparation never submits credentials, changes networks or clears app data.
-public sealed class PFlowSessionPreparation(ILDPlayerService ld, string path)
+public sealed class PFlowSessionPreparation(
+    ILDPlayerService ld,
+    string path,
+    Func<TimeSpan, CancellationToken, Task>? delay = null
+)
 {
+    private readonly Func<TimeSpan, CancellationToken, Task> _startupDelay = delay ?? Task.Delay;
+    public TimeSpan AppOpenDelay { get; init; } = TimeSpan.Zero;
+
+    public async Task OpenFacebookAsync(
+        PFlowAccountBinding binding,
+        Func<string, Task> progress,
+        CancellationToken ct
+    )
+    {
+        for (var attempt = 1; attempt <= 2; attempt++)
+        {
+            await RequireWorkerAsync(binding, ct);
+            if (AppOpenDelay > TimeSpan.Zero)
+            {
+                await progress($"Waiting {AppOpenDelay.TotalSeconds:0}s before opening Facebook.");
+                await _startupDelay(AppOpenDelay, ct);
+            }
+            ct.ThrowIfCancellationRequested();
+            await progress($"Opening assigned Facebook app (attempt {attempt}/2).");
+            var acknowledged = await ld.LaunchAppAsync(
+                binding.DeviceIndex,
+                binding.AppPackage,
+                path,
+                ct
+            );
+            await PFlowTrace.SessionAsync(
+                binding.DeviceIndex,
+                "startup.facebook.launch",
+                $"attempt={attempt}; acknowledged={acknowledged}; delayBeforeOpenSeconds={AppOpenDelay.TotalSeconds}",
+                ct
+            );
+            string activity = "";
+            for (var poll = 0; poll < 20; poll++)
+            {
+                ct.ThrowIfCancellationRequested();
+                await RequireWorkerAsync(binding, ct);
+                activity =
+                    await ld.GetCurrentFocusedActivityAsync(binding.DeviceIndex, path, ct) ?? "";
+                if (
+                    System.Text.RegularExpressions.Regex.IsMatch(
+                        activity,
+                        @"(?<![\w.])"
+                            + System.Text.RegularExpressions.Regex.Escape(binding.AppPackage)
+                            + "/"
+                    )
+                )
+                {
+                    await PFlowTrace.SessionAsync(
+                        binding.DeviceIndex,
+                        "startup.facebook.ready",
+                        $"attempt={attempt}; acknowledged={acknowledged}; foregroundVerified=True",
+                        ct
+                    );
+                    return;
+                }
+                if (activity == PFlowAndroidCredentialPrompt.Activity)
+                {
+                    await ReadFacebookScreenAsync(binding, ct);
+                    return;
+                }
+                if (
+                    !string.IsNullOrWhiteSpace(activity)
+                    && !System.Text.RegularExpressions.Regex.IsMatch(
+                        activity,
+                        @"(?<![\w.])(?:com\.ldmnq\.launcher3|com\.android\.launcher3)/"
+                    )
+                )
+                    throw new InvalidOperationException(
+                        "Another app is in the foreground while opening assigned Facebook; startup stopped."
+                    );
+                await _startupDelay(TimeSpan.FromMilliseconds(500), ct);
+            }
+            await PFlowTrace.SessionAsync(
+                binding.DeviceIndex,
+                "startup.facebook.not-ready",
+                $"attempt={attempt}; acknowledged={acknowledged}; foregroundVerified=False; launcherOrNoFocus=True",
+                ct
+            );
+            if (attempt < 2)
+            {
+                await RequireConnectionAsync(binding, ct);
+                if (!await ld.EnsureAtxAgentRunningAsync(binding.DeviceIndex, path, ct))
+                    throw new InvalidOperationException(
+                        "Device UI connection is unavailable while reopening Facebook."
+                    );
+                await progress(
+                    "Facebook is not ready yet; retrying once without clearing the session."
+                );
+            }
+        }
+        throw new InvalidOperationException(
+            "Assigned Facebook app did not become foreground after two startup attempts. UID verification and actions were not started."
+        );
+    }
+
     public string? NetworkIdentity { get; private set; }
 
     public void BindNetworkIdentity(string identity)
@@ -55,12 +154,21 @@ public sealed class PFlowSessionPreparation(ILDPlayerService ld, string path)
     {
         ct.ThrowIfCancellationRequested();
         binding.Validate();
-        var instance =
-            (await ld.GetInstancesAsync(path, ct)).SingleOrDefault(i =>
+        LDInstanceInfo? instance = null;
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            ct.ThrowIfCancellationRequested();
+            instance = (await ld.GetInstancesAsync(path, ct)).SingleOrDefault(i =>
                 i.Index == binding.DeviceIndex
-            )
-            ?? throw new InvalidOperationException(
-                "Assigned LD is missing. Review mapping; no fallback was used."
+            );
+            if (instance != null)
+                break;
+            if (attempt < 2)
+                await Task.Delay(500, ct);
+        }
+        if (instance == null)
+            throw new InvalidOperationException(
+                $"Assigned LD-{binding.DeviceIndex} was not returned after three instance-list checks. Check LDPlayer connection and mapping; no other LD was used."
             );
         var worker = new PFlowWorkerIdentity(
             instance.Index,
@@ -145,32 +253,7 @@ public sealed class PFlowSessionPreparation(ILDPlayerService ld, string path)
             "from=AndroidHome",
             ct
         );
-        if (!await ld.LaunchAppAsync(binding.DeviceIndex, binding.AppPackage, path, ct))
-            throw new InvalidOperationException(
-                "Assigned Facebook app could not be reopened after cleanup."
-            );
-        for (var attempt = 0; attempt < 8; attempt++)
-        {
-            activity = await ld.GetCurrentFocusedActivityAsync(binding.DeviceIndex, path, ct) ?? "";
-            if (
-                System.Text.RegularExpressions.Regex.IsMatch(
-                    activity,
-                    @"(?<![\w.])com\.facebook\.katana/"
-                )
-            )
-                break;
-            if (
-                !string.IsNullOrWhiteSpace(activity)
-                && !System.Text.RegularExpressions.Regex.IsMatch(
-                    activity,
-                    @"(?<![\w.])(?:com\.ldmnq\.launcher3|com\.android\.launcher3)/"
-                )
-            )
-                throw new InvalidOperationException(
-                    "Another app appeared while restoring Facebook after cleanup."
-                );
-            await Task.Delay(500, ct);
-        }
+        await OpenFacebookAsync(binding, _ => Task.CompletedTask, ct);
         await ReadFacebookScreenAsync(binding, ct);
     }
 
@@ -241,8 +324,7 @@ public sealed class PFlowSessionPreparation(ILDPlayerService ld, string path)
         if (!await ld.EnsureAtxAgentRunningAsync(binding.DeviceIndex, path, ct))
             throw new InvalidOperationException("Device UI connection is unavailable.");
         await progress("Opening the assigned Facebook app; existing sessions are preserved.");
-        if (!await ld.LaunchAppAsync(binding.DeviceIndex, binding.AppPackage, path, ct))
-            throw new InvalidOperationException("Assigned Facebook app did not open.");
+        await OpenFacebookAsync(binding, progress, ct);
         await RequireWorkerAsync(binding, ct);
     }
 }

@@ -147,6 +147,15 @@ public partial class AutoPostViewModel : ViewModelBase
     private bool _isBackupPictureFile;
 
     [ObservableProperty]
+    private bool _isPostStory;
+
+    [ObservableProperty]
+    private bool _isDeleteStoryFile;
+
+    [ObservableProperty]
+    private bool _isBackupStoryFile;
+
+    [ObservableProperty]
     private bool _isPostVideo;
 
     [ObservableProperty]
@@ -227,11 +236,15 @@ public partial class AutoPostViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(FetchDevicePagesCommand))]
     [NotifyCanExecuteChangedFor(nameof(FetchSelectedPagesInfoCommand))]
+    [NotifyPropertyChangedFor(nameof(CanEditAccountBulkSelection))]
+    [NotifyPropertyChangedFor(nameof(CanApplyAccountBulkSelection))]
     private bool _isRunning;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(FetchDevicePagesCommand))]
     [NotifyCanExecuteChangedFor(nameof(FetchSelectedPagesInfoCommand))]
+    [NotifyPropertyChangedFor(nameof(CanEditAccountBulkSelection))]
+    [NotifyPropertyChangedFor(nameof(CanApplyAccountBulkSelection))]
     private bool _isBusy;
 
     [ObservableProperty]
@@ -1022,7 +1035,8 @@ public partial class AutoPostViewModel : ViewModelBase
         AtxAgentClient? atxClient = null,
         IScreenTimeService? screenTimeService = null,
         IPFlowAutoPostService? autoPostService = null,
-        IPFlowFeedEngagementService? feedEngagementService = null
+        IPFlowFeedEngagementService? feedEngagementService = null,
+        PFlowAccountStore? accountStore = null
     )
     {
         _ldPlayerService = ldPlayerService;
@@ -1033,6 +1047,8 @@ public partial class AutoPostViewModel : ViewModelBase
         _snackbarManager = snackbarManager;
         _localizationManager = localizationManager;
         _settingsService = settingsService;
+        if (accountStore != null)
+            _accountStore = accountStore;
         _atxClient = atxClient;
         if (_atxClient != null)
             _atxClient.TapObserved += OnAtxTapObserved;
@@ -1041,6 +1057,7 @@ public partial class AutoPostViewModel : ViewModelBase
         InitializeDefaultPages();
         InitializeSampleTasks();
         InitializePFlowDashboard();
+        InitializeAccountMultiSelect();
         ScreenTimeOptions.PropertyChanged += ScreenTimeOptionsChanged;
     }
 
@@ -1076,6 +1093,7 @@ public partial class AutoPostViewModel : ViewModelBase
             AddAccountLine = "";
             DisposeNetworkMonitor();
             DisposePFlowDashboard();
+            DisposeAccountMultiSelect();
             _manageSelectionRefresh?.Dispose();
             foreach (var group in _manageGroupCache.Values)
                 group.Dispose();
@@ -1203,18 +1221,29 @@ public partial class AutoPostViewModel : ViewModelBase
             return;
         }
 
+        var selectedPostingDevices = selectedWorkers.Select(w => w.Index).ToHashSet();
         bool hasQueuedReels = Tasks.Any(t =>
-            t.Status == "Queued" && t.Type.Equals("Reel", StringComparison.OrdinalIgnoreCase)
+            PFlowTaskRouting.IsQueuedPost(t)
+            && selectedPostingDevices.Contains(ResolveDeviceIndex(t.DeviceName))
+            && t.Type.Equals("Reel", StringComparison.OrdinalIgnoreCase)
         );
         bool hasQueuedPictures = Tasks.Any(t =>
-            t.Status == "Queued"
+            PFlowTaskRouting.IsQueuedPost(t)
+            && selectedPostingDevices.Contains(ResolveDeviceIndex(t.DeviceName))
             && (
                 t.Type.Equals("Picture", StringComparison.OrdinalIgnoreCase)
                 || t.Type.Equals("Photo", StringComparison.OrdinalIgnoreCase)
             )
         );
+        bool hasQueuedStories = Tasks.Any(t =>
+            PFlowTaskRouting.IsQueuedPost(t)
+            && selectedPostingDevices.Contains(ResolveDeviceIndex(t.DeviceName))
+            && t.Type == "Story"
+        );
         bool hasQueuedVideos = Tasks.Any(t =>
-            t.Status == "Queued" && t.Type.Equals("Video", StringComparison.OrdinalIgnoreCase)
+            PFlowTaskRouting.IsQueuedPost(t)
+            && selectedPostingDevices.Contains(ResolveDeviceIndex(t.DeviceName))
+            && t.Type.Equals("Video", StringComparison.OrdinalIgnoreCase)
         );
 
         var screenTime = ScreenTimeSetting.FromConfig(ExportConfig());
@@ -1231,6 +1260,20 @@ public partial class AutoPostViewModel : ViewModelBase
             _snackbarManager.Notify(string.Join("\n", screenTimeErrors));
             return;
         }
+        if (
+            !_screenTimeOnlyRequested
+            && !screenTime.HasActions
+            && !hasQueuedReels
+            && !hasQueuedPictures
+            && !hasQueuedVideos
+            && !hasQueuedStories
+        )
+        {
+            StatusSummary =
+                "No queued posts for the selected LDs. Prepare the post queue before starting PFlow again.";
+            _snackbarManager.Notify(StatusSummary);
+            return;
+        }
         var hasAnyAction =
             screenTime.HasActions
             || IsWatchVideo
@@ -1238,6 +1281,7 @@ public partial class AutoPostViewModel : ViewModelBase
             || IsMarketPlace
             || IsPostReel
             || IsPostPicture
+            || IsPostStory
             || IsPostVideo
             || IsReadNotification
             || AddFriendSuggest
@@ -1245,7 +1289,8 @@ public partial class AutoPostViewModel : ViewModelBase
             || IsCheckIn
             || hasQueuedReels
             || hasQueuedPictures
-            || hasQueuedVideos;
+            || hasQueuedVideos
+            || hasQueuedStories;
         if (_screenTimeOnlyRequested)
             hasAnyAction = screenTime.HasActions;
         if (!hasAnyAction)
@@ -1289,6 +1334,9 @@ public partial class AutoPostViewModel : ViewModelBase
             PostPicture = !_screenTimeOnlyRequested && (IsPostPicture || hasQueuedPictures),
             DeletePictureFile = IsDeletePictureFile,
             BackupPictureFile = IsBackupPictureFile,
+            PostStory = !_screenTimeOnlyRequested && (IsPostStory || hasQueuedStories),
+            DeleteStoryFile = IsDeleteStoryFile,
+            BackupStoryFile = IsBackupStoryFile,
             PostVideo = false,
             DeleteVideoFile = IsDeleteVideoFile,
             BackupVideoFile = IsBackupVideoFile,
@@ -1305,6 +1353,7 @@ public partial class AutoPostViewModel : ViewModelBase
             DelayBeforeSwitchPage = DelayBeforeSwitchPage,
         };
 
+        _pFlowRunAppOpenDelay = TimeSpan.FromSeconds(Math.Clamp(config.DelayOpenApp, 0, 600));
         IsBusy = true;
         try
         {
@@ -1589,6 +1638,9 @@ public partial class AutoPostViewModel : ViewModelBase
         public bool BackupReelFile { get; init; }
 
         public bool PostPicture { get; init; }
+        public bool PostStory { get; init; }
+        public bool DeleteStoryFile { get; init; }
+        public bool BackupStoryFile { get; init; }
         public bool DeletePictureFile { get; init; }
         public bool BackupPictureFile { get; init; }
 
@@ -1820,6 +1872,9 @@ public partial class AutoPostViewModel : ViewModelBase
             IsPostPicture = IsPostPicture,
             IsDeletePictureFile = IsDeletePictureFile,
             IsBackupPictureFile = IsBackupPictureFile,
+            IsPostStory = IsPostStory,
+            IsDeleteStoryFile = IsDeleteStoryFile,
+            IsBackupStoryFile = IsBackupStoryFile,
             IsPostVideo = IsPostVideo,
             IsDeleteVideoFile = IsDeleteVideoFile,
             IsBackupVideoFile = IsBackupVideoFile,
@@ -1875,6 +1930,9 @@ public partial class AutoPostViewModel : ViewModelBase
         IsPostPicture = cfg.IsPostPicture;
         IsDeletePictureFile = cfg.IsDeletePictureFile;
         IsBackupPictureFile = cfg.IsBackupPictureFile;
+        IsPostStory = cfg.IsPostStory;
+        IsDeleteStoryFile = cfg.IsDeleteStoryFile;
+        IsBackupStoryFile = cfg.IsBackupStoryFile;
         IsPostVideo = false;
         IsDeleteVideoFile = cfg.IsDeleteVideoFile;
         IsBackupVideoFile = cfg.IsBackupVideoFile;
@@ -1921,6 +1979,7 @@ public partial class AutoPostViewModel : ViewModelBase
         "TitleImage",
         "TitleImageMode",
         "ImagePath",
+        "StoryPath",
         "TitleVideoLong",
         "TitleVideoLongMode",
         "VideoLongPath",
@@ -1975,7 +2034,8 @@ public partial class AutoPostViewModel : ViewModelBase
             if (path.Length == 0)
                 continue;
             var extensions =
-                key is "ImagePath" or "GroupPicturePath"
+                key == "StoryPath" ? FacebookPageTarget.StoryExtensions
+                : key is "ImagePath" or "GroupPicturePath"
                     ? new[] { ".jpg", ".jpeg", ".png", ".webp" }
                 : key is "VideoReelPath" or "GroupReelPath" ? FacebookPageTarget.ReelExtensions
                 : new[] { ".mp4", ".mkv", ".mov" };
@@ -2365,6 +2425,10 @@ public partial class AutoPostViewModel : ViewModelBase
             profileTarget.PersonaUid = accountDetails.Uid;
             profileTarget.UserUid = accountDetails.Uid;
             profileTarget.PageName = PreferValue(accountDetails.Name, profileTarget.PageName);
+            profileTarget.ProfilePictureUrl = PreferValue(
+                accountDetails.ProfilePictureUrl,
+                profileTarget.ProfilePictureUrl
+            );
             profileTarget.Email = PreferValue(accountDetails.Email, profileTarget.Email);
             profileTarget.Birthdate = PreferValue(
                 accountDetails.Birthdate,
@@ -2403,7 +2467,14 @@ public partial class AutoPostViewModel : ViewModelBase
                 pageTarget.PageId = PreferValue(page.PageId, pageTarget.PageId);
                 pageTarget.PersonaUid = PreferValue(personaUid, pageTarget.PersonaUid);
                 pageTarget.UserUid = PreferValue(accountDetails.Uid, pageTarget.UserUid);
-                pageTarget.PageName = PreferValue(page.PageName, pageTarget.PageName);
+                pageTarget.PageName = isRootSnapshot
+                    ? PFlowPageName.PreferRootName(page.PageName, pageTarget.PageName)
+                    : PreferValue(page.PageName, pageTarget.PageName);
+                page.PageName = pageTarget.PageName;
+                pageTarget.ProfilePictureUrl = PreferValue(
+                    page.ProfilePictureUrl,
+                    pageTarget.ProfilePictureUrl
+                );
                 pageTarget.Email = PreferValue(accountDetails.Email, pageTarget.Email);
                 pageTarget.Birthdate = PreferValue(page.Birthdate, pageTarget.Birthdate);
                 pageTarget.CreationDate = PreferValue(page.CreationDate, pageTarget.CreationDate);
@@ -2496,6 +2567,10 @@ public partial class AutoPostViewModel : ViewModelBase
 
             if (!string.IsNullOrWhiteSpace(pageInfo.PageId))
                 row.PageId = pageInfo.PageId;
+            row.Model.ProfilePictureUrl = PreferValue(
+                pageInfo.ProfilePictureUrl,
+                row.Model.ProfilePictureUrl
+            );
             if (
                 string.IsNullOrWhiteSpace(row.PageName)
                 && !string.IsNullOrWhiteSpace(pageInfo.PageName)
@@ -2550,6 +2625,10 @@ public partial class AutoPostViewModel : ViewModelBase
     )
     {
         accountDetails.Name = PreferValue(personalInfo.Name, accountDetails.Name);
+        accountDetails.ProfilePictureUrl = PreferValue(
+            personalInfo.ProfilePictureUrl,
+            accountDetails.ProfilePictureUrl
+        );
         accountDetails.SwitchedToProfile = personalInfo.SwitchedToProfile;
         foreach (var managedPage in accountDetails.Pages)
             managedPage.ManagedBy = accountDetails.Name;
@@ -2644,6 +2723,8 @@ public partial class AutoPostViewModel : ViewModelBase
                 continue;
 
             attempted++;
+            if (i > 0)
+                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
             await ReportFetchProgressAsync(
                 target,
                 $"Page UI {i + 1}/{pages.Count}: opening",
@@ -2668,6 +2749,14 @@ public partial class AutoPostViewModel : ViewModelBase
                             $"{target.Name}: {step}"
                         )
                 );
+                if (pageUiInfo == null)
+                    pageUiInfo = await RecoverRepeatedPageNameAsync(
+                        target,
+                        rootDetails,
+                        page,
+                        pageUid,
+                        cancellationToken
+                    );
                 // Non-null UI results are returned only after the selected Page and its
                 // authenticated own-profile controls have been confirmed.
                 page.LivePageAccessVerified = pageUiInfo != null;
@@ -3751,7 +3840,7 @@ public partial class AutoPostViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    public void SetFileUpload()
+    public async Task SetFileUploadAsync()
     {
         // 1. Identify target pages from selection
         var selectedPages = DisplayedManagePages.Where(p => p.IsSelected).ToList();
@@ -3771,10 +3860,11 @@ public partial class AutoPostViewModel : ViewModelBase
         string postType = SelectedPostTypeIndex switch
         {
             1 => "Picture",
-            2 => "Reel",
+            2 => "Story",
             _ => "Reel",
         };
 
+        await RefreshMediaCountsForPagesAsync(selectedPages.ToArray());
         var usedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (UploadUniqueFile)
         {
@@ -3817,11 +3907,12 @@ public partial class AutoPostViewModel : ViewModelBase
             }
 
             page.SyncToModel();
-            page.RefreshMediaCounts();
-            var mediaSnapshot = page.Model.ReadUploadMediaSnapshot(postType);
-            if (mediaSnapshot.Error.Length > 0)
+            var mediaSnapshot = page.AvailableMedia(postType);
+            if (mediaSnapshot == null || mediaSnapshot.Error.Length > 0)
             {
-                _snackbarManager.Notify($"{page.PageName}: {mediaSnapshot.Error}");
+                _snackbarManager.Notify(
+                    $"{page.PageName}: {mediaSnapshot?.Error ?? "Media counts changed; refresh and prepare again."}"
+                );
                 continue;
             }
             var candidateFiles = mediaSnapshot.Files.ToList();
@@ -3889,12 +3980,15 @@ public partial class AutoPostViewModel : ViewModelBase
                         _ => page.Model.GetReelCaptionForFile(file),
                     };
 
-                    var title = ResolveCaptionForMedia(
-                        file,
-                        titleConfig,
-                        page.UseTitleFromTextFile,
-                        page.UseCaptionFromFilename
-                    );
+                    var title =
+                        postType == "Story"
+                            ? Path.GetFileName(file)
+                            : ResolveCaptionForMedia(
+                                file,
+                                titleConfig,
+                                page.UseTitleFromTextFile,
+                                page.UseCaptionFromFilename
+                            );
 
                     var task = new AutoPostTaskItem
                     {
@@ -3924,6 +4018,8 @@ public partial class AutoPostViewModel : ViewModelBase
                 IsPostReel = true;
             else if (postType == "Picture")
                 IsPostPicture = true;
+            else if (postType == "Story")
+                IsPostStory = true;
             else if (postType == "Video")
                 IsPostVideo = true;
 

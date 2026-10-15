@@ -2331,6 +2331,44 @@ public partial class LDPlayerService : ILDPlayerService
         Func<string, Task>? progress = null
     )
     {
+        var details = await ExtractFacebookAccountDetailsCoreAsync(
+            index,
+            customPath,
+            cancellationToken,
+            rootShellCompleted,
+            progress
+        );
+        if (!string.IsNullOrWhiteSpace(details?.Uid))
+            return details;
+        var xml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
+        if (
+            PFlowLoginScreen.RequiresAuthentication(PFlowLoginScreen.Classify(xml))
+            || PFlowUiPrivacy.ContainsInput(xml ?? "")
+            || PFlowAutoPostService.IsComposer(xml ?? "", "Reel")
+        )
+            return details;
+        if (progress != null)
+            await progress(
+                "Account UID unavailable: clearing recent apps and reopening Facebook before one retry."
+            );
+        await PFlowSession.RestartForUidRecoveryAsync(this, index, customPath, cancellationToken);
+        return await ExtractFacebookAccountDetailsCoreAsync(
+            index,
+            customPath,
+            cancellationToken,
+            rootShellCompleted,
+            progress
+        );
+    }
+
+    private async Task<FacebookAccountDetails?> ExtractFacebookAccountDetailsCoreAsync(
+        int index,
+        string? customPath,
+        CancellationToken cancellationToken,
+        Func<FacebookAccountDetails, Task>? rootShellCompleted,
+        Func<string, Task>? progress
+    )
+    {
         await PFlowFetchTrace.WriteAsync(
             index,
             "root-shell.begin",
@@ -2407,7 +2445,11 @@ public partial class LDPlayerService : ILDPlayerService
             Name = profileAccount?.Name ?? string.Empty,
             Uid = userUid,
             Email = profileAccount?.Email ?? string.Empty,
+            ProfilePictureUrl = profileAccount?.PicUrl ?? string.Empty,
         };
+
+        if (string.IsNullOrWhiteSpace(userUid))
+            return null;
 
         foreach (
             var pageAccount in rootAccounts.Where(a =>
@@ -2491,7 +2533,7 @@ public partial class LDPlayerService : ILDPlayerService
             || t.Equals("Meta Account settings", StringComparison.OrdinalIgnoreCase)
             || t.Equals("Open profile switcher", StringComparison.OrdinalIgnoreCase)
             || t.Equals("Dismiss", StringComparison.OrdinalIgnoreCase)
-            || t.Equals("See more", StringComparison.OrdinalIgnoreCase)
+            || FacebookNavigationLabels.IsSectionExpansion(t)
             || t.Equals("See less", StringComparison.OrdinalIgnoreCase)
             || t.Equals("See all profiles", StringComparison.OrdinalIgnoreCase)
             || t.Equals("Log into another account", StringComparison.OrdinalIgnoreCase)
@@ -3155,6 +3197,7 @@ public partial class LDPlayerService : ILDPlayerService
                             && !val.Equals("Education", StringComparison.OrdinalIgnoreCase)
                             && !val.StartsWith("Edit", StringComparison.OrdinalIgnoreCase)
                             && !val.StartsWith("See more", StringComparison.OrdinalIgnoreCase)
+                            && !FacebookNavigationLabels.IsSectionExpansion(val)
                         )
                         {
                             result.Education = val;
@@ -5652,7 +5695,8 @@ public partial class LDPlayerService : ILDPlayerService
         string? customPath,
         CancellationToken cancellationToken,
         Func<string, Task>? progress,
-        bool ownerAlreadyVerified
+        bool ownerAlreadyVerified,
+        FacebookPageFetchStateMachine flow
     )
     {
         if (
@@ -5667,9 +5711,13 @@ public partial class LDPlayerService : ILDPlayerService
             )
         )
             return false;
+        // OpenAndVerifyPrimaryProfileAsync or the caller's current-session verifier
+        // has already compared the live owner UID. Layout recognition supplies no UID.
+        if (!flow.VerifyOwnerUid(accountUid).Allowed)
+            return false;
         if (progress != null)
             await progress($"Selecting and confirming managed Page {pageName}.");
-        return await SwitchToPersonaAsync(
+        var switched = await SwitchToPersonaAsync(
             index,
             new FacebookPageTarget
             {
@@ -5682,6 +5730,7 @@ public partial class LDPlayerService : ILDPlayerService
             customPath,
             cancellationToken
         );
+        return flow.ConfirmPageSelection(switched).Allowed;
     }
 
     public static BloksElement? FindAuthenticatedProfileNavigationTarget(BloksScreenInfo screen) =>
@@ -5719,7 +5768,8 @@ public partial class LDPlayerService : ILDPlayerService
             customPath,
             screen => IsExpectedOwnProfileVisible(screen, string.Empty, expectedName),
             cancellationToken,
-            progress
+            progress,
+            delay: PFlowFetchPacing.DelayAsync
         );
         await PFlowFetchTrace.WriteAsync(
             index,
@@ -5731,6 +5781,15 @@ public partial class LDPlayerService : ILDPlayerService
         );
         return verified;
     }
+
+    internal static FacebookLayoutControl? FindPageDashboardControl(
+        BloksScreenInfo screen,
+        string? targetName,
+        string? targetUid
+    ) =>
+        FacebookLayoutRegistry
+            .MatchScreen(screen, FacebookScreenKind.OwnProfile, new(targetName, targetUid))
+            .Control(FacebookControlRole.Dashboard);
 
     private async Task<FacebookPageInfo?> ExtractPageInfoCoreAsync(
         int index,
@@ -5760,6 +5819,47 @@ public partial class LDPlayerService : ILDPlayerService
             return null;
         pageId ??= string.Empty;
 
+        var flow = new FacebookPageFetchStateMachine(
+            expectedProfileUid,
+            expectedPageName ?? pageId
+        );
+        string? lastLayoutDiagnostic = null;
+        FacebookLayoutMatch? guardedLayout = null;
+        var observations = new System.Runtime.CompilerServices.ConditionalWeakTable<
+            BloksScreenInfo,
+            FacebookLayoutObservation
+        >();
+        async Task<bool> Guard(
+            FacebookPageFetchAction action,
+            BloksScreenInfo captured,
+            FacebookScreenKind kind
+        )
+        {
+            var observation = observations.GetValue(
+                captured,
+                s =>
+                    FacebookLayoutObservation.FromScreen(
+                        s,
+                        new(expectedPageName ?? pageId, pageUid)
+                    )
+            );
+            var match = FacebookLayoutRegistry.Match(observation, kind);
+            guardedLayout = match;
+            var decision = flow.Advance(action, match);
+            var diagnostic = $"action={action}; {decision.Diagnostic}; {match.Diagnostic}";
+            if (diagnostic != lastLayoutDiagnostic)
+            {
+                await PFlowFetchTrace.WriteAsync(
+                    index,
+                    "page.layout",
+                    diagnostic,
+                    cancellationToken
+                );
+                lastLayoutDiagnostic = diagnostic;
+            }
+            return decision.Allowed;
+        }
+
         if (progress != null)
             await progress($"Page UI: switching to {expectedPageName ?? pageId}.");
 
@@ -5773,7 +5873,8 @@ public partial class LDPlayerService : ILDPlayerService
                 customPath,
                 cancellationToken,
                 progress,
-                ownerAlreadyVerified
+                ownerAlreadyVerified,
+                flow
             )
         )
         {
@@ -5828,7 +5929,7 @@ public partial class LDPlayerService : ILDPlayerService
                 if (pageContextConfirmed)
                     break;
             }
-            await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken);
+            await PFlowFetchPacing.DelayAsync(TimeSpan.FromMilliseconds(500), cancellationToken);
         }
 
         if (!pageContextConfirmed || screen == null)
@@ -5863,6 +5964,14 @@ public partial class LDPlayerService : ILDPlayerService
             return null;
         }
 
+        if (
+            !await Guard(
+                FacebookPageFetchAction.ConfirmOwnProfile,
+                screen,
+                FacebookScreenKind.OwnProfile
+            )
+        )
+            return null;
         if (progress != null)
             await progress(
                 $"Page UI: {expectedPageName ?? pageId} is active; reading its details."
@@ -5876,7 +5985,19 @@ public partial class LDPlayerService : ILDPlayerService
 
         var currentScreen = screen;
         var info = ReadPageInfoFromHierarchy(currentScreen, pageId, pageUid, expectedPageName);
+        var graphPage = await new PFlowGraphIdentityReader().TryReadAsync(
+            this,
+            index,
+            customPath,
+            cancellationToken
+        );
+        if (graphPage != null && (graphPage.Id == pageId || graphPage.Id == pageUid))
+        {
+            info.PageName = graphPage.Name;
+            info.ProfilePictureUrl = graphPage.PictureUrl ?? info.ProfilePictureUrl;
+        }
 
+        // Graph has no verified Page creation-date equivalent; fall back to Transparency.
         // Creation dates use only the verified header-name -> transparency route.
         // Do not search posts for an About link when the name sheet is unavailable.
         if (!string.IsNullOrWhiteSpace(expectedPageName))
@@ -5916,7 +6037,7 @@ public partial class LDPlayerService : ILDPlayerService
             cancellationToken,
             progress
         );
-        await Task.Delay(900, cancellationToken);
+        await PFlowFetchPacing.DelayAsync(900, cancellationToken);
         var pageHome = await DumpBloksScreenAsync(index, customPath, cancellationToken);
         if (
             pageHome != null
@@ -5933,11 +6054,60 @@ public partial class LDPlayerService : ILDPlayerService
             );
             MergePageUiInfo(info, pageHomeInfo);
 
-            var dashboard = FindHierarchyTapTarget(
+            var dashboard = FindPageDashboardControl(
                 currentScreen,
-                ["Professional dashboard", "Professional tools", "Dashboard"]
+                expectedPageName ?? pageId,
+                pageUid
             );
-            if (dashboard != null)
+            if (dashboard == null)
+            {
+                var refreshed = await PFlowFetchRefresh.TryAsync(
+                    this,
+                    index,
+                    "Page home",
+                    s => FindPageDashboardControl(s, expectedPageName ?? pageId, pageUid) != null,
+                    s => IsExpectedOwnProfileVisible(s, pageUid, expectedPageName),
+                    customPath,
+                    cancellationToken,
+                    progress,
+                    trace: message =>
+                        PFlowFetchTrace.WriteAsync(
+                            index,
+                            "page.home.refresh",
+                            message,
+                            cancellationToken
+                        )
+                );
+                if (
+                    refreshed.Ready
+                    && refreshed.Screen != null
+                    && await Guard(
+                        FacebookPageFetchAction.ConfirmOwnProfile,
+                        refreshed.Screen,
+                        FacebookScreenKind.OwnProfile
+                    )
+                )
+                {
+                    currentScreen = refreshed.Screen;
+                    MergePageUiInfo(
+                        info,
+                        ReadPageInfoFromHierarchy(currentScreen, pageId, pageUid, expectedPageName)
+                    );
+                    dashboard = FindPageDashboardControl(
+                        currentScreen,
+                        expectedPageName ?? pageId,
+                        pageUid
+                    );
+                }
+            }
+            if (
+                dashboard != null
+                && await Guard(
+                    FacebookPageFetchAction.OpenDashboard,
+                    currentScreen,
+                    FacebookScreenKind.OwnProfile
+                )
+            )
             {
                 await PFlowFetchTrace.WriteAsync(
                     index,
@@ -5951,8 +6121,8 @@ public partial class LDPlayerService : ILDPlayerService
                     );
                 await TapAsync(
                     index,
-                    dashboard.CenterX,
-                    dashboard.CenterY,
+                    guardedLayout!.Control(FacebookControlRole.Dashboard)!.X,
+                    guardedLayout.Control(FacebookControlRole.Dashboard)!.Y,
                     customPath,
                     cancellationToken
                 );
@@ -5961,7 +6131,7 @@ public partial class LDPlayerService : ILDPlayerService
                 var nextDashboardProgress = 5;
                 while (dashboardWait.Elapsed < TimeSpan.FromSeconds(30))
                 {
-                    await Task.Delay(400, cancellationToken);
+                    await PFlowFetchPacing.DelayAsync(400, cancellationToken);
                     dashboardScreen = await DumpBloksScreenAsync(
                         index,
                         customPath,
@@ -5970,9 +6140,16 @@ public partial class LDPlayerService : ILDPlayerService
                     if (
                         dashboardScreen != null
                         && !string.IsNullOrWhiteSpace(dashboardScreen.RawXml)
-                        && FindHierarchyTapTarget(dashboardScreen, ["Analytics"]) != null
+                        && await Guard(
+                            FacebookPageFetchAction.ReadDashboard,
+                            dashboardScreen,
+                            FacebookScreenKind.Dashboard
+                        )
+                        && guardedLayout!.Control(FacebookControlRole.Analytics) != null
                     )
                         break;
+                    if (flow.State == FacebookPageFetchState.Stopped)
+                        return null;
                     var seconds = (int)dashboardWait.Elapsed.TotalSeconds;
                     if (seconds >= nextDashboardProgress)
                     {
@@ -5990,7 +6167,45 @@ public partial class LDPlayerService : ILDPlayerService
                     }
                 }
 
-                if (dashboardScreen != null && !string.IsNullOrWhiteSpace(dashboardScreen.RawXml))
+                if (
+                    dashboardScreen == null
+                    || FacebookLayoutRegistry
+                        .MatchScreen(dashboardScreen, FacebookScreenKind.Dashboard)
+                        .Control(FacebookControlRole.Analytics) == null
+                )
+                {
+                    var refreshed = await PFlowFetchRefresh.TryAsync(
+                        this,
+                        index,
+                        "Professional dashboard",
+                        s =>
+                            FacebookLayoutRegistry
+                                .MatchScreen(s, FacebookScreenKind.Dashboard)
+                                .Control(FacebookControlRole.Analytics) != null,
+                        FacebookLayoutRegistry.HasDashboardHeader,
+                        customPath,
+                        cancellationToken,
+                        progress,
+                        trace: message =>
+                            PFlowFetchTrace.WriteAsync(
+                                index,
+                                "page.dashboard.refresh",
+                                message,
+                                cancellationToken
+                            )
+                    );
+                    if (refreshed.Ready)
+                        dashboardScreen = refreshed.Screen;
+                }
+                if (
+                    dashboardScreen != null
+                    && !string.IsNullOrWhiteSpace(dashboardScreen.RawXml)
+                    && await Guard(
+                        FacebookPageFetchAction.ReadDashboard,
+                        dashboardScreen,
+                        FacebookScreenKind.Dashboard
+                    )
+                )
                 {
                     currentScreen = dashboardScreen;
                     await PFlowFetchTrace.WriteAsync(
@@ -6003,13 +6218,18 @@ public partial class LDPlayerService : ILDPlayerService
                         info,
                         ReadPageInfoFromHierarchy(currentScreen, pageId, pageUid, expectedPageName)
                     );
-                    var analytics = FindHierarchyTapTarget(currentScreen, ["Analytics"]);
-                    if (analytics != null)
+                    if (
+                        await Guard(
+                            FacebookPageFetchAction.OpenAnalytics,
+                            currentScreen,
+                            FacebookScreenKind.Dashboard
+                        )
+                    )
                     {
                         await PFlowFetchTrace.WriteAsync(
                             index,
                             "page.analytics.tap",
-                            "Analytics tab found; tapping.",
+                            "Registry Analytics entry found (tab or section heading); tapping.",
                             cancellationToken
                         );
                         if (progress != null)
@@ -6018,8 +6238,8 @@ public partial class LDPlayerService : ILDPlayerService
                             );
                         await TapAsync(
                             index,
-                            analytics.CenterX,
-                            analytics.CenterY,
+                            guardedLayout!.Control(FacebookControlRole.Analytics)!.X,
+                            guardedLayout.Control(FacebookControlRole.Analytics)!.Y,
                             customPath,
                             cancellationToken
                         );
@@ -6032,13 +6252,20 @@ public partial class LDPlayerService : ILDPlayerService
                         var analyticsReady = false;
                         while (analyticsWait.Elapsed < TimeSpan.FromSeconds(30))
                         {
-                            await Task.Delay(400, cancellationToken);
+                            await PFlowFetchPacing.DelayAsync(400, cancellationToken);
                             var loadedAnalytics = await DumpBloksScreenAsync(
                                 index,
                                 customPath,
                                 cancellationToken
                             );
-                            if (loadedAnalytics != null && IsAnalyticsContentReady(loadedAnalytics))
+                            if (
+                                loadedAnalytics != null
+                                && await Guard(
+                                    FacebookPageFetchAction.ReadAnalytics,
+                                    loadedAnalytics,
+                                    FacebookScreenKind.Analytics
+                                )
+                            )
                             {
                                 currentScreen = loadedAnalytics;
                                 info.Views = ReadDashboardViews(loadedAnalytics) ?? info.Views;
@@ -6054,6 +6281,8 @@ public partial class LDPlayerService : ILDPlayerService
                                 analyticsReady = true;
                                 break;
                             }
+                            if (flow.State == FacebookPageFetchState.Stopped)
+                                return null;
                             var seconds = (int)analyticsWait.Elapsed.TotalSeconds;
                             if (seconds >= nextAnalyticsProgress)
                             {
@@ -6069,6 +6298,54 @@ public partial class LDPlayerService : ILDPlayerService
                                 nextAnalyticsProgress = seconds + 5;
                             }
                         }
+                        if (!analyticsReady)
+                        {
+                            var refreshed = await PFlowFetchRefresh.TryAsync(
+                                this,
+                                index,
+                                "Analytics",
+                                IsAnalyticsContentReady,
+                                s =>
+                                    PFlowFetchRefresh.HasHeader(
+                                        s,
+                                        "Analytics",
+                                        "Professional dashboard"
+                                    ),
+                                customPath,
+                                cancellationToken,
+                                progress,
+                                trace: message =>
+                                    PFlowFetchTrace.WriteAsync(
+                                        index,
+                                        "page.analytics.refresh",
+                                        message,
+                                        cancellationToken
+                                    )
+                            );
+                            if (
+                                refreshed.Ready
+                                && refreshed.Screen != null
+                                && await Guard(
+                                    FacebookPageFetchAction.ReadAnalytics,
+                                    refreshed.Screen,
+                                    FacebookScreenKind.Analytics
+                                )
+                            )
+                            {
+                                currentScreen = refreshed.Screen;
+                                info.Views = ReadDashboardViews(currentScreen) ?? info.Views;
+                                MergePageUiInfo(
+                                    info,
+                                    ReadPageInfoFromHierarchy(
+                                        currentScreen,
+                                        pageId,
+                                        pageUid,
+                                        expectedPageName
+                                    )
+                                );
+                                analyticsReady = true;
+                            }
+                        }
                         await PFlowFetchTrace.WriteAsync(
                             index,
                             analyticsReady ? "page.analytics.ready" : "page.analytics.timeout",
@@ -6081,7 +6358,7 @@ public partial class LDPlayerService : ILDPlayerService
                             scrollAttempt++
                         )
                         {
-                            await Task.Delay(650, cancellationToken);
+                            await PFlowFetchPacing.DelayAsync(650, cancellationToken);
                             var analyticsScreen = await DumpBloksScreenAsync(
                                 index,
                                 customPath,
@@ -6103,6 +6380,14 @@ public partial class LDPlayerService : ILDPlayerService
                                 break;
 
                             currentScreen = analyticsScreen;
+                            if (
+                                !await Guard(
+                                    FacebookPageFetchAction.ReadAnalytics,
+                                    currentScreen,
+                                    FacebookScreenKind.Analytics
+                                )
+                            )
+                                break;
                             info.Views = ReadDashboardViews(analyticsScreen) ?? info.Views;
                             await PFlowFetchTrace.WriteAsync(
                                 index,
@@ -6174,10 +6459,8 @@ public partial class LDPlayerService : ILDPlayerService
             );
         }
 
-        MergePageUiInfo(
-            info,
-            ReadPageInfoFromHierarchy(currentScreen, pageId, pageUid, expectedPageName)
-        );
+        // Only merge screens at the guarded read sites above. The last observation
+        // may be a loading/unknown overlay or a blocked authentication screen.
         Debug.WriteLine(
             string.IsNullOrWhiteSpace(info.CreationDate)
                 ? $"[LD-{index}] Page UI hierarchy was read, but no creation date was exposed for Page {pageId}."
@@ -6197,7 +6480,17 @@ public partial class LDPlayerService : ILDPlayerService
                 $"Page UI: finished reading {expectedPageName ?? pageId}; Created date was not exposed. Last screen labels: {visible}"
             );
         }
+        if (flow.State == FacebookPageFetchState.Stopped)
+            return null;
         var hasEnrichment = HasPageEnrichment(info);
+        if (flow.State != FacebookPageFetchState.Stopped)
+            flow.Complete();
+        await PFlowFetchTrace.WriteAsync(
+            index,
+            "page.flow.complete",
+            $"state={flow.State}; hasData={hasEnrichment}",
+            cancellationToken
+        );
         await PFlowFetchTrace.WriteAsync(
             index,
             "page.lookup.complete",
@@ -6287,7 +6580,7 @@ public partial class LDPlayerService : ILDPlayerService
                 && IsExpectedOwnProfileVisible(screen, accountUid, accountName)
             )
                 break;
-            await Task.Delay(500, cancellationToken);
+            await PFlowFetchPacing.DelayAsync(500, cancellationToken);
         }
 
         if (
@@ -6327,6 +6620,21 @@ public partial class LDPlayerService : ILDPlayerService
             cancellationToken
         );
         ReadPersonalDatesFromHierarchy(screen, result);
+        var graphPersonal = await new PFlowGraphIdentityReader().TryReadAsync(
+            this,
+            index,
+            customPath,
+            cancellationToken
+        );
+        if (
+            graphPersonal != null
+            && graphPersonal.Id == accountUid
+            && graphPersonal.UnderlyingUid == accountUid
+        )
+        {
+            result.Name = graphPersonal.Name;
+            result.ProfilePictureUrl = graphPersonal.PictureUrl ?? result.ProfilePictureUrl;
+        }
         await PFlowFetchTrace.WriteAsync(
             index,
             "personal.profile.fields",
@@ -6362,7 +6670,7 @@ public partial class LDPlayerService : ILDPlayerService
                 );
                 for (var attempt = 0; attempt < 10; attempt++)
                 {
-                    await Task.Delay(350, cancellationToken);
+                    await PFlowFetchPacing.DelayAsync(350, cancellationToken);
                     var detailsSheet = await DumpBloksScreenAsync(
                         index,
                         customPath,
@@ -6412,7 +6720,7 @@ public partial class LDPlayerService : ILDPlayerService
                 );
 
                 await PressBackAsync(index, customPath, cancellationToken);
-                await Task.Delay(400, cancellationToken);
+                await PFlowFetchPacing.DelayAsync(400, cancellationToken);
                 var profileScreen = await DumpBloksScreenAsync(
                     index,
                     customPath,
@@ -6451,6 +6759,8 @@ public partial class LDPlayerService : ILDPlayerService
             scrollAttempt++
         )
         {
+            if (PFlowProfileDates.ReachedProfileFeed(screen))
+                break;
             if (progress != null)
                 await progress(
                     $"Personal account: reading profile details, screen {scrollAttempt + 1}/16."
@@ -6466,7 +6776,7 @@ public partial class LDPlayerService : ILDPlayerService
                 customPath,
                 cancellationToken
             );
-            await Task.Delay(450, cancellationToken);
+            await PFlowFetchPacing.DelayAsync(450, cancellationToken);
             var scrolledProfile = await DumpBloksScreenAsync(index, customPath, cancellationToken);
             if (scrolledProfile == null || string.IsNullOrWhiteSpace(scrolledProfile.RawXml))
                 break;
@@ -6516,7 +6826,7 @@ public partial class LDPlayerService : ILDPlayerService
                 customPath,
                 cancellationToken
             );
-            await Task.Delay(1200, cancellationToken);
+            await PFlowFetchPacing.DelayAsync(1200, cancellationToken);
             screen = await DumpBloksScreenAsync(index, customPath, cancellationToken);
 
             if (screen != null)
@@ -6536,7 +6846,7 @@ public partial class LDPlayerService : ILDPlayerService
                         customPath,
                         cancellationToken
                     );
-                    await Task.Delay(1000, cancellationToken);
+                    await PFlowFetchPacing.DelayAsync(1000, cancellationToken);
                     screen = await DumpBloksScreenAsync(index, customPath, cancellationToken);
                 }
 
@@ -6563,7 +6873,7 @@ public partial class LDPlayerService : ILDPlayerService
                                 customPath,
                                 cancellationToken
                             );
-                            await Task.Delay(800, cancellationToken);
+                            await PFlowFetchPacing.DelayAsync(800, cancellationToken);
                             screen = await DumpBloksScreenAsync(
                                 index,
                                 customPath,
@@ -6750,6 +7060,23 @@ public partial class LDPlayerService : ILDPlayerService
             CollectNavigation(root, false);
         foreach (var label in labels)
         {
+            // Analytics cards can expose the count and its percentage change as one
+            // accessibility label rather than separate numeric nodes.
+            foreach (var element in screen.AllElements.Where(e => !navigationElements.Contains(e)))
+            {
+                foreach (var text in new[] { element.Text, element.ContentDesc })
+                {
+                    var inline = Regex.Match(
+                        text.Trim(),
+                        @"^"
+                            + Regex.Escape(label)
+                            + @"[\s,:]+(?<count>\d(?:[\d,.]*\d)?\s*[KMB]?)(?:\s*[,;]?\s*[↑↓↗↘+−-]?\s*\d[\d,.]*\s*%)?\s*$",
+                        RegexOptions.IgnoreCase
+                    );
+                    if (inline.Success)
+                        return inline.Groups["count"].Value.Trim();
+                }
+            }
             foreach (
                 var labelElement in screen.AllElements.Where(e =>
                     e.Matches(label, partialMatch: false) && !navigationElements.Contains(e)
@@ -6766,20 +7093,24 @@ public partial class LDPlayerService : ILDPlayerService
                     .SelectMany(e =>
                         new[] { (Element: e, Text: e.Text), (Element: e, Text: e.ContentDesc) }
                     )
-                    .Where(item =>
-                        Regex.IsMatch(
-                            item.Text.Trim(),
-                            @"^\d[\d,.]*\s*[KMB]?$",
-                            RegexOptions.IgnoreCase
+                    .Select(item =>
+                        (
+                            item.Element,
+                            Match: Regex.Match(
+                                item.Text.Trim(),
+                                @"^(?<count>\d(?:[\d,.]*\d)?\s*[KMB]?)(?:\s*[,;]?\s*[↑↓↗↘+−-]\s*\d[\d,.]*\s*%)?\s*$",
+                                RegexOptions.IgnoreCase
+                            )
                         )
                     )
+                    .Where(item => item.Match.Success)
                     .OrderBy(item =>
                         Math.Abs(item.Element.CenterX - labelElement.CenterX) * 2
                         + Math.Abs(item.Element.CenterY - labelElement.CenterY)
                     )
                     .ToList();
                 if (candidates.Count > 0)
-                    return candidates[0].Text.Trim();
+                    return candidates[0].Match.Groups["count"].Value.Trim();
             }
         }
         return null;
@@ -6800,7 +7131,10 @@ public partial class LDPlayerService : ILDPlayerService
                 )
             );
 
-    public static bool IsAnalyticsContentReady(BloksScreenInfo screen)
+    public static bool IsAnalyticsContentReady(BloksScreenInfo screen) =>
+        FacebookLayoutRegistry.MatchScreen(screen, FacebookScreenKind.Analytics).IsMatch;
+
+    internal static bool HasAnalyticsContentEvidence(BloksScreenInfo screen)
     {
         if (
             screen.AllElements.Any(element =>
@@ -6953,6 +7287,15 @@ public partial class LDPlayerService : ILDPlayerService
     }
 
     public static bool IsExpectedOwnProfileVisible(
+        BloksScreenInfo screen,
+        string personaUid,
+        string? expectedName
+    ) =>
+        FacebookLayoutRegistry
+            .MatchScreen(screen, FacebookScreenKind.OwnProfile, new(expectedName, personaUid))
+            .IsMatch;
+
+    internal static bool HasExpectedOwnProfileEvidence(
         BloksScreenInfo screen,
         string personaUid,
         string? expectedName
@@ -7251,7 +7594,7 @@ public partial class LDPlayerService : ILDPlayerService
                         Email = Regex
                             .Match(dump, @"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
                             .Value,
-                        PicUrl = string.Empty,
+                        PicUrl = ReadRootProfilePicture(dump),
                         IsActive = !string.IsNullOrWhiteSpace(activeUid) && uid == activeUid,
                     }
                 );
@@ -7297,6 +7640,21 @@ public partial class LDPlayerService : ILDPlayerService
             Debug.WriteLine($"[LD-{index}] Direct Facebook root read failed: {ex.Message}");
         }
 
+        if (packageName == "com.facebook.katana" && result.Count > 0)
+        {
+            var graph = await new PFlowGraphIdentityReader().TryReadAsync(
+                this,
+                index,
+                customPath,
+                cancellationToken
+            );
+            var actor = graph == null ? null : result.SingleOrDefault(a => a.Uid == graph.Id);
+            if (actor != null && graph != null)
+            {
+                actor.Name = graph.Name;
+                actor.PicUrl = graph.PictureUrl ?? actor.PicUrl;
+            }
+        }
         return result;
     }
 
@@ -7316,6 +7674,21 @@ public partial class LDPlayerService : ILDPlayerService
             raw.Select(ch => ch < 32 && ch is not '\r' and not '\n' and not '\t' ? '\n' : ch)
                 .ToArray()
         );
+    }
+
+    internal static string ReadRootProfilePicture(string? dump)
+    {
+        var value = Regex
+            .Match(
+                SanitizeRootDump(dump),
+                @"(?:^|[\r\n])(?:profile_pic_url|profile_pic|pic_square|pic_uri)[\r\n\s]+(https://[^\s\p{C}]+)",
+                RegexOptions.IgnoreCase
+            )
+            .Groups[1]
+            .Value;
+        return Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme == "https"
+            ? uri.AbsoluteUri
+            : string.Empty;
     }
 
     private static void MergeRootAccount(

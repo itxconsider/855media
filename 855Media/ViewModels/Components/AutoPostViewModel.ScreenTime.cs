@@ -97,14 +97,17 @@ public partial class AutoPostViewModel
                 "ScreenTime needs one matching personal-profile row for this selected account. Review its mapping."
             );
         var profile = profiles[0];
-        await new PFlowSessionPreparation(_ldPlayerService, LdFolder).PrepareAsync(
-            account.Binding,
-            async step =>
-            {
-                await Dispatcher.UIThread.InvokeAsync(() => worker.Status = "ScreenTime: " + step);
-            },
-            ct
-        );
+        await CreateRunSessionPreparation()
+            .PrepareAsync(
+                account.Binding,
+                async step =>
+                {
+                    await Dispatcher.UIThread.InvokeAsync(() =>
+                        worker.Status = "ScreenTime: " + step
+                    );
+                },
+                ct
+            );
         _pFlowOwners.TryRemove(worker.Index, out _);
         PFlowAccountStore.RequireCurrentBinding(
             account.Binding,
@@ -144,9 +147,9 @@ public partial class AutoPostViewModel
                 {
                     await Dispatcher.UIThread.InvokeAsync(() =>
                         worker.Status =
-                            $"ScreenTime: switch to personal profile [{profile.PageName}]"
+                            $"ScreenTime: verifying live personal UID [{profile.PageName}]"
                     );
-                    // Verification owns the single shared switch and its bounded recovery.
+                    // Graph matches preserve the current screen; navigation is only a fallback.
                     return await VerifyPFlowIdentityAsync(worker, profile, c);
                 },
                 async p =>

@@ -77,7 +77,7 @@ public class PFlowAccountDiscoveryService : IPFlowAccountDiscoveryService
                 customPath,
                 cancellationToken
             );
-            await Task.Delay(_delayConfig.DelayPageLoadMs, cancellationToken);
+            await PFlowFetchPacing.DelayAsync(_delayConfig.DelayPageLoadMs, cancellationToken);
         }
 
         // 2. Dump UI hierarchy
@@ -279,7 +279,7 @@ public class PFlowAccountDiscoveryService : IPFlowAccountDiscoveryService
         )
             return null;
 
-        await Task.Delay(_delayConfig.DelayAfterTapMs, cancellationToken);
+        await PFlowFetchPacing.DelayAsync(_delayConfig.DelayAfterTapMs, cancellationToken);
         var screen = await _bloks.DumpBloksScreenAsync(index, customPath, cancellationToken);
         if (screen?.FindElement("Personal details") != null)
         {
@@ -293,7 +293,7 @@ public class PFlowAccountDiscoveryService : IPFlowAccountDiscoveryService
             )
                 return null;
 
-            await Task.Delay(_delayConfig.DelayAfterTapMs, cancellationToken);
+            await PFlowFetchPacing.DelayAsync(_delayConfig.DelayAfterTapMs, cancellationToken);
             screen = await _bloks.DumpBloksScreenAsync(index, customPath, cancellationToken);
         }
 
@@ -310,7 +310,7 @@ public class PFlowAccountDiscoveryService : IPFlowAccountDiscoveryService
         )
             return null;
 
-        await Task.Delay(_delayConfig.DelayAfterTapMs, cancellationToken);
+        await PFlowFetchPacing.DelayAsync(_delayConfig.DelayAfterTapMs, cancellationToken);
         var accountInfo = await _bloks.ExtractBloksAccountInfoAsync(
             index,
             customPath,
@@ -811,7 +811,10 @@ public class PFlowAccountDiscoveryService : IPFlowAccountDiscoveryService
                         customPath,
                         cancellationToken
                     );
-                    await Task.Delay(_delayConfig.DelayMenuNavMs, cancellationToken);
+                    await PFlowFetchPacing.DelayAsync(
+                        _delayConfig.DelayMenuNavMs,
+                        cancellationToken
+                    );
                     menuXml =
                         await _ldPlayer.DumpUiHierarchyAsync(index, customPath, cancellationToken)
                         ?? xml;
@@ -2643,6 +2646,7 @@ done
                             && !val.Equals("Education", StringComparison.OrdinalIgnoreCase)
                             && !val.StartsWith("Edit", StringComparison.OrdinalIgnoreCase)
                             && !val.StartsWith("See more", StringComparison.OrdinalIgnoreCase)
+                            && !FacebookNavigationLabels.IsSectionExpansion(val)
                         )
                         {
                             result.Education = val;
@@ -2732,7 +2736,7 @@ done
             || t.Equals("Meta Account settings", StringComparison.OrdinalIgnoreCase)
             || t.Equals("Open profile switcher", StringComparison.OrdinalIgnoreCase)
             || t.Equals("Dismiss", StringComparison.OrdinalIgnoreCase)
-            || t.Equals("See more", StringComparison.OrdinalIgnoreCase)
+            || FacebookNavigationLabels.IsSectionExpansion(t)
             || t.Equals("See less", StringComparison.OrdinalIgnoreCase)
             || t.Equals("See all profiles", StringComparison.OrdinalIgnoreCase)
             || t.Equals("Log into another account", StringComparison.OrdinalIgnoreCase)

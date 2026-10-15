@@ -233,6 +233,14 @@ public partial class PFlowPersonaSwitcherService
         {
             await PFlowTrace.SessionAsync(
                 index,
+                "layout.switcher",
+                FacebookLayoutRegistry
+                    .Match(screen?.RawXml, FacebookScreenKind.Switcher)
+                    .Diagnostic,
+                ct
+            );
+            await PFlowTrace.SessionAsync(
+                index,
                 "native.switcher.not-found",
                 $"nodes={screen?.AllElements.Count ?? 0}",
                 ct
@@ -241,6 +249,12 @@ public partial class PFlowPersonaSwitcherService
             return NativeSwitchResult.NavigationFailed;
         }
         (int X, int Y, bool IsSelected)? row = null;
+        await PFlowTrace.SessionAsync(
+            index,
+            "layout.switcher",
+            FacebookLayoutRegistry.Match(screen.RawXml, FacebookScreenKind.Switcher).Diagnostic,
+            ct
+        );
         // A previously scrolled sheet can reopen with only Page rows visible.
         // Reveal its top before searching down; selection is never inferred.
         for (var reveal = 0; reveal < 5; reveal++)
@@ -260,10 +274,12 @@ public partial class PFlowPersonaSwitcherService
             if (screen == null || !IsNativeSwitcherSheetOpen(screen.RawXml))
                 return NativeSwitchResult.Rejected;
         }
-        for (var scroll = 0; scroll < 5; scroll++)
+        for (var scroll = 0; scroll <= 20; scroll++)
         {
             row = FindNativeTargetInSwitcher(screen.RawXml, target.PageName, target.Type);
             if (row.HasValue)
+                break;
+            if (scroll == 20)
                 break;
             var (w, h) = ParseScreenDimensions(screen.RawXml);
             if (
@@ -373,8 +389,7 @@ public partial class PFlowPersonaSwitcherService
                 var own =
                     target.Type == "Profile"
                         ? xml.Contains("Edit profile", StringComparison.OrdinalIgnoreCase)
-                        : xml.Contains("Professional dashboard", StringComparison.OrdinalIgnoreCase)
-                            || xml.Contains("Manage Page", StringComparison.OrdinalIgnoreCase);
+                        : PFlowOwnProfileNavigation.IsOwnPageProfile(current, target.PageName);
                 return own
                     && !NativeNavigationBlocked(xml)
                     && !xml.Contains("Admin quick access", StringComparison.OrdinalIgnoreCase)
@@ -406,7 +421,25 @@ public partial class PFlowPersonaSwitcherService
         return NativeSwitchResult.Rejected;
     }
 
-    public static bool IsNativeSwitcherSheetOpen(string? xml)
+    public static bool IsNativeSwitcherSheetOpen(string? xml) =>
+        FacebookLayoutRegistry.Match(xml, FacebookScreenKind.Switcher).IsMatch;
+
+    internal static string? ReadSwitcherLayoutVariant(string? xml) =>
+        FacebookHierarchyCache.Memo(
+            xml,
+            "switcher-variant",
+            () => ReadSwitcherLayoutVariantCore(xml)
+        );
+
+    private static string? ReadSwitcherLayoutVariantCore(string? xml)
+    {
+        var rows = FindNativeSwitcherRows(xml);
+        if (rows.Count > 0)
+            return rows.Any(IsNativePageRow) ? "typed" : "untyped";
+        return HasLegacySwitcherLayout(xml) ? "footer" : null;
+    }
+
+    private static bool HasLegacySwitcherLayout(string? xml)
     {
         // A full sheet can hide both Create Page and the Accounts Center footer.
         // Installed layouts expose a dismiss handle and typed Page rows. A scrolled
@@ -454,7 +487,14 @@ public partial class PFlowPersonaSwitcherService
                 );
     }
 
-    private static List<XElement> FindNativeSwitcherRows(string? xml)
+    private static List<XElement> FindNativeSwitcherRows(string? xml) =>
+        FacebookHierarchyCache.Memo(
+            xml,
+            "native-switcher-rows",
+            () => FindNativeSwitcherRowsCore(xml)
+        );
+
+    private static List<XElement> FindNativeSwitcherRowsCore(string? xml)
     {
         var sheets = new List<List<XElement>>();
         foreach (var doc in SafeParseXmlDocuments(xml))
@@ -470,8 +510,36 @@ public partial class PFlowPersonaSwitcherService
             {
                 foreach (var container in handle.Ancestors("node"))
                 {
-                    var rows = container
-                        .Descendants("node")
+                    var nodes = container.Descendants("node").ToArray();
+                    var instagramHeader = nodes.FirstOrDefault(n =>
+                        n.Attribute("visible-to-user")?.Value != "false"
+                        && new[]
+                        {
+                            n.Attribute("text")?.Value,
+                            n.Attribute("content-desc")?.Value,
+                        }.Any(v =>
+                            v?.Trim() is "Your Instagram profile" or "Your Instagram profiles"
+                        )
+                    );
+                    int? instagramBoundary =
+                        instagramHeader != null
+                        && ParseNodeBoundsCenter(instagramHeader) is { Y: > 0 } headerPoint
+                            ? headerPoint.Y
+                            : null;
+                    var footerVisible = nodes.Any(n =>
+                        n.Attribute("visible-to-user")?.Value != "false"
+                        && new[]
+                        {
+                            n.Attribute("text")?.Value,
+                            n.Attribute("content-desc")?.Value,
+                        }.Any(v =>
+                            v?.Trim()
+                                is "Your Instagram profile"
+                                    or "Your Instagram profiles"
+                                    or "Go to Accounts Center"
+                        )
+                    );
+                    var rows = nodes
                         .Where(n =>
                             n.Attribute("package")?.Value == "com.facebook.katana"
                             && n.Attribute("class")?.Value == "android.view.ViewGroup"
@@ -482,24 +550,56 @@ public partial class PFlowPersonaSwitcherService
                             && !IsIgnoredSwitcherHeaderOrAction(n.Attribute("content-desc")!.Value)
                             && ScreenTimeHierarchy.Center(n).HasValue
                             && HasVisibleNativeRowBounds(n)
+                            && !IsInstagramSwitcherRow(n, instagramBoundary)
                         )
                         .ToList();
-                    if (rows.Count < 2 || !rows.Any(IsNativePageRow))
+                    var hasList = nodes.Any(n =>
+                        n.Attribute("class")?.Value == "androidx.recyclerview.widget.RecyclerView"
+                        && n.Attribute("scrollable")?.Value == "true"
+                        && n.Attribute("package")?.Value == "com.facebook.katana"
+                    );
+                    var untypedList =
+                        hasList
+                        && rows.Count > 0
+                        && rows.All(n =>
+                            n.Ancestors("node")
+                                .Any(a =>
+                                    a.Attribute("class")?.Value
+                                    == "androidx.recyclerview.widget.RecyclerView"
+                                )
+                        )
+                        && rows.All(n =>
+                            n.Descendants("node")
+                                .Any(c =>
+                                    string.Equals(
+                                        c.Attribute("text")?.Value?.Trim(),
+                                        Regex
+                                            .Replace(
+                                                n.Attribute("content-desc")!.Value,
+                                                @",\s*\d+\s+notifications?\s*$",
+                                                "",
+                                                RegexOptions.IgnoreCase
+                                            )
+                                            .Trim(),
+                                        StringComparison.OrdinalIgnoreCase
+                                    )
+                                )
+                        );
+                    if (
+                        rows.Count == 0
+                        || rows.Count == 1 && !footerVisible
+                        || (!rows.Any(IsNativePageRow) && !untypedList)
+                    )
                         continue;
                     // Never infer selection from the first row, a cached owner or a sibling.
                     var selectedCount = rows.Count(IsNativeRowSelected);
                     var scrolledPagesOnly =
-                        selectedCount == 0
-                        && rows.All(IsNativePageRow)
-                        && container
-                            .Descendants("node")
-                            .Any(n =>
-                                n.Attribute("class")?.Value
-                                    == "androidx.recyclerview.widget.RecyclerView"
-                                && n.Attribute("scrollable")?.Value == "true"
-                                && n.Attribute("package")?.Value == "com.facebook.katana"
-                            );
-                    if (selectedCount != 1 && !scrolledPagesOnly)
+                        selectedCount == 0 && rows.All(IsNativePageRow) && hasList;
+                    if (
+                        selectedCount != 1
+                        && !scrolledPagesOnly
+                        && !(untypedList && selectedCount == 0 && footerVisible)
+                    )
                         continue;
                     sheets.Add(rows);
                     break;
@@ -518,6 +618,28 @@ public partial class PFlowPersonaSwitcherService
         return bounds.Success
             && int.Parse(bounds.Groups[3].Value) > int.Parse(bounds.Groups[1].Value)
             && int.Parse(bounds.Groups[4].Value) - int.Parse(bounds.Groups[2].Value) >= 48;
+    }
+
+    private static bool IsInstagramSwitcherRow(XElement row, int? sectionBoundary)
+    {
+        if (
+            sectionBoundary.HasValue
+            && ScreenTimeHierarchy.Center(row) is { } point
+            && point.Y > sectionBoundary.Value
+        )
+            return true;
+        // A Page name is not a platform badge. Names such as "Instagram Tips"
+        // remain Facebook targets above the Instagram section.
+        return row.Descendants("node")
+            .Any(n =>
+                n.Attribute("class")?.Value == "android.widget.ImageView"
+                && n.Attribute("visible-to-user")?.Value != "false"
+                && string.Equals(
+                    n.Attribute("content-desc")?.Value?.Trim(),
+                    "Instagram",
+                    StringComparison.OrdinalIgnoreCase
+                )
+            );
     }
 
     private static bool IsNativePageRow(XElement row) =>
@@ -544,13 +666,39 @@ public partial class PFlowPersonaSwitcherService
     {
         var rows = FindNativeSwitcherRows(xml);
         if (rows.Count == 0)
+        {
+            // Legacy fuzzy matching cannot distinguish an Instagram identity section.
+            if (
+                PFlowAutoPostService
+                    .Labels(xml)
+                    .Any(v =>
+                        v.Trim()
+                            .StartsWith(
+                                "Your Instagram profile",
+                                StringComparison.OrdinalIgnoreCase
+                            )
+                    )
+            )
+                return null;
             return FindPersonaInSwitcher(xml, name);
+        }
         string Normalize(string value) => Regex.Replace(value.Trim(), @"\s+", " ");
         var expected = Normalize(name);
         if (expected.Length == 0 || (type != null && type is not ("Profile" or "Page")))
             return null;
+        var typed = rows.Any(IsNativePageRow);
+        int Height(XElement n)
+        {
+            var b = Regex.Match(
+                n.Attribute("bounds")?.Value ?? "",
+                @"\[(\d+),(\d+)\]\[(\d+),(\d+)\]"
+            );
+            return b.Success ? int.Parse(b.Groups[4].Value) - int.Parse(b.Groups[2].Value) : 0;
+        }
+        var fullHeight = rows.Max(Height);
         var matches = rows.Where(row =>
-                (type == null || IsNativePageRow(row) == (type == "Page"))
+                (typed || IsNativeRowSelected(row) || Height(row) >= fullHeight * 0.85)
+                && (type == null || !typed || IsNativePageRow(row) == (type == "Page"))
                 && (
                     row.Descendants("node")
                         .Any(n =>

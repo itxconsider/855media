@@ -7,7 +7,83 @@ namespace _855Media.Core.Tests.LDPlayer;
 
 public class PFlowOwnProfileNavigationTests
 {
+    [Theory]
+    [InlineData("Target Page")]
+    [InlineData("Target  Page")]
+    [InlineData("Target   Page")]
+    public void ObservedPageDrawerNormalizesNameSpacesAndSelectsHeader(string expectedName)
+    {
+        var xml = File.ReadAllText(
+            Path.Combine(
+                AppContext.BaseDirectory,
+                "Fixtures",
+                "PFlowLayouts",
+                "ld14-page-menu-spaced-name.xml"
+            )
+        );
+        var target = PFlowOwnProfileNavigation.FindTarget(
+            AtxAgentClient.ParseBloksHierarchy(xml),
+            expectedName
+        );
+        Assert.NotNull(target);
+        Assert.Equal((266, 148), (target!.CenterX, target.CenterY));
+        Assert.Null(
+            PFlowOwnProfileNavigation.FindTarget(
+                AtxAgentClient.ParseBloksHierarchy(xml),
+                "Other Page"
+            )
+        );
+    }
+
     private const string Owner = "Scarlet Marcello";
+
+    [Fact]
+    public void ObservedDashboardProfileRequiresMatchingOwnProfileAndRejectsMenu()
+    {
+        var profile = AtxAgentClient.ParseBloksHierarchy(
+            File.ReadAllText(
+                Path.Combine(
+                    AppContext.BaseDirectory,
+                    "Fixtures",
+                    "PFlowLayouts",
+                    "ld14-page-profile-dashboard.xml"
+                )
+            )
+        );
+        Assert.True(PFlowOwnProfileNavigation.IsOwnPageProfile(profile, "Target Page"));
+        Assert.False(PFlowOwnProfileNavigation.IsOwnPageProfile(profile, "Another Page"));
+        var menu = AtxAgentClient.ParseBloksHierarchy(
+            File.ReadAllText(
+                Path.Combine(
+                    AppContext.BaseDirectory,
+                    "Fixtures",
+                    "PFlowLayouts",
+                    "ld14-page-menu-spaced-name.xml"
+                )
+            )
+        );
+        Assert.False(PFlowOwnProfileNavigation.IsOwnPageProfile(menu, "Target Page"));
+    }
+
+    [Fact]
+    public async Task ObservedSpacedMenuHeaderOpensAndVerifiesOwnProfile()
+    {
+        var ld = DispatchProxy.Create<ILDPlayerService, Device>();
+        var fake = (Device)(object)ld;
+        fake.Screen = "ld55-menu";
+        fake.Xml = File.ReadAllText(
+                Path.Combine(
+                    AppContext.BaseDirectory,
+                    "Fixtures",
+                    "PFlowLayouts",
+                    "ld14-page-menu-spaced-name.xml"
+                )
+            )
+            .Replace("Target  Page", "Scarlet  Marcello");
+        Assert.True(await Run(ld));
+        Assert.Equal(new[] { (266, 148) }, fake.Taps);
+        Assert.Equal(0, fake.Menus);
+    }
 
     private static string Fixture(string name) =>
         File.ReadAllText(
@@ -131,6 +207,19 @@ public class PFlowOwnProfileNavigationTests
     }
 
     [Fact]
+    public async Task ScrolledProfileDetailsReturnToHeaderBeforeNavigation()
+    {
+        var ld = DispatchProxy.Create<ILDPlayerService, Device>();
+        var fake = (Device)(object)ld;
+        fake.Xml =
+            """<hierarchy><node package="com.facebook.katana" text="At a glance" bounds="[0,300][720,340]" /><node package="com.facebook.katana" text="See all about info" bounds="[0,350][720,390]" /><node package="com.facebook.katana" content-desc="Profile, tab 6 of 6" enabled="true" clickable="true" bounds="[600,48][720,136]" /><node bounds="[0,0][720,1280]" /></hierarchy>""";
+        Assert.True(await Run(ld));
+        Assert.Equal(1, fake.Swipes);
+        Assert.Empty(fake.Taps);
+        Assert.Equal(0, fake.Menus);
+    }
+
+    [Fact]
     public async Task StartingInDrawerDoesNotAcceptOwnerControlsBehindIt()
     {
         var ld = DispatchProxy.Create<ILDPlayerService, Device>();
@@ -225,6 +314,7 @@ public class PFlowOwnProfileNavigationTests
         public bool TapWorks = true;
         public bool MenuRowWorks = true;
         public int Menus;
+        public int Swipes;
         public List<(int, int)> Taps = [];
 
         protected override object? Invoke(MethodInfo? method, object?[]? args)
@@ -234,6 +324,12 @@ public class PFlowOwnProfileNavigationTests
                     ct.ThrowIfCancellationRequested();
             switch (method!.Name)
             {
+                case nameof(ILDPlayerService.SwipeAsync):
+                    Assert.True((int)args![4]! > (int)args[2]!);
+                    Swipes++;
+                    Xml = null;
+                    Screen = "ld55-own-profile";
+                    return Task.FromResult(true);
                 case nameof(ILDPlayerService.DumpUiHierarchyAsync):
                     return Task.FromResult<string?>(Xml ?? Fixture(Screen));
                 case nameof(ILDPlayerService.TapAsync):
@@ -245,7 +341,10 @@ public class PFlowOwnProfileNavigationTests
                         return Task.FromResult(true);
                     }
                     if (TapWorks && ((Screen == "ld55-menu" && MenuRowWorks) || AvatarWorks))
+                    {
+                        Xml = null;
                         Screen = "ld55-own-profile";
+                    }
                     return Task.FromResult(TapWorks);
                 case nameof(ILDPlayerService.OpenFacebookMenuFromFeedAsync):
                     Menus++;

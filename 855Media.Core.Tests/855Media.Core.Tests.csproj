@@ -25,6 +25,21 @@
   </ItemGroup>
   <ItemGroup>
     <Content
+      Include="..\855Media\Resources\facebook-layouts.default.json"
+      Link="Fixtures\facebook-layouts.default.json"
+      CopyToOutputDirectory="PreserveNewest"
+    />
+    <Content
+      Include="..\docs\fixtures\pflow-story\*.xml"
+      Link="Fixtures\PFlowStory\%(Filename)%(Extension)"
+      CopyToOutputDirectory="PreserveNewest"
+    />
+    <Content
+      Include="..\docs\fixtures\pflow-layouts\*.xml"
+      Link="Fixtures\PFlowLayouts\%(Filename)%(Extension)"
+      CopyToOutputDirectory="PreserveNewest"
+    />
+    <Content
       Include="..\docs\fixtures\pflow-screentime\*.xml"
       Link="Fixtures\PFlowScreenTime\%(Filename)%(Extension)"
       CopyToOutputDirectory="PreserveNewest"

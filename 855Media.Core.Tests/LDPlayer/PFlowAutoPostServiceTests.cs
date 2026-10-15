@@ -11,6 +11,44 @@ namespace _855Media.Core.Tests.LDPlayer;
 public class PFlowAutoPostServiceTests
 {
     [Theory]
+    [InlineData(0, 180)]
+    [InlineData(104857600, 580)]
+    [InlineData(524288000, 2180)]
+    [InlineData(long.MaxValue, 3600)]
+    public void LargeUploadsReceiveBoundedExtraConfirmationTime(long bytes, int seconds)
+    {
+        Assert.Equal(
+            TimeSpan.FromSeconds(seconds),
+            PFlowAutoPostService.UploadConfirmationWindow(bytes, TimeSpan.FromSeconds(180))
+        );
+    }
+
+    [Theory]
+    [InlineData("ld9-reels-fullscreen", "Reels")]
+    [InlineData("ld1-feed-finished-video-product", "Feed")]
+    [InlineData("ld9-menu-over-notifications", null)]
+    public void UploadWaitBrowsesOnlyRecognizedSurfaces(string fixture, string? expected)
+    {
+        var xml = File.ReadAllText(
+            Path.Combine(AppContext.BaseDirectory, "Fixtures", "PFlowScreenTime", fixture + ".xml")
+        );
+        Assert.Equal(expected, PFlowAutoPostService.WaitingBrowseSurface(xml));
+    }
+
+    [Theory]
+    [InlineData("Share now")]
+    [InlineData("Describe your reel")]
+    [InlineData("Log in")]
+    public void UploadWaitDoesNotScrollComposerLoginOrUnknownScreens(string label)
+    {
+        var xml = new XElement(
+            "hierarchy",
+            new XElement("node", new XAttribute("text", label))
+        ).ToString();
+        Assert.Null(PFlowAutoPostService.WaitingBrowseSurface(xml));
+    }
+
+    [Theory]
     [InlineData("Luke Kaz\n\u00a0\u00a0", "Luke Kaz", true)]
     [InlineData("Luke\u00a0\u00a0Kaz\r\n", " Luke Kaz ", true)]
     [InlineData("Posting as\nLuke Kaz", "Luke Kaz", true)]

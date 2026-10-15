@@ -153,6 +153,15 @@ public partial class AutoPostViewModel
         BulkPathEdits.Clear();
         BulkPathEdits.Add(
             new(
+                "StoryPath",
+                "Stories",
+                false,
+                FacebookPageTarget.StoryExtensions,
+                BrowseBulkPathAsync
+            )
+        );
+        BulkPathEdits.Add(
+            new(
                 "VideoReelPath",
                 "Reels",
                 false,

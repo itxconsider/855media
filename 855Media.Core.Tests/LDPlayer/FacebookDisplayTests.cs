@@ -6,6 +6,60 @@ namespace _855Media.Core.Tests.LDPlayer;
 public class FacebookDisplayTests
 {
     [Theory]
+    [InlineData("61 ↓66%", "61")]
+    [InlineData("61 -66%", "61")]
+    [InlineData("4.2K ↑12.5%", "4.2K")]
+    [InlineData("0", "0")]
+    [InlineData("66%", null)]
+    public void AnalyticsViewsCountIsSeparateFromTrendAndRecentPostViews(
+        string value,
+        string? expected
+    )
+    {
+        var xml = new System.Xml.Linq.XElement(
+            "hierarchy",
+            new System.Xml.Linq.XElement(
+                "node",
+                new System.Xml.Linq.XAttribute("text", "Views"),
+                new System.Xml.Linq.XAttribute("bounds", "[20,200][120,240]")
+            ),
+            new System.Xml.Linq.XElement(
+                "node",
+                new System.Xml.Linq.XAttribute("text", value),
+                new System.Xml.Linq.XAttribute("bounds", "[20,250][160,290]")
+            ),
+            new System.Xml.Linq.XElement(
+                "node",
+                new System.Xml.Linq.XAttribute("text", "20"),
+                new System.Xml.Linq.XAttribute("bounds", "[20,1000][120,1040]")
+            )
+        );
+        Assert.Equal(
+            expected,
+            LDPlayerService.ReadDashboardViews(AtxAgentClient.ParseBloksHierarchy(xml.ToString()))
+        );
+    }
+
+    [Theory]
+    [InlineData("Views, 61, ↓66%")]
+    [InlineData("Views\n61\n−66%")]
+    public void AnalyticsViewsCanBeCombinedAccessibilityLabel(string label)
+    {
+        var xml = new System.Xml.Linq.XElement(
+            "hierarchy",
+            new System.Xml.Linq.XElement(
+                "node",
+                new System.Xml.Linq.XAttribute("content-desc", label),
+                new System.Xml.Linq.XAttribute("bounds", "[20,200][320,400]")
+            )
+        );
+        Assert.Equal(
+            "61",
+            LDPlayerService.ReadDashboardViews(AtxAgentClient.ParseBloksHierarchy(xml.ToString()))
+        );
+    }
+
+    [Theory]
     [InlineData("March 23, 1999", "23/03/99")]
     [InlineData("2026-10-09", "09/10/26")]
     [InlineData("09/10/2026", "09/10/26")]

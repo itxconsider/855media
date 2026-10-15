@@ -142,6 +142,9 @@ public class App : Application, IDisposable
             // SettingsService handles corruption fallback internally
         }
 
+        var layoutRules = FacebookLayoutRegistry.InitializeConfiguration();
+        System.Diagnostics.Debug.WriteLine(layoutRules.Message);
+
         // Apply saved theme on startup
         RequestedThemeVariant = _settingsService.Theme switch
         {

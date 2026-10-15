@@ -11,6 +11,8 @@ namespace _855Media.Views.Components;
 
 public partial class AutoPostView : UserControl
 {
+    private ContextMenu? _targetPageMenu;
+
     public AutoPostView()
     {
         InitializeComponent();
@@ -37,6 +39,10 @@ public partial class AutoPostView : UserControl
 
     private void OnTargetPagePointerPressed(object? sender, PointerPressedEventArgs e)
     {
+        if ((e.Source as Control)?.GetVisualAncestors().OfType<ContextMenu>().Any() == true)
+            return;
+        _targetPageMenu?.Close();
+        _targetPageMenu = null;
         if (
             !e.GetCurrentPoint(this).Properties.IsRightButtonPressed
             || DataContext is not AutoPostViewModel vm
@@ -67,10 +73,35 @@ public partial class AutoPostView : UserControl
                     CommandParameter = page,
                     IsEnabled = !vm.IsBusy && !vm.IsRunning,
                 },
+                new MenuItem
+                {
+                    Header = "Fetch this Page",
+                    Command = vm.FetchSinglePageCommand,
+                    CommandParameter = page,
+                    IsEnabled =
+                        !page.IsProfile && page.AppClone == "FB-01" && !vm.IsBusy && !vm.IsRunning,
+                },
             },
         };
+        _targetPageMenu = menu;
         menu.Open(row);
         e.Handled = true;
+    }
+
+    private void OnAccountDetailsCollapsed(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Expander details || !ReferenceEquals(e.Source, details))
+            return;
+        var row = details.GetVisualAncestors().OfType<DataGridRow>().FirstOrDefault();
+        var grid = row?.GetVisualAncestors().OfType<DataGrid>().FirstOrDefault();
+        if (grid != null)
+        {
+            // Row details are shown by row selection. Clear only that selection,
+            // leaving the Page's posting checkbox unchanged, to remove the whole panel.
+            grid.SelectedItem = null;
+            details.IsExpanded = true;
+            e.Handled = true;
+        }
     }
 
     private void OnManageDevicePointerPressed(object? sender, PointerPressedEventArgs e)

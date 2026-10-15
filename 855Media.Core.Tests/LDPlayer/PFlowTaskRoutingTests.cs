@@ -5,6 +5,29 @@ namespace _855Media.Core.Tests.LDPlayer;
 
 public sealed class PFlowTaskRoutingTests
 {
+    [Theory]
+    [InlineData("Queued", "Reel", true)]
+    [InlineData("Queued", "Video", true)]
+    [InlineData("Queued", "Photo", true)]
+    [InlineData("Queued", "Picture", true)]
+    [InlineData("Queued", "Story", true)]
+    [InlineData("Confirmed", "Story", false)]
+    [InlineData("Confirmed", "Reel", false)]
+    [InlineData("Failed", "Reel", false)]
+    [InlineData("Failed: Publish control was not found", "Reel", false)]
+    [InlineData("Unknown", "Reel", false)]
+    [InlineData("CancelledBeforeSubmission", "Reel", false)]
+    [InlineData("Queued", "ScreenTime", false)]
+    public void OnlyExplicitQueuedMediaRowsCanStartPosting(
+        string status,
+        string type,
+        bool expected
+    ) =>
+        Assert.Equal(
+            expected,
+            PFlowTaskRouting.IsQueuedPost(new() { Status = status, Type = type })
+        );
+
     private static FacebookPageTarget Target(string owner, string id = "77") =>
         new()
         {

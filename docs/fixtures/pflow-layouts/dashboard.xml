@@ -1,0 +1,6 @@
+<!-- Synthetic regression fixture. -->
+<hierarchy><node package="com.facebook.katana" bounds="[0,0][720,1280]">
+  <node text="Professional dashboard" bounds="[100,30][640,90]" />
+  <node content-desc="Analytics, tab 2 of 4" clickable="true" enabled="true" bounds="[180,110][360,190]" />
+  <node text="Home" bounds="[20,110][160,190]" />
+</node></hierarchy>

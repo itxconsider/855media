@@ -13,7 +13,9 @@ public sealed class PFlowNativeAccountNavigator(
     string path,
     Func<PFlowAccountBinding, string> name,
     Func<PFlowOtpRequest, CancellationToken, Task<PFlowOtpCode>>? receiveCode = null,
-    Func<TimeSpan, CancellationToken, Task>? delay = null
+    Func<TimeSpan, CancellationToken, Task>? delay = null,
+    Func<PFlowAccountBinding, CancellationToken, Task>? requireRecoveryIdle = null,
+    Func<PFlowAccountBinding, CancellationToken, Task<PFlowGraphIdentity?>>? graphIdentity = null
 ) : IPFlowAutomaticAccountNavigator
 {
     private readonly PFlowSessionPreparation _preparation = new(ld, path);
@@ -76,8 +78,16 @@ public sealed class PFlowNativeAccountNavigator(
             .Any(n =>
                 (string?)n.Attribute("package") == "com.facebook.katana"
                 && (
-                    (string?)n.Attribute("text") == label
-                    || (string?)n.Attribute("content-desc") == label
+                    string.Equals(
+                        (string?)n.Attribute("text"),
+                        label,
+                        StringComparison.OrdinalIgnoreCase
+                    )
+                    || string.Equals(
+                        (string?)n.Attribute("content-desc"),
+                        label,
+                        StringComparison.OrdinalIgnoreCase
+                    )
                 )
             );
 
@@ -138,14 +148,54 @@ public sealed class PFlowNativeAccountNavigator(
         && !PFlowPersonaSwitcherService.IsNativeSwitcherSheetOpen(xml)
         && !AtxAgentClient.IsMenuPageInBloks(AtxAgentClient.ParseBloksHierarchy(xml))
         && (
-            FindControl(xml, "Edit profile") != null
-            || FindControl(xml, "Edit cover photo button") != null
-                && FindControl(xml, "Edit profile picture") != null
+            HasProfileControl(xml, "Edit profile")
+            || HasProfileControl(xml, "Edit cover photo button", "Edit cover photo")
+                && HasProfileControl(xml, "Edit profile picture")
         )
         && !Has(xml, "Manage Page");
 
+    // Recognition only: repeated Edit profile controls are valid on sticky-header
+    // layouts. Navigation still requires a single, freshly observed target.
+    private static bool HasProfileControl(string xml, params string[] labels) =>
+        ScreenTimeHierarchy
+            .Nodes(xml)
+            .Any(n =>
+                (string?)n.Attribute("package") == "com.facebook.katana"
+                && (string?)n.Attribute("enabled") == "true"
+                && (string?)n.Attribute("clickable") == "true"
+                && ScreenTimeHierarchy.Center(n) != null
+                && labels.Any(label =>
+                    string.Equals(
+                        (string?)n.Attribute("text"),
+                        label,
+                        StringComparison.OrdinalIgnoreCase
+                    )
+                    || string.Equals(
+                        (string?)n.Attribute("content-desc"),
+                        label,
+                        StringComparison.OrdinalIgnoreCase
+                    )
+                )
+            );
+
+    public static bool LinkSharingNotice(string xml) =>
+        Has(xml, "Link sharing has been updated")
+        && !PFlowUiPrivacy.ContainsInput(xml)
+        && !PFlowLoginScreen.RequiresAuthentication(PFlowLoginScreen.Classify(xml))
+        && FindControl(xml, "Close") != null;
+
+    public static bool PersonalDetailsSheet(string xml) =>
+        !PFlowUiPrivacy.ContainsInput(xml)
+        && !PFlowLoginScreen.RequiresAuthentication(PFlowLoginScreen.Classify(xml))
+        && Has(xml, "Transparency and privacy policy")
+        && Has(xml, "Edit field")
+        && FindControl(xml, "Close") != null;
+
     // Only the link in a personal profile's own settings is accepted, never a feed/public URL.
-    public static string? ReadOwnProfileUid(string? xml)
+    public static string? ReadOwnProfileUid(string? xml) =>
+        ReadNumericProfileLinkUid(ReadOwnProfileLink(xml));
+
+    public static string? ReadOwnProfileLink(string? xml)
     {
         if (
             PFlowUiPrivacy.ContainsInput(xml)
@@ -180,8 +230,9 @@ public sealed class PFlowNativeAccountNavigator(
             )
             .Distinct()
             .ToArray();
-        // Reject vanity URLs and extra links rather than borrowing a UID from cached root records.
-        return urls.Length == 1 ? ReadNumericProfileLinkUid(urls[0]) : null;
+        return urls.Length == 1 && PFlowProfileLinkResolver.IsSupportedLink(urls[0])
+            ? urls[0]
+            : null;
     }
 
     public static string? ReadNumericProfileLinkUid(string? link)
@@ -216,16 +267,13 @@ public sealed class PFlowNativeAccountNavigator(
             : null;
     }
 
-    public static (int X, int Y)? CopyProfileLinkControl(string xml) =>
-        !PFlowUiPrivacy.ContainsInput(xml)
-        && !PFlowLoginScreen.RequiresAuthentication(PFlowLoginScreen.Classify(xml))
-        && !PFlowPersonaSwitcherService.IsNativeSwitcherSheetOpen(xml)
-        && (Has(xml, "Profile settings") || Has(xml, "Profile Settings"))
-        && !Has(xml, "Page Settings")
-        && !Has(xml, "Your Page link")
-        && !Has(xml, "Copy Page link")
-            ? FindControl(xml, "Copy profile link")
-            : null;
+    public static (int X, int Y)? CopyProfileLinkControl(string xml)
+    {
+        var control = FacebookLayoutRegistry
+            .Match(xml, FacebookScreenKind.ProfileSettings)
+            .Control(FacebookControlRole.CopyProfileLink);
+        return control == null ? null : (control.X, control.Y);
+    }
 
     public static bool LoginLanding(string xml) =>
         !PFlowUiPrivacy.ContainsInput(xml)
@@ -255,6 +303,32 @@ public sealed class PFlowNativeAccountNavigator(
             };
 
     public async Task<PFlowAccountObservation> ObserveAsync(
+        PFlowAccountBinding binding,
+        CancellationToken ct
+    )
+    {
+        var observed = await ObserveWithPersonalRecoveryAsync(binding, ct);
+        if (observed.State != PFlowAuthenticationState.Unavailable || observed.IsLiveUid)
+            return observed;
+        var xml = await Screen(binding, ct);
+        if (
+            PFlowLoginScreen.RequiresAuthentication(PFlowLoginScreen.Classify(xml))
+            || LoginLanding(xml)
+            || PFlowUiPrivacy.ContainsInput(xml)
+            || PFlowAutoPostService.IsComposer(xml, "Reel")
+        )
+            return observed;
+        await _preparation.RequireWorkerAsync(binding, ct);
+        if (requireRecoveryIdle != null)
+            await requireRecoveryIdle(binding, ct);
+        _lastPersonalBinding = null;
+        _lastPersonalObservation = null;
+        await PFlowSession.RestartForUidRecoveryAsync(ld, binding.DeviceIndex, path, ct);
+        await _preparation.RequireWorkerAsync(binding, ct);
+        return await ObserveWithPersonalRecoveryAsync(binding, ct);
+    }
+
+    private async Task<PFlowAccountObservation> ObserveWithPersonalRecoveryAsync(
         PFlowAccountBinding binding,
         CancellationToken ct
     )
@@ -300,6 +374,8 @@ public sealed class PFlowNativeAccountNavigator(
         && (
             OwnProfile(xml)
             || PersonalSettings(xml)
+            || PersonalDetailsSheet(xml)
+            || Has(xml, "Profile transparency") && FindControl(xml, "Back") != null
             || PageSettings(xml)
             || Has(xml, "Your Page link")
             || MenuSurface(xml)
@@ -312,11 +388,47 @@ public sealed class PFlowNativeAccountNavigator(
     )
     {
         var xml = await Screen(binding, ct);
+        if (LinkSharingNotice(xml))
+        {
+            if (!await ld.SendKeyAsync(binding.DeviceIndex, 4, path, ct))
+                return new(
+                    "",
+                    binding.AppPackage,
+                    false,
+                    false,
+                    false,
+                    DateTimeOffset.UtcNow,
+                    PFlowAuthenticationState.Unavailable
+                );
+            await _delay(TimeSpan.FromMilliseconds(400), ct);
+            xml = await Screen(binding, ct);
+        }
         if (PFlowLoginScreen.Classify(xml) == PFlowLoginScreenKind.LocationServicesIntro)
             xml = await new PFlowNativeLoginOnboarding(ld, path, _delay).CompleteLocationAsync(
                 binding,
                 ct
             );
+        // Date lookup can leave a professional personal profile in transparency.
+        // Its displayed Page ID is not the account UID; return to the profile route.
+        for (
+            var back = 0;
+            recoverPage
+                && back < 3
+                && (
+                    PersonalDetailsSheet(xml)
+                    || PersonalSettings(xml)
+                    || Has(xml, "Profile transparency")
+                        && !PFlowUiPrivacy.ContainsInput(xml)
+                        && FindControl(xml, "Back") != null
+                );
+            back++
+        )
+        {
+            if (!await ld.SendKeyAsync(binding.DeviceIndex, 4, path, ct))
+                break;
+            await _delay(TimeSpan.FromMilliseconds(400), ct);
+            xml = await Screen(binding, ct);
+        }
         PFlowAccountObservation Missing(string current) =>
             new(
                 "",
@@ -379,12 +491,144 @@ public sealed class PFlowNativeAccountNavigator(
         xml = await Screen(binding, ct);
         if (!OwnProfile(xml))
             return Missing(xml);
+        var graph =
+            graphIdentity != null
+                ? await graphIdentity(binding, ct)
+                : await new PFlowGraphIdentityReader().TryReadAsync(
+                    ld,
+                    binding.DeviceIndex,
+                    path,
+                    ct
+                );
+        if (
+            graph != null
+            && graph.Id == binding.OwnerUid
+            && graph.UnderlyingUid == binding.OwnerUid
+        )
+        {
+            var fresh = await Screen(binding, ct);
+            if (
+                OwnProfile(fresh)
+                && PFlowProfileDates.MatchesName(
+                    AtxAgentClient.ParseBloksHierarchy(fresh),
+                    graph.Name
+                )
+            )
+            {
+                var verified = new PFlowAccountObservation(
+                    graph.Id,
+                    binding.AppPackage,
+                    true,
+                    true,
+                    true,
+                    DateTimeOffset.UtcNow,
+                    PFlowAuthenticationState.Authenticated
+                );
+                _lastPersonalBinding = binding;
+                _lastPersonalObservation = verified;
+                await PFlowTrace.SessionAsync(
+                    binding.DeviceIndex,
+                    "account.uid.graph.verified",
+                    "Personal token and fresh own-profile name verified; settings lookup skipped.",
+                    ct
+                );
+                return verified;
+            }
+        }
         var settings = FindControl(
             xml,
             "Profile settings",
             "More profile settings",
             "More options"
         );
+        // The header can scroll above the viewport (especially with top tabs).
+        // Move toward the top only after identifying the own-profile surface.
+        for (var scroll = 0; settings == null && scroll < 4 && OwnProfile(xml); scroll++)
+        {
+            var (width, height) = PFlowPersonaSwitcherService.ParseScreenDimensions(xml);
+            if (
+                width <= 0
+                || height <= 0
+                || !await ld.SwipeAsync(
+                    binding.DeviceIndex,
+                    width / 2,
+                    height / 3,
+                    width / 2,
+                    height * 4 / 5,
+                    400,
+                    path,
+                    ct
+                )
+            )
+                break;
+            await _delay(TimeSpan.FromMilliseconds(400), ct);
+            var next = await Screen(binding, ct);
+            var unchanged = next == xml;
+            xml = next;
+            settings = OwnProfile(xml)
+                ? FindControl(xml, "Profile settings", "More profile settings", "More options")
+                : null;
+            if (unchanged)
+                break;
+        }
+        if (
+            settings == null
+            && OwnProfile(xml)
+            && binding.OwnerUid.Length > 0
+            && binding.OwnerUid.All(char.IsAsciiDigit)
+            && await ld.OpenDeepLinkAsync(
+                binding.DeviceIndex,
+                "fb://profile/" + binding.OwnerUid,
+                binding.AppPackage,
+                path,
+                ct
+            )
+        )
+        {
+            // The stored UID chooses a destination only. Its displayed own-profile
+            // link below must independently confirm the live account UID.
+            for (var poll = 0; poll < 12; poll++)
+            {
+                await _delay(TimeSpan.FromMilliseconds(400), ct);
+                xml = await Screen(binding, ct);
+                settings = OwnProfile(xml)
+                    ? FindControl(xml, "Profile settings", "More profile settings", "More options")
+                    : null;
+                if (
+                    settings != null
+                    || PFlowUiPrivacy.ContainsInput(xml)
+                    || PFlowLoginScreen.RequiresAuthentication(PFlowLoginScreen.Classify(xml))
+                )
+                    break;
+            }
+        }
+        if (settings == null && OwnProfile(xml))
+        {
+            // Embedded Profile tabs can omit the toolbar entirely. Require the
+            // full profile with settings when taking the authenticated Menu route.
+            var opened = await PFlowOwnProfileNavigation.OpenAsync(
+                ld,
+                binding.DeviceIndex,
+                name(binding),
+                path,
+                s =>
+                    OwnProfile(s.RawXml ?? "")
+                    && FindControl(
+                        s.RawXml,
+                        "Profile settings",
+                        "More profile settings",
+                        "More options"
+                    ) != null,
+                ct,
+                delay: _delay,
+                navigateCurrentActor: true
+            );
+            xml = await Screen(binding, ct);
+            settings =
+                opened && OwnProfile(xml)
+                    ? FindControl(xml, "Profile settings", "More profile settings", "More options")
+                    : null;
+        }
         if (settings == null)
             return Missing(xml);
         // Re-read the own surface immediately before using its navigation bounds.
@@ -399,11 +643,48 @@ public sealed class PFlowNativeAccountNavigator(
             return Missing(xml);
         string? uid = null;
         var copyAttempted = false;
+        var visibleLinkAttempted = false;
+        var noticeDismissed = false;
         for (var i = 0; i < 12; i++)
         {
             await _delay(TimeSpan.FromMilliseconds(400), ct);
             xml = await Screen(binding, ct);
+            if (!noticeDismissed && LinkSharingNotice(xml))
+            {
+                noticeDismissed = true;
+                if (!await ld.SendKeyAsync(binding.DeviceIndex, 4, path, ct))
+                    return Missing(xml);
+                await _delay(TimeSpan.FromMilliseconds(400), ct);
+                xml = await Screen(binding, ct);
+                // Some versions dismiss the notice back to the profile. Reopen
+                // its settings once, using fresh own-profile bounds.
+                var reopen = OwnProfile(xml)
+                    ? FindControl(xml, "Profile settings", "More profile settings", "More options")
+                    : null;
+                if (
+                    reopen != null
+                    && !await ld.TapAsync(
+                        binding.DeviceIndex,
+                        reopen.Value.X,
+                        reopen.Value.Y,
+                        path,
+                        ct
+                    )
+                )
+                    return Missing(xml);
+                continue;
+            }
             uid = ReadOwnProfileUid(xml);
+            if (uid == null && !visibleLinkAttempted && ReadOwnProfileLink(xml) is { } visibleLink)
+            {
+                visibleLinkAttempted = true;
+                using var resolver = new PFlowProfileLinkResolver();
+                uid = await resolver.ResolveUidAsync(visibleLink, ct);
+                // The screen must still be the same own-profile settings surface.
+                xml = await Screen(binding, ct);
+                if (ReadOwnProfileLink(xml) != visibleLink)
+                    return Missing(xml);
+            }
             if (uid == null && !copyAttempted && CopyProfileLinkControl(xml) != null)
             {
                 copyAttempted = true;
@@ -436,8 +717,24 @@ public sealed class PFlowNativeAccountNavigator(
                             );
                             if (copiedLink != null)
                             {
+                                await PFlowTrace.SessionAsync(
+                                    binding.DeviceIndex,
+                                    "account.uid.link.copied",
+                                    "Fresh Facebook profile link copied; resolving numeric account UID.",
+                                    ct
+                                );
                                 using var resolver = new PFlowProfileLinkResolver();
                                 uid = await resolver.ResolveUidAsync(copiedLink, ct);
+                                await PFlowTrace.SessionAsync(
+                                    binding.DeviceIndex,
+                                    uid == null
+                                        ? "account.uid.link.unresolved"
+                                        : "account.uid.link.resolved",
+                                    uid == null
+                                        ? "Profile link copied successfully, but Facebook public metadata did not expose a verifiable numeric UID."
+                                        : "Fresh copied profile link resolved to a numeric UID; checking the own-profile screen next.",
+                                    ct
+                                );
                                 break;
                             }
                         }
@@ -458,6 +755,12 @@ public sealed class PFlowNativeAccountNavigator(
             )
             {
                 var (width, height) = PFlowPersonaSwitcherService.ParseScreenDimensions(xml);
+                await PFlowTrace.SessionAsync(
+                    binding.DeviceIndex,
+                    "account.uid.settings.scroll",
+                    "Copy profile link is not usable yet; scrolling Profile Settings before copying.",
+                    ct
+                );
                 if (
                     width <= 0
                     || height <= 0
@@ -510,8 +813,7 @@ public sealed class PFlowNativeAccountNavigator(
         && FindControl(xml, "Profile switcher, Double tap to open a list of your profiles") != null;
 
     private static bool PersonalSettings(string xml) =>
-        !PFlowUiPrivacy.ContainsInput(xml)
-        && (Has(xml, "Profile settings") || Has(xml, "Profile Settings"))
+        FacebookLayoutRegistry.Match(xml, FacebookScreenKind.ProfileSettings).IsMatch
         && FindControl(xml, "Back") != null;
 
     private static bool HasProfileUrl(string xml) =>

@@ -17,6 +17,9 @@ public partial class PFlowAccountItemViewModel : ObservableObject
         $"{Account.Pages.Count} cached Pages • current access requires live verification";
 
     [ObservableProperty]
+    private bool _isSelectedForBulk;
+
+    [ObservableProperty]
     private bool _selectedForDiscovery;
 
     [ObservableProperty]

@@ -136,6 +136,9 @@ public sealed partial class PFlowRunner
             job.Error = "";
             job.Evidence = "";
             job.IdentityEvidence = "";
+            job.MediaSelectionEvidence = "";
+            job.StoryCountBefore = null;
+            job.StoryCountAfter = null;
             job.SubmittedUtc = null;
             job.NoPublicationVerified = false;
             job.ConfirmedUtc = null;

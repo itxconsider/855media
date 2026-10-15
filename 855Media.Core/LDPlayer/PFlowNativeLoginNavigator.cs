@@ -37,8 +37,8 @@ public sealed class PFlowNativeLoginNavigator(
     {
         try
         {
-            var nodes = XDocument
-                .Parse(xml ?? "")
+            var nodes = FacebookHierarchyCache
+                .ParseStrict(xml ?? "")
                 .Descendants("node")
                 .Where(n =>
                     (string?)n.Attribute("package") == "com.facebook.katana"

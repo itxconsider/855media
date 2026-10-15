@@ -247,6 +247,116 @@ public sealed class PFlowSessionWorkflowTests : IDisposable
         Assert.All(fake.Indices, i => Assert.Equal(900075, i));
     }
 
+    [Fact]
+    public async Task FacebookStartupHonorsConfiguredDelayAndTrustsObservedForegroundOverFalseAck()
+    {
+        var (ld, fake) = DeviceProxy();
+        fake.LaunchAcknowledged = false;
+        var waits = new List<TimeSpan>();
+        var prep = new PFlowSessionPreparation(
+            ld,
+            directory,
+            (duration, _) =>
+            {
+                waits.Add(duration);
+                return Task.CompletedTask;
+            }
+        )
+        {
+            AppOpenDelay = TimeSpan.FromSeconds(10),
+        };
+        await prep.OpenFacebookAsync(Binding(), _ => Task.CompletedTask, default);
+        Assert.Equal(TimeSpan.FromSeconds(10), Assert.Single(waits));
+        Assert.Equal(1, fake.Calls.Count(c => c == "LaunchAppAsync"));
+        Assert.True(
+            fake.Calls.IndexOf("LaunchAppAsync")
+                < fake.Calls.IndexOf("GetCurrentFocusedActivityAsync")
+        );
+        Assert.DoesNotContain("StopFacebookAppAsync", fake.Calls);
+        Assert.DoesNotContain("ClearFacebookCacheAsync", fake.Calls);
+    }
+
+    [Fact]
+    public async Task FacebookStartupWaitsForSlowForegroundWithoutLaunchingAgain()
+    {
+        var (ld, fake) = DeviceProxy();
+        fake.FocusDelayReads = 3;
+        var waits = 0;
+        await new PFlowSessionPreparation(
+            ld,
+            directory,
+            (_, _) =>
+            {
+                waits++;
+                return Task.CompletedTask;
+            }
+        ).OpenFacebookAsync(Binding(), _ => Task.CompletedTask, default);
+        Assert.Equal(3, waits);
+        Assert.Equal(1, fake.Calls.Count(c => c == "LaunchAppAsync"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FacebookStartupRetriesOnlyOnceThenFailsIfLauncherRemains(bool acknowledged)
+    {
+        var (ld, fake) = DeviceProxy();
+        fake.NeverOpenFacebook = true;
+        fake.LaunchAcknowledged = acknowledged;
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            new PFlowSessionPreparation(
+                ld,
+                directory,
+                (_, _) => Task.CompletedTask
+            ).OpenFacebookAsync(Binding(), _ => Task.CompletedTask, default)
+        );
+        Assert.Equal(2, fake.Calls.Count(c => c == "LaunchAppAsync"));
+        Assert.Contains("EnsureAtxAgentRunningAsync", fake.Calls);
+    }
+
+    [Fact]
+    public async Task FacebookStartupStopsOnForeignAppWithoutRetryOrInput()
+    {
+        var (ld, fake) = DeviceProxy();
+        fake.ForeignAfterLaunch = true;
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            new PFlowSessionPreparation(
+                ld,
+                directory,
+                (_, _) => Task.CompletedTask
+            ).OpenFacebookAsync(Binding(), _ => Task.CompletedTask, default)
+        );
+        Assert.Equal(1, fake.Calls.Count(c => c == "LaunchAppAsync"));
+        Assert.DoesNotContain("TapAsync", fake.Calls);
+        Assert.DoesNotContain("InputTextAdbKeyboardAsync", fake.Calls);
+    }
+
+    [Fact]
+    public async Task CancellationDuringConfiguredStartupDelayStopsBeforeScreenOrUidWork()
+    {
+        var (ld, fake) = DeviceProxy();
+        using var cts = new CancellationTokenSource();
+        var prep = new PFlowSessionPreparation(
+            ld,
+            directory,
+            (_, ct) =>
+            {
+                cts.Cancel();
+                ct.ThrowIfCancellationRequested();
+                return Task.CompletedTask;
+            }
+        )
+        {
+            AppOpenDelay = TimeSpan.FromSeconds(10),
+        };
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            prep.OpenFacebookAsync(Binding(), _ => Task.CompletedTask, cts.Token)
+        );
+        Assert.DoesNotContain("GetCurrentFocusedActivityAsync", fake.Calls);
+        Assert.DoesNotContain("DumpUiHierarchyAsync", fake.Calls);
+        Assert.DoesNotContain("LaunchAppAsync", fake.Calls);
+    }
+
     [Theory]
     [InlineData("mCurrentFocus=Window{fixture com.ldmnq.launcher3/Launcher}", true)]
     [InlineData("mCurrentFocus=Window{fixture com.android.launcher3/Launcher}", true)]
@@ -507,6 +617,10 @@ public sealed class PFlowSessionWorkflowTests : IDisposable
         public string FocusedActivity =
             "mCurrentFocus=Window{fixture com.facebook.katana/ProfileActivity}";
         public bool Running;
+        public bool LaunchAcknowledged = true;
+        public bool NeverOpenFacebook,
+            ForeignAfterLaunch;
+        public int FocusDelayReads;
         public int Network = 100;
         public CancellationTokenSource? CancelOnInternet;
         public List<string> Calls = [];
@@ -550,9 +664,17 @@ public sealed class PFlowSessionWorkflowTests : IDisposable
                     return Task.FromResult(true);
                 case "LaunchAppAsync":
                     FocusedActivity =
-                        "mCurrentFocus=Window{fixture com.facebook.katana/ProfileActivity}";
-                    return Task.FromResult(true);
+                        ForeignAfterLaunch
+                            ? "mCurrentFocus=Window{fixture com.other.app/MainActivity}"
+                        : NeverOpenFacebook
+                            ? "mCurrentFocus=Window{fixture com.ldmnq.launcher3/Launcher}"
+                        : "mCurrentFocus=Window{fixture com.facebook.katana/ProfileActivity}";
+                    return Task.FromResult(LaunchAcknowledged);
                 case "GetCurrentFocusedActivityAsync":
+                    if (FocusDelayReads-- > 0)
+                        return Task.FromResult<string?>(
+                            "mCurrentFocus=Window{fixture com.ldmnq.launcher3/Launcher}"
+                        );
                     return Task.FromResult<string?>(FocusedActivity);
                 case "DumpUiHierarchyAsync":
                     return Task.FromResult<string?>(Ui);

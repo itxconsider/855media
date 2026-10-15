@@ -83,7 +83,7 @@ public sealed class PFlowAutomaticSessionService(
                     );
                 if (observed.State == PFlowAuthenticationState.Unavailable)
                     throw new InvalidOperationException(
-                        "Automatic personal-profile recovery could not confirm the live account UID. Facebook was left open."
+                        "Personal-profile recovery could not confirm the live account UID after automatic recovery. Facebook was left open."
                     );
                 var otherAccount =
                     !string.IsNullOrWhiteSpace(observed.OwnerUid)

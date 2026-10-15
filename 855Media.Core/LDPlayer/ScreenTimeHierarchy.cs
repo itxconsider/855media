@@ -7,11 +7,7 @@ namespace _855Media.Core.LDPlayer;
 
 public static class ScreenTimeHierarchy
 {
-    public static XElement[] Nodes(string? xml) =>
-        PFlowAutoPostService
-            .SafeParseXmlDocuments(xml)
-            .SelectMany(d => d.Descendants("node"))
-            .ToArray();
+    public static XElement[] Nodes(string? xml) => FacebookHierarchyCache.Nodes(xml);
 
     public static string Label(XElement node) =>
         ((string?)node.Attribute("text") ?? "")

@@ -291,7 +291,11 @@ try
     Require(staleRefresh.IsCompleted, "Changing paths during a refresh completes");
     staleRefresh.GetAwaiter().GetResult();
     Require(
-        mediaPage.UploadReelsCount == 1 && mediaPage.ReelFilesDisplay == "1",
+        mediaPage.UploadReelsCount == 1
+            && (
+                mediaPage.ReelFilesDisplay.StartsWith("… / ")
+                || mediaPage.ReelFilesDisplay == "1 / 1"
+            ),
         "Old folder counts cannot overwrite a changed source path"
     );
 }
@@ -302,6 +306,246 @@ finally
 Console.WriteLine(
     "PASS: selection performance, filters, group retention, live media columns; no LD commands called."
 );
+
+var accountFixture = Path.Combine(
+    Path.GetTempPath(),
+    "855media-bulk-account-test-" + Guid.NewGuid().ToString("N")
+);
+Directory.CreateDirectory(accountFixture);
+try
+{
+    var accountStore = new PFlowAccountStore(Path.Combine(accountFixture, "accounts.json"));
+    var accounts = Enumerable
+        .Range(1, 4)
+        .Select(i => new PFlowPersonalAccount
+        {
+            Binding = new(
+                "fixture-instance",
+                1,
+                "LD-1",
+                "com.facebook.katana",
+                (1000 + i).ToString()
+            ),
+            Name = "Fixture account " + i,
+            RotationOrder = i,
+        })
+        .ToArray();
+    accountStore.UpdateAsync(saved => saved.AddRange(accounts)).GetAwaiter().GetResult();
+    using var bulkVm = new AutoPostViewModel(
+        ld,
+        null!,
+        null!,
+        null!,
+        null!,
+        accountStore: accountStore
+    );
+    foreach (var account in accounts)
+        bulkVm.MappedAccounts.Add(new(account, account == accounts[3] ? "Review mapping" : ""));
+    var rows = bulkVm.MappedAccounts.ToArray();
+    bulkVm.SelectAllMappedAccountsCommand.Execute(null);
+    Require(
+        bulkVm.SelectedBulkAccountCount == 3 && !rows[3].IsSelectedForBulk,
+        "Select all excludes invalid mappings"
+    );
+    Require(
+        rows.All(r => !r.SelectedForDiscovery && !r.SelectedForScreenTime && !r.SelectedForPosting),
+        "Selecting accounts does not enable tasks"
+    );
+    bulkVm.ClearMappedAccountSelectionCommand.Execute(null);
+    rows[0].IsSelectedForBulk = true;
+    rows[1].IsSelectedForBulk = true;
+    rows[3].IsSelectedForBulk = true; // A programmatic stale selection cannot bypass validation.
+    Require(
+        bulkVm.SelectedBulkAccountCount == 2 && bulkVm.CanApplyAccountBulkSelection,
+        "Individual selection updates toolbar count"
+    );
+    bulkVm.ApplySelectedAccountOptionCommand.Execute("Fetch:on");
+    bulkVm.ApplySelectedAccountOptionCommand.Execute("ScreenTime:on");
+    bulkVm.ApplySelectedAccountOptionCommand.Execute("Posting:on");
+    Require(
+        rows.Take(2)
+            .All(r => r.SelectedForDiscovery && r.SelectedForScreenTime && r.SelectedForPosting),
+        "Bulk options apply to selected valid rows"
+    );
+    Require(
+        rows.Skip(2)
+            .All(r => !r.SelectedForDiscovery && !r.SelectedForScreenTime && !r.SelectedForPosting),
+        "Unselected and invalid rows keep their options on the same LD"
+    );
+    bulkVm.ApplySelectedAccountOptionCommand.Execute("Posting:off");
+    Require(
+        rows.Take(2)
+            .All(r => !r.SelectedForPosting && r.SelectedForDiscovery && r.SelectedForScreenTime),
+        "Turning off one option preserves other options"
+    );
+    Require(
+        rows.All(r =>
+            !r.AllowAutomaticLogin
+            && !r.AllowAccountRotation
+            && r.RotationOrder == int.Parse(r.OwnerUid) - 1000
+        ),
+        "Bulk options preserve login, rotation and order"
+    );
+    bulkVm.IsBusy = true;
+    bulkVm.ApplySelectedAccountOptionCommand.Execute("Fetch:off");
+    bulkVm.ClearMappedAccountSelectionCommand.Execute(null);
+    Require(
+        rows[0].SelectedForDiscovery
+            && rows[0].IsSelectedForBulk
+            && !bulkVm.CanApplyAccountBulkSelection,
+        "Busy state prevents bulk edits"
+    );
+    bulkVm.IsBusy = false;
+    bulkVm.IsRunning = true;
+    bulkVm.ApplySelectedAccountOptionCommand.Execute("Fetch:off");
+    Require(
+        rows[0].SelectedForDiscovery && !bulkVm.CanEditAccountBulkSelection,
+        "Running state prevents bulk edits"
+    );
+    bulkVm.IsRunning = false;
+    rows[2].SelectedForPosting = true; // Unrelated unsaved edit must survive Save selected.
+    var saveAccounts = bulkVm.SaveSelectedAccountOptionsCommand.ExecuteAsync(null);
+    var saveDeadline = DateTime.UtcNow.AddSeconds(10);
+    while (!saveAccounts.IsCompleted && DateTime.UtcNow < saveDeadline)
+    {
+        Dispatcher.UIThread.RunJobs();
+        Thread.Sleep(5);
+    }
+    Require(saveAccounts.IsCompleted, "Selected account save completes");
+    saveAccounts.GetAwaiter().GetResult();
+    Require(
+        bulkVm.BulkAccountSelectionStatus.StartsWith("Options saved"),
+        "Save selected accounts succeeds"
+    );
+    var stored = accountStore.LoadAsync().GetAwaiter().GetResult();
+    Require(
+        stored
+            .Take(2)
+            .All(a => a.SelectedForDiscovery && a.SelectedForScreenTime && !a.SelectedForPosting),
+        "Selected account options persist to disk"
+    );
+    Require(
+        stored
+            .Skip(2)
+            .All(a => !a.SelectedForDiscovery && !a.SelectedForScreenTime && !a.SelectedForPosting),
+        "Save selected does not persist another account on the same LD"
+    );
+    Require(
+        rows[2].SelectedForPosting && bulkVm.SelectedBulkAccountCount == 2,
+        "Save preserves unselected drafts and selected rows"
+    );
+    bulkVm.ClearMappedAccountSelectionCommand.Execute(null);
+    bulkVm.ApplySelectedAccountOptionCommand.Execute("Fetch:off");
+    Require(
+        rows[0].SelectedForDiscovery && bulkVm.SelectedBulkAccountCount == 0,
+        "Clear selection keeps options; no selection applies nothing"
+    );
+    var bulkSummaryChanges = 0;
+    bulkVm.PropertyChanged += (_, e) =>
+        bulkSummaryChanges += e.PropertyName == nameof(bulkVm.BulkAccountSelectionSummary) ? 1 : 0;
+    bulkVm.MappedAccounts.Clear();
+    bulkSummaryChanges = 0;
+    rows[0].IsSelectedForBulk = true;
+    Require(bulkSummaryChanges == 0, "Removed account rows detach selection handlers");
+    Console.WriteLine(
+        "PASS: account multi-select, bulk flags, invalid mapping guards, exact-account persistence and draft retention; synthetic data only."
+    );
+}
+finally
+{
+    Directory.Delete(accountFixture, true);
+}
+
+var queueOnlyFixture = Path.Combine(
+    Path.GetTempPath(),
+    "855media-queue-only-test-" + Guid.NewGuid().ToString("N")
+);
+Directory.CreateDirectory(queueOnlyFixture);
+try
+{
+    File.WriteAllText(
+        Path.Combine(queueOnlyFixture, "unprepared.mp4"),
+        "synthetic file must not be posted"
+    );
+    vm.ShowOnlyOpen = false;
+    foreach (var worker in vm.Instances)
+        worker.IsSelected = worker.Index == 1;
+    vm.Pages.Clear();
+    vm.Pages.Add(
+        new(
+            new FacebookPageTarget
+            {
+                DeviceName = "LD-1",
+                PageName = "Queue target",
+                PageId = "77",
+                UserUid = "123",
+                VideoReelPath = queueOnlyFixture,
+                IsSelected = true,
+            },
+            1
+        )
+    );
+    vm.Tasks.Clear();
+    var completed = new AutoPostTaskItem
+    {
+        DeviceName = "LD-1",
+        Type = "Reel",
+        Status = "Confirmed",
+        FilePath = Path.Combine(queueOnlyFixture, "unprepared.mp4"),
+    };
+    vm.Tasks.Add(completed);
+    vm.Tasks.Add(
+        new AutoPostTaskItem
+        {
+            DeviceName = "LD-2",
+            Type = "Reel",
+            Status = "Queued",
+            FilePath = completed.FilePath,
+        }
+    );
+    var jobList =
+        (List<PFlowJob>)
+            typeof(AutoPostViewModel)
+                .GetField("_pFlowJobs", BindingFlags.NonPublic | BindingFlags.Instance)!
+                .GetValue(vm)!;
+    var previousJob = new PFlowJob { State = PFlowState.Confirmed };
+    jobList.Add(previousJob);
+    var prepare = typeof(AutoPostViewModel).GetMethod(
+        "PreparePFlowAsync",
+        BindingFlags.NonPublic | BindingFlags.Instance
+    )!;
+    foreach (var status in new[] { "Confirmed", "Failed", "Unknown", "CancelledBeforeSubmission" })
+    {
+        completed.Status = status;
+        var rejected = false;
+        try
+        {
+            ((Task)prepare.Invoke(vm, [new AutoPostViewModel.WorkerRunConfig { PostReel = true }])!)
+                .GetAwaiter()
+                .GetResult();
+        }
+        catch (InvalidOperationException ex) when (ex.Message.StartsWith("No queued posts"))
+        {
+            rejected = true;
+        }
+        Require(
+            rejected,
+            "A second start with " + status + " rows requires a prepared queue for selected LDs"
+        );
+        Require(
+            completed.Status == status && jobList.Contains(previousJob),
+            "No-queue rejection preserves previous outcomes"
+        );
+        Require(File.Exists(completed.FilePath), "Unprepared source files remain untouched");
+    }
+    Console.WriteLine(
+        "PASS: no implicit folder posting, no replay of completed/failed/unknown rows, no borrowing another LD's queue; previous outcomes retained."
+    );
+}
+finally
+{
+    Directory.Delete(queueOnlyFixture, true);
+}
 
 static void Require(bool condition, string label)
 {

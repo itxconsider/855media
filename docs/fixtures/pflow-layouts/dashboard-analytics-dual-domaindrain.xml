@@ -1,0 +1,17 @@
+<!-- Reconstructed accessibility fixture from the supplied 2026-10-15 screenshots; not a live XML capture. -->
+<hierarchy><node package="com.facebook.katana" bounds="[0,0][720,1280]">
+ <node text="Professional dashboard" bounds="[100,48][600,128]" />
+ <node resource-id="fixture:id/analytics_tab" content-desc="Analytics, 1 of 4" clickable="true" enabled="true" bounds="[24,144][194,224]">
+  <node text="Analytics" bounds="[40,160][178,208]" />
+ </node>
+ <node text="Content" bounds="[210,144][380,224]" />
+ <node text="Community" bounds="[400,144][600,224]" />
+ <node text="Fixture Page" bounds="[120,280][420,330]" />
+ <node resource-id="fixture:id/analytics_section" content-desc="Analytics" clickable="true" enabled="true" bounds="[24,800][264,864]">
+  <node text="Analytics" bounds="[24,808][190,855]" />
+  <node text="›" bounds="[210,808][250,855]" />
+ </node>
+ <node text="28 days" bounds="[24,870][170,920]" />
+ <node text="Views" bounds="[24,930][180,970]" />
+ <node text="Approximate earnings" bounds="[360,930][690,970]" />
+</node></hierarchy>

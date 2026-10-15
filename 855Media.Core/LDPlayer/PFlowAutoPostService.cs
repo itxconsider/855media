@@ -328,7 +328,12 @@ public partial class PFlowAutoPostService : IPFlowAutoPostService
         return (0, 0);
     }
 
-    internal static System.Collections.Generic.List<XDocument> SafeParseXmlDocuments(string? raw)
+    internal static System.Collections.Generic.List<XDocument> SafeParseXmlDocuments(string? raw) =>
+        FacebookHierarchyCache.Documents(raw);
+
+    internal static System.Collections.Generic.List<XDocument> ParseXmlDocumentsUncached(
+        string? raw
+    )
     {
         var docs = new System.Collections.Generic.List<XDocument>();
         if (string.IsNullOrWhiteSpace(raw))
@@ -345,7 +350,13 @@ public partial class PFlowAutoPostService : IPFlowAutoPostService
             {
                 try
                 {
-                    docs.Add(XDocument.Parse(m.Value));
+                    docs.Add(
+                        FacebookHierarchyCache.ParseHierarchySegment(
+                            raw,
+                            m.Value,
+                            matches.Count == 1
+                        )
+                    );
                 }
                 catch (OperationCanceledException)
                 {
@@ -358,7 +369,7 @@ public partial class PFlowAutoPostService : IPFlowAutoPostService
         {
             try
             {
-                docs.Add(XDocument.Parse(raw));
+                docs.Add(FacebookHierarchyCache.ParseStrict(raw));
             }
             catch (OperationCanceledException)
             {

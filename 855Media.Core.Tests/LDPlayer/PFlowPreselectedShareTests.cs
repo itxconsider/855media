@@ -6,6 +6,64 @@ namespace _855Media.Core.Tests.LDPlayer;
 
 public class PFlowPreselectedShareTests
 {
+    [Fact]
+    public async Task PhotoJobChangesPreselectedReelsToFeedAndUsesOnce()
+    {
+        var ld = DispatchProxy.Create<ILDPlayerService, ChooserDevice>();
+        var device = (ChooserDevice)(object)ld;
+        device.Photo = true;
+        var job = new PFlowJob
+        {
+            State = PFlowState.IdentityVerified,
+            TargetName = "Target",
+            TargetId = "123",
+            SourcePath = "synthetic.jpg",
+            PostType = "Picture",
+            Size = 1,
+            Sha256 = "HASH",
+        };
+        await new PFlowAutoPostService(ld).PublishAsync(
+            job,
+            _ => Task.CompletedTask,
+            null,
+            CancellationToken.None,
+            dryRun: true
+        );
+        Assert.Equal(PFlowState.CancelledBeforeSubmission, job.State);
+        Assert.Equal(1, device.FeedTaps);
+        Assert.Equal(1, device.OnceTaps);
+        Assert.Equal(0, device.ShareTaps);
+        Assert.Equal(0, device.OtherTaps);
+    }
+
+    [Fact]
+    public async Task DirectComposerWithoutThisJobsChooserIsRejected()
+    {
+        var ld = DispatchProxy.Create<ILDPlayerService, ChooserDevice>();
+        var device = (ChooserDevice)(object)ld;
+        device.SkipChooser = true;
+        var job = new PFlowJob
+        {
+            State = PFlowState.IdentityVerified,
+            TargetName = "Target",
+            TargetId = "123",
+            SourcePath = "synthetic.mp4",
+            Size = 1,
+            Sha256 = "HASH",
+        };
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            new PFlowAutoPostService(ld).PublishAsync(
+                job,
+                _ => Task.CompletedTask,
+                null,
+                CancellationToken.None
+            )
+        );
+        Assert.Contains("Just once", error.Message);
+        Assert.Equal(0, device.ShareTaps);
+        Assert.Equal(0, device.OnceTaps);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -58,6 +116,9 @@ public class PFlowPreselectedShareTests
     public class ChooserDevice : DispatchProxy
     {
         public bool ChangeDestination;
+        public bool SkipChooser;
+        public bool Photo;
+        public int FeedTaps;
         public int OnceTaps,
             OtherTaps,
             ShareTaps;
@@ -80,16 +141,25 @@ public class PFlowPreselectedShareTests
                     if (!_composer)
                     {
                         var xml = PFlowShareDestinationTests.SelectedReelsXml;
+                        if (FeedTaps > 0)
+                            xml = xml.Replace("Share with Reels", "Share with Feed");
                         if (++_chooserReads > 1 && ChangeDestination)
                             xml = xml.Replace("Share with Reels", "Share with Feed");
                         return Task.FromResult<string?>(xml);
                     }
+                    if (Photo)
+                        return Task.FromResult<string?>(
+                            "<hierarchy><node bounds='[0,0][720,1280]'><node text='Target'/><node text='Create post'/><node text='Post' clickable='true' enabled='true' bounds='[160,1176][688,1256]'/></node></hierarchy>"
+                        );
                     return Task.FromResult<string?>(
                         "<hierarchy><node bounds='[0,0][720,1280]'><node text='Target'/><node text='Reel Settings'/>"
                             + "<node text='Share now' clickable='true' enabled='true' bounds='[160,1176][688,1256]'/></node></hierarchy>"
                     );
                 case "ShareVideoToFacebookAsync":
+                case "ShareImageToFacebookAsync":
                     _sharing = true;
+                    if (SkipChooser)
+                        _composer = true;
                     return Task.FromResult(true);
                 case "TapAsync":
                     var y = (int)args![2]!;
@@ -98,6 +168,8 @@ public class PFlowPreselectedShareTests
                         OnceTaps++;
                         _composer = true;
                     }
+                    else if (Photo && y == 1159)
+                        FeedTaps++;
                     else if (y == 1216)
                         ShareTaps++;
                     else

@@ -63,6 +63,33 @@ public class PFlowSessionTests
         Assert.Equal(2, fake.Home);
     }
 
+    [Theory]
+    [InlineData(12, false)]
+    [InlineData(15, false)]
+    [InlineData(12, true)]
+    public async Task ObservedAndroid9ButtonClearsAndWaitsForTaskVerification(
+        int index,
+        bool delayed
+    )
+    {
+        var ld = DispatchProxy.Create<ILDPlayerService, Device>();
+        var fake = (Device)(object)ld;
+        fake.Layout = System.IO.File.ReadAllText(
+            System.IO.Path.Combine(
+                AppContext.BaseDirectory,
+                "Fixtures",
+                "PFlowLayouts",
+                $"ld{index}-android9-recents.xml"
+            )
+        );
+        fake.DelayLayout = delayed;
+        await PFlowSession.ClearAppsAsync(ld, index, null, default);
+        Assert.Equal(1, fake.Taps);
+        Assert.Equal((617, 112), fake.LastTap);
+        Assert.True(fake.EmptyState);
+        Assert.Equal(2, fake.Home);
+    }
+
     [Fact]
     public void ExplicitSystemTaskTypesAreNotAppCardsAndNamesCannotSubstituteForTypes()
     {
@@ -86,6 +113,10 @@ public class PFlowSessionTests
     {
         public string Mode = "success";
         public bool EmptyState;
+        public string? Layout;
+        public bool DelayLayout;
+        public (int X, int Y) LastTap;
+        private int dumps;
         public int Home,
             Taps;
 
@@ -106,8 +137,12 @@ public class PFlowSessionTests
                         : Occupied
                     );
                 case "DumpUiHierarchyAsync":
+                    if (Layout != null)
+                        return Task.FromResult<string?>(
+                            DelayLayout && dumps++ == 0 ? "<hierarchy/>" : Layout
+                        );
                     var button =
-                        "<node clickable='true' bounds='[0,0][100,40]'><node text='Clear all'/></node>";
+                        "<node package='com.android.systemui' clickable='true' bounds='[0,0][100,40]'><node package='com.android.systemui' text='Clear all' bounds='[0,0][100,40]'/></node>";
                     return Task.FromResult<string?>(
                         "<hierarchy>"
                             + (
@@ -125,6 +160,7 @@ public class PFlowSessionTests
                     );
                 case "TapAsync":
                     Taps++;
+                    LastTap = ((int)args![1]!, (int)args[2]!);
                     EmptyState = Mode != "still-present";
                     return Task.FromResult(Mode != "tap-failed");
                 default:

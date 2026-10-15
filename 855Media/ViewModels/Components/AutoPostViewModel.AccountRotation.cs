@@ -60,7 +60,9 @@ public partial class AutoPostViewModel
                 ?? Pages
                     .FirstOrDefault(p => p.IsProfile && p.Model.AccountBinding == binding)
                     ?.PageName
-                ?? binding.OwnerUid
+                ?? binding.OwnerUid,
+            requireRecoveryIdle: (binding, c) =>
+                RequireAccountTransitionIdleAsync(binding.DeviceIndex, c)
         );
 
     private async Task EnsureRunAccountAsync(
@@ -74,11 +76,34 @@ public partial class AutoPostViewModel
             await Dispatcher.UIThread.InvokeAsync(() =>
                 worker.Status = $"Account [{account.Name}] {step}"
             );
-        await new PFlowSessionPreparation(_ldPlayerService, LdFolder).PrepareAsync(
-            account.Binding,
-            Progress,
+        await CreateRunSessionPreparation().PrepareAsync(account.Binding, Progress, ct);
+        // Preparing the device must not imply navigating the account switcher.
+        // A fresh token identity can establish the account while leaving its current actor alone.
+        var graph = await new PFlowGraphIdentityReader().TryReadUidAsync(
+            _ldPlayerService,
+            worker.Index,
+            LdFolder,
             ct
         );
+        var current = await _ldPlayerService.DumpUiHierarchyAsync(worker.Index, LdFolder, ct) ?? "";
+        if (
+            graph != null
+            && graph.UnderlyingUid == account.Binding.OwnerUid
+            && !string.IsNullOrEmpty(graph.Id)
+            && graph.Id.All(char.IsAsciiDigit)
+            && !PFlowLoginScreen.RequiresAuthentication(PFlowLoginScreen.Classify(current))
+        )
+        {
+            _pFlowActiveBindings[worker.Index] = account.Binding;
+            _pFlowAccountAttention.TryRemove(worker.Index, out _);
+            await PFlowTrace.SessionAsync(
+                worker.Index,
+                "account.uid.graph.ready",
+                "Fresh underlying UID matched assigned account; persona navigation deferred to target verification.",
+                ct
+            );
+            return;
+        }
         var service = _pFlowSessions.GetOrAdd(
             worker.Index,
             index =>
@@ -115,7 +140,12 @@ public partial class AutoPostViewModel
                 "com.facebook.katana",
                 config.ScreenTime.HasActions,
                 !config.ScreenTimeOnly
-                    && (config.PostReel || config.PostPicture || config.PostVideo)
+                    && (
+                        config.PostReel
+                        || config.PostPicture
+                        || config.PostVideo
+                        || config.PostStory
+                    )
             )
             .Where(a =>
                 config.ScreenTime.HasActions && a.SelectedForScreenTime
@@ -148,7 +178,7 @@ public partial class AutoPostViewModel
                     .ToArray();
                 foreach (var page in targets)
                 {
-                    foreach (var type in new[] { "Reel", "Picture", "Video" })
+                    foreach (var type in new[] { "Reel", "Picture", "Video", "Story" })
                     {
                         await RequireAccountTransitionIdleAsync(worker.Index, c);
                         await ExecutePFlowForPageAsync(worker, page, type, c);

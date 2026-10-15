@@ -1,0 +1,11 @@
+<!-- Synthetic regression fixture based on the supplied Analytics screenshot, not a device capture. -->
+<hierarchy><node package="com.facebook.katana" bounds="[0,0][720,1280]">
+  <node text="Analytics" bounds="[240,30][480,90]" />
+  <node text="Last 28 days" bounds="[240,90][480,125]" />
+  <node text="Views" bounds="[30,180][300,230]" />
+  <node text="61 ↓66%" bounds="[30,230][300,280]" />
+  <node text="Earnings" bounds="[340,180][650,230]" />
+  <node text="What's working for you" bounds="[30,400][650,450]" />
+  <node text="Recent content" bounds="[30,600][650,650]" />
+  <node text="20" bounds="[30,1050][120,1100]" />
+</node></hierarchy>

@@ -8,12 +8,14 @@ if (
         is not (
             "--inspect"
             or "--snapshot"
+            or "--fetch-page"
             or "--logout-login"
             or "--finish-login"
             or "--recover-login"
         )
     || !int.TryParse(args[1], out var index)
     || index < 0
+    || args[0] == "--fetch-page" && args.Length != 4
     || args[0] is "--logout-login" or "--finish-login" or "--recover-login"
         && !args.Contains("--live")
 )
@@ -73,6 +75,21 @@ async Task Capture(string label)
                 + PFlowLoginScreen.Classify(xml)
                 + "; editable input: "
                 + PFlowUiPrivacy.ContainsInput(xml)
+        );
+        Console.WriteLine(
+            "Own profile: "
+                + PFlowNativeAccountNavigator.OwnProfile(xml)
+                + "; settings control: "
+                + (
+                    PFlowNativeAccountNavigator.FindControl(
+                        xml,
+                        "Profile settings",
+                        "More profile settings",
+                        "More options"
+                    ) != null
+                )
+                + "; menu: "
+                + AtxAgentClient.IsMenuPageInBloks(AtxAgentClient.ParseBloksHierarchy(xml))
         );
     }
 }
@@ -157,6 +174,62 @@ try
         ldPath,
         b => accounts.FirstOrDefault(a => a.Binding == b)?.Name ?? b.OwnerUid
     );
+    if (args[0] == "--fetch-page")
+    {
+        var page =
+            account.Pages.SingleOrDefault(p =>
+                p.Name.Equals(args[3], StringComparison.OrdinalIgnoreCase)
+            )
+            ?? throw new InvalidOperationException(
+                "Requested Page is not uniquely mapped to this account."
+            );
+        stage = "verify-page-owner";
+        var owner = await navigator.ObserveAsync(binding, ct);
+        if (!PFlowAutomaticSessionService.Verified(owner, binding))
+        {
+            if (!await ld.EnsureSwitchedToPersonalProfileAsync(index, account.Name, ldPath, ct))
+                throw new InvalidOperationException(
+                    "Could not restore the mapped personal profile before the Page test."
+                );
+            owner = await navigator.ObserveAsync(binding, ct);
+        }
+        beforeUid = owner.OwnerUid;
+        if (!PFlowAutomaticSessionService.Verified(owner, binding))
+            throw new InvalidOperationException(
+                "Live personal UID did not match the requested Page owner."
+            );
+        stage = "fetch-one-page";
+        var info = await ld.ExtractPageInfoFromUiAsync(
+            index,
+            string.IsNullOrWhiteSpace(page.PersonaUid) ? page.PageId : page.PersonaUid,
+            page.PageId,
+            page.Name,
+            binding.OwnerUid,
+            account.Name,
+            ldPath,
+            ct,
+            Progress,
+            ownerAlreadyVerified: true
+        );
+        await Capture("page-result");
+        await File.WriteAllTextAsync(
+            Path.Combine(reportDirectory, "page-info.json"),
+            JsonSerializer.Serialize(info, new JsonSerializerOptions { WriteIndented = true }),
+            ct
+        );
+        succeeded = info != null;
+        Console.WriteLine(
+            "Page: "
+                + page.Name
+                + "; verified: "
+                + succeeded
+                + "; followers: "
+                + (info?.FollowersKnown == true ? info.Followers.ToString() : "unavailable")
+                + "; views: "
+                + info?.Views
+        );
+        return succeeded ? 0 : 1;
+    }
     if (args[0] == "--inspect")
     {
         stage = "observe-before";

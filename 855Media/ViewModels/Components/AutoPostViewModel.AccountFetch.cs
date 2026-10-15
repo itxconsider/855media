@@ -33,7 +33,10 @@ public partial class AutoPostViewModel
         var navigator = new PFlowNativeAccountNavigator(
             _ldPlayerService,
             LdFolder,
-            b => accounts.Single(a => a.Binding == b).Name
+            b => accounts.Single(a => a.Binding == b).Name,
+            delay: PFlowFetchPacing.DelayAsync,
+            requireRecoveryIdle: (binding, c) =>
+                RequireAccountTransitionIdleAsync(binding.DeviceIndex, c)
         );
         var service = new PFlowAutomaticSessionService(
             navigator,
@@ -78,6 +81,7 @@ public partial class AutoPostViewModel
                     Uid = account.Binding.OwnerUid,
                     Name = string.IsNullOrWhiteSpace(owner.Name) ? account.Name : owner.Name,
                     Email = owner.Email,
+                    ProfilePictureUrl = owner.PicUrl,
                     Pages = root.Where(a =>
                             a.Type == "Page" && a.UserUid == account.Binding.OwnerUid
                         )
@@ -115,6 +119,8 @@ public partial class AutoPostViewModel
                 details.Email = PreferValue(personal.Email, details.Email);
                 details.Birthdate = personal.Birthdate;
                 details.CreationDate = personal.CreationDate;
+                if (!string.IsNullOrWhiteSpace(personal.ProfilePictureUrl))
+                    details.ProfilePictureUrl = personal.ProfilePictureUrl;
                 details.Location = personal.Location;
                 details.Hometown = personal.Hometown;
                 details.Work = personal.Work;

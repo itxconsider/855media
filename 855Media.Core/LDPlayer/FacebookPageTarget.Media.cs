@@ -10,6 +10,14 @@ public sealed record FacebookMediaSnapshot(IReadOnlyList<string> Files, string E
 public partial class FacebookPageTarget
 {
     public static readonly string[] ReelExtensions = [".mp4", ".mov", ".webm", ".mkv"];
+    public static readonly string[] StoryExtensions =
+    [
+        .. ReelExtensions,
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".webp",
+    ];
     public static readonly string[] PhotoExtensions = [".jpg", ".jpeg", ".png", ".webp"];
 
     [System.Text.Json.Serialization.JsonIgnore]
@@ -84,12 +92,11 @@ public partial class FacebookPageTarget
     }
 
     // Keep a distinct legacy source available as an additional Reel source.
-    public IReadOnlyList<string> GetUploadMediaPaths(string type) =>
-        (type == "Picture" ? new[] { ImagePath } : new[] { VideoReelPath, VideoLongPath })
-            .Where(p => !string.IsNullOrWhiteSpace(p))
-            .Select(p => p.Trim().Trim('"', '\''))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+    public IReadOnlyList<string> GetUploadMediaPaths(string type) => (
+            type == "Story" ? new[] { StoryPath }
+            : type == "Picture" ? new[] { ImagePath }
+            : new[] { VideoReelPath, VideoLongPath }
+        ).Where(p => !string.IsNullOrWhiteSpace(p)).Select(p => p.Trim().Trim('"', '\'')).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
 
     public IReadOnlyList<string> GetUploadMediaFiles(string type) =>
         ReadUploadMediaSnapshot(type).Files;
@@ -97,7 +104,9 @@ public partial class FacebookPageTarget
     public FacebookMediaSnapshot ReadUploadMediaSnapshot(string type) =>
         ReadMediaFiles(
             GetUploadMediaPaths(type),
-            type == "Picture" ? PhotoExtensions : ReelExtensions
+            type == "Story" ? StoryExtensions
+                : type == "Picture" ? PhotoExtensions
+                : ReelExtensions
         );
 
     public string GetReelCaptionForFile(string file)

@@ -966,7 +966,17 @@ public partial class AtxAgentClient : IDisposable
     /// <summary>
     /// Parses an accessibility hierarchy XML into structured BloksScreenInfo and BloksElement tree.
     /// </summary>
-    public static BloksScreenInfo ParseBloksHierarchy(string? xml, string? currentActivity = null)
+    public static BloksScreenInfo ParseBloksHierarchy(
+        string? xml,
+        string? currentActivity = null
+    ) =>
+        FacebookHierarchyCache.Screen(
+            xml,
+            currentActivity,
+            () => ParseBloksHierarchyCore(xml, currentActivity)
+        );
+
+    private static BloksScreenInfo ParseBloksHierarchyCore(string? xml, string? currentActivity)
     {
         var screen = new BloksScreenInfo
         {
@@ -980,10 +990,11 @@ public partial class AtxAgentClient : IDisposable
 
         try
         {
-            var doc = XDocument.Parse(xml);
+            var doc = FacebookHierarchyCache.ParseStrict(xml);
             var root = doc.Root;
             if (root == null)
                 return screen;
+            FacebookHierarchyCache.Remember(screen, xml, doc);
 
             BloksElement ParseNode(XElement elem)
             {

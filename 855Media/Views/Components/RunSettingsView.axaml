@@ -1,0 +1,375 @@
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:components="clr-namespace:_855Media.ViewModels.Components" xmlns:ld="clr-namespace:_855Media.Core.LDPlayer;assembly=855Media.Core" xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia" x:Class="_855Media.Views.Components.RunSettingsView" x:DataType="components:AutoPostViewModel">
+    <UserControl.Styles>
+        <Style Selector="Border.settings-card">
+            <Setter Property="Background" Value="{DynamicResource AntigravityCardBrush}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource AntigravityBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="Padding" Value="18"/>
+        </Style>
+        <Style Selector="Border.settings-draft">
+            <Setter Property="BorderBrush" Value="{DynamicResource AntigravityBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="10"/>
+            <Setter Property="Margin" Value="0,0,0,8"/>
+        </Style>
+        <Style Selector="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource AntigravityTextBrush}"/>
+        </Style>
+        <Style Selector="TextBlock.settings-heading">
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="TextBlock.settings-note">
+            <Setter Property="Foreground" Value="{DynamicResource AntigravityMutedBrush}"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="LineHeight" Value="18"/>
+        </Style>
+        <Style Selector="TextBlock.settings-label">
+            <Setter Property="Foreground" Value="{DynamicResource AntigravityMutedBrush}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="NumericUpDown.settings-number">
+            <Setter Property="Height" Value="34"/>
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="FontSize" Value="13"/>
+        </Style>
+        <Style Selector="CheckBox">
+            <Setter Property="Foreground" Value="{DynamicResource AntigravityTextBrush}"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="MinHeight" Value="28"/>
+        </Style>
+        <Style Selector="Expander">
+            <Setter Property="Foreground" Value="{DynamicResource AntigravityTextBrush}"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        </Style>
+    </UserControl.Styles>
+    <Border Background="#C9000000">
+        <Border Classes="modal-window" MaxWidth="1180" MaxHeight="920" Padding="24" Margin="24" CornerRadius="14">
+            <Grid RowDefinitions="Auto,*,Auto">
+                <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,18">
+                    <StackPanel Spacing="6">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <materialIcons:MaterialIcon Kind="TuneVertical" Width="24" Height="24" Foreground="#A5B4FC" VerticalAlignment="Center"/>
+                            <TextBlock Text="Run settings" FontSize="23" FontWeight="SemiBold"/>
+                        </StackPanel>
+                        <TextBlock Text="Configure ScreenTime and posting for the next run." Classes="settings-note"/>
+                    </StackPanel>
+                    <Button Grid.Column="1" Command="{Binding CloseConfigCommand}" ToolTip.Tip="Close settings" AutomationProperties.Name="Close settings" Width="34" Height="34" Padding="6" VerticalAlignment="Top">
+                        <materialIcons:MaterialIcon Kind="Close" Width="18" Height="18"/>
+                    </Button>
+                </Grid>
+                <TabControl Grid.Row="1" Name="SettingsTabs" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+                    <TabItem Header="ScreenTime session">
+                        <ScrollViewer Name="SessionScroll" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                            <WrapPanel Name="SessionColumns" SizeChanged="OnSettingsColumnsSizeChanged" HorizontalAlignment="Stretch" Margin="0,14,0,0">
+                                <StackPanel Spacing="14" Margin="0,0,14,14">
+                                    <Border Classes="settings-card">
+                                        <StackPanel Spacing="12">
+                                            <TextBlock Classes="settings-heading" Text="Browse Facebook"/>
+                                            <TextBlock Classes="settings-note" Text="Choose activities and a duration range in seconds."/>
+                                            <Grid ColumnDefinitions="*,82,20,82" ColumnSpacing="6">
+                                                <TextBlock Text="Activity" Classes="settings-label"/>
+                                                <TextBlock Grid.Column="1" Text="Min" Classes="settings-label"/>
+                                                <TextBlock Grid.Column="3" Text="Max" Classes="settings-label"/>
+                                            </Grid>
+                                            <Grid ColumnDefinitions="*,82,20,82" ColumnSpacing="6">
+                                                <CheckBox IsChecked="{Binding IsWatchVideo}" Content="Watch Reels" VerticalAlignment="Center"/>
+                                                <NumericUpDown Classes="settings-number" Value="{Binding WatchVideoMin}" Minimum="1" Maximum="3600" FormatString="0" Grid.Column="1" IsEnabled="{Binding IsWatchVideo}"/>
+                                                <TextBlock Grid.Column="2" Text="–" VerticalAlignment="Center" HorizontalAlignment="Center" Classes="settings-note"/>
+                                                <NumericUpDown Classes="settings-number" Value="{Binding WatchVideoMax}" Minimum="1" Maximum="3600" FormatString="0" Grid.Column="3" IsEnabled="{Binding IsWatchVideo}"/>
+                                            </Grid>
+                                            <Grid ColumnDefinitions="*,82,20,82" ColumnSpacing="6">
+                                                <CheckBox IsChecked="{Binding IsNewsFeed}" Content="Browse Feed" VerticalAlignment="Center"/>
+                                                <NumericUpDown Classes="settings-number" Value="{Binding NewsFeedMin}" Minimum="1" Maximum="3600" FormatString="0" Grid.Column="1" IsEnabled="{Binding IsNewsFeed}"/>
+                                                <TextBlock Grid.Column="2" Text="–" VerticalAlignment="Center" HorizontalAlignment="Center" Classes="settings-note"/>
+                                                <NumericUpDown Classes="settings-number" Value="{Binding NewsFeedMax}" Minimum="1" Maximum="3600" FormatString="0" Grid.Column="3" IsEnabled="{Binding IsNewsFeed}"/>
+                                            </Grid>
+                                            <Grid ColumnDefinitions="*,82,20,82" ColumnSpacing="6">
+                                                <CheckBox IsChecked="{Binding IsMarketPlace}" Content="Marketplace" VerticalAlignment="Center"/>
+                                                <NumericUpDown Classes="settings-number" Value="{Binding MarketPlaceMin}" Minimum="1" Maximum="3600" FormatString="0" Grid.Column="1" IsEnabled="{Binding IsMarketPlace}"/>
+                                                <TextBlock Grid.Column="2" Text="–" VerticalAlignment="Center" HorizontalAlignment="Center" Classes="settings-note"/>
+                                                <NumericUpDown Classes="settings-number" Value="{Binding MarketPlaceMax}" Minimum="1" Maximum="3600" FormatString="0" Grid.Column="3" IsEnabled="{Binding IsMarketPlace}"/>
+                                            </Grid>
+                                            <CheckBox IsChecked="{Binding IsReadNotification}" Content="Read notifications"/>
+                                            <CheckBox IsChecked="{Binding IsClearRecentApp}" Content="Clear recent apps at session end"/>
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Classes="settings-card">
+                                        <StackPanel Spacing="12">
+                                            <TextBlock Classes="settings-heading" Text="Session timing"/>
+                                            <TextBlock Classes="settings-note" Text="Set a total cap and time spent on each item."/>
+                                            <Grid ColumnDefinitions="*,88,24" ColumnSpacing="8">
+                                                <TextBlock Text="Session cap" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                                <NumericUpDown Classes="settings-number" Value="{Binding ScreenTimeOptions.MaxSessionSeconds}" Minimum="1" Maximum="14400" FormatString="0" Grid.Column="1"/>
+                                                <TextBlock Grid.Column="2" Text="s" Classes="settings-note" VerticalAlignment="Center"/>
+                                            </Grid>
+                                            <Grid ColumnDefinitions="*,88,24" ColumnSpacing="8">
+                                                <TextBlock Text="Feed item dwell" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                                <NumericUpDown Classes="settings-number" Value="{Binding ScreenTimeOptions.FeedDwellSeconds}" Minimum="1" Maximum="30" FormatString="0" Grid.Column="1"/>
+                                                <TextBlock Grid.Column="2" Text="s" Classes="settings-note" VerticalAlignment="Center"/>
+                                            </Grid>
+                                            <Grid ColumnDefinitions="*,88,24" ColumnSpacing="8">
+                                                <TextBlock Text="Reel dwell" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                                <NumericUpDown Classes="settings-number" Value="{Binding ScreenTimeOptions.ReelDwellSeconds}" Minimum="1" Maximum="60" FormatString="0" Grid.Column="1"/>
+                                                <TextBlock Grid.Column="2" Text="s" Classes="settings-note" VerticalAlignment="Center"/>
+                                            </Grid>
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Classes="settings-card">
+                                        <StackPanel Spacing="12">
+                                            <TextBlock Classes="settings-heading" Text="View Stories"/>
+                                            <TextBlock Classes="settings-note" Text="Viewing is separate from publishing a Story. Your view can be visible to the author."/>
+                                            <CheckBox IsChecked="{Binding ScreenTimeOptions.Stories}" Content="View Stories"/>
+                                            <Grid ColumnDefinitions="*,88,24" ColumnSpacing="8">
+                                                <TextBlock Text="Maximum stories" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                                <NumericUpDown Classes="settings-number" Value="{Binding ScreenTimeOptions.StoryLimit}" Minimum="1" Maximum="20" FormatString="0" Grid.Column="1" IsEnabled="{Binding ScreenTimeOptions.Stories}"/>
+                                                <TextBlock Grid.Column="2" Text="" Classes="settings-note" VerticalAlignment="Center"/>
+                                            </Grid>
+                                            <Grid ColumnDefinitions="*,88,24" ColumnSpacing="8">
+                                                <TextBlock Text="Time per Story" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                                <NumericUpDown Classes="settings-number" Value="{Binding ScreenTimeOptions.StoryDwellSeconds}" Minimum="3" Maximum="30" FormatString="0" Grid.Column="1" IsEnabled="{Binding ScreenTimeOptions.Stories}"/>
+                                                <TextBlock Grid.Column="2" Text="s" Classes="settings-note" VerticalAlignment="Center"/>
+                                            </Grid>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+                                <StackPanel Spacing="14" Margin="0,0,14,14">
+                                    <Border Classes="settings-card">
+                                        <StackPanel Spacing="12">
+                                            <TextBlock Classes="settings-heading" Text="Session preview"/>
+                                            <TextBlock Text="{Binding ScreenTimeSummary}" TextWrapping="Wrap"/>
+                                            <TextBlock Text="{Binding ScreenTimeValidation}" TextWrapping="Wrap" Foreground="#FBBF24"/>
+                                            <Button Content="History &amp; review" Command="{Binding ShowScreenTimeHistoryCommand}" HorizontalAlignment="Left" Classes="action-btn"/>
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Classes="settings-card">
+                                        <StackPanel Spacing="12">
+                                            <TextBlock Classes="settings-heading" Text="Optional interactions"/>
+                                            <TextBlock Classes="settings-note" Text="These actions are visible to other people."/>
+                                            <Expander Header="Reactions" HorizontalContentAlignment="Stretch">
+                                                <StackPanel Spacing="12" Margin="0,12,0,0">
+                                                    <CheckBox IsChecked="{Binding ScreenTimeOptions.Reactions}" Content="Enable reactions on verified Feed / Reel posts"/>
+                                                    <Grid ColumnDefinitions="*,160" ColumnSpacing="12">
+                                                        <TextBlock Text="Reaction" VerticalAlignment="Center"/>
+                                                        <ComboBox Grid.Column="1" ItemsSource="{x:Static ld:ScreenTimeOptions.ReactionTypes}" SelectedItem="{Binding ScreenTimeOptions.Reaction}" IsEnabled="{Binding ScreenTimeOptions.Reactions}" HorizontalAlignment="Stretch"/>
+                                                    </Grid>
+                                                    <Grid ColumnDefinitions="*,88,24" ColumnSpacing="8">
+                                                        <TextBlock Text="Session maximum" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                                        <NumericUpDown Classes="settings-number" Value="{Binding ScreenTimeOptions.ReactionLimit}" Minimum="1" Maximum="20" FormatString="0" Grid.Column="1" IsEnabled="{Binding ScreenTimeOptions.Reactions}"/>
+                                                        <TextBlock Grid.Column="2" Text="" Classes="settings-note" VerticalAlignment="Center"/>
+                                                    </Grid>
+                                                    <CheckBox IsChecked="{Binding ScreenTimeOptions.RandomFeedReactions}" Content="Allow random public Feed / Reel reactions" IsEnabled="{Binding ScreenTimeOptions.Reactions}"/>
+                                                    <TextBlock Classes="settings-note" Text="Random reactions can use visible-content fingerprints when a post ID is unavailable. Duplicate detection is less reliable; ambiguous items are skipped."/>
+                                                </StackPanel>
+                                            </Expander>
+                                            <Expander Header="Reviewed comments" HorizontalContentAlignment="Stretch">
+                                                <StackPanel Spacing="12" Margin="0,12,0,0">
+                                                    <CheckBox IsChecked="{Binding ScreenTimeOptions.Comments}" Content="Enable reviewed comments"/>
+                                                    <Grid ColumnDefinitions="*,88,24" ColumnSpacing="8">
+                                                        <TextBlock Text="Maximum comments" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                                        <NumericUpDown Classes="settings-number" Value="{Binding ScreenTimeOptions.CommentLimit}" Minimum="1" Maximum="5" FormatString="0" Grid.Column="1"/>
+                                                        <TextBlock Grid.Column="2" Text="" Classes="settings-note" VerticalAlignment="Center"/>
+                                                    </Grid>
+                                                    <Grid ColumnDefinitions="*,88,24" ColumnSpacing="8">
+                                                        <TextBlock Text="Review timeout" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                                        <NumericUpDown Classes="settings-number" Value="{Binding ScreenTimeOptions.ReviewTimeoutSeconds}" Minimum="15" Maximum="600" FormatString="0" Grid.Column="1"/>
+                                                        <TextBlock Grid.Column="2" Text="s" Classes="settings-note" VerticalAlignment="Center"/>
+                                                    </Grid>
+                                                    <TextBlock Classes="settings-note" Text="Add a Facebook post link and draft. Each send needs account-specific approval during the run."/>
+                                                    <ItemsControl ItemsSource="{Binding ScreenTimeOptions.Drafts}">
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate x:DataType="ld:ScreenTimeCommentDraft">
+                                                                <Border Classes="settings-draft">
+                                                                    <StackPanel Spacing="8">
+                                                                        <TextBox Text="{Binding PostUrl}" Watermark="Facebook post URL"/>
+                                                                        <TextBox Text="{Binding Text}" Watermark="Comment draft" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="72"/>
+                                                                        <Button Content="Remove draft" HorizontalAlignment="Left" Command="{Binding $parent[UserControl].((components:AutoPostViewModel)DataContext).RemoveScreenTimeCommentCommand}" CommandParameter="{Binding}"/>
+                                                                    </StackPanel>
+                                                                </Border>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                    <Button Content="Add post &amp; draft" Command="{Binding AddScreenTimeCommentCommand}" HorizontalAlignment="Left" Classes="action-btn"/>
+                                                </StackPanel>
+                                            </Expander>
+                                            <Expander Header="Random comments" HorizontalContentAlignment="Stretch">
+                                                <StackPanel Spacing="12" Margin="0,12,0,0">
+                                                    <CheckBox IsChecked="{Binding ScreenTimeOptions.RandomFeedComments}" Content="Comment on random public Feed posts / Reels"/>
+                                                    <CheckBox IsChecked="{Binding ScreenTimeOptions.ReviewEachRandomComment}" Content="Require approval before each comment" IsEnabled="{Binding ScreenTimeOptions.RandomFeedComments}"/>
+                                                    <TextBox Text="{Binding ScreenTimeOptions.RandomCommentTexts}" Watermark="Saved comments · one per line" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="112" IsEnabled="{Binding ScreenTimeOptions.RandomFeedComments}"/>
+                                                    <Grid ColumnDefinitions="*,88,24" ColumnSpacing="8">
+                                                        <TextBlock Text="Shared comment cap" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                                        <NumericUpDown Classes="settings-number" Value="{Binding ScreenTimeOptions.CommentLimit}" Minimum="1" Maximum="5" FormatString="0" Grid.Column="1"/>
+                                                        <TextBlock Grid.Column="2" Text="" Classes="settings-note" VerticalAlignment="Center"/>
+                                                    </Grid>
+                                                    <Grid ColumnDefinitions="*,88,24" ColumnSpacing="8">
+                                                        <TextBlock Text="Chance per item" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                                        <NumericUpDown Classes="settings-number" Value="{Binding ScreenTimeOptions.InteractionChancePercent}" Minimum="1" Maximum="100" FormatString="0" Grid.Column="1"/>
+                                                        <TextBlock Grid.Column="2" Text="%" Classes="settings-note" VerticalAlignment="Center"/>
+                                                    </Grid>
+                                                    <TextBlock Classes="settings-note" Text="The cap is shared with reviewed comments. Turning approval off sends publicly from the saved list. Missing confirmation stops the session for review."/>
+                                                </StackPanel>
+                                            </Expander>
+                                            <Expander Header="Legacy Like action" HorizontalContentAlignment="Stretch">
+                                                <StackPanel Spacing="12" Margin="0,12,0,0">
+                                                    <TextBlock Classes="settings-note" Text="Uses the shared Feed + Reels cap. Reactions above take priority when enabled."/>
+                                                    <Grid ColumnDefinitions="*,82,20,82" ColumnSpacing="6">
+                                                        <CheckBox IsChecked="{Binding IsLikePost}" IsEnabled="{Binding !ScreenTimeOptions.Reactions}" Content="Enable Likes" VerticalAlignment="Center"/>
+                                                        <NumericUpDown Classes="settings-number" Value="{Binding LikePostMin}" Minimum="1" Maximum="50" FormatString="0" Grid.Column="1" IsEnabled="{Binding IsLikePost}"/>
+                                                        <TextBlock Grid.Column="2" Text="–" VerticalAlignment="Center" HorizontalAlignment="Center" Classes="settings-note"/>
+                                                        <NumericUpDown Classes="settings-number" Value="{Binding LikePostMax}" Minimum="1" Maximum="50" FormatString="0" Grid.Column="3" IsEnabled="{Binding IsLikePost}"/>
+                                                    </Grid>
+                                                    <TextBlock Classes="settings-note" Text="Turn off Reactions to use this action."/>
+                                                </StackPanel>
+                                            </Expander>
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Classes="settings-card">
+                                        <StackPanel Spacing="12">
+                                            <TextBlock Classes="settings-heading" Text="Saved legacy options"/>
+                                            <Expander Header="Unavailable actions" HorizontalContentAlignment="Stretch">
+                                                <StackPanel Spacing="12" Margin="0,12,0,0">
+                                                    <TextBlock Classes="settings-note" Text="These options have no verified workflow. Turn off any saved selection before running."/>
+                                                    <CheckBox IsChecked="{Binding IsCheckIn}" Content="Check-in"/>
+                                                    <CheckBox IsChecked="{Binding AddFriendSuggest}" Content="Send friend requests"/>
+                                                    <CheckBox IsChecked="{Binding AcceptFriends}" Content="Accept friend requests"/>
+                                                    <CheckBox IsChecked="{Binding DeleteFriendRequest}" Content="Delete friend requests"/>
+                                                </StackPanel>
+                                            </Expander>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+                            </WrapPanel>
+                        </ScrollViewer>
+                    </TabItem>
+                    <TabItem Header="Posting &amp; devices">
+                        <ScrollViewer Name="PostingScroll" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                            <WrapPanel Name="PostingColumns" SizeChanged="OnSettingsColumnsSizeChanged" HorizontalAlignment="Stretch" Margin="0,14,0,0">
+                                <StackPanel Spacing="14" Margin="0,0,14,14">
+                                    <Border Classes="settings-card">
+                                        <StackPanel Spacing="12">
+                                            <TextBlock Classes="settings-heading" Text="Publish &amp; file handling"/>
+                                            <TextBlock Classes="settings-note" Text="Choose posting types and how to handle original PC files."/>
+                                            <Grid ColumnDefinitions="*,100,100">
+                                                <TextBlock Text="Publish" Classes="settings-label"/>
+                                                <TextBlock Grid.Column="1" Text="Delete PC file" Classes="settings-label" TextAlignment="Center"/>
+                                                <TextBlock Grid.Column="2" Text="Back up" Classes="settings-label" TextAlignment="Center"/>
+                                            </Grid>
+                                            <Border BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="0,0,0,1" Padding="0,4,0,10">
+                                                <Grid ColumnDefinitions="*,100,100">
+                                                    <CheckBox IsChecked="{Binding IsPostReel}" Content="Post Reel" FontWeight="SemiBold"/>
+                                                    <CheckBox IsChecked="{Binding IsDeleteReelFile}" Content="" Grid.Column="1" HorizontalAlignment="Center" AutomationProperties.Name="Delete Reel source file" ToolTip.Tip="Delete the PC source after confirmed publication and all queued targets using it succeed."/>
+                                                    <CheckBox IsChecked="{Binding IsBackupReelFile}" Content="" Grid.Column="2" HorizontalAlignment="Center" AutomationProperties.Name="Back up Reel source file" ToolTip.Tip="Back up the PC source after confirmed publication."/>
+                                                </Grid>
+                                            </Border>
+                                            <Border BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="0,0,0,1" Padding="0,4,0,10">
+                                                <Grid ColumnDefinitions="*,100,100">
+                                                    <CheckBox IsChecked="{Binding IsPostPicture}" Content="Post Picture" FontWeight="SemiBold"/>
+                                                    <CheckBox IsChecked="{Binding IsDeletePictureFile}" Content="" Grid.Column="1" HorizontalAlignment="Center" AutomationProperties.Name="Delete Picture source file" ToolTip.Tip="Delete the PC source after confirmed publication and all queued targets using it succeed."/>
+                                                    <CheckBox IsChecked="{Binding IsBackupPictureFile}" Content="" Grid.Column="2" HorizontalAlignment="Center" AutomationProperties.Name="Back up Picture source file" ToolTip.Tip="Back up the PC source after confirmed publication."/>
+                                                </Grid>
+                                            </Border>
+                                            <Border BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="0,0,0,1" Padding="0,4,0,10">
+                                                <Grid ColumnDefinitions="*,100,100">
+                                                    <CheckBox IsChecked="{Binding IsPostStory}" Content="Post Story" FontWeight="SemiBold"/>
+                                                    <CheckBox IsChecked="{Binding IsDeleteStoryFile}" Content="" Grid.Column="1" HorizontalAlignment="Center" AutomationProperties.Name="Delete Story source file" ToolTip.Tip="Delete the PC source after confirmed publication and all queued targets using it succeed."/>
+                                                    <CheckBox IsChecked="{Binding IsBackupStoryFile}" Content="" Grid.Column="2" HorizontalAlignment="Center" AutomationProperties.Name="Back up Story source file" ToolTip.Tip="Back up the PC source after confirmed publication."/>
+                                                </Grid>
+                                            </Border>
+                                            <TextBlock Classes="settings-note" Text="Prepare jobs in Targets &amp; media. Only queued jobs run; enabling a type does not create posts."/>
+                                            <TextBlock Classes="settings-note" Text="PC originals stay saved unless Delete PC file is selected. Shared files wait for every queued target to succeed. Temporary LD copies are cleaned up separately."/>
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Classes="settings-card">
+                                        <StackPanel Spacing="12">
+                                            <TextBlock Classes="settings-heading" Text="Run delays"/>
+                                            <TextBlock Classes="settings-note" Text="All values are in seconds."/>
+                                            <Grid ColumnDefinitions="*,88,24" ColumnSpacing="8">
+                                                <TextBlock Text="Between uploads" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                                <NumericUpDown Classes="settings-number" Value="{Binding DelayUpload}" Minimum="1" Maximum="600" FormatString="0" Grid.Column="1"/>
+                                                <TextBlock Grid.Column="2" Text="s" Classes="settings-note" VerticalAlignment="Center"/>
+                                            </Grid>
+                                            <Grid ColumnDefinitions="*,88,24" ColumnSpacing="8">
+                                                <TextBlock Text="Before opening Facebook" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                                <NumericUpDown Classes="settings-number" Value="{Binding DelayOpenApp}" Minimum="1" Maximum="600" FormatString="0" Grid.Column="1"/>
+                                                <TextBlock Grid.Column="2" Text="s" Classes="settings-note" VerticalAlignment="Center"/>
+                                            </Grid>
+                                            <Grid ColumnDefinitions="*,88,24" ColumnSpacing="8">
+                                                <TextBlock Text="After LD opens" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                                <NumericUpDown Classes="settings-number" Value="{Binding DelayAfterOpenLD}" Minimum="1" Maximum="600" FormatString="0" Grid.Column="1"/>
+                                                <TextBlock Grid.Column="2" Text="s" Classes="settings-note" VerticalAlignment="Center"/>
+                                            </Grid>
+                                            <Grid ColumnDefinitions="*,88,24" ColumnSpacing="8">
+                                                <TextBlock Text="Between LD starts" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                                <NumericUpDown Classes="settings-number" Value="{Binding DelayOpenEachLD}" Minimum="1" Maximum="600" FormatString="0" Grid.Column="1"/>
+                                                <TextBlock Grid.Column="2" Text="s" Classes="settings-note" VerticalAlignment="Center"/>
+                                            </Grid>
+                                            <Grid ColumnDefinitions="*,88,24" ColumnSpacing="8">
+                                                <TextBlock Text="Before closing LD" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                                <NumericUpDown Classes="settings-number" Value="{Binding DelayBeforeCloseLD}" Minimum="1" Maximum="600" FormatString="0" Grid.Column="1"/>
+                                                <TextBlock Grid.Column="2" Text="s" Classes="settings-note" VerticalAlignment="Center"/>
+                                            </Grid>
+                                            <Grid ColumnDefinitions="*,88,24" ColumnSpacing="8">
+                                                <TextBlock Text="Before switching Page" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                                <NumericUpDown Classes="settings-number" Value="{Binding DelayBeforeSwitchPage}" Minimum="1" Maximum="600" FormatString="0" Grid.Column="1"/>
+                                                <TextBlock Grid.Column="2" Text="s" Classes="settings-note" VerticalAlignment="Center"/>
+                                            </Grid>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+                                <StackPanel Spacing="14" Margin="0,0,14,14">
+                                    <Border Classes="settings-card">
+                                        <StackPanel Spacing="12">
+                                            <TextBlock Classes="settings-heading" Text="Before the run"/>
+                                            <CheckBox IsChecked="{Binding ClearCacheFBBeforeOpen}" Content="Clear Facebook cache before opening"/>
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Classes="settings-card">
+                                        <StackPanel Spacing="12">
+                                            <TextBlock Classes="settings-heading" Text="After the run"/>
+                                            <CheckBox IsChecked="{Binding SwitchToProfileAfterPost}" Content="Return to the personal profile"/>
+                                            <CheckBox IsChecked="{Binding CloseLDAfterAction}" Content="Close LDPlayer when finished"/>
+                                            <CheckBox IsChecked="{Binding SleepPcAfterActionDone}" Content="Sleep the PC when finished"/>
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Classes="settings-card">
+                                        <StackPanel Spacing="12">
+                                            <TextBlock Classes="settings-heading" Text="Posting workflow"/>
+                                            <TextBlock Classes="settings-note" Text="Verify the account → switch target → select media → Share → confirm."/>
+                                            <TextBlock Classes="settings-note" Text="Failed or uncertain uploads keep their files for review. A Story uses the audience currently selected in Facebook."/>
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Classes="settings-card">
+                                        <StackPanel Spacing="12">
+                                            <TextBlock Classes="settings-heading" Text="Additional options"/>
+                                            <Expander Header="Post checks" HorizontalContentAlignment="Stretch">
+                                                <StackPanel Spacing="12" Margin="0,12,0,0">
+                                                    <CheckBox IsChecked="{Binding AfterPostCheckCopyRight}" Content="Check copyright after posting"/>
+                                                </StackPanel>
+                                            </Expander>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+                            </WrapPanel>
+                        </ScrollViewer>
+                    </TabItem>
+                </TabControl>
+                <Border Grid.Row="2" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="0,1,0,0" Padding="0,16,0,0">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="Saved settings apply to the next run." Classes="settings-note" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
+                            <Button Command="{Binding CloseConfigCommand}" Content="Cancel" Classes="action-btn btn-secondary" MinWidth="84"/>
+                            <Button Command="{Binding SaveConfigCommand}" Content="Save configuration" Classes="action-btn btn-primary" MinWidth="150"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Border>
+    </Border>
+</UserControl>

@@ -116,7 +116,12 @@ public sealed class PFlowHistoryWindow : Window
                     $"Job: {row.Job.JobId}\nState: {row.Job.State}; last step: {row.Job.CurrentStep}"
                     + $"\nSubmitted: {row.Job.SubmittedUtc?.ToLocalTime():yyyy-MM-dd HH:mm:ss}; confirmed: {row.Job.ConfirmedUtc?.ToLocalTime():yyyy-MM-dd HH:mm:ss}"
                     + $"\nTarget: {row.Job.TargetId} / owner {row.Job.OwnerUid}\nSource: {row.Job.SourcePath}\nSHA-256: {row.Job.Sha256}"
-                    + $"\nCaption file SHA-256: {row.Job.CaptionFileSha256}\nRemote: {row.Job.RemotePath}\nEvidence: {row.Job.Evidence}\nError: {row.Job.Error}"
+                    + $"\nCaption file SHA-256: {row.Job.CaptionFileSha256}\nRemote: {row.Job.RemotePath}\nIdentity: {row.Job.IdentityEvidence}\nMedia selection: {row.Job.MediaSelectionEvidence}\nEvidence: {row.Job.Evidence}\nError: {row.Job.Error}"
+                    + (
+                        row.Job.PostType == "Story"
+                            ? $"\nOwn Story count before/after: {row.Job.StoryCountBefore?.ToString() ?? "unknown"} / {row.Job.StoryCountAfter?.ToString() ?? "unknown"}"
+                            : ""
+                    )
                     + $"\nBackup requested: {row.Job.BackupRequested}; delete original requested: {row.Job.DeleteRequested}"
                     + $"\nBackup: {row.Job.BackupState} ({row.Job.BackupPath}); local: {row.Job.LocalDeleteState}; remote: {row.Job.RemoteCleanupState}";
             _review.IsChecked = false;

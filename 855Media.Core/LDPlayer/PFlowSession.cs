@@ -8,6 +8,37 @@ namespace _855Media.Core.LDPlayer;
 
 public static class PFlowSession
 {
+    public static async Task RestartForUidRecoveryAsync(
+        ILDPlayerService ld,
+        int index,
+        string? path,
+        CancellationToken ct
+    )
+    {
+        ct.ThrowIfCancellationRequested();
+        await PFlowTrace.SessionAsync(
+            index,
+            "account.uid.recovery.restart",
+            "Clearing recent apps, reopening Facebook, and retrying UID lookup once.",
+            ct
+        );
+        await ClearAppsAsync(ld, index, path, ct);
+        if (!await ld.LaunchAppAsync(index, "com.facebook.katana", path, ct))
+            throw new InvalidOperationException(
+                "Facebook could not be reopened for account UID recovery."
+            );
+        for (var attempt = 0; attempt < 12; attempt++)
+        {
+            await Task.Delay(500, ct);
+            var activity = await ld.GetCurrentFocusedActivityAsync(index, path, ct) ?? "";
+            if (Regex.IsMatch(activity, @"(?<![\w.])com\.facebook\.katana/"))
+                return;
+        }
+        throw new InvalidOperationException(
+            "Facebook did not return to the foreground for account UID recovery."
+        );
+    }
+
     public static bool HasInternet(string output) =>
         LDPlayerService.IsAndroidInternetConnected(output);
 
@@ -89,10 +120,11 @@ public static class PFlowSession
         var failed = false;
         try
         {
-            if (
-                !await ld.SendKeyAsync(index, 3, path, ct)
-                || !await ld.SendKeyAsync(index, 187, path, ct)
-            )
+            if (!await ld.SendKeyAsync(index, 3, path, ct))
+                throw new InvalidOperationException("Recent-app navigation was not confirmed.");
+            // Let Home finish its transition before requesting the Recents surface.
+            await Task.Delay(300, ct);
+            if (!await ld.SendKeyAsync(index, 187, path, ct))
                 throw new InvalidOperationException("Recent-app navigation was not confirmed.");
             await Task.Delay(700, ct);
             var before = RecentAppsEmpty(
@@ -104,36 +136,36 @@ public static class PFlowSession
                 throw new InvalidOperationException(
                     "Recent-app state is unsupported or unavailable; clearing was not confirmed."
                 );
-            var labels = new[]
+            (int X, int Y)? target = null;
+            for (var attempt = 0; attempt < 4; attempt++)
             {
-                "Clear all",
-                "Close all",
-                "Clear all apps",
-                "Close all apps",
-                "Dismiss all",
-            };
-            var xml = await ld.DumpUiHierarchyAsync(index, path, ct);
-            var points = ScreenTimeHierarchy
-                .Nodes(xml)
-                .Where(n =>
-                    labels.Any(l =>
-                        new[]
-                        {
-                            (string?)n.Attribute("text"),
-                            (string?)n.Attribute("content-desc"),
-                        }.Any(v => string.Equals(l, v, StringComparison.OrdinalIgnoreCase))
-                    )
-                )
-                .Where(n => (string?)n.Attribute("enabled") != "false")
-                .Select(ScreenTimeHierarchy.Center)
-                .Where(p => p.HasValue)
-                .Distinct()
-                .ToArray();
-            if (points.Length != 1)
+                if (attempt > 0)
+                    await Task.Delay(400, ct);
+                var xml = await ld.DumpUiHierarchyAsync(index, path, ct);
+                var control = LDPlayerService.FindRecentAppsClearTarget(xml);
+                target = LDPlayerService.RecentAppsClearPoint(control);
+                if (target.HasValue)
+                    break;
+            }
+            if (target == null)
+            {
+                await PFlowTrace.SessionAsync(
+                    index,
+                    "session.recents.unrecognized",
+                    "Clear all was missing, disabled, hidden, or ambiguous; no tap made.",
+                    ct
+                );
                 throw new InvalidOperationException(
                     "Recent-app Clear all control is missing or ambiguous; no guessed tap was made."
                 );
-            var point = points[0]!.Value;
+            }
+            var point = target.Value;
+            await PFlowTrace.SessionAsync(
+                index,
+                "session.recents.clear",
+                $"Verified Android Clear all at {point.X},{point.Y}; checking remaining tasks after tap.",
+                ct
+            );
             if (!await ld.TapAsync(index, point.X, point.Y, path, ct))
                 throw new InvalidOperationException(
                     "Recent-app Clear all tap was not acknowledged."
@@ -151,7 +183,15 @@ public static class PFlowSession
                         )
                     ) == true
                 )
+                {
+                    await PFlowTrace.SessionAsync(
+                        index,
+                        "session.recents.empty",
+                        "No app tasks remain after Clear all.",
+                        ct
+                    );
                     return;
+                }
             }
             throw new InvalidOperationException(
                 "Recent apps remained or their state could not be verified after Clear all."

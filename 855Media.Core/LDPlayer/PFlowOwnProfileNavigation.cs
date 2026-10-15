@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -19,32 +20,17 @@ internal static class PFlowOwnProfileNavigation
         // behind Close menu. That node is not an actionable profile route.
         if (AtxAgentClient.IsMenuPageInBloks(screen))
         {
-            var header = screen.AllElements.FirstOrDefault(e =>
-                e.Enabled
-                && e.Width > 0
-                && e.Height > 0
-                && e.Matches(expectedName + ", see your profile", partialMatch: false)
+            var match = FacebookLayoutRegistry.MatchScreen(
+                screen,
+                FacebookScreenKind.Menu,
+                new FacebookLayoutContext(TargetName: expectedName)
             );
-            var height = screen.AllElements.Select(e => e.Bounds.Bottom).DefaultIfEmpty(1280).Max();
-            return screen
-                .AllElements.Where(e =>
-                    e.Enabled
-                    && e.Width > 0
-                    && e.Height > 0
-                    && e.CenterY < height / 2
-                    && e.Matches(expectedName, partialMatch: false)
-                    && (
-                        header == null
-                        || (
-                            e.Bounds.Left >= header.Bounds.Left
-                            && e.Bounds.Right <= header.Bounds.Right
-                            && e.Bounds.Top >= header.Bounds.Top
-                            && e.Bounds.Bottom <= header.Bounds.Bottom
-                        )
-                    )
-                )
-                .OrderBy(e => e.Width * e.Height)
-                .FirstOrDefault();
+            var control = match.Control(FacebookControlRole.ActiveProfile);
+            return control == null
+                ? null
+                : screen.AllElements.FirstOrDefault(e =>
+                    e.CenterX == control.X && e.CenterY == control.Y
+                );
         }
         return screen.AllElements.FirstOrDefault(e =>
                 Actionable(e)
@@ -60,6 +46,28 @@ internal static class PFlowOwnProfileNavigation
 
     private static bool Actionable(BloksElement e) =>
         e.Enabled && e.Clickable && e.Width > 0 && e.Height > 0;
+
+    internal static bool IsOwnPageProfile(BloksScreenInfo screen, string expectedName)
+    {
+        if (
+            AtxAgentClient.IsMenuPageInBloks(screen)
+            || PFlowPersonaSwitcherService.IsNativeSwitcherSheetOpen(screen.RawXml)
+        )
+            return false;
+        var match = FacebookLayoutRegistry.Match(
+            screen.RawXml,
+            FacebookScreenKind.OwnProfile,
+            new FacebookLayoutContext(TargetName: expectedName)
+        );
+        return match.IsMatch
+            && (
+                match.Control(FacebookControlRole.Dashboard) != null
+                || screen.AllElements.Any(e =>
+                    e.Enabled && e.Matches("Professional dashboard", false)
+                )
+                || screen.AllElements.Any(e => e.Enabled && e.Matches("Manage Page", false))
+            );
+    }
 
     internal static async Task<bool> OpenAsync(
         ILDPlayerService ld,
@@ -80,6 +88,7 @@ internal static class PFlowOwnProfileNavigation
         var menuOpened = false;
         var menuRowTapped = false;
         var pollsSinceTap = 0;
+        var profileScrolls = 0;
         for (var poll = 0; poll < 60; poll++)
         {
             ct.ThrowIfCancellationRequested();
@@ -94,6 +103,39 @@ internal static class PFlowOwnProfileNavigation
             var menu = AtxAgentClient.IsMenuPageInBloks(screen);
             if (!menu && isOwnProfile(screen))
                 return true;
+            if (
+                !menu
+                && profileScrolls < 4
+                && !PFlowUiPrivacy.ContainsInput(xml)
+                && screen.AllElements.Any(e => e.Matches("At a glance", false))
+                && screen.AllElements.Any(e => e.Matches("See all about info", false))
+                && screen.AllElements.Any(e =>
+                    Actionable(e)
+                    && e.ContentDesc.StartsWith("Profile, tab", StringComparison.OrdinalIgnoreCase)
+                )
+            )
+            {
+                var (width, height) = PFlowPersonaSwitcherService.ParseScreenDimensions(xml);
+                if (
+                    width > 0
+                    && height > 0
+                    && await ld.SwipeAsync(
+                        index,
+                        width / 2,
+                        height / 3,
+                        width / 2,
+                        height * 4 / 5,
+                        400,
+                        path,
+                        ct
+                    )
+                )
+                {
+                    profileScrolls++;
+                    await delay(TimeSpan.FromMilliseconds(400), ct);
+                    continue;
+                }
+            }
             var navigationName = expectedName;
             if (menu && navigateCurrentActor)
             {

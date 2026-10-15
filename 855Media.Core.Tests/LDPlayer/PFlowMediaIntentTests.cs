@@ -9,6 +9,20 @@ namespace _855Media.Core.Tests.LDPlayer;
 public class PFlowMediaIntentTests
 {
     [Theory]
+    [InlineData("/sdcard/clip.mp4", false)]
+    [InlineData("/sdcard/photo.jpg", true)]
+    public void EveryJobExplicitlyOpensResolverInsteadOfSavedAlwaysDestination(
+        string path,
+        bool image
+    )
+    {
+        Assert.StartsWith(
+            "am start -n android/com.android.internal.app.ResolverActivity -a android.intent.action.SEND ",
+            PFlowMediaIntent.ShareCommand(path, "com.facebook.katana", image)
+        );
+    }
+
+    [Theory]
     [InlineData("clip.mp4", "video/mp4")]
     [InlineData("clip.MOV", "video/quicktime")]
     [InlineData("clip.webm", "video/webm")]

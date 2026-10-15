@@ -120,6 +120,71 @@ public sealed class PFlowProfileLinkTests
     }
 
     [Theory]
+    [InlineData(
+        "<meta property='al:android:url' content='fb://profile/123'><meta property='al:ios:url' content='fb://profile/123'>",
+        "123"
+    )]
+    [InlineData(
+        "<meta property='al:android:url' content='fb://profile/123'><meta property='al:ios:url' content='fb://profile/456'>",
+        null
+    )]
+    [InlineData("<meta property='al:android:url' content='fb://page/123'>", null)]
+    [InlineData("<script>var unrelated_profile_id = 123;</script>", null)]
+    public async Task UsernameCanonicalRequiresUnambiguousPersonalProfileMetadata(
+        string metadata,
+        string? expected
+    )
+    {
+        var html =
+            "<html><head><link rel='canonical' href='https://www.facebook.com/fixture.username/'><meta property='og:url' content='https://www.facebook.com/fixture.username/'><meta property='og:type' content='video.other'>"
+            + metadata
+            + "</head></html>";
+        var handler = new Handler(_ =>
+            Task.FromResult(
+                new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(html) }
+            )
+        );
+        using var http = new HttpClient(handler);
+        using var resolver = new PFlowProfileLinkResolver(http);
+        Assert.Equal(
+            expected,
+            await resolver.ResolveUidAsync("https://www.facebook.com/fixture.username")
+        );
+    }
+
+    [Theory]
+    [InlineData("<meta property='al:android:url' content='fb://profile/123'>")]
+    [InlineData(
+        "<link rel='canonical' href='https://www.facebook.com/somebody.else'><meta property='al:android:url' content='fb://profile/123'>"
+    )]
+    [InlineData(
+        "<link rel='canonical' href='https://www.facebook.com/123'><meta property='al:android:url' content='fb://profile/456'>"
+    )]
+    public async Task MissingOrMismatchedCanonicalCannotProveUsernameUid(string html)
+    {
+        var handler = new Handler(_ =>
+            Task.FromResult(
+                new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(html) }
+            )
+        );
+        using var http = new HttpClient(handler);
+        using var resolver = new PFlowProfileLinkResolver(http);
+        Assert.Null(await resolver.ResolveUidAsync("https://www.facebook.com/fixture.username"));
+    }
+
+    [Theory]
+    [InlineData("https://www.facebook.com/fixture.username", true)]
+    [InlineData("https://www.facebook.com/fixtureusername/", true)]
+    [InlineData("https://www.facebook.com/login", false)]
+    [InlineData("https://www.facebook.com/checkpoint", false)]
+    [InlineData("https://www.facebook.com/watch", false)]
+    [InlineData("https://www.facebook.com/reel/123", false)]
+    [InlineData("https://www.facebook.com/groups/123", false)]
+    [InlineData("https://www.facebook.com@outside.test/fixture", false)]
+    public void UsernameLinkValidationRejectsNonProfileRoutes(string link, bool expected) =>
+        Assert.Equal(expected, PFlowProfileLinkResolver.IsSupportedLink(link));
+
+    [Theory]
     [InlineData(true)]
     [InlineData(false)]
     public async Task ClipboardResetRequiresMarkerReadback(bool resetWorks)
@@ -149,6 +214,7 @@ public sealed class PFlowProfileLinkTests
     [Theory]
     [InlineData("https://www.facebook.com/share/Abc123/", true)]
     [InlineData("https://www.facebook.com/profile.php?id=123", true)]
+    [InlineData("https://www.facebook.com/fixture.username", true)]
     [InlineData("fixture-password", false)]
     [InlineData("pflow-profile-proof-marker", false)]
     [InlineData("https://outside.test/123", false)]

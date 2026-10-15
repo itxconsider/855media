@@ -57,6 +57,10 @@ public class AutoPostConfig
     public bool IsDeletePictureFile { get; set; } = false;
     public bool IsBackupPictureFile { get; set; } = false;
 
+    public bool IsPostStory { get; set; } = false;
+    public bool IsDeleteStoryFile { get; set; } = false;
+    public bool IsBackupStoryFile { get; set; } = false;
+
     public bool IsPostVideo { get; set; } = false;
     public bool IsDeleteVideoFile { get; set; } = false;
     public bool IsBackupVideoFile { get; set; } = false;

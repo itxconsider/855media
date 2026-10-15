@@ -97,6 +97,10 @@ public partial class AutoPostViewModel
             );
             foreach (var row in Pages)
                 row.DeviceName = row.Model.DeviceName;
+            var selectedForBulk = MappedAccounts
+                .Where(a => a.IsSelectedForBulk && a.IsMappingValid)
+                .Select(a => a.Account.Binding)
+                .ToHashSet();
             MappedAccounts.Clear();
             foreach (
                 var account in _mappedAccounts
@@ -127,7 +131,13 @@ public partial class AutoPostViewModel
                 {
                     problem = ex.Message;
                 }
-                MappedAccounts.Add(new(account, problem));
+                MappedAccounts.Add(
+                    new(account, problem)
+                    {
+                        IsSelectedForBulk =
+                            problem.Length == 0 && selectedForBulk.Contains(account.Binding),
+                    }
+                );
                 if (problem.Length == 0)
                     foreach (
                         var row in Pages.Where(p =>
@@ -178,13 +188,20 @@ public partial class AutoPostViewModel
         }
     }
 
-    private async Task PersistAccountSelectionDraftsAsync(IEnumerable<int>? deviceIndices = null)
+    private async Task PersistAccountSelectionDraftsAsync(
+        IEnumerable<int>? deviceIndices = null,
+        IEnumerable<PFlowAccountBinding>? selectedBindings = null
+    )
     {
         var allowed = deviceIndices?.ToHashSet();
+        var bindings = selectedBindings?.ToHashSet();
         var selections = await Dispatcher.UIThread.InvokeAsync(() =>
         {
             var rows = MappedAccounts
-                .Where(a => allowed == null || allowed.Contains(a.Account.Binding.DeviceIndex))
+                .Where(a =>
+                    (allowed == null || allowed.Contains(a.Account.Binding.DeviceIndex))
+                    && (bindings == null || bindings.Contains(a.Account.Binding))
+                )
                 .ToArray();
             var invalid = rows.FirstOrDefault(a =>
                 !a.IsMappingValid

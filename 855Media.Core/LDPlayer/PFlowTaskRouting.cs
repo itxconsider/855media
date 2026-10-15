@@ -6,6 +6,13 @@ namespace _855Media.Core.LDPlayer;
 
 public static class PFlowTaskRouting
 {
+    public static bool IsQueuedPost(AutoPostTaskItem task) =>
+        task.Status == "Queued"
+        && new[] { "Reel", "Video", "Picture", "Photo", "Story" }.Contains(
+            task.Type,
+            StringComparer.OrdinalIgnoreCase
+        );
+
     public static bool MatchesTarget(
         AutoPostTaskItem task,
         FacebookPageTarget target,

@@ -15,6 +15,38 @@ internal static class PFlowProfileDates
 
     internal static bool HasFullDate(string? value) => !string.IsNullOrEmpty(Date(value));
 
+    private static BloksElement[] ProfileContentElements(BloksScreenInfo screen)
+    {
+        // A sticky navigation tab can contain a plain "Posts" or "Friends" child.
+        // Neither the tab nor that child marks the start of profile feed content.
+        var tabs = screen
+            .AllElements.Where(e =>
+                e.ClassName == "android.widget.TabWidget"
+                || Regex.IsMatch(
+                    e.ContentDesc,
+                    @"\btab\s+\d+\s+of\s+\d+\b",
+                    RegexOptions.IgnoreCase
+                )
+            )
+            .SelectMany(e => e.Flatten())
+            .ToHashSet();
+        return screen.AllElements.Where(e => !tabs.Contains(e)).ToArray();
+    }
+
+    internal static bool ReachedProfileFeed(BloksScreenInfo screen)
+    {
+        var content = ProfileContentElements(screen);
+        return content.Any(e =>
+                e.Matches("Friends", false)
+                || e.Matches("All posts", false)
+                || e.Matches("Posts", false)
+            )
+            || (
+                content.Any(e => e.Matches("Reel", false))
+                && content.Any(e => e.Matches("Live", false))
+            );
+    }
+
     private static string Date(string? value)
     {
         var match = Regex.Match(
@@ -49,14 +81,15 @@ internal static class PFlowProfileDates
 
     internal static string Birthdate(BloksScreenInfo screen, bool confirmedProfileContext = false)
     {
+        var content = ProfileContentElements(screen);
         foreach (
-            var header in screen.AllElements.Where(e =>
+            var header in content.Where(e =>
                 e.Matches("Personal details", false) || e.Matches("At a glance", false)
             )
         )
         {
-            var bottom = screen
-                .AllElements.Where(e =>
+            var bottom = content
+                .Where(e =>
                     e.Bounds.Top > header.Bounds.Top
                     && new[]
                     {
@@ -71,13 +104,13 @@ internal static class PFlowProfileDates
                 .Select(e => e.Bounds.Top)
                 .DefaultIfEmpty(int.MaxValue)
                 .Min();
-            var candidates = screen
-                .AllElements.Where(e => e.CenterY > header.CenterY && e.CenterY < bottom)
+            var candidates = content
+                .Where(e => e.CenterY > header.CenterY && e.CenterY < bottom)
                 .Select(Label)
                 .Where(label =>
                     Regex.IsMatch(
                         label,
-                        @"^(?:Born\s+|Birthday\s*[:,]?\s*|Date of birth\s*[:,]?\s*)?"
+                        @"^(?:Born\s+(?:on\s+)?|Birthday\s*[:,]?\s*|Date of birth\s*[:,]?\s*)?"
                             + FullDate.Replace("MONTH", Month)
                             + @"$",
                         RegexOptions.IgnoreCase
@@ -95,24 +128,30 @@ internal static class PFlowProfileDates
         // use that continuation, and never past Posts or suggestion cards.
         if (confirmedProfileContext)
         {
-            var friendsTop = screen
-                .AllElements.Where(e => e.Matches("Friends", false))
+            var friendsTop = content
+                .Where(e =>
+                    e.Matches("Friends", false)
+                    || e.Matches("All posts", false)
+                    || e.Matches("Posts", false)
+                    || e.Matches("Reel", false)
+                    || e.Matches("Live", false)
+                )
                 .Select(e => e.Bounds.Top)
                 .DefaultIfEmpty(-1)
                 .Min();
             foreach (
-                var row in screen.AllElements.Where(e =>
+                var row in content.Where(e =>
                     e.Bounds.Top < friendsTop
                     && Regex.IsMatch(
                         Label(e),
-                        @"^Born\s+" + FullDate.Replace("MONTH", Month) + "$",
+                        @"^Born\s+(?:on\s+)?" + FullDate.Replace("MONTH", Month) + "$",
                         RegexOptions.IgnoreCase
                     )
                 )
             )
             {
                 if (
-                    !screen.AllElements.Any(e =>
+                    !content.Any(e =>
                         e.Bounds.Top < row.Bounds.Top
                         && new[] { "All posts", "Posts", "People you may know" }.Any(label =>
                             e.Matches(label, false)

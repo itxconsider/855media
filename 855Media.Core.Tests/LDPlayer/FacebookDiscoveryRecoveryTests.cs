@@ -5,6 +5,47 @@ namespace _855Media.Core.Tests.LDPlayer;
 
 public class FacebookDiscoveryRecoveryTests
 {
+    private const string Android9Recents = """
+        <hierarchy><node package="com.android.systemui" resource-id="com.android.systemui:id/recents_view"
+          bounds="[0,0][720,1280]" enabled="true" clickable="false" visible-to-user="true">
+          <node package="com.android.systemui" resource-id="com.android.systemui:id/button"
+            class="android.widget.TextView" text="CLEAR ALL" bounds="[519,69][716,155]"
+            enabled="true" clickable="false" visible-to-user="true" />
+        </node></hierarchy>
+        """;
+
+    [Fact]
+    public void RecentsClear_RecognizesObservedAndroid9NonClickableButton()
+    {
+        var target = LDPlayerService.FindRecentAppsClearTarget(Android9Recents);
+        Assert.NotNull(target);
+        Assert.Equal((617, 112), LDPlayerService.RecentAppsClearPoint(target));
+    }
+
+    [Theory]
+    [InlineData("visible-to-user=\"true\"", "visible-to-user=\"false\"")]
+    [InlineData("enabled=\"true\"", "enabled=\"false\"")]
+    [InlineData("id/recents_view", "id/unrelated")]
+    [InlineData("id/button", "id/unrelated")]
+    [InlineData("[519,69][716,155]", "[519,69][800,155]")]
+    [InlineData("[519,69][716,155]", "[716,69][519,155]")]
+    public void RecentsClear_RejectsUntrustedOrUnavailableLegacyButton(string before, string after)
+    {
+        Assert.Null(
+            LDPlayerService.FindRecentAppsClearTarget(Android9Recents.Replace(before, after))
+        );
+    }
+
+    [Fact]
+    public void RecentsClear_RejectsTwoDistinctTargets()
+    {
+        var node = System.Xml.Linq.XDocument.Parse(Android9Recents).Descendants("node").Last();
+        var second = new System.Xml.Linq.XElement(node);
+        second.SetAttributeValue("bounds", "[200,69][400,155]");
+        var xml = Android9Recents.Replace("</node></hierarchy>", second + "</node></hierarchy>");
+        Assert.Null(LDPlayerService.FindRecentAppsClearTarget(xml));
+    }
+
     [Theory]
     [InlineData("com.android.launcher3", "CLEAR ALL", "", "")]
     [InlineData("com.android.systemui", "", "Close all apps", "")]
@@ -18,7 +59,7 @@ public class FacebookDiscoveryRecoveryTests
     {
         var xml = $"""
             <hierarchy><node package="{package}" text="{text}" content-desc="{description}"
-              resource-id="{id}" enabled="true" bounds="[500,50][700,130]" /></hierarchy>
+              resource-id="{id}" clickable="true" enabled="true" bounds="[500,50][700,130]" /></hierarchy>
             """;
         Assert.NotNull(LDPlayerService.FindRecentAppsClearTarget(xml));
     }

@@ -11,7 +11,7 @@ public static class PFlowUiPrivacy
     {
         try
         {
-            var nodes = XDocument.Parse(xml ?? "").Descendants("node").ToArray();
+            var nodes = FacebookHierarchyCache.ParseStrict(xml ?? "").Descendants("node").ToArray();
             return nodes.Length == 0
                 || nodes.Any(n =>
                     (string?)n.Attribute("class") == "android.widget.EditText"

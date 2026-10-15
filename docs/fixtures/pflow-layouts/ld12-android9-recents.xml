@@ -1,0 +1,5 @@
+<hierarchy rotation="0">
+  <node index="0" text="" resource-id="com.android.systemui:id/recents_view" class="android.widget.FrameLayout" package="com.android.systemui" content-desc="" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" visible-to-user="true" bounds="[0,0][720,1280]">
+    <node index="1" text="CLEAR ALL" resource-id="com.android.systemui:id/button" class="android.widget.TextView" package="com.android.systemui" content-desc="" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" visible-to-user="true" bounds="[519,69][716,155]" />
+  </node>
+</hierarchy>

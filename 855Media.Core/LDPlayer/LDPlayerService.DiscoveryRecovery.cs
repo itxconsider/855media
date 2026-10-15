@@ -175,7 +175,7 @@ public partial class LDPlayerService
     )
     {
         // Let the closed sheet or profile transition settle before choosing a route.
-        await Task.Delay(700, cancellationToken);
+        await PFlowFetchPacing.DelayAsync(700, cancellationToken);
         var screen = await DumpBloksScreenAsync(index, customPath, cancellationToken);
         if (
             screen != null
@@ -246,46 +246,11 @@ public partial class LDPlayerService
             RegexOptions.IgnoreCase
         );
 
-    internal static XElement? FindRecentAppsClearTarget(string? xml)
-    {
-        return SafeParseXmlDocuments(xml)
-            .SelectMany(doc => doc.Descendants("node"))
-            .FirstOrDefault(node =>
-            {
-                // Only accept controls owned by Android's Recents surface.
-                var package = node.Attribute("package")?.Value ?? "";
-                if (
-                    !package.Contains("launcher", StringComparison.OrdinalIgnoreCase)
-                    && !package.Equals("com.android.systemui", StringComparison.OrdinalIgnoreCase)
-                )
-                    return false;
-                if (node.Attribute("enabled")?.Value == "false")
-                    return false;
-                var labels = new[]
-                {
-                    node.Attribute("text")?.Value,
-                    node.Attribute("content-desc")?.Value,
-                };
-                var id = node.Attribute("resource-id")?.Value ?? "";
-                var (x, y) = ParseNodeBoundsCenter(node);
-                return x > 0
-                    && y > 0
-                    && (
-                        labels.Any(label =>
-                            Regex.IsMatch(
-                                label?.Trim() ?? "",
-                                @"^(?:clear|close|dismiss) all(?: apps)?$",
-                                RegexOptions.IgnoreCase
-                            )
-                        )
-                        || Regex.IsMatch(
-                            id,
-                            @"/(?:clear_all|clear_all_button|dismiss_all|dismiss_all_button)$",
-                            RegexOptions.IgnoreCase
-                        )
-                    );
-            });
-    }
+    internal static XElement? FindRecentAppsClearTarget(string? xml) =>
+        FacebookLayoutRegistry.FindRecentAppsClearTarget(xml);
+
+    internal static (int X, int Y)? RecentAppsClearPoint(XElement? node) =>
+        FacebookLayoutRegistry.RecentAppsClearPoint(node);
 
     // Use the name immediately above profile counts, below the avatar. Never
     // infer a name from arbitrary Feed text, or treat this as identity proof.

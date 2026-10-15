@@ -1,7 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.IO;
 using System.Threading.Tasks;
 using _855Media.Core.Audio;
+using _855Media.Core.LDPlayer;
 using _855Media.Core.Licensing;
 using _855Media.Framework;
 using _855Media.Localization;
@@ -60,6 +64,47 @@ public partial class SettingsViewModel : DialogViewModelBase
     }
 
     public bool IsGeneralSelected => SelectedCategory == 0;
+
+    public string LayoutRulesPath => FacebookLayoutRegistry.ConfigurationPath;
+    public string LayoutRulesSource => FacebookLayoutRegistry.ConfigurationStatus.Source;
+    private string? _layoutRulesMessage;
+    public string LayoutRulesStatus =>
+        _layoutRulesMessage ?? FacebookLayoutRegistry.ConfigurationStatus.Message;
+
+    [RelayCommand]
+    private async Task ReloadLayoutRulesAsync()
+    {
+        var result = await Task.Run(() => FacebookLayoutRegistry.ReloadConfiguration());
+        UpdateLayoutRulesStatus(result.Message);
+    }
+
+    [RelayCommand]
+    private void UseBuiltInLayoutRules() =>
+        UpdateLayoutRulesStatus(FacebookLayoutRegistry.UseBuiltInConfiguration().Message);
+
+    [RelayCommand]
+    private void OpenLayoutRulesFolder()
+    {
+        try
+        {
+            var folder = Path.GetDirectoryName(LayoutRulesPath)!;
+            Directory.CreateDirectory(folder);
+            Process.Start(new ProcessStartInfo { FileName = folder, UseShellExecute = true });
+        }
+        catch (Exception ex)
+            when (ex is IOException or UnauthorizedAccessException or Win32Exception)
+        {
+            UpdateLayoutRulesStatus("Could not open the rules folder. Use the path shown above.");
+        }
+    }
+
+    private void UpdateLayoutRulesStatus(string message)
+    {
+        _layoutRulesMessage = message;
+        OnPropertyChanged(nameof(LayoutRulesStatus));
+        OnPropertyChanged(nameof(LayoutRulesSource));
+    }
+
     public bool IsConnectorsSelected => SelectedCategory == 1;
     public bool IsLicenseSelected => SelectedCategory == 2;
     public bool IsDownloadsSelected => SelectedCategory == 3;

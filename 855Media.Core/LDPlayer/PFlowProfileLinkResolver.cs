@@ -10,7 +10,7 @@ using AngleSharp.Html.Parser;
 
 namespace _855Media.Core.LDPlayer;
 
-// Resolves a freshly copied own-profile link using public Facebook redirects/canonical URLs.
+// Resolves an observed own-profile link using public Facebook profile metadata.
 // No Facebook cookies, login credentials, or root-cache UID substitutes are used.
 public sealed class PFlowProfileLinkResolver : IDisposable
 {
@@ -33,12 +33,71 @@ public sealed class PFlowProfileLinkResolver : IDisposable
         && string.IsNullOrEmpty(uri.UserInfo)
         && uri.Host is "facebook.com" or "www.facebook.com" or "m.facebook.com";
 
+    private static bool UsernamePath(Uri uri)
+    {
+        var username = uri.AbsolutePath.Trim('/');
+        return Regex.IsMatch(uri.AbsolutePath, @"^/[A-Za-z0-9][A-Za-z0-9.]{0,99}/?$")
+            && username.Any(char.IsAsciiLetter)
+            && !new[]
+            {
+                "login",
+                "login.php",
+                "logout",
+                "logout.php",
+                "checkpoint",
+                "consent",
+                "privacy",
+                "help",
+                "settings",
+                "watch",
+                "reel",
+                "reels",
+                "videos",
+                "groups",
+                "marketplace",
+                "events",
+                "gaming",
+                "search",
+                "stories",
+                "story.php",
+                "photo.php",
+                "photos",
+                "permalink.php",
+                "pages",
+                "share",
+                "profile.php",
+                "people",
+                "home.php",
+                "friends",
+                "notifications",
+                "recover",
+                "dialog",
+                "about",
+                "reg",
+                "web",
+                "plugins",
+                "business",
+                "ads",
+                "l.php",
+                "l",
+                "flx",
+                "ajax",
+                "api",
+                "terms",
+                "policies",
+                "legal",
+                "directory",
+                "sharer.php",
+            }.Contains(username, StringComparer.OrdinalIgnoreCase);
+    }
+
     public static bool IsSupportedLink(string? link) =>
         Uri.TryCreate(link?.Trim(), UriKind.Absolute, out var uri)
         && FacebookUri(uri)
         && (
             PFlowNativeAccountNavigator.ReadNumericProfileLinkUid(link) != null
             || Regex.IsMatch(uri.AbsolutePath, @"^/share/[A-Za-z0-9_-]+/?$")
+            || UsernamePath(uri)
         );
 
     public async Task<string?> ResolveUidAsync(string link, CancellationToken ct = default)
@@ -54,7 +113,7 @@ public sealed class PFlowProfileLinkResolver : IDisposable
             var visited = new System.Collections.Generic.HashSet<string>();
             for (var hop = 0; hop < 5; hop++)
             {
-                if (!FacebookUri(uri) || !visited.Add(uri.AbsoluteUri))
+                if (!IsSupportedLink(uri.AbsoluteUri) || !visited.Add(uri.AbsoluteUri))
                     return null;
                 var numeric = PFlowNativeAccountNavigator.ReadNumericProfileLinkUid(
                     uri.AbsoluteUri
@@ -112,7 +171,43 @@ public sealed class PFlowProfileLinkResolver : IDisposable
                     .Where(v => v != null)
                     .Distinct()
                     .ToArray();
-                return ids.Length == 1 ? ids[0] : null;
+                var appIds =
+                    document
+                        .Head?.QuerySelectorAll(
+                            "meta[property='al:android:url'],meta[property='al:ios:url']"
+                        )
+                        .Select(n =>
+                            Regex.Match(
+                                n.GetAttribute("content") ?? "",
+                                @"^fb://profile/(\d{1,32})/?$"
+                            )
+                        )
+                        .Where(m => m.Success)
+                        .Select(m => m.Groups[1].Value)
+                        .Distinct()
+                        .ToArray()
+                    ?? [];
+                if (
+                    ids.Length > 1
+                    || appIds.Length > 1
+                    || ids.Length == 1 && appIds.Length == 1 && ids[0] != appIds[0]
+                )
+                    return null;
+                if (ids.Length == 1)
+                    return ids[0];
+                // Username metadata needs a canonical link to that same username.
+                // Never take a UID from arbitrary script, feed links, or Page app links.
+                var sameUsername =
+                    UsernamePath(uri)
+                    && canonicalLinks.Length > 0
+                    && canonicalLinks.All(v =>
+                        Uri.TryCreate(v, UriKind.Absolute, out var canonical)
+                        && FacebookUri(canonical)
+                        && canonical
+                            .AbsolutePath.Trim('/')
+                            .Equals(uri.AbsolutePath.Trim('/'), StringComparison.OrdinalIgnoreCase)
+                    );
+                return sameUsername && appIds.Length == 1 ? appIds[0] : null;
             }
             return null;
         }

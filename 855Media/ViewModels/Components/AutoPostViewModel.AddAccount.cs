@@ -142,7 +142,9 @@ public partial class AutoPostViewModel
                                 )
                                 ?.PageName
                             ?? binding.OwnerUid,
-                        receiveCode: otpInbox.ReceiveAsync
+                        receiveCode: otpInbox.ReceiveAsync,
+                        requireRecoveryIdle: (binding, c) =>
+                            RequireAccountTransitionIdleAsync(binding.DeviceIndex, c)
                     ),
                     new PFlowSessionPreparation(_ldPlayerService, LdFolder).PrepareAsync,
                     c => RequireAccountTransitionIdleAsync(input.Binding.DeviceIndex, c)

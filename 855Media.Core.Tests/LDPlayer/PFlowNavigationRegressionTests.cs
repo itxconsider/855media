@@ -8,6 +8,52 @@ namespace _855Media.Core.Tests.LDPlayer;
 public class PFlowNavigationRegressionTests
 {
     [Fact]
+    public async Task TopNavigationReelsUsesSingleContinuousSwipeAndConfirmsChange()
+    {
+        var (service, fake, _) = Harness();
+        fake.StartFixture = "ld7-reels-top-navigation-paused";
+        var settings = Settings();
+        settings.NewsFeed = false;
+        settings.WatchVideo = true;
+        settings.WatchVideoMin = settings.WatchVideoMax = 3;
+        settings.Options.ReelDwellSeconds = 1;
+        var result = await service.RunAsync(
+            957,
+            settings,
+            _ => Task.FromResult(true),
+            _ => Task.CompletedTask
+        );
+        Assert.Equal(1, result.CompletedSteps);
+        Assert.Equal(1, fake.Swipes);
+        Assert.Empty(fake.HoldSwipes);
+        Assert.Equal(new[] { 350 }, fake.ContinuousSwipes);
+        Assert.Equal(0, fake.Taps);
+    }
+
+    [Fact]
+    public async Task TopNavigationUnchangedSwipeUsesAllHoldProfilesBeforeRefreshAndStops()
+    {
+        var (service, fake, _) = Harness();
+        fake.StartFixture = "ld7-reels-top-navigation-paused";
+        fake.StuckReels = true;
+        var settings = Settings();
+        settings.NewsFeed = false;
+        settings.WatchVideo = true;
+        settings.WatchVideoMin = settings.WatchVideoMax = 90;
+        settings.Options.ReelDwellSeconds = 1;
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.RunAsync(957, settings, _ => Task.FromResult(true), _ => Task.CompletedTask)
+        );
+        Assert.Equal(8, fake.Swipes);
+        Assert.Equal(new[] { 350, 350 }, fake.ContinuousSwipes);
+        Assert.Equal(
+            new[] { (300, 100), (200, 50), (100, 75), (300, 100), (200, 50), (100, 75) },
+            fake.HoldSwipes.Select(v => (v.Hold, v.Movement)).ToArray()
+        );
+        Assert.Equal(0, fake.Taps);
+    }
+
+    [Fact]
     public void CapturedReelsProductCardDoesNotReceiveSwipeOrigin()
     {
         var xml = Fixture("ld2-reels-shop-interest");
@@ -164,15 +210,19 @@ public class PFlowNavigationRegressionTests
         var settings = Settings();
         settings.NewsFeed = false;
         settings.WatchVideo = true;
-        settings.WatchVideoMin = settings.WatchVideoMax = 10;
+        settings.WatchVideoMin = settings.WatchVideoMax = 40;
         settings.Options.ReelDwellSeconds = 1;
         if (stuck)
         {
             var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
                 service.RunAsync(937, settings, _ => Task.FromResult(true), _ => Task.CompletedTask)
             );
-            Assert.Contains("next reel after two swipes", ex.Message);
-            Assert.Equal(2, fake.Swipes);
+            Assert.Contains("all three gesture profiles and refresh recovery", ex.Message);
+            Assert.Equal(6, fake.Swipes);
+            Assert.Equal(
+                new[] { (300, 100), (200, 50), (100, 75), (300, 100), (200, 50), (100, 75) },
+                fake.HoldSwipes.Select(v => (v.Hold, v.Movement)).ToArray()
+            );
         }
         else
         {
@@ -637,6 +687,78 @@ public class PFlowNavigationRegressionTests
     }
 
     [Fact]
+    public async Task InlineStoryUsesHoldScrollAndNeverTapsReplyOrReactions()
+    {
+        var (service, fake, _) = Harness();
+        fake.StartFixture = "ld8-feed-inline-story";
+        var settings = Settings();
+        settings.Options.Reactions = true;
+        var result = await service.RunAsync(
+            939,
+            settings,
+            _ => Task.FromResult(true),
+            _ => Task.CompletedTask
+        );
+        Assert.Equal(1, result.CompletedSteps);
+        Assert.Equal(0, result.Reactions);
+        Assert.Equal(0, fake.Taps);
+        Assert.NotEmpty(fake.HoldSwipes);
+        Assert.All(
+            fake.HoldSwipes,
+            g => Assert.Equal((360, 830, 360, 213), (g.StartX, g.StartY, g.EndX, g.EndY))
+        );
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task UnlabelledFeedLayoutContinuesHoldScrollingWithoutInteractions(bool dismissal)
+    {
+        var doc = XDocument.Parse(Fixture("ld1-feed-reel-no-comment"));
+        foreach (var node in doc.Descendants("node"))
+        {
+            node.SetAttributeValue("text", "");
+            node.SetAttributeValue("content-desc", "");
+        }
+        if (dismissal)
+        {
+            var list = doc.Descendants("node")
+                .First(n => n.Attribute("resource-id")?.Value == "android:id/list");
+            list.Add(
+                new XElement(
+                    "node",
+                    new XAttribute("package", "com.facebook.katana"),
+                    new XAttribute("bounds", "[20,400][700,650]"),
+                    new XElement(
+                        "node",
+                        new XAttribute("package", "com.facebook.katana"),
+                        new XAttribute("content-desc", "Dismiss"),
+                        new XAttribute("bounds", "[620,410][690,480]")
+                    )
+                )
+            );
+        }
+        var xml = doc.ToString();
+        Assert.False(ScreenTimeService.IsScreen(xml, "Feed"));
+        Assert.NotNull(ScreenTimeNavigation.FeedViewportSignature(xml, scrollOnly: true));
+        var (service, fake, _) = Harness();
+        fake.AfterSwipeXml = xml;
+        var result = await service.RunAsync(
+            938,
+            Settings(),
+            _ => Task.FromResult(true),
+            _ => Task.CompletedTask
+        );
+        Assert.Equal(1, result.CompletedSteps);
+        Assert.True(fake.HoldSwipes.Count >= 2);
+        Assert.Equal(0, fake.Taps);
+        Assert.All(
+            fake.HoldSwipes,
+            gesture => Assert.True((gesture.Hold, gesture.Movement) is (100, 300) or (300, 100))
+        );
+    }
+
+    [Fact]
     public void HomeReelsCarouselCannotConfirmReelsDestination()
     {
         var xml = Fixture("ld2-feed-text-actions");
@@ -958,7 +1080,6 @@ public class PFlowNavigationRegressionTests
     [InlineData("two-selected")]
     [InlineData("remove-dismiss")]
     [InlineData("other-package")]
-    [InlineData("remove-page-markers")]
     public void UnsupportedFullSheetDoesNotCreateSelectionEvidence(string mutation)
     {
         var doc = XDocument.Parse(Fixture("ld2-switcher-full"));
@@ -1208,7 +1329,7 @@ public class PFlowNavigationRegressionTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task RejectedTouchStopsBeforeRetry(bool reels)
+    public async Task RejectedTouchUsesBoundedReelsFallbacksOrStopsFeed(bool reels)
     {
         var (service, fake, _) = Harness();
         var settings = Settings();
@@ -1224,8 +1345,16 @@ public class PFlowNavigationRegressionTests
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.RunAsync(912, settings, _ => Task.FromResult(true), _ => Task.CompletedTask)
         );
-        Assert.Contains("hold/swipe was not acknowledged", error.Message);
-        Assert.Single(fake.HoldSwipes);
+        if (reels)
+        {
+            Assert.Contains("all three gesture profiles and refresh recovery", error.Message);
+            Assert.Equal(6, fake.HoldSwipes.Count);
+        }
+        else
+        {
+            Assert.Contains("hold/swipe was not acknowledged", error.Message);
+            Assert.Single(fake.HoldSwipes);
+        }
     }
 
     private static (ScreenTimeService Service, NavigationDevice Device, string History) Harness(
@@ -1275,6 +1404,7 @@ public class PFlowNavigationRegressionTests
             PageActor;
         public bool TapAcknowledged = true;
         public bool HoldSwipeAcknowledged = true;
+        public List<int> ContinuousSwipes = new();
         public bool CapturedMedia;
         public string? StartFixture,
             AfterSwipeFixture;
@@ -1325,7 +1455,11 @@ public class PFlowNavigationRegressionTests
                         return chapters.ToString();
                     }
                     var observation = Fixture(StartFixture);
-                    if (StartFixture == "ld1-reels-interest" && Swipes > 0 && !StuckReels)
+                    if (
+                        StartFixture is "ld1-reels-interest" or "ld7-reels-top-navigation-paused"
+                        && Swipes > 0
+                        && !StuckReels
+                    )
                     {
                         if (ReadsBeforeReelChange > 0)
                         {
@@ -1415,6 +1549,7 @@ public class PFlowNavigationRegressionTests
                 case "TakeScreenshotAsync":
                     return Task.FromResult<byte[]?>(null);
                 case "SwipeAsync":
+                    ContinuousSwipes.Add((int)args![5]!);
                     Swipes++;
                     return Task.FromResult(true);
                 case "PressBackAsync":

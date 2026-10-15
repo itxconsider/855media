@@ -32,14 +32,19 @@ public static class PFlowLoginScreen
                 or PFlowLoginScreenKind.Checkpoint
                 or PFlowLoginScreenKind.SaveLoginInfo;
 
-    public static PFlowLoginScreenKind Classify(string? xml, string package = "com.facebook.katana")
+    public static PFlowLoginScreenKind Classify(
+        string? xml,
+        string package = "com.facebook.katana"
+    ) => FacebookHierarchyCache.Memo(xml, "login:" + package, () => ClassifyCore(xml, package));
+
+    private static PFlowLoginScreenKind ClassifyCore(string? xml, string package)
     {
         if (package != "com.facebook.katana")
             return PFlowLoginScreenKind.Unsupported;
         try
         {
-            var nodes = XDocument
-                .Parse(xml ?? "")
+            var nodes = FacebookHierarchyCache
+                .ParseStrict(xml ?? "")
                 .Descendants("node")
                 .Where(n => (string?)n.Attribute("package") == package)
                 .ToArray();

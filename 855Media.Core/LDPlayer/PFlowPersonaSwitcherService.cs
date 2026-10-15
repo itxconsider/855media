@@ -1694,7 +1694,7 @@ public partial class PFlowPersonaSwitcherService : IPFlowPersonaSwitcherService
             || t.Equals("Meta Account settings", StringComparison.OrdinalIgnoreCase)
             || t.Equals("Open profile switcher", StringComparison.OrdinalIgnoreCase)
             || t.Equals("Dismiss", StringComparison.OrdinalIgnoreCase)
-            || t.Equals("See more", StringComparison.OrdinalIgnoreCase)
+            || FacebookNavigationLabels.IsSectionExpansion(t)
             || t.Equals("See less", StringComparison.OrdinalIgnoreCase)
             || t.Equals("See all profiles", StringComparison.OrdinalIgnoreCase)
             || t.Equals("Log into another account", StringComparison.OrdinalIgnoreCase)

@@ -56,7 +56,15 @@ public sealed class PFlowNativeAccountTests : IDisposable
         );
 
     private static string Xml(params XElement[] nodes) =>
-        new XElement("hierarchy", nodes).ToString();
+        new XElement(
+            "hierarchy",
+            new XElement(
+                "node",
+                new XAttribute("package", "com.facebook.katana"),
+                new XAttribute("bounds", "[0,0][720,1280]"),
+                nodes
+            )
+        ).ToString();
 
     private static string Settings(string url = "https://www.facebook.com/profile.php?id=123") =>
         Xml(Node("Profile settings"), Node("Your profile link"), Node(url));
@@ -70,14 +78,166 @@ public sealed class PFlowNativeAccountTests : IDisposable
             Node("Profile settings", true, "[250,100][350,160]")
         );
 
-    private static string ProfessionalSettings() =>
+    private static string ProfessionalSettings(bool clipped = false) =>
         Xml(
             Node("Profile Settings"),
             Node("Back", true),
             Node("Activity log"),
-            Node("Copy profile link", true, "[10,200][250,260]"),
+            Node("Copy profile link", true, clipped ? "[0,1276][720,1280]" : "[10,200][250,260]"),
             Node("Profile and tagging settings")
         );
+
+    [Fact]
+    public void RepeatedEditProfileControlsRecognizeOwnProfileWithoutSelectingAnAmbiguousTap()
+    {
+        var xml = Xml(
+            Node("Edit profile", true, "[472,72][544,144]"),
+            Node("Edit profile", true, "[378,925][696,997]"),
+            Node("More profile settings", true, "[616,72][688,144]")
+        );
+        Assert.True(PFlowNativeAccountNavigator.OwnProfile(xml));
+        Assert.Null(PFlowNativeAccountNavigator.FindControl(xml, "Edit profile"));
+        Assert.NotNull(PFlowNativeAccountNavigator.FindControl(xml, "More profile settings"));
+        Assert.False(
+            PFlowNativeAccountNavigator.OwnProfile(
+                Xml(Node("Manage Page"), Node("Edit profile", true))
+            )
+        );
+    }
+
+    [Fact]
+    public void CoverPhotoLabelVariantRecognizesOwnProfile()
+    {
+        Assert.True(
+            PFlowNativeAccountNavigator.OwnProfile(
+                Xml(
+                    Node("Edit cover photo", true),
+                    Node("Edit profile picture", true),
+                    Node("More profile settings", true)
+                )
+            )
+        );
+        Assert.False(
+            PFlowNativeAccountNavigator.OwnProfile(Xml(Node("More profile settings", true)))
+        );
+    }
+
+    [Fact]
+    public void LinkNoticeDismissalRequiresSpecificTitleAndCloseControl()
+    {
+        Assert.True(
+            PFlowNativeAccountNavigator.LinkSharingNotice(
+                Xml(Node("Link sharing has been updated"), Node("Close", true))
+            )
+        );
+        Assert.False(
+            PFlowNativeAccountNavigator.LinkSharingNotice(
+                Xml(Node("Close", true), Node("Continue", true))
+            )
+        );
+        Assert.False(
+            PFlowNativeAccountNavigator.LinkSharingNotice(
+                Xml(Node("Link sharing has been updated"))
+            )
+        );
+    }
+
+    [Fact]
+    public void PersonalDetailsRecoveryRequiresEditableProfileSheetContext()
+    {
+        var ownSheet = Xml(
+            Node("Transparency and privacy policy"),
+            Node("Edit field"),
+            Node("Close", true)
+        );
+        Assert.True(PFlowNativeAccountNavigator.PersonalDetailsSheet(ownSheet));
+        Assert.True(PFlowNativeAccountNavigator.CanRecoverPersonalProfile(ownSheet));
+        Assert.False(
+            PFlowNativeAccountNavigator.PersonalDetailsSheet(
+                Xml(Node("Transparency and privacy policy"), Node("Close", true))
+            )
+        );
+        Assert.True(
+            PFlowNativeAccountNavigator.CanRecoverPersonalProfile(
+                Xml(Node("Profile transparency"), Node("Back", true))
+            )
+        );
+    }
+
+    [Theory]
+    [InlineData("notice")]
+    [InlineData("details")]
+    [InlineData("transparency")]
+    public async Task ExistingProfileOverlaysReturnToLiveUidVerification(string surface)
+    {
+        var (nav, fake) = Native();
+        fake.Ui = surface switch
+        {
+            "notice" => Xml(Node("Link sharing has been updated"), Node("Close", true)),
+            "details" => Xml(
+                Node("Transparency and privacy policy"),
+                Node("Edit field"),
+                Node("Close", true)
+            ),
+            _ => Xml(Node("Profile transparency"), Node("Back", true), Node("Page ID 999")),
+        };
+        var observed = await nav.ObserveAsync(Binding(), default);
+        Assert.True(PFlowAutomaticSessionService.Verified(observed, Binding()));
+        Assert.Equal("123", observed.OwnerUid);
+        Assert.Equal(2, fake.Backs);
+        Assert.Equal(0, fake.LoginSubmissions);
+    }
+
+    [Theory]
+    [InlineData("123", true)]
+    [InlineData("999", false)]
+    public async Task EmbeddedProfileRouteRequiresFreshUidInsteadOfTrustingDestination(
+        string liveUid,
+        bool expected
+    )
+    {
+        var (nav, fake) = Native();
+        fake.Ui = Xml(Node("Edit cover photo", true), Node("Edit profile picture", true));
+        fake.EmbeddedProfile = true;
+        fake.Link = "https://www.facebook.com/profile.php?id=" + liveUid;
+        var observed = await nav.ObserveAsync(Binding(), default);
+        Assert.Equal(expected, PFlowAutomaticSessionService.Verified(observed, Binding()));
+        Assert.Equal(liveUid, observed.OwnerUid);
+        Assert.Single(fake.Calls, c => c == "OpenDeepLinkAsync");
+        Assert.Equal(0, fake.LoginSubmissions);
+    }
+
+    [Fact]
+    public void VisibleUsernameAndGenericCopyLinkRequireOwnProfileSettingsContext()
+    {
+        var xml = Xml(
+            Node("Profile Settings"),
+            Node("Your profile link"),
+            Node("https://www.facebook.com/fixture.username"),
+            Node("Copy link", true)
+        );
+        Assert.Equal(
+            "https://www.facebook.com/fixture.username",
+            PFlowNativeAccountNavigator.ReadOwnProfileLink(xml)
+        );
+        Assert.Null(PFlowNativeAccountNavigator.ReadOwnProfileUid(xml));
+        Assert.NotNull(PFlowNativeAccountNavigator.CopyProfileLinkControl(xml));
+        Assert.Null(
+            PFlowNativeAccountNavigator.CopyProfileLinkControl(
+                Xml(Node("Profile Settings"), Node("Copy link", true))
+            )
+        );
+        Assert.Null(
+            PFlowNativeAccountNavigator.ReadOwnProfileLink(
+                Xml(
+                    Node("Page Settings"),
+                    Node("Your Page link"),
+                    Node("https://www.facebook.com/fixture.username"),
+                    Node("Copy link", true)
+                )
+            )
+        );
+    }
 
     [Fact]
     public async Task ProfessionalModeCopiesFreshNumericUidThenRestoresOwnProfile()
@@ -96,6 +256,24 @@ public sealed class PFlowNativeAccountTests : IDisposable
         );
         Assert.Equal(0, fake.LoginSubmissions);
         Assert.All(fake.Indices, index => Assert.Equal(Index, index));
+    }
+
+    [Fact]
+    public async Task ClippedCopyRowIsScrolledBeforeClipboardResetAndTap()
+    {
+        var (nav, fake) = Native();
+        fake.Ui = Own();
+        fake.UseCopySettings = true;
+        fake.CopyStartsClipped = true;
+        fake.CopiedProfileLink = "https://www.facebook.com/profile.php?id=123";
+        var observed = await nav.ObserveAsync(Binding(), default);
+        Assert.True(PFlowAutomaticSessionService.Verified(observed, Binding()));
+        Assert.Equal(1, fake.CopyTaps);
+        Assert.True(
+            fake.Calls.IndexOf("SwipeAsync")
+                < fake.Calls.IndexOf("PrepareProfileLinkClipboardAsync")
+        );
+        Assert.Equal(Own(), fake.Ui);
     }
 
     [Theory]
@@ -159,6 +337,52 @@ public sealed class PFlowNativeAccountTests : IDisposable
                 Xml(Node("Profile Settings"), Node("Copy profile link", true), input)
             )
         );
+    }
+
+    [Theory]
+    [InlineData("[0,1276][720,1280]")]
+    [InlineData("[0,1235][720,1280]")]
+    [InlineData("[0,1400][720,1500]")]
+    public void CopyRouteRejectsClippedOrOffscreenRows(string bounds)
+    {
+        Assert.Null(
+            PFlowNativeAccountNavigator.CopyProfileLinkControl(
+                Xml(
+                    Node("Profile Settings"),
+                    Node("Back", true),
+                    Node("Copy profile link", true, bounds)
+                )
+            )
+        );
+    }
+
+    [Fact]
+    public void CopyRouteAcceptsVisibleRowAfterScrolling()
+    {
+        Assert.Equal(
+            (360, 1050),
+            PFlowNativeAccountNavigator.CopyProfileLinkControl(
+                Xml(
+                    Node("Profile Settings"),
+                    Node("Back", true),
+                    Node("Copy profile link", true, "[0,1000][720,1100]")
+                )
+            )
+        );
+    }
+
+    [Fact]
+    public void ObservedLd12SettingsDoesNotTapFourPixelCopySliver()
+    {
+        var xml = File.ReadAllText(
+            Path.Combine(
+                AppContext.BaseDirectory,
+                "Fixtures",
+                "PFlowLayouts",
+                "ld12-profile-settings-clipped-copy.xml"
+            )
+        );
+        Assert.Null(PFlowNativeAccountNavigator.CopyProfileLinkControl(xml));
     }
 
     private static XElement TextButton(string text, string bounds)
@@ -261,7 +485,11 @@ public sealed class PFlowNativeAccountTests : IDisposable
         );
     }
 
-    private (PFlowNativeAccountNavigator Navigator, Device Fake) Native()
+    private (PFlowNativeAccountNavigator Navigator, Device Fake) Native(
+        Func<PFlowAccountBinding, CancellationToken, Task>? requireRecoveryIdle = null,
+        Func<PFlowAccountBinding, CancellationToken, Task<PFlowGraphIdentity?>>? graphIdentity =
+            null
+    )
     {
         var ld = DispatchProxy.Create<ILDPlayerService, Device>();
         var fake = (Device)(object)ld;
@@ -274,10 +502,75 @@ public sealed class PFlowNativeAccountTests : IDisposable
                 {
                     ct.ThrowIfCancellationRequested();
                     return Task.CompletedTask;
-                }
+                },
+                requireRecoveryIdle: requireRecoveryIdle,
+                graphIdentity: graphIdentity
             ),
             fake
         );
+    }
+
+    [Fact]
+    public async Task TemporaryMissingInstanceListRetriesTheSameAssignedDevice()
+    {
+        var (nav, fake) = Native();
+        fake.MissingInstanceReads = 2;
+        var worker = await nav.ReadWorkerAsync(Binding(), default);
+        Assert.Equal(Index, worker.DeviceIndex);
+        Assert.Equal(3, fake.InstanceReads);
+        Assert.Equal(0, fake.Taps);
+    }
+
+    [Fact]
+    public async Task MatchingPersonalGraphIdentitySkipsProfileSettings()
+    {
+        var (nav, fake) = Native(
+            graphIdentity: (_, _) =>
+                Task.FromResult<PFlowGraphIdentity?>(
+                    new("123", "Fixture Personal", "123", "https://example.test/picture.jpg")
+                )
+        );
+        fake.Ui = Own();
+        var observed = await nav.ObserveAsync(Binding(), default);
+        Assert.True(PFlowAutomaticSessionService.Verified(observed, Binding()));
+        Assert.Equal(0, fake.Taps);
+        Assert.Equal(0, fake.Backs);
+    }
+
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("page")]
+    [InlineData("name")]
+    [InlineData("owner")]
+    public async Task MissingOrConflictingGraphIdentityUsesOldSettingsLookup(string mode)
+    {
+        var graph = mode switch
+        {
+            "missing" => null,
+            "page" => new PFlowGraphIdentity("456", "Fixture Personal", "123", null),
+            "name" => new PFlowGraphIdentity("123", "Other person", "123", null),
+            _ => new PFlowGraphIdentity("123", "Fixture Personal", "456", null),
+        };
+        var (nav, fake) = Native(graphIdentity: (_, _) => Task.FromResult(graph));
+        fake.Ui = Own();
+        var observed = await nav.ObserveAsync(Binding(), default);
+        Assert.True(PFlowAutomaticSessionService.Verified(observed, Binding()));
+        Assert.True(fake.Taps > 0);
+        Assert.True(fake.Backs > 0);
+    }
+
+    [Fact]
+    public async Task PersistentlyMissingAssignedDeviceStopsAfterThreeChecks()
+    {
+        var (nav, fake) = Native();
+        fake.MissingInstanceReads = 10;
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            nav.ReadWorkerAsync(Binding(), default)
+        );
+        Assert.Contains("three instance-list checks", error.Message);
+        Assert.Equal(3, fake.InstanceReads);
+        Assert.Equal(0, fake.Taps);
+        Assert.Equal(0, fake.UidRecoveryStops);
     }
 
     [Fact]
@@ -333,7 +626,8 @@ public sealed class PFlowNativeAccountTests : IDisposable
         fake.RecoveredUid = recoveredUid;
         var observed = await nav.ObserveAsync(Binding(), default);
         Assert.False(PFlowAutomaticSessionService.Verified(observed, Binding()));
-        Assert.Equal(1, fake.PersonalRecoveries);
+        Assert.Equal(recoveredUid == null ? 2 : 1, fake.PersonalRecoveries);
+        Assert.Equal(recoveredUid == null ? 1 : 0, fake.UidRecoveryStops);
         Assert.Equal(0, fake.LoginSubmissions);
         Assert.Equal(0, fake.MenuLogouts);
         if (recoveredUid != null)
@@ -365,6 +659,76 @@ public sealed class PFlowNativeAccountTests : IDisposable
         Assert.False(observed.IsLiveUid);
         Assert.Equal("", observed.OwnerUid);
         Assert.Equal(PFlowAuthenticationState.Unavailable, observed.State);
+        Assert.Equal(1, fake.UidRecoveryStops);
+        Assert.Equal(1, fake.UidRecoveryLaunches);
+    }
+
+    [Theory]
+    [InlineData("123", true)]
+    [InlineData("456", false)]
+    public async Task MissingUidClearsRecentsReopensAndReadsFreshIdentity(
+        string uid,
+        bool expectedVerified
+    )
+    {
+        var (nav, fake) = Native();
+        fake.Ui = Own();
+        fake.Link = "https://www.facebook.com/fixture.page";
+        fake.UidAfterRelaunch = uid;
+        var observed = await nav.ObserveAsync(Binding(), default);
+        Assert.Equal(expectedVerified, PFlowAutomaticSessionService.Verified(observed, Binding()));
+        Assert.Equal(uid, observed.OwnerUid);
+        Assert.Equal(1, fake.UidRecoveryStops);
+        Assert.Equal(1, fake.UidRecoveryLaunches);
+        Assert.Contains("ExecuteAdbAsync", fake.Calls);
+        Assert.True(
+            fake.Calls.IndexOf("StopFacebookAppAsync") < fake.Calls.IndexOf("LaunchAppAsync")
+        );
+        Assert.Equal(0, fake.LoginSubmissions);
+        Assert.Equal(0, fake.MenuLogouts);
+        Assert.All(fake.Indices, index => Assert.Equal(Index, index));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task FailedRecentClearOrReopenStopsUidRecovery(bool clearFails)
+    {
+        var (nav, fake) = Native();
+        fake.Ui = Own();
+        fake.Link = "https://www.facebook.com/fixture.page";
+        fake.RecentAppsVerifiedEmpty = !clearFails;
+        fake.RelaunchSucceeds = clearFails;
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            nav.ObserveAsync(Binding(), default)
+        );
+        Assert.Equal(1, fake.UidRecoveryStops);
+        Assert.Equal(clearFails ? 0 : 1, fake.UidRecoveryLaunches);
+    }
+
+    [Fact]
+    public async Task PendingWorkflowReviewBlocksClearingRecentApps()
+    {
+        var (nav, fake) = Native(
+            (_, _) => throw new InvalidOperationException("Pending publication")
+        );
+        fake.Ui = Own();
+        fake.Link = "https://www.facebook.com/fixture.page";
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            nav.ObserveAsync(Binding(), default)
+        );
+        Assert.Equal(0, fake.UidRecoveryStops);
+        Assert.Equal(0, fake.UidRecoveryLaunches);
+    }
+
+    [Fact]
+    public async Task LoginLandingDoesNotClearRecentAppsForUidRecovery()
+    {
+        var (nav, fake) = Native();
+        fake.Ui = SavedLanding();
+        var observed = await nav.ObserveAsync(Binding(), default);
+        Assert.Equal(PFlowAuthenticationState.LoginRequired, observed.State);
+        Assert.Equal(0, fake.UidRecoveryStops);
     }
 
     [Fact]
@@ -798,14 +1162,23 @@ public sealed class PFlowNativeAccountTests : IDisposable
             KeyboardEnableSucceeds = true,
             KeyboardActivationSucceeds = true;
         public bool HideLinkUntilScroll;
+        public bool EmbeddedProfile;
         public bool SettingsHasBack;
         public bool UseCopySettings;
+        public bool CopyStartsClipped;
         public bool ClipboardResetWorks = true,
             CopyUpdatesClipboard = true;
         public string? ProfileClipboard,
             CopiedProfileLink;
         public int CopyTaps;
         public string? RecoveredUid;
+        public string? UidAfterRelaunch;
+        public bool RecentAppsVerifiedEmpty = true;
+        public bool RelaunchSucceeds = true;
+        public int UidRecoveryStops,
+            UidRecoveryLaunches;
+        public int MissingInstanceReads,
+            InstanceReads;
         public int PersonalRecoveries;
         public Queue<string> UiSequence = new(),
             ForegroundSequence = new();
@@ -821,6 +1194,9 @@ public sealed class PFlowNativeAccountTests : IDisposable
             switch (method.Name)
             {
                 case "GetInstancesAsync":
+                    InstanceReads++;
+                    if (MissingInstanceReads-- > 0)
+                        return Task.FromResult<IReadOnlyList<LDInstanceInfo>>([]);
                     return Task.FromResult<IReadOnlyList<LDInstanceInfo>>([
                         new()
                         {
@@ -852,7 +1228,18 @@ public sealed class PFlowNativeAccountTests : IDisposable
                     Ui = Own();
                     return Task.FromResult(true);
                 case "SwipeAsync":
-                    Ui = Settings(Link);
+                    if (UseCopySettings && CopyStartsClipped)
+                    {
+                        CopyStartsClipped = false;
+                        Ui = ProfessionalSettings();
+                        return Task.FromResult(true);
+                    }
+                    if (!EmbeddedProfile)
+                        Ui = Settings(Link);
+                    return Task.FromResult(true);
+                case "OpenDeepLinkAsync":
+                    Assert.Equal("fb://profile/123", args![1]);
+                    Ui = Own();
                     return Task.FromResult(true);
                 case "OpenFacebookMenuFromFeedAsync":
                     Ui = Xml(Node("Menu"), Node("Your shortcuts"), Node("Log out", true));
@@ -946,7 +1333,7 @@ public sealed class PFlowNativeAccountTests : IDisposable
                                     Node("Back", true),
                                     Node("Your profile link")
                                 )
-                            : UseCopySettings ? ProfessionalSettings()
+                            : UseCopySettings ? ProfessionalSettings(CopyStartsClipped)
                             : SettingsHasBack
                                 ? Xml(
                                     Node("Profile settings"),
@@ -977,13 +1364,26 @@ public sealed class PFlowNativeAccountTests : IDisposable
                     Ui = Own();
                     return Task.FromResult(true);
                 case "ExecuteAdbAsync":
+                    if (((string)args![1]!).Contains("dumpsys activity -a recents"))
+                        return Task.FromResult(
+                            RecentAppsVerifiedEmpty
+                                ? "ACTIVITY MANAGER RECENT TASKS (dumpsys activity recents)\n  mRecentsUid=-1\n  mRecentsComponent=null\n"
+                                : "Unsupported recents state"
+                        );
                     return Task.FromResult(
                         "Active default network: 100\nCurrent Networks:\n NetworkAgentInfo{network{100} ni{[state: CONNECTED/CONNECTED]} nc{[Capabilities: INTERNET&VALIDATED]}}\n"
                     );
                 case "WaitForBootCompletedAsync":
                 case "EnsureAtxAgentRunningAsync":
-                case "LaunchAppAsync":
                     return Task.FromResult(true);
+                case "StopFacebookAppAsync":
+                    UidRecoveryStops++;
+                    return Task.FromResult(true);
+                case "LaunchAppAsync":
+                    UidRecoveryLaunches++;
+                    if (UidAfterRelaunch != null)
+                        Link = "https://www.facebook.com/profile.php?id=" + UidAfterRelaunch;
+                    return Task.FromResult(RelaunchSucceeds);
                 case "IsAdbKeyboardInstalledAsync":
                     return Task.FromResult(KeyboardInstalled);
                 case "InstallAdbKeyboardAsync":

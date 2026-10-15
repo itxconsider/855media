@@ -1,0 +1,10 @@
+<!-- Synthetic top-of-Feed regression fixture; not a live device capture. -->
+<hierarchy><node package="com.facebook.katana" bounds="[0,0][720,1280]">
+  <node package="com.facebook.katana" content-desc="Home, tab 1 of 6" selected="true" clickable="true" bounds="[0,20][120,100]" />
+  <node package="com.facebook.katana" text="What's on your mind?" clickable="true" bounds="[160,130][640,230]" />
+  <node package="com.facebook.katana" class="androidx.viewpager.widget.ViewPager" resource-id="facebook:pager" bounds="[0,110][720,1200]">
+    <node package="com.facebook.katana" class="androidx.recyclerview.widget.RecyclerView" resource-id="android:id/list" scrollable="true" bounds="[0,110][720,1200]">
+      <node package="com.facebook.katana" text="Example feed card" bounds="[20,300][680,1000]" />
+    </node>
+  </node>
+</node></hierarchy>

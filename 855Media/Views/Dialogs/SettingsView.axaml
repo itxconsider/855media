@@ -414,6 +414,25 @@
                                     </DockPanel>
                                 </StackPanel>
                             </Border>
+                            <Border CornerRadius="8" Background="{DynamicResource AntigravityCardBrush}"
+                                    BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1" Padding="16">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Text="Facebook layout rules" FontSize="14" FontWeight="Medium" />
+                                    <TextBlock Text="Edit the JSON file, then reload. Invalid files keep the previous valid rules."
+                                               FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                    <TextBlock Text="{Binding LayoutRulesPath}" FontSize="11" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding LayoutRulesStatus}" FontSize="12" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding LayoutRulesSource, StringFormat='Active source: {0}'}"
+                                               FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                    <WrapPanel Orientation="Horizontal">
+                                        <Button Content="Open rules folder" Command="{Binding OpenLayoutRulesFolderCommand}" Margin="0,0,8,8" />
+                                        <Button Content="Reload rules" Command="{Binding ReloadLayoutRulesCommand}" Margin="0,0,8,8" />
+                                        <Button Content="Use built-in rules" Command="{Binding UseBuiltInLayoutRulesCommand}" Margin="0,0,0,8" />
+                                    </WrapPanel>
+                                    <TextBlock Text="Use built-in rules resets this session only and keeps your JSON file."
+                                               FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
 
                         <!-- ==================== TAB 1: CONNECTORS (AI) ==================== -->

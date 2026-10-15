@@ -299,6 +299,44 @@ public sealed class ScreenTimeService : IScreenTimeService
 
         async Task Browse(string name, string link, int min, int max, bool allowLike)
         {
+            var browseFlow = name is "Feed" or "Reels"
+                ? new FacebookBrowseStateMachine(
+                    name == "Feed" ? FacebookScreenKind.NewsFeed : FacebookScreenKind.ReelsFeed
+                )
+                : null;
+            string? lastBrowseDiagnostic = null;
+            async Task<FacebookBrowseDecision?> ObserveBrowse(string? xml)
+            {
+                if (browseFlow == null)
+                    return null;
+                var decision = browseFlow.Observe(new FacebookLayoutObservation(xml));
+                if (decision.Diagnostic != lastBrowseDiagnostic)
+                {
+                    await PFlowTrace.SessionAsync(
+                        index,
+                        "ScreenTime.layout.browse",
+                        decision.Diagnostic,
+                        ct
+                    );
+                    lastBrowseDiagnostic = decision.Diagnostic;
+                }
+                return decision;
+            }
+            void BeginBrowseInput(FacebookBrowseAction action)
+            {
+                if (browseFlow != null && !browseFlow.TryBeginInput(action))
+                    throw new InvalidOperationException(
+                        "ScreenTime requires a fresh recognized layout before another browsing action."
+                    );
+            }
+            async Task<bool> BeginInteraction()
+            {
+                var current = await RequireCurrentScreenAsync();
+                if (!current.InteractionReady)
+                    return false;
+                BeginBrowseInput(FacebookBrowseAction.Interact);
+                return true;
+            }
             if (_now() >= deadline)
                 throw new OperationCanceledException("ScreenTime session time limit reached.");
             ct.ThrowIfCancellationRequested();
@@ -331,11 +369,14 @@ public sealed class ScreenTimeService : IScreenTimeService
                 lastScreen = await _ld.DumpUiHierarchyAsync(index, path, ct);
                 if (name == "Marketplace" && ScreenTimeNavigation.IsMarketplaceAgeGate(lastScreen))
                     throw new MarketplaceAgeGateDetectedException(lastScreen!);
-                if (IsScreen(lastScreen, name))
+                var initialBrowse = await ObserveBrowse(lastScreen);
+                if (initialBrowse?.Allowed ?? IsScreen(lastScreen, name))
                 {
                     ready = true;
                     break;
                 }
+                if (browseFlow?.State == FacebookBrowseState.Stopped)
+                    break;
                 await _delay(TimeSpan.FromMilliseconds(500), ct);
             }
             if (!ready)
@@ -346,9 +387,9 @@ public sealed class ScreenTimeService : IScreenTimeService
                 );
             }
             var duration = Random.Shared.Next(min, max + 1);
-            var feedViewport =
-                name == "Feed" ? ScreenTimeNavigation.FeedViewportSignature(lastScreen) : null;
             var chapterRecoveryUsed = false;
+            var interruptionRecoveryUsed = false;
+            var reelsRefreshUsed = false;
             var until = _now().AddSeconds(duration);
             if (until > deadline)
                 until = deadline;
@@ -379,8 +420,8 @@ public sealed class ScreenTimeService : IScreenTimeService
                 {
                     if (Random.Shared.Next(100) < settings.Options.InteractionChancePercent)
                     {
-                        feedViewport = null;
-                        await actions.RandomFeedAsync(reviewComment, ct);
+                        if (await BeginInteraction())
+                            await actions.RandomFeedAsync(reviewComment, ct);
                     }
                 }
                 if (
@@ -390,8 +431,8 @@ public sealed class ScreenTimeService : IScreenTimeService
                     && !settings.Options.RandomFeedReactions
                 )
                 {
-                    feedViewport = null;
-                    await actions.ReactAsync(ct);
+                    if (await BeginInteraction())
+                        await actions.ReactAsync(ct);
                 }
                 if (
                     allowLike
@@ -400,10 +441,12 @@ public sealed class ScreenTimeService : IScreenTimeService
                     && likes < likeLimit
                 )
                 {
-                    feedViewport = null;
-                    var liked = await actions.LikeAsync(ct);
-                    if (liked)
-                        likes++;
+                    if (await BeginInteraction())
+                    {
+                        var liked = await actions.LikeAsync(ct);
+                        if (liked)
+                            likes++;
+                    }
                 }
                 if (_now() >= until)
                     break;
@@ -436,15 +479,17 @@ public sealed class ScreenTimeService : IScreenTimeService
                     throw new InvalidOperationException(
                         "ScreenTime swipe geometry is unavailable."
                     );
+                BeginBrowseInput(FacebookBrowseAction.Scroll);
                 if (name == "Feed")
                 {
                     // Pick one of the two tested profiles independently for each Feed scroll.
                     var gesture = ScreenTimeGesture.NewsFeed(_chooseFeedGesture());
+                    var feedStart = ScreenTimeNavigation.FeedSwipeStart(xml, w, h);
                     if (
                         !await _ld.HoldAndSwipeAsync(
                             index,
-                            w / 2,
-                            h * 3 / 4,
+                            feedStart.X,
+                            feedStart.Y,
                             w / 2,
                             h / 6,
                             gesture.HoldMs,
@@ -465,7 +510,7 @@ public sealed class ScreenTimeService : IScreenTimeService
                     await PFlowTrace.SessionAsync(
                         index,
                         "ScreenTime.feed.swipe",
-                        $"holdMs={gesture.HoldMs}; movementTargetMs={gesture.MovementTargetMs}; start=({w / 2},{h * 3 / 4}); end=({w / 2},{h / 6})",
+                        $"holdMs={gesture.HoldMs}; movementTargetMs={gesture.MovementTargetMs}; start=({feedStart.X},{feedStart.Y}); end=({w / 2},{h / 6})",
                         ct
                     );
                     return;
@@ -478,17 +523,34 @@ public sealed class ScreenTimeService : IScreenTimeService
                         );
                     return;
                 }
-                // The fixed centre path also advanced the tested product and ad layouts.
                 // Touch acknowledgements alone do not prove the next Reel appeared.
                 var before = ScreenTimeNavigation.ReelObservationKey(xml);
-                var swipeX = w / 2;
-                var swipeY = h * 3 / 4;
-                var reelGesture = ScreenTimeGesture.Reels;
-                for (var swipeAttempt = 0; swipeAttempt < 2; swipeAttempt++)
+                var topNavigation = ScreenTimeNavigation.ReelsHasTopNavigation(xml, h);
+                var gestureXml = xml;
+                for (var swipeAttempt = 0; swipeAttempt < (topNavigation ? 4 : 3); swipeAttempt++)
                 {
                     ct.ThrowIfCancellationRequested();
-                    if (
-                        !await _ld.HoldAndSwipeAsync(
+                    if (_now() >= until)
+                        return;
+                    var reelGesture = ScreenTimeGesture.ReelsScrollAttempt(
+                        swipeAttempt,
+                        topNavigation
+                    );
+                    if (swipeAttempt > 0)
+                        BeginBrowseInput(FacebookBrowseAction.Scroll);
+                    var (swipeX, swipeY) = ScreenTimeNavigation.ReelsSwipeStart(gestureXml, w, h);
+                    var acknowledged = reelGesture.ContinuousSwipe
+                        ? await _ld.SwipeAsync(
+                            index,
+                            swipeX,
+                            swipeY,
+                            swipeX,
+                            h / 6,
+                            reelGesture.MovementTargetMs,
+                            path,
+                            ct
+                        )
+                        : await _ld.HoldAndSwipeAsync(
                             index,
                             swipeX,
                             swipeY,
@@ -498,16 +560,17 @@ public sealed class ScreenTimeService : IScreenTimeService
                             reelGesture.MovementTargetMs,
                             path,
                             ct
-                        )
-                    )
+                        );
+                    if (!acknowledged)
                     {
-                        await CaptureNavigationFailureAsync(
-                            name,
-                            await _ld.DumpUiHierarchyAsync(index, path, ct)
+                        await PFlowTrace.SessionAsync(
+                            index,
+                            "ScreenTime.reels.swipe.failed",
+                            $"attempt={swipeAttempt + 1}; continuousSwipe={reelGesture.ContinuousSwipe}; holdMs={reelGesture.HoldMs}; movementTargetMs={reelGesture.MovementTargetMs}; acknowledged=false",
+                            ct
                         );
-                        throw new InvalidOperationException(
-                            "ScreenTime Reels hold/swipe was not acknowledged."
-                        );
+                        (_, gestureXml) = await RequireCurrentScreenAsync();
+                        continue;
                     }
                     await _delay(TimeSpan.FromMilliseconds(500), ct);
                     var (_, after) = await RequireCurrentScreenAsync();
@@ -528,11 +591,14 @@ public sealed class ScreenTimeService : IScreenTimeService
                     await PFlowTrace.SessionAsync(
                         index,
                         "ScreenTime.reels.swipe.observed",
-                        $"attempt={swipeAttempt + 1}; holdMs={reelGesture.HoldMs}; movementTargetMs={reelGesture.MovementTargetMs}; beforeKeyAvailable={before != null}; afterKeyAvailable={current != null}; contentChanged={changed}",
+                        $"attempt={swipeAttempt + 1}; continuousSwipe={reelGesture.ContinuousSwipe}; holdMs={reelGesture.HoldMs}; movementTargetMs={reelGesture.MovementTargetMs}; beforeKeyAvailable={before != null}; afterKeyAvailable={current != null}; contentChanged={changed}",
                         ct
                     );
+                    gestureXml = after;
                     if (before == null || changed)
                     {
+                        if (changed)
+                            reelsRefreshUsed = false;
                         await PFlowTrace.SessionAsync(
                             index,
                             "ScreenTime.reels.swipe",
@@ -542,12 +608,52 @@ public sealed class ScreenTimeService : IScreenTimeService
                         return;
                     }
                 }
+                // Reopen the destination once after all gesture profiles fail.
+                // A second consecutive failure stops instead of refreshing indefinitely.
+                if (!reelsRefreshUsed && _now() < until)
+                {
+                    reelsRefreshUsed = true;
+                    await CaptureNavigationFailureAsync("Reels", gestureXml);
+                    browseFlow?.BeginRecovery();
+                    if (
+                        !await _ld.SendKeyAsync(index, 4, path, ct)
+                        || !await _ld.OpenDeepLinkAsync(
+                            index,
+                            link,
+                            "com.facebook.katana",
+                            path,
+                            ct
+                        )
+                    )
+                        throw new InvalidOperationException("ScreenTime could not refresh Reels.");
+                    for (
+                        var refreshAttempt = 0;
+                        refreshAttempt < 12 && _now() < until;
+                        refreshAttempt++
+                    )
+                    {
+                        await _delay(TimeSpan.FromMilliseconds(500), ct);
+                        var refreshed = await _ld.DumpUiHierarchyAsync(index, path, ct);
+                        if ((await ObserveBrowse(refreshed))?.Allowed == true)
+                        {
+                            await PFlowTrace.SessionAsync(
+                                index,
+                                "ScreenTime.reels.refresh",
+                                $"screenVerified=true; contentChanged={ScreenTimeNavigation.ReelContentChanged(xml, refreshed)}",
+                                ct
+                            );
+                            return;
+                        }
+                        if (ScreenTimeNavigation.IsBlockingScreen(refreshed, "Reels"))
+                            break;
+                    }
+                }
                 await CaptureNavigationFailureAsync(
                     "Reels",
                     (await RequireCurrentScreenAsync()).Xml
                 );
                 throw new InvalidOperationException(
-                    "ScreenTime could not verify the next reel after two swipes; check the saved Reels capture."
+                    "ScreenTime could not advance Reels after all three gesture profiles and refresh recovery; check the saved Reels capture."
                 );
             }
             async Task<(bool InteractionReady, string Xml)> RequireCurrentScreenAsync()
@@ -557,14 +663,34 @@ public sealed class ScreenTimeService : IScreenTimeService
                 {
                     ct.ThrowIfCancellationRequested();
                     xml = await _ld.DumpUiHierarchyAsync(index, path, ct);
+                    var browseDecision = await ObserveBrowse(xml);
                     if (name == "Marketplace" && ScreenTimeNavigation.IsMarketplaceAgeGate(xml))
                         throw new MarketplaceAgeGateDetectedException(xml!);
-                    if (IsScreen(xml, name))
+                    if (
+                        name == "Reels"
+                        && !interruptionRecoveryUsed
+                        && ScreenTimeNavigation.IsReelsInterruption(xml)
+                        && !PFlowLoginScreen.RequiresAuthentication(PFlowLoginScreen.Classify(xml))
+                        && !PFlowPersonaSwitcherService.IsNativeSwitcherSheetOpen(xml)
+                    )
                     {
-                        if (name == "Feed")
-                            feedViewport = ScreenTimeNavigation.FeedViewportSignature(xml);
-                        return (!ScreenTimeNavigation.IsBrowseOnlyCard(xml, name), xml!);
+                        interruptionRecoveryUsed = true;
+                        browseFlow?.BeginRecovery();
+                        if (!await _ld.SendKeyAsync(index, 4, path, ct))
+                            break;
+                        await _delay(TimeSpan.FromMilliseconds(300), ct);
+                        continue;
                     }
+                    if (browseDecision?.Allowed ?? IsScreen(xml, name))
+                    {
+                        return (
+                            browseDecision?.InteractionReady
+                                ?? !ScreenTimeNavigation.IsBrowseOnlyCard(xml, name),
+                            xml!
+                        );
+                    }
+                    if (browseFlow?.State == FacebookBrowseState.Stopped)
+                        break;
                     if (
                         name == "Reels"
                         && !chapterRecoveryUsed
@@ -574,33 +700,27 @@ public sealed class ScreenTimeService : IScreenTimeService
                     )
                     {
                         chapterRecoveryUsed = true;
+                        browseFlow?.BeginRecovery();
                         if (!await _ld.SendKeyAsync(index, 4, path, ct))
                             break;
                         await _delay(TimeSpan.FromMilliseconds(300), ct);
                         continue; // Fresh observation must confirm Reels before browsing resumes.
                     }
                     if (
-                        ScreenTimeNavigation.IsBlockingScreen(xml, name)
+                        ScreenTimeNavigation.IsBlockingScreen(xml, name, name == "Feed")
                         || ScreenTimeNavigation.HasConflictingTab(xml, name)
                     )
                         break;
-                    // Scrolling changes card contents, not the verified Feed container.
-                    // Continue browsing only. Any interaction invalidates this continuity
-                    // until an independent screen check succeeds again.
-                    if (
-                        name == "Feed"
-                        && feedViewport != null
-                        && ScreenTimeNavigation.FeedViewportSignature(xml) == feedViewport
-                    )
-                        return (false, xml!);
                     if (attempt < 2)
                         await _delay(TimeSpan.FromMilliseconds(300), ct);
                 }
                 await CaptureNavigationFailureAsync(name, xml);
+                browseFlow?.Stop();
                 throw new InvalidOperationException(
                     $"ScreenTime left {name}; session stopped before another action."
                 );
             }
+            browseFlow?.Stop();
             if (!await _ld.SendKeyAsync(index, 4, path, ct))
                 throw new InvalidOperationException(
                     $"ScreenTime could not close {name} before the next step."
@@ -664,7 +784,18 @@ public sealed class ScreenTimeService : IScreenTimeService
         internal string Xml { get; } = xml;
     }
 
-    internal static bool IsScreen(string? xml, string name)
+    internal static bool IsScreen(string? xml, string name) =>
+        name is "Feed" or "Reels"
+            ? FacebookLayoutRegistry
+                .Match(
+                    xml,
+                    name == "Feed" ? FacebookScreenKind.NewsFeed : FacebookScreenKind.ReelsFeed
+                )
+                .IsMatch
+            : HasScreenEvidence(xml, name);
+
+    // Registry rules call this structural predicate; it must not call IsScreen.
+    internal static bool HasScreenEvidence(string? xml, string name)
     {
         if (string.IsNullOrWhiteSpace(xml))
             return false;
@@ -687,6 +818,7 @@ public sealed class ScreenTimeService : IScreenTimeService
             _ => new[] { "Notifications" },
         };
         return (name == "Feed" && ScreenTimeNavigation.IsScrolledFeed(xml))
+            || (name == "Reels" && ScreenTimeNavigation.IsFullscreenReels(xml))
             || nodes.Any(n =>
                 labels.Any(x =>
                     (

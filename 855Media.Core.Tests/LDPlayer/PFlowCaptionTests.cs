@@ -138,6 +138,7 @@ public class PFlowCaptionTests
         public int InputBroadcasts;
         public string Caption = "";
         public int ShareTaps;
+        private bool _chooserAccepted;
         private bool _keyboard,
             _composer;
 
@@ -146,6 +147,10 @@ public class PFlowCaptionTests
             switch (method!.Name)
             {
                 case "DumpUiHierarchyAsync":
+                    if (_composer && !_chooserAccepted)
+                        return Task.FromResult<string?>(
+                            PFlowShareDestinationTests.SelectedReelsXml
+                        );
                     return System.Threading.Tasks.Task.FromResult<string?>(
                         !_composer
                             ? "<hierarchy><node text='Target'/><node text='Professional dashboard'/></hierarchy>"
@@ -161,6 +166,11 @@ public class PFlowCaptionTests
                         "P-Flow must use the direct ADB broadcast exactly once."
                     );
                 case "TapAsync":
+                    if (_composer && !_chooserAccepted)
+                    {
+                        _chooserAccepted = true;
+                        return Task.FromResult(true);
+                    }
                     if ((int)args![2]! == 50)
                         ShareTaps++;
                     else

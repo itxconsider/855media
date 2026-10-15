@@ -1,0 +1,349 @@
+{
+  "formatVersion": 1,
+  "dashboardHeaderAliases": [],
+  "sectionExpansionAliases": [],
+  "variants": [
+    {
+      "id": "switcher.typed.v1",
+      "baseId": "switcher.typed.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "switcher.untyped.v1",
+      "baseId": "switcher.untyped.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "switcher.footer.v1",
+      "baseId": "switcher.footer.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "profile.own.v1",
+      "baseId": "profile.own.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "profile.settings-link.v1",
+      "baseId": "profile.settings-link.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "dashboard.analytics-tab.v1",
+      "baseId": "dashboard.analytics-tab.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "dashboard.analytics-section.v1",
+      "baseId": "dashboard.analytics-section.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "dashboard.analytics-dual-entry.v1",
+      "baseId": "dashboard.analytics-dual-entry.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "analytics.summary-cards.v1",
+      "baseId": "analytics.summary-cards.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "analytics.metrics.v1",
+      "baseId": "analytics.metrics.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "composer.reel-settings.v1",
+      "baseId": "composer.reel-settings.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "composer.reel-caption.v1",
+      "baseId": "composer.reel-caption.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "feed.home.v1",
+      "baseId": "feed.home.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "feed.scrolled.v1",
+      "baseId": "feed.scrolled.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "reels.tabbed.v1",
+      "baseId": "reels.tabbed.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "reels.fullscreen.v1",
+      "baseId": "reels.fullscreen.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "create.menu.v1",
+      "baseId": "create.menu.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "story.picker.v1",
+      "baseId": "story.picker.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "story.albums.v1",
+      "baseId": "story.albums.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "story.editor.v1",
+      "baseId": "story.editor.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "story.own-viewer.v1",
+      "baseId": "story.own-viewer.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "composer.photo.v1",
+      "baseId": "composer.photo.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "profile.settings-overview.v1",
+      "baseId": "profile.settings-overview.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "profile.page-tools.v1",
+      "baseId": "profile.page-tools.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "profile.settings-copy.v1",
+      "baseId": "profile.settings-copy.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "menu.dashboard.v1",
+      "baseId": "menu.dashboard.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "menu.professional.v1",
+      "baseId": "menu.professional.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "menu.header.v1",
+      "baseId": "menu.header.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "android.recents-clear.v1",
+      "baseId": "android.recents-clear.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "share.destination-chooser.v1",
+      "baseId": "share.destination-chooser.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "authentication.loginrequired.v1",
+      "baseId": "authentication.loginrequired.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "authentication.credentialsrejected.v1",
+      "baseId": "authentication.credentialsrejected.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "authentication.deviceapprovalrequired.v1",
+      "baseId": "authentication.deviceapprovalrequired.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "authentication.verificationmethods.v1",
+      "baseId": "authentication.verificationmethods.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "authentication.authenticatorcoderequired.v1",
+      "baseId": "authentication.authenticatorcoderequired.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "authentication.savelogininfo.v1",
+      "baseId": "authentication.savelogininfo.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "authentication.checkpoint.v1",
+      "baseId": "authentication.checkpoint.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "authentication.locationservicesintro.v1",
+      "baseId": "authentication.locationservicesintro.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    }
+  ]
+}
