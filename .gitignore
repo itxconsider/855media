@@ -8,6 +8,7 @@ env/
 *.user
 
 # Build results & releases
+/artifacts/
 [Bb]in/
 [Oo]bj/
 # Local release artifacts; never commit the root dist folder.
