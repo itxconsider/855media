@@ -14,6 +14,52 @@ public sealed record PFlowUploadNotification(string Key, long Version, string Ti
 
 public static class PFlowConfirmation
 {
+    internal static string NormalizeSuccessMessage(string value) =>
+        Regex.Replace(value.Trim(), @"\s+", " ").TrimEnd('.', '!', ' ', '\u2026');
+
+    internal static bool IsPublicationSuccess(string value, string type)
+    {
+        var noun =
+            type == "Story" ? "story"
+            : type == "Picture" ? "post"
+            : "reel";
+        var message = NormalizeSuccessMessage(value);
+        return Regex.IsMatch(
+            message,
+            @"^(?:Your "
+                + noun
+                + @" (?:has been |was |is now )(?:successfully )?(?:shared|published|posted)|"
+                + noun
+                + @" (?:shared|published|posted)(?: successfully)?|Your "
+                + noun
+                + @" is (?:now )?live)$",
+            RegexOptions.IgnoreCase
+        );
+    }
+
+    // Leave the success banner/toast a short opportunity to arrive after upload completion.
+    internal static TimeSpan DirectConfirmationGrace(TimeSpan window) =>
+        TimeSpan.FromMilliseconds(Math.Min(8000, window.TotalMilliseconds / 4));
+
+    internal static bool IsNotificationOnly(string evidence) =>
+        evidence.StartsWith("Facebook media-upload notification:", StringComparison.Ordinal);
+
+    internal static PFlowState RecordPublicationEvidence(PFlowJob job, string evidence)
+    {
+        job.Evidence = evidence;
+        if (IsNotificationOnly(evidence))
+        {
+            job.ConfirmedUtc = null;
+            job.Error =
+                "Upload completed, but publication on the target was not verified. Review the Page before retrying; files were retained.";
+            job.RemoteCleanupState = "Held for publication review";
+            job.LocalDeleteState = "Held for publication review";
+            return PFlowState.Unknown;
+        }
+        job.ConfirmedUtc = DateTime.UtcNow;
+        return PFlowState.Confirmed;
+    }
+
     public static bool HasActiveNotificationList(string? dump) =>
         dump != null && Regex.IsMatch(dump, @"(?m)^[ \t]*Notification List:[ \t]*\r?$");
 

@@ -93,12 +93,11 @@ internal sealed partial class ScreenTimeInteractions
                 return;
             }
             if (
-                ScreenTimeHierarchy
-                    .Nodes(panel)
-                    .Any(n =>
-                        ScreenTimeHierarchy.Label(n).Trim()
-                        == $"Comment by {_settings.OwnerName}: {draft.Text}"
-                    )
+                ScreenTimeHierarchy.HasPublishedComment(
+                    CommentPanelScope(panel, target.Key),
+                    _settings.OwnerName,
+                    draft.Text
+                )
             )
             {
                 Skipped++;

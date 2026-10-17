@@ -26,6 +26,67 @@ public static partial class FacebookLayoutRegistry
 
     private static IEnumerable<FacebookLayoutDefinition> ComponentDefinitions()
     {
+        foreach (var promotion in new[] { false, true })
+        {
+            var withPromotion = promotion;
+            yield return new(
+                withPromotion ? "profile.details-verified-offer.v1" : "profile.details-sheet.v1",
+                FacebookScreenKind.ProfileDetails,
+                [],
+                [
+                    Rule(
+                        "name-details-sheet",
+                        "Named information sheet with Transparency entry",
+                        IsNameDetailsSheet
+                    ),
+                    Rule(
+                        "name-details-target",
+                        "Details sheet belongs to the requested display name",
+                        o =>
+                            string.IsNullOrWhiteSpace(o.Context.TargetName)
+                            || (
+                                o.Has(o.Context.TargetName)
+                                && o.Has("About " + o.Context.TargetName)
+                            )
+                    ),
+                    Rule(
+                        "verification-offer-variant",
+                        "Optional inline Meta verification offer",
+                        o => HasNameDetailsVerificationOffer(o) == withPromotion
+                    ),
+                ],
+                [Authentication, SwitcherOverlay, Chooser, ComposerOverlay],
+                [FacebookControlRole.Transparency]
+            );
+        }
+        yield return new(
+            "feed.email-update.v1",
+            FacebookScreenKind.EmailUpdatePrompt,
+            [],
+            [
+                Rule(
+                    "email-update-card",
+                    "Scoped Meta email reminder with Accounts Center action",
+                    o => PFlowEmailUpdatePrompt.Card(o.Xml) != null
+                ),
+            ],
+            [Authentication, SwitcherOverlay, ComposerOverlay],
+            [FacebookControlRole.Dismiss]
+        );
+        yield return new(
+            "switcher.in-progress.v1",
+            FacebookScreenKind.IdentitySwitching,
+            [],
+            [
+                Rule(
+                    "identity-switch-in-progress",
+                    "Facebook switching loader with no actionable navigation",
+                    o => PFlowIdentitySwitchLayout.IsSwitching(o.Xml)
+                ),
+            ],
+            [],
+            []
+        );
         yield return new(
             "profile.settings-overview.v1",
             FacebookScreenKind.ProfileSettings,
@@ -52,10 +113,17 @@ public static partial class FacebookLayoutRegistry
                     "named-page-tools",
                     "Requested Page name with explicit professional/admin tools",
                     o =>
-                        !o.Test(TargetName)
+                        !IsNameDetailsSheet(o)
+                        && !HasWeeklyProgressCard(o)
+                        && !o.Test(TargetName)
                         && !string.IsNullOrWhiteSpace(o.Context.TargetName)
                         && PFlowAutoPostService.ComposerMatchesTarget(o.Xml, o.Context.TargetName)
-                        && (o.Has("Professional dashboard") || o.Has("Manage Page"))
+                        && (
+                            o.Has("Professional dashboard")
+                            || o.Has("Business Dashboard")
+                            || o.Has("Creator Dashboard")
+                            || o.Has("Manage Page")
+                        )
                 ),
             ],
             [
@@ -75,6 +143,47 @@ public static partial class FacebookLayoutRegistry
             [FacebookControlRole.Dashboard]
         );
         yield return new(
+            "profile.weekly-progress.v1",
+            FacebookScreenKind.OwnProfile,
+            [],
+            [
+                Rule(
+                    "weekly-progress-card",
+                    "Inline weekly progress tasks on an own profile",
+                    HasWeeklyProgressCard
+                ),
+                Rule(
+                    "weekly-progress-owner",
+                    "Own-profile evidence and requested name",
+                    o =>
+                        o.Test(TargetName)
+                        || (
+                            !string.IsNullOrWhiteSpace(o.Context.TargetName)
+                            && PFlowAutoPostService.ComposerMatchesTarget(
+                                o.Xml,
+                                o.Context.TargetName
+                            )
+                            && o.Has("Creator Dashboard")
+                        )
+                ),
+            ],
+            [
+                Authentication,
+                SwitcherOverlay,
+                Chooser,
+                ComposerOverlay,
+                Rule(
+                    "not-profile",
+                    "Menu and visitor views are not own profiles",
+                    o =>
+                        IsNameDetailsSheet(o)
+                        || AtxAgentClient.IsMenuPageInBloks(o.Screen)
+                        || o.Has("Admin quick access")
+                ),
+            ],
+            [FacebookControlRole.Dashboard]
+        );
+        yield return new(
             "profile.settings-copy.v1",
             FacebookScreenKind.ProfileSettings,
             [new("profile-settings-title", "Profile Settings")],
@@ -88,7 +197,7 @@ public static partial class FacebookLayoutRegistry
             [Authentication, SwitcherOverlay, Chooser, PersonalSettingsExcluded],
             [FacebookControlRole.CopyProfileLink]
         );
-        foreach (var variant in new[] { "dashboard", "professional", "header" })
+        foreach (var variant in new[] { "dashboard", "professional", "header", "muse-sidebar" })
         {
             var captured = variant;
             yield return new(
@@ -110,7 +219,9 @@ public static partial class FacebookLayoutRegistry
                         "menu-variant",
                         "Dashboard label variants with optional section headings",
                         o =>
-                            captured == "professional" ? o.Has("Professional dashboard")
+                            captured == "muse-sidebar" ? HasMenuMuseCard(o)
+                            : HasMenuMuseCard(o) ? false
+                            : captured == "professional" ? o.Has("Professional dashboard")
                             : captured == "dashboard"
                                 ? o.Has("Dashboard") && !o.Has("Professional dashboard")
                             : !o.Has("Dashboard") && !o.Has("Professional dashboard")
@@ -185,24 +296,106 @@ public static partial class FacebookLayoutRegistry
                     ),
                 ],
                 [],
-                []
+                captured switch
+                {
+                    PFlowLoginScreenKind.ContactsAccessIntro => [FacebookControlRole.Skip],
+                    PFlowLoginScreenKind.LanguageSuggestion =>
+                    [
+                        FacebookControlRole.ContinueInEnglish,
+                    ],
+                    _ => [],
+                }
             );
         }
     }
+
+    private static bool IsNameDetailsSheet(FacebookLayoutObservation o) =>
+        o.Has("To keep Facebook safe, we're showing information about people and their profiles.")
+        && o.Has("Transparency and privacy policy")
+        && o.Nodes.Any(n =>
+            new[] { n.Attribute("text")?.Value, n.Attribute("content-desc")?.Value }.Any(v =>
+                v != null
+                && v.StartsWith("About ", StringComparison.Ordinal)
+                && v.Length > 6
+                && o.Has(v[6..])
+            )
+        );
+
+    private static bool HasNameDetailsVerificationOffer(FacebookLayoutObservation o) =>
+        o.Nodes.Any(n =>
+            new[] { n.Attribute("text")?.Value, n.Attribute("content-desc")?.Value }.Any(v =>
+                v != null && v.StartsWith("Get verified with Meta", StringComparison.Ordinal)
+            )
+        );
+
+    private static bool HasWeeklyProgressCard(FacebookLayoutObservation o) =>
+        o.Nodes.Any(card =>
+            card.Attribute("package")?.Value == "com.facebook.katana"
+            && card.Attribute("class")?.Value == "android.view.ViewGroup"
+            && HasVisibleCardLabel(card, "Weekly progress")
+            && HasVisibleCardLabel(card, "View all")
+            && (
+                HasVisibleCardLabel(card, "Create 3 new public posts")
+                || HasVisibleCardLabel(card, "Get 3 new followers")
+                || HasVisibleCardLabel(card, "Create 3 new public posts with photos")
+            )
+        );
+
+    private static bool HasMenuMuseCard(FacebookLayoutObservation o) =>
+        o.Nodes.Any(card =>
+            card.Attribute("package")?.Value == "com.facebook.katana"
+            && card.Attribute("class")?.Value == "android.view.ViewGroup"
+            && !card.AncestorsAndSelf("node")
+                .Any(n =>
+                    n.Attribute("visible-to-user")?.Value == "false"
+                    || n.Attribute("enabled")?.Value == "false"
+                )
+            && HasVisibleCardLabel(card, "Muse")
+            && HasVisibleCardLabel(card, "Get app")
+            && HasVisibleCardLabel(card, "Meet Muse, your personal AI agent.")
+        );
+
+    private static bool HasVisibleCardLabel(XElement card, string label) =>
+        card.Descendants("node")
+            .Any(n =>
+                !n.AncestorsAndSelf("node")
+                    .Any(a =>
+                        a.Attribute("visible-to-user")?.Value == "false"
+                        || a.Attribute("enabled")?.Value == "false"
+                    )
+                && new[] { n.Attribute("text")?.Value, n.Attribute("content-desc")?.Value }.Any(
+                    value => string.Equals(value?.Trim(), label, StringComparison.Ordinal)
+                )
+            );
 
     private static BloksElement? MenuProfileTarget(FacebookLayoutObservation o)
     {
         var screen = o.Screen;
         var expectedName = o.Context.TargetName;
+        // Some installed drawers repeat the active-profile accessibility label
+        // inside Create Facebook Page. That action is not a second profile header.
+        var actionChildren = screen
+            .AllElements.Where(e =>
+                e.Matches("Create Facebook Page", false)
+                || e.Matches("Create Page", false)
+                || e.Matches("Log into another account", false)
+            )
+            .SelectMany(e => e.Flatten())
+            .ToHashSet();
         if (string.IsNullOrWhiteSpace(expectedName))
         {
             var names = screen
-                .AllElements.Where(e => e.Enabled)
+                .AllElements.Where(e => e.Enabled && !actionChildren.Contains(e))
                 .Select(e => e.ContentDesc)
                 .Where(label =>
                     label.EndsWith(", see your profile", StringComparison.OrdinalIgnoreCase)
+                    || label.EndsWith(", Profile", StringComparison.OrdinalIgnoreCase)
                 )
-                .Select(label => label[..^18])
+                .Select(label =>
+                    label.EndsWith(", Profile", StringComparison.OrdinalIgnoreCase)
+                        ? label[..^9]
+                        : label[..^18]
+                )
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Take(2)
                 .ToArray();
@@ -213,9 +406,13 @@ public static partial class FacebookLayoutRegistry
         var headers = screen
             .AllElements.Where(e =>
                 e.Enabled
+                && !actionChildren.Contains(e)
                 && e.Width > 0
                 && e.Height > 0
-                && MatchesMenuName(e, expectedName + ", see your profile")
+                && (
+                    MatchesMenuName(e, expectedName + ", see your profile")
+                    || MatchesMenuName(e, expectedName + ", Profile")
+                )
             )
             .GroupBy(e => e.Bounds)
             .Select(g => g.First())
@@ -228,6 +425,7 @@ public static partial class FacebookLayoutRegistry
         var targets = screen
             .AllElements.Where(e =>
                 e.Enabled
+                && !actionChildren.Contains(e)
                 && e.Width > 0
                 && e.Height > 0
                 && e.CenterY < height / 2

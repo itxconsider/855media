@@ -234,6 +234,9 @@ public partial class AutoPostViewModel : ViewModelBase
 
     // --- Automation Engine State ---
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AutomationButtonText))]
+    [NotifyPropertyChangedFor(nameof(AutomationButtonCommand))]
+    [NotifyPropertyChangedFor(nameof(CanToggleAutomation))]
     [NotifyCanExecuteChangedFor(nameof(FetchDevicePagesCommand))]
     [NotifyCanExecuteChangedFor(nameof(FetchSelectedPagesInfoCommand))]
     [NotifyPropertyChangedFor(nameof(CanEditAccountBulkSelection))]
@@ -241,6 +244,7 @@ public partial class AutoPostViewModel : ViewModelBase
     private bool _isRunning;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanToggleAutomation))]
     [NotifyCanExecuteChangedFor(nameof(FetchDevicePagesCommand))]
     [NotifyCanExecuteChangedFor(nameof(FetchSelectedPagesInfoCommand))]
     [NotifyPropertyChangedFor(nameof(CanEditAccountBulkSelection))]
@@ -1055,7 +1059,7 @@ public partial class AutoPostViewModel : ViewModelBase
 
         // Populate sample page data matching user's active configuration (885media, etc.)
         InitializeDefaultPages();
-        InitializeSampleTasks();
+        InitializePostQueue();
         InitializePFlowDashboard();
         InitializeAccountMultiSelect();
         ScreenTimeOptions.PropertyChanged += ScreenTimeOptionsChanged;
@@ -1093,6 +1097,7 @@ public partial class AutoPostViewModel : ViewModelBase
             AddAccountLine = "";
             DisposeNetworkMonitor();
             DisposePFlowDashboard();
+            DisposePostQueuePersistence();
             DisposeAccountMultiSelect();
             _manageSelectionRefresh?.Dispose();
             foreach (var group in _manageGroupCache.Values)
@@ -1111,6 +1116,7 @@ public partial class AutoPostViewModel : ViewModelBase
 
     public override async Task InitializeAsync()
     {
+        await ReconcileSavedPostQueueAsync();
         await LoadConfigFromDiskAsync();
         await LoadPagesFromDiskAsync();
         await LoadDevicesAsync();
@@ -1165,9 +1171,13 @@ public partial class AutoPostViewModel : ViewModelBase
             OnPropertyChanged(nameof(SelectedInstancesCountSummary));
             OnPropertyChanged(nameof(ManagePagesHeaderTitle));
             RefreshDisplayedManagePages();
-            StatusSummary = $"Detected {Instances.Count} LDPlayer instances.";
-            _snackbarManager.Notify($"Loaded {Instances.Count} LDPlayer instances.");
             StartNetworkMonitor();
+            StatusSummary = "Refreshing device IP information...";
+            await RefreshNetworkRowsAsync(force: true);
+            StatusSummary = $"Detected {Instances.Count} LDPlayer instances.";
+            _snackbarManager.Notify(
+                $"Loaded {Instances.Count} LDPlayer instances and refreshed IP information."
+            );
         }
         catch (Exception ex)
         {
@@ -1222,6 +1232,12 @@ public partial class AutoPostViewModel : ViewModelBase
         }
 
         var selectedPostingDevices = selectedWorkers.Select(w => w.Index).ToHashSet();
+        foreach (
+            var task in Tasks.Where(t =>
+                selectedPostingDevices.Contains(ResolveDeviceIndex(t.DeviceName))
+            )
+        )
+            PFlowTaskRouting.RestoreUnmatchedQueueRow(task);
         bool hasQueuedReels = Tasks.Any(t =>
             PFlowTaskRouting.IsQueuedPost(t)
             && selectedPostingDevices.Contains(ResolveDeviceIndex(t.DeviceName))
@@ -1965,12 +1981,10 @@ public partial class AutoPostViewModel : ViewModelBase
     private FacebookPageTargetViewModel? _pageConfigTarget;
     private static readonly string[] PageConfigProperties =
     [
-        "PageName",
-        "Type",
-        "PageId",
-        "PersonaUid",
-        "UserUid",
         "CustomMaxDailyPosts",
+        "ReelTitleFromTextFile",
+        "PhotoTitleFromTextFile",
+        "VideoTitleFromTextFile",
         "UseTitleFromTextFile",
         "UseCaptionFromFilename",
         "TitleVideoReel",
@@ -2468,7 +2482,14 @@ public partial class AutoPostViewModel : ViewModelBase
                 pageTarget.PersonaUid = PreferValue(personaUid, pageTarget.PersonaUid);
                 pageTarget.UserUid = PreferValue(accountDetails.Uid, pageTarget.UserUid);
                 pageTarget.PageName = isRootSnapshot
-                    ? PFlowPageName.PreferRootName(page.PageName, pageTarget.PageName)
+                    ? PFlowPageName.PreferRootName(
+                        page.PageName,
+                        string.IsNullOrWhiteSpace(pageTarget.VerifiedDisplayName)
+                            ? pageTarget.PageName
+                            : pageTarget.VerifiedDisplayName,
+                        !string.IsNullOrWhiteSpace(pageTarget.VerifiedDisplayName)
+                            || pageTarget.LivePageAccessVerified == true
+                    )
                     : PreferValue(page.PageName, pageTarget.PageName);
                 page.PageName = pageTarget.PageName;
                 pageTarget.ProfilePictureUrl = PreferValue(
@@ -2723,6 +2744,22 @@ public partial class AutoPostViewModel : ViewModelBase
                 continue;
 
             attempted++;
+            page.LivePageAccessVerified = false;
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                foreach (
+                    var row in Pages.Where(p =>
+                        p.DeviceName == target.Name
+                        && p.UserUid == rootDetails.Uid
+                        && p.PageId == page.PageId
+                    )
+                )
+                {
+                    row.Model.LivePageAccessVerified = false;
+                    row.RefreshAccessStatus();
+                }
+            });
+            await PersistPagesSnapshotAsync();
             if (i > 0)
                 await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
             await ReportFetchProgressAsync(
@@ -2750,10 +2787,19 @@ public partial class AutoPostViewModel : ViewModelBase
                         )
                 );
                 if (pageUiInfo == null)
-                    pageUiInfo = await RecoverRepeatedPageNameAsync(
+                    pageUiInfo = await RecoverPageNameAsync(
                         target,
                         rootDetails,
                         page,
+                        pageUid,
+                        cancellationToken
+                    );
+                if (pageUiInfo != null)
+                    await AcceptFetchedPageNameAsync(
+                        target,
+                        rootDetails,
+                        page,
+                        pageUiInfo,
                         pageUid,
                         cancellationToken
                     );
@@ -3865,18 +3911,6 @@ public partial class AutoPostViewModel : ViewModelBase
         };
 
         await RefreshMediaCountsForPagesAsync(selectedPages.ToArray());
-        var usedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        if (UploadUniqueFile)
-        {
-            foreach (var t in Tasks)
-            {
-                if (!string.IsNullOrWhiteSpace(t.FilePath))
-                {
-                    usedFiles.Add(t.FilePath);
-                }
-            }
-        }
-
         int totalQueued = 0;
         int pagesWithFiles = 0;
         var skippedDueToDailyLimit = new List<string>();
@@ -3922,11 +3956,20 @@ public partial class AutoPostViewModel : ViewModelBase
                 continue;
             }
 
-            // Exclude already used files if UploadUniqueFile is checked
-            if (UploadUniqueFile)
-            {
-                candidateFiles = candidateFiles.Where(f => !usedFiles.Contains(f)).ToList();
-            }
+            // A target must never receive the same queued file twice. The unique option
+            // additionally reserves it across targets sharing the media folder.
+            var reservedPaths = Tasks
+                .Where(t =>
+                    UploadUniqueFile
+                    || (
+                        ResolveDeviceIndex(t.DeviceName) == ResolveDeviceIndex(page.DeviceName)
+                        && PFlowTaskRouting.MatchesTarget(t, page.Model, Pages.Select(p => p.Model))
+                    )
+                )
+                .Select(t => t.FilePath);
+            candidateFiles = PFlowQueueMedia
+                .ExcludeReserved(candidateFiles, reservedPaths)
+                .ToList();
 
             if (candidateFiles.Count == 0)
             {
@@ -3968,26 +4011,14 @@ public partial class AutoPostViewModel : ViewModelBase
                 pagesWithFiles++;
                 foreach (var file in filesToQueue)
                 {
-                    if (UploadUniqueFile)
-                    {
-                        usedFiles.Add(file);
-                    }
-
-                    string titleConfig = postType switch
-                    {
-                        "Picture" => page.TitleImage,
-                        "Video" => page.TitleVideoLong,
-                        _ => page.Model.GetReelCaptionForFile(file),
-                    };
-
                     var title =
                         postType == "Story"
                             ? Path.GetFileName(file)
                             : ResolveCaptionForMedia(
                                 file,
-                                titleConfig,
-                                page.UseTitleFromTextFile,
-                                page.UseCaptionFromFilename
+                                postType == "Picture" ? page.PhotoTitleFromTextFile
+                                    : postType == "Video" ? page.VideoTitleFromTextFile
+                                    : page.ReelTitleFromTextFile
                             );
 
                     var task = new AutoPostTaskItem
@@ -4193,11 +4224,6 @@ public partial class AutoPostViewModel : ViewModelBase
             Pages.Add(new FacebookPageTargetViewModel(defaults[i], i + 1));
         }
         RefreshDisplayedManagePages();
-    }
-
-    private void InitializeSampleTasks()
-    {
-        Tasks.Clear();
     }
 
     private readonly IPFlowAutoPostService? _autoPostService;

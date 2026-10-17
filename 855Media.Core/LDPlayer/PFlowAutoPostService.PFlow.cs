@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -164,24 +164,20 @@ public partial class PFlowAutoPostService
         await PFlowJobBindingGuard.RequireAsync(_ldPlayer, job, customPath, ct);
         var identityXml =
             await _ldPlayer.DumpUiHierarchyAsync(job.DeviceIndex, customPath, ct) ?? "";
-        bool ownProfile =
-            ComposerMatchesTarget(identityXml, job.TargetName)
-            && !identityXml.Contains("Admin quick access", StringComparison.OrdinalIgnoreCase)
-            && (
-                job.IsProfile
-                    ? identityXml.Contains("Edit profile", StringComparison.OrdinalIgnoreCase)
-                    : identityXml.Contains(
-                        "Professional dashboard",
-                        StringComparison.OrdinalIgnoreCase
-                    ) || identityXml.Contains("Manage Page", StringComparison.OrdinalIgnoreCase)
-            );
-        if (!ownProfile)
+        PFlowPageIdentityRestriction.ThrowIfVisible(job, identityXml);
+        var ownProfile = PFlowPostTargetSession.HasOwnProfile(job, identityXml);
+        var continued = PFlowPostTargetSession.ConsumeContinuation(job, identityXml);
+        if (!ownProfile && !continued)
             throw new InvalidOperationException(
                 "Active own-profile identity changed before media transfer."
             );
-        job.IdentityEvidence =
-            $"Live UID verification and own-profile controls verified {job.TargetId} ({job.TargetName}) before media staging.";
+        job.IdentityEvidence = continued
+            ? $"Active session UID verified {job.TargetId} ({job.TargetName}); continuing the same target after its previous confirmed post."
+            : $"Live UID verification and own-profile controls verified {job.TargetId} ({job.TargetName}) before media staging.";
         await checkpoint(job);
+        var profileVerifier = new PFlowProfilePublicationVerifier(_ldPlayer);
+        var requireProfileProof = PFlowProfilePublicationVerifier.Required(job);
+        job.ProfilePublicationCheckRequired = false;
         if (job.PostType == "Story")
         {
             await PublishStoryAsync(job, checkpoint, customPath, ct, dryRun);
@@ -200,10 +196,49 @@ public partial class PFlowAutoPostService
                 job.SubmittedUtc = DateTime.UtcNow;
             await Step(state.ToString());
         }
+        async Task<PFlowProfilePublicationVerifier.Proof?> ReadProfileProof()
+        {
+            if (!requireProfileProof)
+                return null;
+            job.ProfilePublicationCheckRequired = true;
+            using var profileDeadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            profileDeadline.CancelAfter(TimeSpan.FromSeconds(45));
+            try
+            {
+                for (var attempt = 0; attempt < 2; attempt++)
+                {
+                    var proof = await profileVerifier.VerifyAsync(
+                        job,
+                        customPath,
+                        profileDeadline.Token
+                    );
+                    await PFlowTrace.SessionAsync(
+                        job.DeviceIndex,
+                        "publication.profile-check",
+                        $"attempt={attempt + 1}; verified={proof != null}; reason={profileVerifier.FailureReason}",
+                        ct
+                    );
+                    if (proof != null)
+                        return proof;
+                    if (attempt == 0)
+                        await Task.Delay(1200, profileDeadline.Token);
+                }
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested) { }
+            return null;
+        }
+        // Keep legacy history paths stable; new verified Reel jobs use an isolated
+        // album for exact native gallery selection and the same Android fallback URI.
+        if (
+            job.PostType is "Reel" or "Video"
+            && job.AccountBinding != null
+            && System.Text.RegularExpressions.Regex.IsMatch(job.Sha256, "^[0-9a-fA-F]{64}$")
+        )
+            job.NativeReelAlbum = true;
         await Step("Transferring and verifying media");
         await _ldPlayer.ExecuteAdbAsync(
             job.DeviceIndex,
-            "shell mkdir -p /sdcard/DCIM/855Media",
+            "shell mkdir -p " + ShellQuote(job.RemotePath[..job.RemotePath.LastIndexOf('/')]),
             customPath,
             ct
         );
@@ -236,127 +271,143 @@ public partial class PFlowAutoPostService
         if (!await _ldPlayer.ScanMediaFileAsync(job.DeviceIndex, job.RemotePath, customPath, ct))
             throw new InvalidOperationException("Media scan failed.");
         await Stage(PFlowState.MediaReady);
-        await Step("Opening composer");
-        bool opened =
-            job.PostType == "Picture"
-                ? await _ldPlayer.ShareImageToFacebookAsync(
-                    job.DeviceIndex,
-                    job.RemotePath,
-                    job.AppPackage,
-                    customPath,
-                    ct
-                )
-                : await _ldPlayer.ShareVideoToFacebookAsync(
-                    job.DeviceIndex,
-                    job.RemotePath,
-                    job.AppPackage,
-                    customPath,
-                    ct
-                );
-        if (!opened)
-            throw new InvalidOperationException("Facebook share intent failed.");
-        string xml = "";
-        bool shareDestinationSelected = false,
-            shareOnceTapped = false;
+        string xml;
         var wait = Stopwatch.StartNew();
-        while (wait.Elapsed < TimeSpan.FromSeconds(30))
+        var nativeComposer = job.NativeReelAlbum
+            ? await TryOpenNativeReelComposerAsync(job, checkpoint, customPath, ct, continued)
+            : null;
+        if (nativeComposer != null)
+            xml = nativeComposer;
+        else
         {
-            ct.ThrowIfCancellationRequested();
-            xml = await _ldPlayer.DumpUiHierarchyAsync(job.DeviceIndex, customPath, ct) ?? "";
-            if (!PFlowShareDestination.IsChooser(xml) && IsComposer(xml, job.PostType))
-            {
-                if (!shareDestinationSelected || !shareOnceTapped)
-                    throw new InvalidOperationException(
-                        "Share chooser and Just once were not verified for this job."
-                    );
-                break;
-            }
-            if (PFlowShareDestination.IsChooser(xml))
-            {
-                if (!shareDestinationSelected)
-                {
-                    if (PFlowShareDestination.IsDestinationSelected(xml, job.PostType))
-                    {
-                        await Step(
-                            "Share destination already selected: "
-                                + (job.PostType == "Picture" ? "Feed" : "Reels")
-                        );
-                        shareDestinationSelected = true;
-                    }
-                    else
-                    {
-                        var destination = PFlowShareDestination.Destination(xml, job.PostType);
-                        var point = ScreenTimeHierarchy.Center(destination);
-                        if (!point.HasValue)
-                            throw new InvalidOperationException(
-                                $"Share destination {(job.PostType == "Picture" ? "Feed" : "Reels")} is missing or ambiguous."
-                            );
-                        await Step(
-                            "Selecting share destination: "
-                                + (job.PostType == "Picture" ? "Feed" : "Reels")
-                        );
-                        if (
-                            !await _ldPlayer.TapAsync(
-                                job.DeviceIndex,
-                                point.Value.X,
-                                point.Value.Y,
-                                customPath,
-                                ct
-                            )
-                        )
-                            throw new InvalidOperationException(
-                                "Share destination tap was not acknowledged."
-                            );
-                        shareDestinationSelected = true;
-                    }
-                }
-                else if (!shareOnceTapped)
-                {
-                    if (
-                        PFlowShareDestination.HasSelectedDestination(xml)
-                        && !PFlowShareDestination.IsDestinationSelected(xml, job.PostType)
+            xml = "";
+            await Step("Opening composer");
+            bool opened =
+                job.PostType == "Picture"
+                    ? await _ldPlayer.ShareImageToFacebookAsync(
+                        job.DeviceIndex,
+                        job.RemotePath,
+                        job.AppPackage,
+                        customPath,
+                        ct
                     )
+                    : await _ldPlayer.ShareVideoToFacebookAsync(
+                        job.DeviceIndex,
+                        job.RemotePath,
+                        job.AppPackage,
+                        customPath,
+                        ct
+                    );
+            if (!opened)
+                throw new InvalidOperationException("Facebook share intent failed.");
+            bool shareDestinationSelected = false,
+                shareDestinationTapped = false,
+                shareOnceTapped = false;
+            wait.Restart();
+            while (wait.Elapsed < TimeSpan.FromSeconds(30))
+            {
+                ct.ThrowIfCancellationRequested();
+                xml = await _ldPlayer.DumpUiHierarchyAsync(job.DeviceIndex, customPath, ct) ?? "";
+                PFlowPageIdentityRestriction.ThrowIfVisible(job, xml);
+                if (!PFlowShareDestination.IsChooser(xml) && IsComposer(xml, job.PostType))
+                {
+                    if (!shareDestinationSelected || (!shareOnceTapped && !shareDestinationTapped))
                         throw new InvalidOperationException(
-                            "Selected share destination changed before Just once."
+                            "Share chooser and Just once were not verified for this job."
                         );
-                    var once = ScreenTimeHierarchy.Center(PFlowShareDestination.JustOnce(xml));
-                    if (once.HasValue)
+                    break;
+                }
+                if (PFlowShareDestination.IsChooser(xml))
+                {
+                    if (!shareDestinationSelected)
+                    {
+                        if (PFlowShareDestination.IsDestinationSelected(xml, job.PostType))
+                        {
+                            await Step(
+                                "Share destination already selected: "
+                                    + (job.PostType == "Picture" ? "Feed" : "Reels")
+                            );
+                            shareDestinationSelected = true;
+                        }
+                        else
+                        {
+                            var destination = PFlowShareDestination.Destination(xml, job.PostType);
+                            var point = ScreenTimeHierarchy.Center(destination);
+                            if (!point.HasValue)
+                                throw new InvalidOperationException(
+                                    $"Share destination {(job.PostType == "Picture" ? "Feed" : "Reels")} is missing or ambiguous."
+                                );
+                            await Step(
+                                "Selecting share destination: "
+                                    + (job.PostType == "Picture" ? "Feed" : "Reels")
+                            );
+                            if (
+                                !await _ldPlayer.TapAsync(
+                                    job.DeviceIndex,
+                                    point.Value.X,
+                                    point.Value.Y,
+                                    customPath,
+                                    ct
+                                )
+                            )
+                                throw new InvalidOperationException(
+                                    "Share destination tap was not acknowledged."
+                                );
+                            // Android's alternative-app row can launch immediately, bypassing
+                            // Just once. Only an acknowledged, requested destination tap
+                            // from this job's chooser authorizes that direct transition.
+                            shareDestinationTapped = true;
+                            shareDestinationSelected = true;
+                        }
+                    }
+                    else if (!shareOnceTapped)
                     {
                         if (
-                            !await _ldPlayer.TapAsync(
-                                job.DeviceIndex,
-                                once.Value.X,
-                                once.Value.Y,
-                                customPath,
-                                ct
-                            )
+                            PFlowShareDestination.HasSelectedDestination(xml)
+                            && !PFlowShareDestination.IsDestinationSelected(xml, job.PostType)
                         )
                             throw new InvalidOperationException(
-                                "Share Just once tap was not acknowledged."
+                                "Selected share destination changed before Just once."
                             );
-                        shareOnceTapped = true;
+                        var once = ScreenTimeHierarchy.Center(PFlowShareDestination.JustOnce(xml));
+                        if (once.HasValue)
+                        {
+                            if (
+                                !await _ldPlayer.TapAsync(
+                                    job.DeviceIndex,
+                                    once.Value.X,
+                                    once.Value.Y,
+                                    customPath,
+                                    ct
+                                )
+                            )
+                                throw new InvalidOperationException(
+                                    "Share Just once tap was not acknowledged."
+                                );
+                            shareOnceTapped = true;
+                        }
                     }
+                    await Task.Delay(600, ct);
+                    continue;
                 }
+                if (HasLabel(xml, ["Create Reel", "Share as Reel"]))
+                    await ClickElementByMatchingTextAsync(
+                        job.DeviceIndex,
+                        xml,
+                        ["Create Reel", "Share as Reel"],
+                        customPath,
+                        ct
+                    );
+                else if (HasLabel(xml, ["Add audio", "Effects", "Edit video"]))
+                    await ClickElementByMatchingTextAsync(
+                        job.DeviceIndex,
+                        xml,
+                        ["Next", "Continue"],
+                        customPath,
+                        ct
+                    );
                 await Task.Delay(600, ct);
-                continue;
             }
-            if (HasLabel(xml, ["Create Reel", "Share as Reel"]))
-                await ClickElementByMatchingTextAsync(
-                    job.DeviceIndex,
-                    xml,
-                    ["Create Reel", "Share as Reel"],
-                    customPath,
-                    ct
-                );
-            else if (HasLabel(xml, ["Add audio", "Effects", "Edit video"]))
-                await ClickElementByMatchingTextAsync(
-                    job.DeviceIndex,
-                    xml,
-                    ["Next", "Continue"],
-                    customPath,
-                    ct
-                );
-            await Task.Delay(600, ct);
         }
         if (!IsComposer(xml, job.PostType))
             throw new InvalidOperationException(
@@ -371,6 +422,7 @@ public partial class PFlowAutoPostService
             if (!await _ldPlayer.EnableAdbKeyboardAsync(job.DeviceIndex, customPath, ct))
                 throw new InvalidOperationException("ADB keyboard unavailable.");
             xml = await _ldPlayer.DumpUiHierarchyAsync(job.DeviceIndex, customPath, ct) ?? "";
+            PFlowPageIdentityRestriction.ThrowIfVisible(job, xml);
             var node = FindPFlowCaptionField(xml);
             if (node == null)
                 throw new InvalidOperationException("Caption field was not found.");
@@ -387,6 +439,7 @@ public partial class PFlowAutoPostService
             // A label may open a separate caption editor. Resolve its editable control after navigation.
             await Task.Delay(600, ct);
             xml = await _ldPlayer.DumpUiHierarchyAsync(job.DeviceIndex, customPath, ct) ?? "";
+            PFlowPageIdentityRestriction.ThrowIfVisible(job, xml);
             var editor = FindPFlowCaptionField(xml);
             if (editor == null)
                 throw new InvalidOperationException("Caption editor did not open.");
@@ -422,6 +475,7 @@ public partial class PFlowAutoPostService
             {
                 await Task.Delay(300, ct);
                 xml = await _ldPlayer.DumpUiHierarchyAsync(job.DeviceIndex, customPath, ct) ?? "";
+                PFlowPageIdentityRestriction.ThrowIfVisible(job, xml);
                 if (CaptionTextMatches(xml, job.Caption))
                     break;
             } while (captionWait.Elapsed < TimeSpan.FromSeconds(8));
@@ -429,7 +483,9 @@ public partial class PFlowAutoPostService
                 throw new InvalidOperationException("Caption text could not be verified.");
             await _ldPlayer.PressBackAsync(job.DeviceIndex, customPath, ct);
         }
+        await SetOptionalReelTitleAsync(job, checkpoint, customPath, ct);
         xml = await _ldPlayer.DumpUiHierarchyAsync(job.DeviceIndex, customPath, ct) ?? "";
+        PFlowPageIdentityRestriction.ThrowIfVisible(job, xml);
         if (!IsComposer(xml, job.PostType) || !await ComposerIdentityMatchesAsync(xml))
             throw new InvalidOperationException("Composer context changed before submission.");
         var buttons =
@@ -471,6 +527,7 @@ public partial class PFlowAutoPostService
             _atxClient != null && await _atxClient.ClearLastToastAsync(job.DeviceIndex, ct);
         await PFlowJobBindingGuard.RequireAsync(_ldPlayer, job, customPath, ct);
         xml = await _ldPlayer.DumpUiHierarchyAsync(job.DeviceIndex, customPath, ct) ?? "";
+        PFlowPageIdentityRestriction.ThrowIfVisible(job, xml);
         var readyLayout = FacebookLayoutRegistry.Match(
             xml,
             job.PostType == "Picture"
@@ -489,6 +546,11 @@ public partial class PFlowAutoPostService
             || readyLayout.Control(FacebookControlRole.Publish) == null
             || !await ComposerIdentityMatchesAsync(xml)
             || FindVisiblePublishControl(xml, buttons) == null
+            || (
+                job.ReelTitle.Length > 0
+                && FindReelTitleField(xml) is { } titleField
+                && titleField.Attribute("text")?.Value != job.ReelTitle
+            )
             || (
                 !string.IsNullOrWhiteSpace(job.Caption)
                 && FindPFlowCaptionField(xml) != null
@@ -521,13 +583,26 @@ public partial class PFlowAutoPostService
         var confirmationWindow = UploadConfirmationWindow(job.Size, PublicationTimeout);
         wait.Restart();
         var nextNotificationPoll = TimeSpan.Zero;
-        var nextBrowse = TimeSpan.FromSeconds(8);
-        var browsedWhileWaiting = false;
-        FacebookBrowseStateMachine? waitingBrowse = null;
+        string? pendingUploadEvidence = null;
+        TimeSpan? uploadCompletedAt = null;
+        async Task<string?> ReadSuccessToast()
+        {
+            if (!toastAvailable)
+                return null;
+            var toast = await _atxClient!.ReadLastToastAsync(job.DeviceIndex, ct);
+            toastAvailable = toast.Supported;
+            return
+                toast.Message != null
+                && PFlowConfirmation.IsPublicationSuccess(toast.Message, job.PostType)
+                ? "Fresh Facebook toast: " + toast.Message.Trim()
+                : null;
+        }
         while (wait.Elapsed < confirmationWindow)
         {
             ct.ThrowIfCancellationRequested();
+            var freshToast = await ReadSuccessToast();
             xml = await _ldPlayer.DumpUiHierarchyAsync(job.DeviceIndex, customPath, ct) ?? "";
+            PFlowPageIdentityRestriction.ThrowIfVisible(job, xml);
             if (HasLabel(xml, ["Couldn't post", "Upload failed", "Unable to publish"]))
             {
                 // Facebook may keep/retry a background upload despite the visible error.
@@ -538,23 +613,10 @@ public partial class PFlowAutoPostService
                 await checkpoint(job);
                 return;
             }
-            // A newly visited feed item must never be mistaken for this upload's result.
-            var evidence = browsedWhileWaiting
-                ? null
-                : NewPublicationEvidence(xml, before, job.PostType);
-            if (evidence == null && toastAvailable)
-            {
-                var toast = await _atxClient!.ReadLastToastAsync(job.DeviceIndex, ct);
-                toastAvailable = toast.Supported;
-                if (toast.Message != null && xml.Contains(job.AppPackage, StringComparison.Ordinal))
-                    evidence = NewPublicationEvidence(
-                        $"<hierarchy><node text='{System.Security.SecurityElement.Escape(toast.Message)}'/></hierarchy>",
-                        new System.Collections.Generic.HashSet<string>(),
-                        job.PostType
-                    );
-                if (evidence != null)
-                    evidence = "Fresh Facebook toast: " + evidence;
-            }
+            // Stay on Facebook's post-submit surface so scrolling cannot hide its result.
+            var evidence = NewPublicationEvidence(xml, before, job.PostType);
+            if (evidence == null && xml.Contains(job.AppPackage, StringComparison.Ordinal))
+                evidence = freshToast ?? await ReadSuccessToast();
             if (
                 evidence == null
                 && notificationBaselineAvailable
@@ -570,88 +632,97 @@ public partial class PFlowAutoPostService
                     ),
                     job.AppPackage
                 );
-                evidence = PFlowConfirmation.NewUploadCompletion(
+                var uploadEvidence = PFlowConfirmation.NewUploadCompletion(
                     notificationBaseline,
                     notifications,
                     Labels(xml).Any() && !IsComposer(xml, job.PostType)
                 );
-                nextNotificationPoll = wait.Elapsed + TimeSpan.FromSeconds(2);
-            }
-            if (evidence != null)
-            {
-                job.Evidence = evidence;
-                job.ConfirmedUtc = DateTime.UtcNow;
-                await Stage(PFlowState.Confirmed);
-                return;
-            }
-            if (
-                job.PostType is "Reel" or "Video"
-                && notificationBaselineAvailable
-                && wait.Elapsed >= nextBrowse
-                && waitingBrowse?.State != FacebookBrowseState.Stopped
-            )
-            {
-                nextBrowse = wait.Elapsed + TimeSpan.FromSeconds(8);
-                var surface = WaitingBrowseSurface(xml);
-                if (surface != null)
+                if (notifications.Any(n => n.Ongoing))
                 {
-                    var expectedScreen =
-                        surface == "Feed"
-                            ? FacebookScreenKind.NewsFeed
-                            : FacebookScreenKind.ReelsFeed;
-                    if (waitingBrowse?.Screen != expectedScreen)
-                    {
-                        waitingBrowse?.Stop();
-                        waitingBrowse = new FacebookBrowseStateMachine(expectedScreen);
-                    }
-                    var decision = waitingBrowse.Observe(new FacebookLayoutObservation(xml));
+                    pendingUploadEvidence = null;
+                    uploadCompletedAt = null;
+                }
+                if (uploadEvidence != null && pendingUploadEvidence == null)
+                {
+                    pendingUploadEvidence = uploadEvidence;
+                    uploadCompletedAt = wait.Elapsed;
                     await PFlowTrace.SessionAsync(
                         job.DeviceIndex,
-                        "layout.upload-wait.browse",
-                        decision.Diagnostic,
+                        "publication.upload-complete",
+                        "Waiting briefly for direct Facebook publication confirmation before profile fallback.",
                         ct
                     );
-                    var (width, height) = PFlowPersonaSwitcherService.ParseScreenDimensions(xml);
-                    if (
-                        decision.Allowed
-                        && width > 0
-                        && height > 0
-                        && waitingBrowse.TryBeginInput(FacebookBrowseAction.Scroll)
-                    )
+                }
+                nextNotificationPoll = wait.Elapsed + TimeSpan.FromSeconds(2);
+            }
+            if (
+                evidence == null
+                && pendingUploadEvidence != null
+                && wait.Elapsed - uploadCompletedAt!.Value
+                    >= PFlowConfirmation.DirectConfirmationGrace(confirmationWindow)
+            )
+                evidence = pendingUploadEvidence;
+            if (evidence != null)
+            {
+                await PFlowTrace.SessionAsync(
+                    job.DeviceIndex,
+                    "publication.confirmation-route",
+                    PFlowConfirmation.IsNotificationOnly(evidence)
+                            ? "profile-fallback; reason=upload-only"
+                        : evidence.StartsWith("Fresh Facebook toast:", StringComparison.Ordinal)
+                            ? "direct-app-toast"
+                        : "direct-app-message",
+                    ct
+                );
+                if (requireProfileProof && PFlowConfirmation.IsNotificationOnly(evidence))
+                {
+                    await Step(
+                        "Refreshing target profile and checking Reel caption and publication time"
+                    );
+                    var proof = await ReadProfileProof();
+                    if (proof == null)
                     {
-                        var start =
-                            surface == "Reels"
-                                ? ScreenTimeNavigation.ReelsSwipeStart(xml, width, height)
-                                : ScreenTimeNavigation.FeedSwipeStart(xml, width, height);
-                        // Disable UI text confirmation before input, including an uncertain swipe result.
-                        browsedWhileWaiting = true;
-                        await _ldPlayer.SwipeAsync(
-                            job.DeviceIndex,
-                            start.X,
-                            start.Y,
-                            width / 2,
-                            height / 3,
-                            400,
-                            customPath,
-                            ct
+                        job.Evidence = evidence;
+                        job.Error =
+                            "Upload result received, but the matching Reel was not verified on the target profile. Review the Page before retrying; files were retained.";
+                        job.RemoteCleanupState = "Held for publication review";
+                        job.LocalDeleteState = "Held for publication review";
+                        await Stage(PFlowState.Unknown);
+                    }
+                    else
+                    {
+                        job.PostId = proof.Id;
+                        job.PostUrl = proof.Url;
+                        await Stage(
+                            PFlowConfirmation.RecordPublicationEvidence(job, proof.Evidence)
                         );
                     }
                 }
-                else if (waitingBrowse != null)
-                {
-                    // Authentication/foreign-app observations stop further browsing,
-                    // while upload confirmation can still arrive independently.
-                    var decision = waitingBrowse.Observe(new FacebookLayoutObservation(xml));
-                    await PFlowTrace.SessionAsync(
-                        job.DeviceIndex,
-                        "layout.upload-wait.browse",
-                        decision.Diagnostic,
-                        ct
-                    );
-                    waitingBrowse.BeginRecovery();
-                }
+                else
+                    await Stage(PFlowConfirmation.RecordPublicationEvidence(job, evidence));
+                return;
             }
             await Task.Delay(400, ct);
+        }
+        if (requireProfileProof)
+        {
+            await PFlowTrace.SessionAsync(
+                job.DeviceIndex,
+                "publication.confirmation-route",
+                "profile-fallback; reason=no-direct-confirmation-before-timeout",
+                ct
+            );
+            await Step("Checking target profile after upload confirmation wait");
+            var proof = await ReadProfileProof();
+            if (proof != null)
+            {
+                job.PostId = proof.Id;
+                job.PostUrl = proof.Url;
+                await Stage(PFlowConfirmation.RecordPublicationEvidence(job, proof.Evidence));
+                return;
+            }
+            job.RemoteCleanupState = "Held for publication review";
+            job.LocalDeleteState = "Held for publication review";
         }
         job.State = PFlowState.Unknown;
         job.Error =
@@ -793,22 +864,35 @@ public partial class PFlowAutoPostService
 
     internal static string? NewPublicationEvidence(string xml, ISet<string> before, string type)
     {
-        var allowed =
-            type == "Story"
-                ? new[]
-                {
-                    "Your story has been shared",
-                    "Your story was shared",
-                    "Your story was published",
-                    "Story shared",
-                }
-            : type == "Picture"
-                ? new[] { "Your post has been shared", "Your post was published", "Post published" }
-            : new[] { "Your reel has been shared", "Your reel was published", "Reel published" };
-        return Labels(xml)
-            .FirstOrDefault(x =>
-                !before.Contains(x)
-                && allowed.Any(l => string.Equals(x.Trim(), l, StringComparison.OrdinalIgnoreCase))
+        var baseline = before
+            .Select(PFlowConfirmation.NormalizeSuccessMessage)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return ScreenTimeHierarchy
+            .Nodes(xml)
+            .Where(n =>
+                !n.AncestorsAndSelf("node")
+                    .Any(a =>
+                        a.Attribute("visible-to-user")?.Value == "false"
+                        || (a.Attribute("class")?.Value ?? "").Contains(
+                            "EditText",
+                            StringComparison.Ordinal
+                        )
+                        || a.Attribute("password")?.Value == "true"
+                        || (
+                            a.Attribute("package")?.Value is { Length: > 0 } package
+                            && package != "com.facebook.katana"
+                            && package != "com.android.systemui"
+                        )
+                    )
+            )
+            .SelectMany(n =>
+                new[] { n.Attribute("text")?.Value, n.Attribute("content-desc")?.Value }
+            )
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Select(s => s!.Trim())
+            .FirstOrDefault(s =>
+                !baseline.Contains(PFlowConfirmation.NormalizeSuccessMessage(s))
+                && PFlowConfirmation.IsPublicationSuccess(s, type)
             );
     }
 }

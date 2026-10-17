@@ -27,6 +27,12 @@ public class TikTokDownloader(IReadOnlyList<Cookie>? initialCookies = null)
     )
     {
         filePath = _855Media.Core.Utils.FileUtils.SanitizeFilePath(filePath);
+        var isAudioOnly = container.IsAudioOnly || downloadOption?.IsAudioOnly == true;
+        if (!isAudioOnly)
+        {
+            ffmpegPath = MediaCompatibility.RequireVideoFFmpeg(filePath, ffmpegPath);
+            container = Container.Mp4;
+        }
         var dirPath = Path.GetDirectoryName(filePath);
         if (!string.IsNullOrWhiteSpace(dirPath))
             Directory.CreateDirectory(dirPath);
@@ -50,7 +56,7 @@ public class TikTokDownloader(IReadOnlyList<Cookie>? initialCookies = null)
         {
             try
             {
-                await YtDlp.RunAsync(arguments, progress, cancellationToken);
+                await YtDlp.RunAsync(arguments, progress, cancellationToken, captureOutput: false);
             }
             catch (Exception ex)
                 when (!string.IsNullOrWhiteSpace(cookieFilePath)
@@ -67,7 +73,12 @@ public class TikTokDownloader(IReadOnlyList<Cookie>? initialCookies = null)
                     fallbackArguments.RemoveAt(cookieIdx + 1);
                     fallbackArguments.RemoveAt(cookieIdx);
                 }
-                await YtDlp.RunAsync(fallbackArguments, progress, cancellationToken);
+                await YtDlp.RunAsync(
+                    fallbackArguments,
+                    progress,
+                    cancellationToken,
+                    captureOutput: false
+                );
             }
         }
         catch (Exception ex)
@@ -101,7 +112,7 @@ public class TikTokDownloader(IReadOnlyList<Cookie>? initialCookies = null)
             }
         }
 
-        if (!container.IsAudioOnly)
+        if (!isAudioOnly)
         {
             await MediaCompatibility.EnsureWindowsCompatibleAsync(
                 filePath,
@@ -138,8 +149,9 @@ public class TikTokDownloader(IReadOnlyList<Cookie>? initialCookies = null)
             arguments.Add(cookieFilePath);
         }
 
+        var isAudio = container.IsAudioOnly || downloadOption?.IsAudioOnly == true;
         arguments.Add("--output");
-        arguments.Add(filePath);
+        arguments.Add(isAudio ? filePath : Path.ChangeExtension(filePath, null) + ".%(ext)s");
 
         if (!string.IsNullOrWhiteSpace(ffmpegPath))
         {
@@ -147,7 +159,6 @@ public class TikTokDownloader(IReadOnlyList<Cookie>? initialCookies = null)
             arguments.Add(ffmpegPath);
         }
 
-        var isAudio = container.IsAudioOnly || downloadOption?.IsAudioOnly == true;
         if (isAudio)
         {
             arguments.Add("--format");
@@ -162,6 +173,7 @@ public class TikTokDownloader(IReadOnlyList<Cookie>? initialCookies = null)
         }
         else
         {
+            arguments.AddRange(["--merge-output-format", "mp4", "--remux-video", "mp4"]);
             var targetHeight =
                 downloadOption?.VideoQuality?.MaxHeight
                 ?? downloadPreference?.PreferredVideoQuality.GetMaxHeight();

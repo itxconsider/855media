@@ -13,6 +13,20 @@ public static class PFlowTaskRouting
             StringComparer.OrdinalIgnoreCase
         );
 
+    public static void RestoreUnmatchedQueueRow(AutoPostTaskItem task)
+    {
+        // This legacy status means no posting job was created. Replanning still
+        // checks the account binding, content history and publication reservations.
+        if (
+            task.Status == "Skipped (No verified target/file job)"
+            && new[] { "Reel", "Video", "Picture", "Photo", "Story" }.Contains(
+                task.Type,
+                StringComparer.OrdinalIgnoreCase
+            )
+        )
+            task.Status = "Queued";
+    }
+
     public static bool MatchesTarget(
         AutoPostTaskItem task,
         FacebookPageTarget target,

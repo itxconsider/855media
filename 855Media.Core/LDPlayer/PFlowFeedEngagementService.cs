@@ -236,6 +236,17 @@ public class PFlowFeedEngagementService : IPFlowFeedEngagementService
             return true;
 
         bool needsDismiss = false;
+        if (PFlowEmailUpdatePrompt.Card(xml) != null)
+        {
+            await PFlowEmailUpdatePrompt.DismissAsync(
+                _ldPlayer,
+                index,
+                xml,
+                customPath,
+                cancellationToken
+            );
+            return true;
+        }
 
         // 1. External browser opened (Chrome, WebView, etc.)
         if (

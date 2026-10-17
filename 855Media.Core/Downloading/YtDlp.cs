@@ -152,6 +152,7 @@ public static partial class YtDlp
         catch
         {
             // Fall back to built-in updater if direct HTTP download fails
+            cancellationToken.ThrowIfCancellationRequested();
         }
 
         try
@@ -165,7 +166,11 @@ public static partial class YtDlp
 
             process.Start();
             ChildProcessTracker.Track(process);
-            await process.WaitForExitAsync(cancellationToken);
+            await process.WaitForExitWithCancellationAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch
         {
@@ -176,20 +181,23 @@ public static partial class YtDlp
     public static async Task<string> RunAsync(
         IReadOnlyList<string> arguments,
         IProgress<Percentage>? progress = null,
-        CancellationToken cancellationToken = default
+        CancellationToken cancellationToken = default,
+        bool captureOutput = true
     ) =>
         await RunInternalAsync(
             arguments,
             progress,
             allowAutoUpdate: true,
-            cancellationToken: cancellationToken
+            cancellationToken: cancellationToken,
+            captureOutput: captureOutput
         );
 
     private static async Task<string> RunInternalAsync(
         IReadOnlyList<string> arguments,
         IProgress<Percentage>? progress = null,
         bool allowAutoUpdate = true,
-        CancellationToken cancellationToken = default
+        CancellationToken cancellationToken = default,
+        bool captureOutput = true
     )
     {
         var cliFilePath = await GetOrDownloadCliFilePathAsync(cancellationToken: cancellationToken);
@@ -219,14 +227,16 @@ public static partial class YtDlp
             process.StartInfo.ArgumentList.Add(argument);
 
         var output = new List<string>();
-        var errors = new List<string>();
+        var errors = new BoundedProcessLog();
 
         process.OutputDataReceived += (_, args) =>
         {
             if (args.Data is null)
                 return;
 
-            output.Add(args.Data);
+            // Metadata callers need the complete JSON. Downloads do not use stdout.
+            if (captureOutput)
+                output.Add(args.Data);
             TryReportProgress(args.Data, progress);
         };
 
@@ -239,22 +249,13 @@ public static partial class YtDlp
             TryReportProgress(args.Data, progress);
         };
 
-        try
-        {
-            process.Start();
-            ChildProcessTracker.Track(process);
-            process.BeginOutputReadLine();
-            process.BeginErrorReadLine();
+        cancellationToken.ThrowIfCancellationRequested();
+        process.Start();
+        ChildProcessTracker.Track(process);
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
 
-            await process.WaitForExitAsync(cancellationToken);
-        }
-        catch (OperationCanceledException)
-        {
-            if (!process.HasExited)
-                process.Kill(true);
-
-            throw;
-        }
+        await process.WaitForExitWithCancellationAsync(cancellationToken);
 
         if (process.ExitCode != 0)
         {
@@ -267,8 +268,13 @@ public static partial class YtDlp
                         arguments,
                         progress,
                         allowAutoUpdate: false,
-                        cancellationToken: cancellationToken
+                        cancellationToken: cancellationToken,
+                        captureOutput: captureOutput
                     );
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
                 }
                 catch
                 {
@@ -276,10 +282,7 @@ public static partial class YtDlp
                 }
             }
 
-            var errorMessage = string.Join(
-                Environment.NewLine,
-                errors.Where(e => !string.IsNullOrWhiteSpace(e))
-            );
+            var errorMessage = errors.ToString();
 
             throw new InvalidOperationException(
                 string.IsNullOrWhiteSpace(errorMessage)

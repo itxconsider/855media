@@ -1,4 +1,4 @@
-﻿<UserControl
+<UserControl
     x:Class="_855Media.Views.Components.DashboardView"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -38,40 +38,21 @@
         <Style Selector="Button.tab-button">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="Foreground" Value="{DynamicResource AntigravityMutedBrush}" />
-            <Setter Property="Padding" Value="14,7" />
-            <Setter Property="CornerRadius" Value="8" />
-            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="FontWeight" Value="Normal" />
             <Setter Property="FontSize" Value="12.5" />
             <Setter Property="Focusable" Value="False" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="BorderBrush" Value="Transparent" />
-            <Setter Property="Transitions">
-                <Transitions>
-                    <BrushTransition Property="Background" Duration="0:0:0.18" />
-                    <BrushTransition Property="BorderBrush" Duration="0:0:0.18" />
-                    <BrushTransition Property="Foreground" Duration="0:0:0.18" />
-                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.15" Easing="CubicEaseOut" />
-                </Transitions>
-            </Setter>
-            <Style Selector="^:pointerover">
-                <Setter Property="Background" Value="{DynamicResource AntigravityElevatedBrush}" />
+            <Style Selector="^:pointerover, ^:pressed, ^.active">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderBrush" Value="Transparent" />
                 <Setter Property="Foreground" Value="{DynamicResource AntigravityTextBrush}" />
-                <Setter Property="RenderTransform" Value="scale(1.02)" />
-            </Style>
-            <Style Selector="^:pressed">
-                <Setter Property="RenderTransform" Value="scale(0.97)" />
+                <Setter Property="RenderTransform" Value="scale(1)" />
             </Style>
             <Style Selector="^.active">
-                <Setter Property="Background" Value="#FFFFFF" />
-                <Setter Property="BorderBrush" Value="#FFFFFF" />
-                <Setter Property="Foreground" Value="#000000" />
-                <Setter Property="FontWeight" Value="Bold" />
-            </Style>
-            <Style Selector="^.active:pointerover">
-                <Setter Property="Background" Value="#E4E4E7" />
-                <Setter Property="BorderBrush" Value="#E4E4E7" />
-                <Setter Property="Foreground" Value="#000000" />
-                <Setter Property="RenderTransform" Value="scale(1.02)" />
+                <Setter Property="FontWeight" Value="SemiBold" />
             </Style>
         </Style>
 
@@ -147,70 +128,18 @@
             <Border
                 Grid.Row="0"
                 BorderBrush="{DynamicResource AntigravityBorderBrush}"
-                BorderThickness="0,0,0,1"
-                Padding="20,10"
-                Background="{DynamicResource AntigravityRailBrush}">
-                <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
-                    <!-- Left: Muse Brand Identity & Status Lockup -->
-                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center" Margin="0,0,16,0">
-                        <Border
-                            Width="34"
-                            Height="34"
-                            CornerRadius="8"
-                            Background="{DynamicResource AntigravityElevatedBrush}"
-                            BorderBrush="{DynamicResource AntigravityBorderBrush}"
-                            BorderThickness="1"
-                            BoxShadow="0 2 8 0 #20000000"
-                            VerticalAlignment="Center">
-                            <materialIcons:MaterialIcon
-                                Kind="Sparkles"
-                                Width="18"
-                                Height="18"
-                                Foreground="{DynamicResource AntigravityTextBrush}"
-                                HorizontalAlignment="Center"
-                                VerticalAlignment="Center" />
-                        </Border>
-                        <StackPanel VerticalAlignment="Center" Spacing="1">
-                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                <TextBlock
-                                    Text="855Media"
-                                    FontSize="15"
-                                    FontWeight="ExtraBold"
-                                    Foreground="{DynamicResource AntigravityTextBrush}"
-                                    VerticalAlignment="Center"
-                                    LetterSpacing="0.3" />
-                                <Border
-                                    Background="{DynamicResource AntigravityElevatedBrush}"
-                                    BorderBrush="{DynamicResource AntigravityBorderBrush}"
-                                    BorderThickness="1"
-                                    CornerRadius="6"
-                                    Padding="6,1"
-                                    VerticalAlignment="Center">
-                                    <TextBlock
-                                        Text="PRO 2.2"
-                                        FontSize="9.5"
-                                        FontWeight="Bold"
-                                        Foreground="{DynamicResource AntigravityTextBrush}" />
-                                </Border>
-                            </StackPanel>
-                            <TextBlock
-                                Text="AI Media Studio"
-                                FontSize="10.5"
-                                Foreground="{DynamicResource AntigravityMutedBrush}" />
-                        </StackPanel>
-                    </StackPanel>
-
-                    <!-- Center: Floating Pill Navigation Capsule (Muse.ai signature) -->
+                BorderThickness="0"
+                Padding="20,6"
+                Background="{DynamicResource AntigravityCanvasBrush}">
+                <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+                    <!-- Main navigation starts at the left edge. -->
                     <Border
-                        Grid.Column="1"
-                        HorizontalAlignment="Center"
+                        Grid.Column="0"
+                        HorizontalAlignment="Left"
                         VerticalAlignment="Center"
-                        Background="{DynamicResource AntigravityElevatedBrush}"
-                        BorderBrush="{DynamicResource AntigravityBorderBrush}"
-                        BorderThickness="1"
-                        CornerRadius="8"
-                        BoxShadow="0 4 20 0 #30000000"
-                        Padding="4,4">
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Padding="0">
                         <StackPanel Orientation="Horizontal" Spacing="4">
                             <!-- Downloader Tab -->
                             <Button
@@ -219,7 +148,6 @@
                                 Classes.active="{Binding IsDownloaderTab}"
                                 Theme="{DynamicResource MaterialFlatButton}">
                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                    <materialIcons:MaterialIcon Kind="CloudDownloadOutline" />
                                     <TextBlock Text="{Binding LocalizationManager.DownloaderTabTitle}" VerticalAlignment="Center" />
                                 </StackPanel>
                             </Button>
@@ -231,7 +159,6 @@
                                 Classes.active="{Binding IsUpscalerTab}"
                                 Theme="{DynamicResource MaterialFlatButton}">
                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                    <materialIcons:MaterialIcon Kind="AutoFix" />
                                     <TextBlock Text="{Binding LocalizationManager.UpscalerTabTitle}" VerticalAlignment="Center" />
                                 </StackPanel>
                             </Button>
@@ -243,7 +170,6 @@
                                 Classes.active="{Binding IsDubbingTab}"
                                 Theme="{DynamicResource MaterialFlatButton}">
                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                    <materialIcons:MaterialIcon Kind="MicrophoneVariant" />
                                     <TextBlock Text="DUB PRO" VerticalAlignment="Center" />
                                 </StackPanel>
                             </Button>
@@ -255,7 +181,6 @@
                                 Classes.active="{Binding IsAutoPostTab}"
                                 Theme="{DynamicResource MaterialFlatButton}">
                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                    <materialIcons:MaterialIcon Kind="RobotOutline" />
                                     <TextBlock Text="AUTO POST" VerticalAlignment="Center" />
                                 </StackPanel>
                             </Button>
@@ -267,7 +192,6 @@
                                 Classes.active="{Binding IsManagerTab}"
                                 Theme="{DynamicResource MaterialFlatButton}">
                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                    <materialIcons:MaterialIcon Kind="FolderDownloadOutline" />
                                     <TextBlock Text="{Binding LocalizationManager.DownloadsManagerTabTitle}" VerticalAlignment="Center" />
                                     <Border
                                         IsVisible="{Binding !!ActiveDownloadsCount}"
@@ -293,7 +217,6 @@
                                 Classes.active="{Binding IsHistoryTab}"
                                 Theme="{DynamicResource MaterialFlatButton}">
                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                    <materialIcons:MaterialIcon Kind="History" />
                                     <TextBlock Text="{Binding LocalizationManager.HistoryTabTitle}" VerticalAlignment="Center" />
                                 </StackPanel>
                             </Button>
@@ -301,7 +224,7 @@
                     </Border>
 
                     <!-- Right: Hardware Diagnostics & Tool Actions -->
-                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
                         <TextBlock
                             Text="{Binding TotalDownloadsCount, StringFormat='Total: {0}'}"
                             Foreground="{DynamicResource AntigravityMutedBrush}"

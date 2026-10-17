@@ -121,6 +121,15 @@
       "controlAliases": {}
     },
     {
+      "id": "feed.stacked-create.v1",
+      "baseId": "feed.stacked-create.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
       "id": "feed.scrolled.v1",
       "baseId": "feed.scrolled.v1",
       "version": 1,
@@ -150,6 +159,33 @@
     {
       "id": "create.menu.v1",
       "baseId": "create.menu.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "reel.picker.v1",
+      "baseId": "reel.picker.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "reel.picker-tabbed.v1",
+      "baseId": "reel.picker-tabbed.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "reel.editor.v1",
+      "baseId": "reel.editor.v1",
       "version": 1,
       "enabled": true,
       "requiredLabels": [],
@@ -202,6 +238,42 @@
       "controlAliases": {}
     },
     {
+      "id": "profile.details-sheet.v1",
+      "baseId": "profile.details-sheet.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "profile.details-verified-offer.v1",
+      "baseId": "profile.details-verified-offer.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "feed.email-update.v1",
+      "baseId": "feed.email-update.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "switcher.in-progress.v1",
+      "baseId": "switcher.in-progress.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
       "id": "profile.settings-overview.v1",
       "baseId": "profile.settings-overview.v1",
       "version": 1,
@@ -213,6 +285,15 @@
     {
       "id": "profile.page-tools.v1",
       "baseId": "profile.page-tools.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "profile.weekly-progress.v1",
+      "baseId": "profile.weekly-progress.v1",
       "version": 1,
       "enabled": true,
       "requiredLabels": [],
@@ -249,6 +330,15 @@
     {
       "id": "menu.header.v1",
       "baseId": "menu.header.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "menu.muse-sidebar.v1",
+      "baseId": "menu.muse-sidebar.v1",
       "version": 1,
       "enabled": true,
       "requiredLabels": [],
@@ -339,6 +429,69 @@
     {
       "id": "authentication.locationservicesintro.v1",
       "baseId": "authentication.locationservicesintro.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "authentication.contactsaccessintro.v1",
+      "baseId": "authentication.contactsaccessintro.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "authentication.languagesuggestion.v1",
+      "baseId": "authentication.languagesuggestion.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "post.actions.v1",
+      "baseId": "post.actions.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "post.reaction-applied.v1",
+      "baseId": "post.reaction-applied.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "reactions.picker.v1",
+      "baseId": "reactions.picker.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "comments.sheet.v1",
+      "baseId": "comments.sheet.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "comments.published.v1",
+      "baseId": "comments.published.v1",
       "version": 1,
       "enabled": true,
       "requiredLabels": [],

@@ -7,6 +7,63 @@ namespace _855Media.Core.Tests.LDPlayer;
 
 public class PFlowProfileDatesTests
 {
+    [Theory]
+    [InlineData("Created - Marcel Luft\nCamping")]
+    [InlineData("Created - Marcel Luft\r\nCamping")]
+    [InlineData("Created - Marcel Luft  Camping")]
+    public void WrappedCreationEventReadsItsFullDate(string creationEvent)
+    {
+        var screen = Screen(
+            Node("Page transparency", 20),
+            Node("Marcel Luft\nCamping", 70),
+            Node(creationEvent, 240),
+            Node("September 22, 2026", 275)
+        );
+        Assert.Equal(
+            "September 22, 2026",
+            PFlowProfileDates.CreationDate(screen, false, "Marcel Luft Camping")
+        );
+        Assert.Empty(PFlowProfileDates.CreationDate(screen, false, "Another Page"));
+    }
+
+    [Theory]
+    [InlineData("Marcel Luft  Camping")]
+    [InlineData("Marcel Luft\nCamping")]
+    [InlineData("Marcel Luft\u00a0\u00a0Camping")]
+    [InlineData("  Marcel\tLuft\r\nCamping  ")]
+    public void TransparencyMatchesFullNamesWithPresentationWhitespace(string visibleName)
+    {
+        foreach (var attribute in new[] { "text", "content-desc" })
+        {
+            var xml = new XElement(
+                "hierarchy",
+                new XElement("node", new XAttribute(attribute, visibleName))
+            ).ToString();
+            var screen = AtxAgentClient.ParseBloksHierarchy(xml);
+            Assert.True(PFlowProfileDates.MatchesName(screen, "Marcel Luft Camping"));
+            Assert.False(PFlowProfileDates.MatchesName(screen, "Marcel Luft"));
+            Assert.False(PFlowProfileDates.MatchesName(screen, "Marcel Luft Outdoors"));
+        }
+    }
+
+    [Theory]
+    [InlineData("Marcel Luft…")]
+    [InlineData("Marcel Luft Camping Extra")]
+    [InlineData("")]
+    public void TransparencyStillRejectsTruncatedOrDifferentFullNames(string visibleName)
+    {
+        var xml = new XElement(
+            "hierarchy",
+            new XElement("node", new XAttribute("text", visibleName))
+        ).ToString();
+        Assert.False(
+            PFlowProfileDates.MatchesName(
+                AtxAgentClient.ParseBloksHierarchy(xml),
+                "Marcel Luft Camping"
+            )
+        );
+    }
+
     private static XElement Node(string label, int y, bool clickable = false) =>
         new(
             "node",

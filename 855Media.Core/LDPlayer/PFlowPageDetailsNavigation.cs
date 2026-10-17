@@ -18,6 +18,8 @@ internal static class PFlowPageDetailsNavigation
                 {
                     "Edit profile",
                     "Professional dashboard",
+                    "Creator Dashboard",
+                    "Business Dashboard",
                     "Manage Page",
                     "Dashboard",
                 }.Any(label => e.Matches(label, false))
@@ -40,13 +42,41 @@ internal static class PFlowPageDetailsNavigation
                 && e.Height <= 240
                 && e.Bounds.Bottom <= headerBottom
                 && (
-                    e.Text.Trim().Equals(name.Trim(), StringComparison.OrdinalIgnoreCase)
-                    || e.ContentDesc.Trim().Equals(name.Trim(), StringComparison.OrdinalIgnoreCase)
+                    Normalize(e.Text).Equals(Normalize(name), StringComparison.OrdinalIgnoreCase)
+                    || Normalize(e.ContentDesc)
+                        .Equals(Normalize(name), StringComparison.OrdinalIgnoreCase)
                 )
             )
             .OrderBy(e => e.Bounds.Top)
             .ThenBy(e => e.Width * e.Height)
             .FirstOrDefault();
+    }
+
+    private static string Normalize(string text) => Regex.Replace(text.Trim(), @"\s+", " ");
+
+    internal static string? FindFullHeaderName(BloksScreenInfo screen, string hint)
+    {
+        var prefix = Normalize(hint).TrimEnd('.', '…').Trim();
+        if (prefix.Length < 4)
+            return null;
+        var names = screen
+            .AllElements.SelectMany(e => new[] { e.Text, e.ContentDesc })
+            .Select(Normalize)
+            .Where(n =>
+                n.Length >= prefix.Length
+                && n.Length <= 100
+                && !n.EndsWith('…')
+                && !n.EndsWith("...", StringComparison.Ordinal)
+                && (
+                    n.Equals(prefix, StringComparison.OrdinalIgnoreCase)
+                    || n.StartsWith(prefix + " ", StringComparison.OrdinalIgnoreCase)
+                )
+                && FindHeaderName(screen, n) != null
+            )
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(2)
+            .ToArray();
+        return names.Length == 1 ? names[0] : null;
     }
 
     internal static BloksElement? FindTarget(

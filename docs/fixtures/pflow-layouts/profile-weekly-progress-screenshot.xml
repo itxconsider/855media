@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Reconstructed from the user screenshot; not captured device XML. -->
+<hierarchy rotation="0">
+  <node package="com.facebook.katana" class="android.widget.FrameLayout" bounds="[0,0][325,560]">
+    <node package="com.facebook.katana" class="android.widget.TextView" text="Marcel Luft&#10;Camping" bounds="[105,0][225,43]" />
+    <node package="com.facebook.katana" class="android.widget.Button" clickable="true" enabled="true" bounds="[288,0][318,25]" />
+    <node package="com.facebook.katana" class="android.widget.TextView" text="0 followers · 0 following · 0 posts" bounds="[70,48][257,66]" />
+    <node package="com.facebook.katana" class="android.widget.Button" text="Creator Dashboard" clickable="true" enabled="true" bounds="[12,117][187,150]" />
+    <node package="com.facebook.katana" class="android.widget.Button" text="Advertise" clickable="true" enabled="true" bounds="[194,117][318,150]" />
+    <node package="com.facebook.katana" class="android.view.ViewGroup" bounds="[12,165][318,492]">
+      <node package="com.facebook.katana" text="Weekly progress" bounds="[23,182][150,200]" />
+      <node package="com.facebook.katana" text="Take steps each week to help you reach your goals." />
+      <node package="com.facebook.katana" class="android.widget.Button" content-desc="Close" clickable="true" enabled="true" bounds="[283,175][312,204]" />
+      <node package="com.facebook.katana" class="android.widget.Button" text="Create 3 new public posts" clickable="true" enabled="true" bounds="[22,282][305,330]" />
+      <node package="com.facebook.katana" class="android.widget.Button" text="Get 3 new followers" clickable="true" enabled="true" bounds="[22,332][305,380]" />
+      <node package="com.facebook.katana" class="android.widget.Button" text="Create 3 new public posts with photos" clickable="true" enabled="true" bounds="[22,380][305,439]" />
+      <node package="com.facebook.katana" class="android.widget.Button" text="View all" clickable="true" enabled="true" bounds="[23,448][307,481]" />
+    </node>
+  </node>
+</hierarchy>

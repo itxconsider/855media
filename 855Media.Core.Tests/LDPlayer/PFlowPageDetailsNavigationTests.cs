@@ -6,6 +6,49 @@ namespace _855Media.Core.Tests.LDPlayer;
 
 public class PFlowPageDetailsNavigationTests
 {
+    [Theory]
+    [InlineData("Creator Dashboard")]
+    [InlineData("Business Dashboard")]
+    [InlineData("Professional dashboard")]
+    public void CreatorDashboardBelowNameOverridesToolbarPencilForTransparency(
+        string dashboardLabel
+    )
+    {
+        var edit = Node("Edit profile");
+        edit.SetAttributeValue("bounds", "[490,72][538,144]");
+        var header = Node("Nick\nParlet", false);
+        header.SetAttributeValue("bounds", "[250,612][470,680]");
+        var dashboard = Node(dashboardLabel);
+        dashboard.SetAttributeValue("bounds", "[24,841][409,913]");
+        var screen = Screen(edit, header, dashboard);
+        Assert.NotNull(PFlowPageDetailsNavigation.FindHeaderName(screen, "Nick Parlet"));
+        Assert.Equal(
+            "Nick Parlet",
+            PFlowPageDetailsNavigation.FindFullHeaderName(screen, "Nick Parlet")
+        );
+    }
+
+    [Fact]
+    public void FullHeaderMayExtendCachedNameButPostsCannotSupplyIt()
+    {
+        var header = Node("Marcel Luft\nCamping", false);
+        header.SetAttributeValue("bounds", "[220,612][500,680]");
+        var dashboard = Node("Creator Dashboard");
+        dashboard.SetAttributeValue("bounds", "[24,841][409,913]");
+        var post = Node("Marcel Luft Outdoors");
+        post.SetAttributeValue("bounds", "[128,1083][580,1121]");
+        Assert.Equal(
+            "Marcel Luft Camping",
+            PFlowPageDetailsNavigation.FindFullHeaderName(
+                Screen(header, dashboard, post),
+                "Marcel Luft"
+            )
+        );
+        Assert.Null(
+            PFlowPageDetailsNavigation.FindFullHeaderName(Screen(dashboard, post), "Marcel Luft")
+        );
+    }
+
     [Fact]
     public void HeaderNameWinsOverSameNameOnPost()
     {

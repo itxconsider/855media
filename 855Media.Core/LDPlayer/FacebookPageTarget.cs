@@ -35,6 +35,9 @@ public partial class FacebookPageTarget
     public string PersonaUid { get; set; } = string.Empty;
     public string UserUid { get; set; } = string.Empty;
     public string PageName { get; set; } = string.Empty;
+
+    // A UID-verified display label survives root-cache refreshes; this is not access authorization.
+    public string VerifiedDisplayName { get; set; } = string.Empty;
     public string Type { get; set; } = "Page"; // "Profile" or "Page"
 
     public int ReelsCount { get; set; }
@@ -67,6 +70,11 @@ public partial class FacebookPageTarget
     // Per-page Media Config
     public bool UseTitleFromTextFile { get; set; }
     public bool UseCaptionFromFilename { get; set; }
+
+    // Nullable values migrate older configurations using the former shared option.
+    public bool? ReelTitleFromTextFile { get; set; }
+    public bool? PhotoTitleFromTextFile { get; set; }
+    public bool? VideoTitleFromTextFile { get; set; }
     public string TitleVideoReel { get; set; } = string.Empty;
     public string TitleVideoReelMode { get; set; } = "Replace All";
     public string VideoReelPath { get; set; } = string.Empty;
@@ -386,6 +394,20 @@ public partial class FacebookPageTarget
 
 public class AutoPostTaskItem : INotifyPropertyChanged
 {
+    public string QueueId { get; set; } = Guid.NewGuid().ToString("N");
+    private string _pFlowJobId = "";
+    public string PFlowJobId
+    {
+        get => _pFlowJobId;
+        set
+        {
+            if (_pFlowJobId != value)
+            {
+                _pFlowJobId = value;
+                OnPropertyChanged(nameof(PFlowJobId));
+            }
+        }
+    }
     private string _status = "Queued";
     private string _title = string.Empty;
     private string _filePath = string.Empty;

@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
 namespace _855Media.Core.LDPlayer;
@@ -16,6 +17,8 @@ public enum PFlowLoginScreenKind
     OwnPersonalProfile,
     Checkpoint,
     LocationServicesIntro,
+    ContactsAccessIntro,
+    LanguageSuggestion,
 }
 
 // Observed installed-screen markers. A profile marker is NOT exact live UID proof.
@@ -109,6 +112,47 @@ public static class PFlowLoginScreen
                 return PFlowLoginScreenKind.AuthenticatorCodeRequired;
             if (Has("Save your login info?") && Button("Not now"))
                 return PFlowLoginScreenKind.SaveLoginInfo;
+            // These are optional onboarding screens, not proof of an active UID.
+            // Normalize wrapped text and Chinese full-width parentheses only for
+            // these screenshot-derived labels; keep login/challenge rules exact.
+            string PromptText(string? value) =>
+                Regex.Replace(value ?? "", @"\s+", "").Replace('（', '(').Replace('）', ')');
+            bool PromptHas(string label) =>
+                nodes.Any(n =>
+                    !n.AncestorsAndSelf("node")
+                        .Any(a => (string?)a.Attribute("visible-to-user") == "false")
+                    && (
+                        PromptText((string?)n.Attribute("text")) == PromptText(label)
+                        || PromptText((string?)n.Attribute("content-desc")) == PromptText(label)
+                    )
+                );
+            bool PromptSurface() =>
+                !PFlowUiPrivacy.ContainsInput(xml)
+                && !FacebookHierarchyCache
+                    .ParseStrict(xml ?? "")
+                    .Descendants("node")
+                    .Any(n =>
+                        (string?)n.Attribute("package") is { Length: > 0 } owner
+                        && owner != package
+                        && owner != "com.android.systemui"
+                    );
+            if (
+                PromptHas("Allow contacts access to find people to follow")
+                && PromptHas(
+                    "See who's also on Facebook by uploading your contacts and then choosing which friends to add."
+                )
+                && PromptHas("Skip")
+                && PromptHas("Continue")
+                && PromptSurface()
+            )
+                return PFlowLoginScreenKind.ContactsAccessIntro;
+            if (
+                PromptHas("设置语言")
+                && PromptHas("试用中文(简体)版 Facebook")
+                && PromptHas("Continue in English (US)")
+                && PromptSurface()
+            )
+                return PFlowLoginScreenKind.LanguageSuggestion;
             if (
                 !PFlowUiPrivacy.ContainsInput(xml)
                 && Has("To use Location Services, allow Facebook to access your location")
@@ -153,6 +197,10 @@ public static class PFlowLoginScreen
                 "Personal profile visible; verify its exact UID before continuing.",
             PFlowLoginScreenKind.Checkpoint =>
                 "Facebook requires a human verification checkpoint. Complete it manually in this LD; automation is paused.",
+            PFlowLoginScreenKind.ContactsAccessIntro =>
+                "Facebook is offering contact uploading; Skip is available.",
+            PFlowLoginScreenKind.LanguageSuggestion =>
+                "Facebook is suggesting Simplified Chinese; Continue in English (US) is available.",
             _ =>
                 "Facebook screen is unsupported. Review the assigned LD; no guessed action was made.",
         };

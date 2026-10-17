@@ -7,6 +7,9 @@ namespace _855Media.Core.LDPlayer;
 
 public static class PFlowJobBindingGuard
 {
+    internal const string UnavailableMessage =
+        "The assigned LD instance is unavailable; no fallback was used.";
+
     public static async Task RequireAsync(
         ILDPlayerService ld,
         PFlowJob job,
@@ -31,9 +34,7 @@ public static class PFlowJobBindingGuard
             .Where(i => i.Index == binding.DeviceIndex)
             .ToArray();
         if (matches.Length != 1)
-            throw new InvalidOperationException(
-                "The assigned LD instance is unavailable; no fallback was used."
-            );
+            throw new InvalidOperationException(UnavailableMessage);
         binding.RequireWorker(
             matches[0].Index,
             matches[0].Name,

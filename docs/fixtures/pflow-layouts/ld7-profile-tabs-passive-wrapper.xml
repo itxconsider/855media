@@ -1,0 +1,29 @@
+<?xml version='1.0' encoding='utf-8'?>
+<hierarchy>
+  <node package="com.facebook.katana" class="android.widget.FrameLayout" enabled="true" bounds="[0,0][720,1280]">
+    <node index="0" text="" resource-id="com.facebook.katana:id/(name removed)" class="android.view.ViewGroup" package="com.facebook.katana" content-desc="" checkable="false" checked="false" clickable="false" enabled="false" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" visible-to-user="true" bounds="[0,1114][720,1186]">
+      <node index="0" text="" resource-id="" class="androidx.recyclerview.widget.RecyclerView" package="com.facebook.katana" content-desc="" checkable="false" checked="false" clickable="false" enabled="true" focusable="true" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" visible-to-user="true" bounds="[0,1114][720,1186]">
+        <node index="0" text="" resource-id="" class="android.widget.Button" package="com.facebook.katana" content-desc="" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" visible-to-user="true" bounds="[24,1114][124,1186]">
+          <node index="0" text="" resource-id="" class="android.widget.TabWidget" package="com.facebook.katana" content-desc="All, 1 of 4" checkable="false" checked="false" clickable="true" enabled="true" focusable="true" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" visible-to-user="true" bounds="[24,1114][108,1186]">
+            <node index="0" text="All" resource-id="" class="android.widget.Button" package="com.facebook.katana" content-desc="All" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" visible-to-user="true" bounds="[48,1133][84,1168]" />
+          </node>
+        </node>
+        <node index="1" text="" resource-id="" class="android.widget.Button" package="com.facebook.katana" content-desc="" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" visible-to-user="true" bounds="[124,1114][284,1186]">
+          <node index="0" text="" resource-id="" class="android.widget.TabWidget" package="com.facebook.katana" content-desc="Photos, 2 of 4" checkable="false" checked="false" clickable="true" enabled="true" focusable="true" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" visible-to-user="true" bounds="[124,1114][268,1186]">
+            <node index="0" text="Photos" resource-id="" class="android.widget.Button" package="com.facebook.katana" content-desc="Photos" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" visible-to-user="true" bounds="[148,1133][244,1168]" />
+          </node>
+        </node>
+        <node index="2" text="" resource-id="" class="android.widget.Button" package="com.facebook.katana" content-desc="" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" visible-to-user="true" bounds="[284,1114][423,1186]">
+          <node index="0" text="" resource-id="" class="android.widget.TabWidget" package="com.facebook.katana" content-desc="Reels, 3 of 4" checkable="false" checked="false" clickable="true" enabled="true" focusable="true" focused="false" scrollable="false" long-clickable="false" password="false" selected="true" visible-to-user="true" bounds="[284,1114][407,1186]">
+            <node index="0" text="Reels" resource-id="" class="android.widget.Button" package="com.facebook.katana" content-desc="Reels" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" visible-to-user="true" bounds="[308,1133][383,1168]" />
+          </node>
+        </node>
+        <node index="3" text="" resource-id="" class="android.widget.Button" package="com.facebook.katana" content-desc="" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" visible-to-user="true" bounds="[423,1114][573,1186]">
+          <node index="0" text="" resource-id="" class="android.widget.TabWidget" package="com.facebook.katana" content-desc="More, 4 of 4" checkable="false" checked="false" clickable="true" enabled="true" focusable="true" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" visible-to-user="true" bounds="[423,1114][573,1186]">
+            <node index="0" text="More" resource-id="" class="android.widget.Button" package="com.facebook.katana" content-desc="More" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" visible-to-user="true" bounds="[447,1133][517,1168]" />
+          </node>
+        </node>
+      </node>
+    </node>
+  </node>
+</hierarchy>

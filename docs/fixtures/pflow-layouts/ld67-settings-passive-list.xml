@@ -1,0 +1,11 @@
+<!-- Settings control attributes captured on LD-67; surrounding layout minimized for privacy. -->
+<hierarchy>
+  <node package="com.facebook.katana" bounds="[0,0][720,1280]">
+    <node package="com.facebook.katana" class="android.view.ViewGroup" enabled="false" clickable="false" bounds="[0,48][632,1280]">
+      <node package="com.facebook.katana" class="androidx.recyclerview.widget.RecyclerView" enabled="true" clickable="false" bounds="[0,48][632,1280]">
+        <node index="10" text="" resource-id="" class="android.widget.Button" package="com.facebook.katana" content-desc="Settings and privacy, header. Section is collapsed. Double-tap to expand the section." checkable="false" checked="false" clickable="true" enabled="true" focusable="true" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" visible-to-user="true" bounds="[0,919][632,1007]" />
+      </node>
+    </node>
+    <node package="com.facebook.katana" class="android.widget.Button" content-desc="Close menu." enabled="true" clickable="true" bounds="[632,48][720,1280]" />
+  </node>
+</hierarchy>

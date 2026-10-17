@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -370,14 +370,14 @@ public sealed partial class PFlowTests : IDisposable
     }
 
     [Fact]
-    public async Task FreshUploadNotificationConfirmsWithoutScreenMessage()
+    public async Task FreshUploadNotificationRetainsFilesUntilTargetPublicationIsVerified()
     {
         var job = await Job();
         var ld = FakeLd.Create(job);
         var fake = (FakeLd)(object)ld;
         fake.SuccessMessage = false;
         fake.NotificationSuccess = true;
-        Assert.True(
+        Assert.False(
             await new PFlowRunner(ld, _store).RunAsync(
                 job,
                 _ => Task.FromResult(true),
@@ -387,7 +387,10 @@ public sealed partial class PFlowTests : IDisposable
             )
         );
         var saved = (await _store.ReadAsync()).Single();
-        Assert.Equal(PFlowState.Confirmed, saved.State);
+        Assert.Equal(PFlowState.Unknown, saved.State);
+        Assert.Null(saved.ConfirmedUtc);
+        Assert.Equal(0, fake.Deletes);
+        Assert.Equal("Held for publication review", saved.RemoteCleanupState);
         Assert.Contains("media-upload notification", saved.Evidence);
         Assert.Equal(1, fake.ShareTaps);
         Assert.True(File.Exists(job.SourcePath));
@@ -600,6 +603,7 @@ public sealed partial class PFlowTests : IDisposable
     public class FakeLd : DispatchProxy
     {
         public PFlowJob Job = null!;
+        public string? InitialXml;
         public int ShareTaps,
             Transfers,
             Deletes;
@@ -612,8 +616,22 @@ public sealed partial class PFlowTests : IDisposable
             NotificationSuccess;
         public CancellationTokenSource? CancelOnShare;
         public string PublicationError = "";
+        public string? PostShareXml;
+        public System.Collections.Generic.Queue<string> PostShareSequence = new();
+        public int MissingInstanceScans;
+        public int InstanceScans;
+        public bool RenamedInstance;
         private bool _composerOpened;
         private bool _chooserAccepted;
+
+        public void NextJob(PFlowJob job, string initialXml)
+        {
+            Job = job;
+            InitialXml = initialXml;
+            _composerOpened = false;
+            _chooserAccepted = false;
+            ShareTaps = 0;
+        }
 
         public static ILDPlayerService Create(PFlowJob job)
         {
@@ -626,6 +644,20 @@ public sealed partial class PFlowTests : IDisposable
         {
             switch (method!.Name)
             {
+                case "GetInstancesAsync":
+                    InstanceScans++;
+                    if (InstanceScans <= MissingInstanceScans)
+                        return Task.FromResult<IReadOnlyList<LDInstanceInfo>>([]);
+                    return Task.FromResult<IReadOnlyList<LDInstanceInfo>>(
+                        new List<LDInstanceInfo>
+                        {
+                            new()
+                            {
+                                Index = Job.DeviceIndex,
+                                Name = RenamedInstance ? "renamed" : Job.AccountBinding!.DeviceName,
+                            },
+                        }
+                    );
                 case "ExecuteAdbAsync":
                     var cmd = (string)args![1]!;
                     return Task.FromResult(
@@ -648,13 +680,18 @@ public sealed partial class PFlowTests : IDisposable
                     Transfers++;
                     return Task.FromResult(TransferOk);
                 case "DumpUiHierarchyAsync":
+                    if (ShareTaps > 0 && PostShareSequence.Count > 0)
+                        return Task.FromResult<string?>(PostShareSequence.Dequeue());
+                    if (ShareTaps > 0 && PostShareXml != null)
+                        return Task.FromResult<string?>(PostShareXml);
                     if (_composerOpened && !_chooserAccepted)
                         return Task.FromResult<string?>(
                             PFlowShareDestinationTests.SelectedReelsXml
                         );
                     return Task.FromResult<string?>(
                         !_composerOpened
-                            ? "<hierarchy><node text='Target'/><node text='Professional dashboard'/></hierarchy>"
+                            ? InitialXml
+                                ?? "<hierarchy><node text='Target'/><node text='Professional dashboard'/></hierarchy>"
                         : ShareTaps > 0 && PublicationError.Length > 0
                             ? $"<hierarchy><node text='{PublicationError}'/></hierarchy>"
                         : ShareTaps > 0 && NotificationSuccess

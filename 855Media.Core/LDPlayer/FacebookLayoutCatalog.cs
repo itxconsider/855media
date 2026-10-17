@@ -223,7 +223,14 @@ public sealed class FacebookLayoutCatalog
         return new(
             definitions.Values.ToArray(),
             origins,
-            new[] { "Professional dashboard", "Professional tools", "Dashboard" }
+            new[]
+            {
+                "Professional dashboard",
+                "Creator Dashboard",
+                "Business Dashboard",
+                "Professional tools",
+                "Dashboard",
+            }
                 .Concat(headers)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray(),

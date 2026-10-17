@@ -1,0 +1,13 @@
+# UID-verified Page names and Transparency header navigation
+
+The mapped LD-26 Page has root name `Marcel Luft` but the captured switcher has a full accessibility label `Marcel Luft Camping` and truncated visible text `Marcel Luft…`. Names do not replace owner UID, canonical Page ID or persona UID.
+
+After normal Page fetch fails, recovery considers only one compatible typed Page row from the current native switcher. Exact matches retain the existing path; multiple similar rows are rejected. A candidate may use a longer full label, an ellipsis-truncated label, or the previously supported repeated-name correction. The candidate authorizes only a navigation attempt. Recovery waits for the switcher/loading state to finish, then requires a fresh mapped owner/target UID match, including distinct-persona delegation. It does not accept details or save a name from a prefix match alone.
+
+On a Graph match, Graph's name or the confirmed full profile header supplies the refreshed label. With Graph unavailable, the full header is only proposed until the existing native personal UID lookup, target selection, and Page UID lookup all pass. Known Graph UID contradictions stop recovery. Successful fetches verify UIDs again before updating both the Page table and account store. They preserve the mapped owner, Page and persona IDs. A separate persisted `VerifiedDisplayName` lets subsequent root snapshots retain the verified label even while access is being rechecked. It is not access authorization. Starting a Page fetch clears its live-access flag so a failed/cancelled attempt does not retain old approval.
+
+Transparency name navigation now recognizes Creator Dashboard and Business Dashboard in addition to the existing dashboard/manage controls. The button below the name supplies the header boundary rather than the Edit profile pencil above the cover. Name whitespace and line breaks are normalized. A missing name tap is logged as `profile.details.header-not-found`, distinguishing an unvisited route from an observed absence of a creation date.
+
+Validation: the 187-case Page-name, header-navigation, UID, native-account, date and storage selection passed; a further ambiguity regression passed with the 10-case Page-name selection. Release build succeeded. The fixture `ld26-switcher-truncated-name.xml` is a captured diagnostic hierarchy; tests also simulate a genuinely truncated accessibility label. No live Page selection, fetch, publication or manual saved-name repair was performed for this change. Marcel's persisted label is refreshed when the next fetch on the updated app verifies the mapped UIDs.
+
+The existing app output remains `artifacts/startup-ready-fix`.

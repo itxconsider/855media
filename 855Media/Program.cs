@@ -17,9 +17,9 @@ public static class Program
 
     public static string VersionString { get; } = Version.ToString(3);
 
-    public static bool IsDevelopmentBuild { get; } = Version.Major is <= 0 or >= 999;
+    public static bool IsDevelopmentBuild { get; } = Version.Major is <= 0 or >= 168;
 
-    public static string ProjectUrl { get; } = "https://github.com/itxconsider/MediaTag";
+    public static string ProjectUrl { get; } = "https://github.com/itxconsider/885media";
 
     public static string ProjectReleasesUrl { get; } = $"{ProjectUrl}/releases";
 

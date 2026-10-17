@@ -5,7 +5,7 @@ using System.Xml.Linq;
 
 namespace _855Media.Core.LDPlayer;
 
-public static class ScreenTimeHierarchy
+public static partial class ScreenTimeHierarchy
 {
     public static XElement[] Nodes(string? xml) => FacebookHierarchyCache.Nodes(xml);
 
@@ -70,11 +70,20 @@ public static class ScreenTimeHierarchy
 
     public static XElement? Control(string? xml, string label)
     {
+        var commentSend = label == "Send comment" && HasCommentSendSurface(xml);
         var controls = Nodes(xml)
             .Where(n =>
                 (string?)n.Attribute("enabled") != "false"
+                && !n.AncestorsAndSelf()
+                    .Any(a =>
+                        (string?)a.Attribute("visible-to-user") == "false"
+                        || (string?)a.Attribute("enabled") == "false"
+                    )
                 && new[] { (string?)n.Attribute("text"), (string?)n.Attribute("content-desc") }.Any(
-                    x => string.Equals(x, label, StringComparison.OrdinalIgnoreCase)
+                    x =>
+                        MatchesInteractionLabel(x, label)
+                        || commentSend
+                            && string.Equals(x, "Send", StringComparison.OrdinalIgnoreCase)
                 )
             )
             .Take(2)
@@ -129,12 +138,15 @@ public static class ScreenTimeHierarchy
     }
 
     public static bool IsReactionPicker(string? xml) =>
-        ScreenTimeOptions.ReactionTypes.All(x => Control(xml, x) != null)
-        && Control(xml, "Cancel") != null;
+        ScreenTimeOptions.ReactionTypes.All(x => Center(Control(xml, x)).HasValue)
+        && (Control(xml, "Cancel") != null || IsInlineReactionBanner(xml));
 
     // A label is insufficient when animated picker hit regions overlap.
     public static XElement? ReactionChoice(string? xml, string reaction)
     {
+        var dock = RopeReactionChoice(xml, reaction);
+        if (dock != null)
+            return dock;
         var selected = Control(xml, reaction);
         var center = Center(selected);
         if (!center.HasValue)

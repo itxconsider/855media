@@ -66,7 +66,7 @@ public partial class SettingsService()
     public partial string FileNameTemplate { get; set; } = "$title";
 
     [ObservableProperty]
-    public partial int ParallelLimit { get; set; } = 2;
+    public partial int ParallelLimit { get; set; } = 1;
 
     [ObservableProperty]
     [JsonConverter(typeof(AuthCookiesEncryptionConverter))]

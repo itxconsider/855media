@@ -17,7 +17,13 @@ public partial class AutoPostViewModel
     public int PFlowConfirmedCount =>
         Tasks.Count(t => t.Status.StartsWith("Confirmed", StringComparison.OrdinalIgnoreCase));
     public int PFlowReviewCount =>
-        Tasks.Count(t => t.Status.StartsWith("Unknown", StringComparison.OrdinalIgnoreCase));
+        Tasks.Count(t =>
+            t.Status.StartsWith("Unknown", StringComparison.OrdinalIgnoreCase)
+            || t.Status.StartsWith(
+                "Blocked: Page phone verification",
+                StringComparison.OrdinalIgnoreCase
+            )
+        );
     public int PFlowFailedCount =>
         Tasks.Count(t => t.Status.StartsWith("Failed", StringComparison.OrdinalIgnoreCase));
     public string PFlowDeviceSummary =>

@@ -13,6 +13,7 @@ internal static class PFlowOwnProfileNavigation
     {
         if (
             PFlowLoginScreen.RequiresAuthentication(PFlowLoginScreen.Classify(screen.RawXml))
+            || PFlowIdentitySwitchLayout.IsSwitching(screen.RawXml)
             || PFlowPersonaSwitcherService.IsNativeSwitcherSheetOpen(screen.RawXml)
         )
             return null;
@@ -65,6 +66,8 @@ internal static class PFlowOwnProfileNavigation
                 || screen.AllElements.Any(e =>
                     e.Enabled && e.Matches("Professional dashboard", false)
                 )
+                || screen.AllElements.Any(e => e.Enabled && e.Matches("Business Dashboard", false))
+                || screen.AllElements.Any(e => e.Enabled && e.Matches("Creator Dashboard", false))
                 || screen.AllElements.Any(e => e.Enabled && e.Matches("Manage Page", false))
             );
     }
@@ -89,20 +92,52 @@ internal static class PFlowOwnProfileNavigation
         var menuRowTapped = false;
         var pollsSinceTap = 0;
         var profileScrolls = 0;
+        var navigationReveals = 0;
+        var menuHeaderReveals = 0;
         for (var poll = 0; poll < 60; poll++)
         {
             ct.ThrowIfCancellationRequested();
             // Fetch again after closing the identity sheet; never use its old bounds.
             var xml = await ld.DumpUiHierarchyAsync(index, path, ct);
+            xml = await PFlowEmailUpdatePrompt.DismissAsync(ld, index, xml, path, ct, delay);
             var screen = AtxAgentClient.ParseBloksHierarchy(xml);
             if (
                 PFlowLoginScreen.RequiresAuthentication(PFlowLoginScreen.Classify(xml))
+                || PFlowIdentitySwitchLayout.IsSwitching(xml)
                 || PFlowPersonaSwitcherService.IsNativeSwitcherSheetOpen(xml)
             )
                 return false;
             var menu = AtxAgentClient.IsMenuPageInBloks(screen);
             if (!menu && isOwnProfile(screen))
                 return true;
+            if (
+                !menu
+                && FindTarget(screen, expectedName) == null
+                && navigationReveals < 3
+                && PFlowPersonaSwitcherService.CanRevealNativeNavigation(screen)
+            )
+            {
+                var (width, height) = PFlowPersonaSwitcherService.ParseScreenDimensions(xml);
+                if (
+                    width > 0
+                    && height > 0
+                    && await ld.SwipeAsync(
+                        index,
+                        width / 2,
+                        height / 3,
+                        width / 2,
+                        height * 4 / 5,
+                        400,
+                        path,
+                        ct
+                    )
+                )
+                {
+                    navigationReveals++;
+                    await delay(TimeSpan.FromMilliseconds(500), ct);
+                    continue;
+                }
+            }
             if (
                 !menu
                 && profileScrolls < 4
@@ -148,6 +183,29 @@ internal static class PFlowOwnProfileNavigation
                     navigationName = activeHeader[..^18];
             }
             var target = FindTarget(screen, navigationName);
+            if (menu && target == null && menuHeaderReveals < 3)
+            {
+                var (width, height) = PFlowPersonaSwitcherService.ParseScreenDimensions(xml);
+                if (
+                    width > 0
+                    && height > 0
+                    && await ld.SwipeAsync(
+                        index,
+                        width / 2,
+                        height / 3,
+                        width / 2,
+                        height * 4 / 5,
+                        400,
+                        path,
+                        ct
+                    )
+                )
+                {
+                    menuHeaderReveals++;
+                    await delay(TimeSpan.FromMilliseconds(500), ct);
+                    continue;
+                }
+            }
             if (menu && target != null && !menuRowTapped)
             {
                 if (progress != null)

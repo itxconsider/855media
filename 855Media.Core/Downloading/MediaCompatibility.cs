@@ -2,53 +2,51 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using _855Media.Core.Utils;
 
 namespace _855Media.Core.Downloading;
 
-public static class MediaCompatibility
+public static partial class MediaCompatibility
 {
+    // Download concurrency must not multiply the number of active transcodes.
+    private static readonly SemaphoreSlim ConversionGate = new(1, 1);
+    private static readonly int ThreadLimit = Math.Clamp(Environment.ProcessorCount / 2, 1, 2);
+
     public static async Task EnsureWindowsCompatibleAsync(
         string filePath,
         string? ffmpegPath = null,
         CancellationToken cancellationToken = default
     )
     {
-        var ext = Path.GetExtension(filePath);
-        if (!ext.Equals(".mp4", StringComparison.OrdinalIgnoreCase))
-            return;
+        cancellationToken.ThrowIfCancellationRequested();
+        var actualFFmpegPath = RequireVideoFFmpeg(filePath, ffmpegPath);
 
         if (!File.Exists(filePath) || new FileInfo(filePath).Length == 0)
-            return;
+            throw new InvalidOperationException("The downloaded video is missing or empty.");
 
-        var actualFFmpegPath = ffmpegPath ?? FFmpeg.TryGetCliFilePath();
-        if (string.IsNullOrWhiteSpace(actualFFmpegPath) || !File.Exists(actualFFmpegPath))
-            return;
-
-        var (isH264, isAac) = await ProbeStreamCodecsAsync(
-            actualFFmpegPath,
-            filePath,
-            cancellationToken
-        );
-
-        var encodersToTry = new List<string>();
-        // If already H.264 video and AAC audio, fast copy can remux with +faststart and strip bad streams in milliseconds
-        if (isH264 && isAac)
-        {
-            encodersToTry.Add("copy");
-        }
-
-        // Hardware-accelerated H.264 encoders with CPU fallback
-        encodersToTry.AddRange(["h264_nvenc", "h264_qsv", "h264_amf", "h264_mf", "libx264"]);
-
+        await ConversionGate.WaitAsync(cancellationToken);
         var tempOutput = filePath + ".transcoded.mp4";
-
         try
         {
+            var codecs =
+                await ProbeStreamCodecsAsync(actualFFmpegPath, filePath, cancellationToken)
+                ?? throw new InvalidOperationException(
+                    "Cannot verify the downloaded video's codecs. H.264 output is required."
+                );
+            if (codecs.CanKeepOriginal)
+                return;
+
+            var encodersToTry = codecs.CopyVideo
+                ? new[] { "copy" }
+                : new[] { "h264_nvenc", "h264_qsv", "h264_amf", "h264_mf", "libx264" };
+
+            var errors = new BoundedProcessLog();
             foreach (var encoder in encodersToTry)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 await FileUtils.TryDeleteWithRetryAsync(
                     tempOutput,
                     cancellationToken: cancellationToken
@@ -56,66 +54,23 @@ public static class MediaCompatibility
 
                 using var process = new Process();
                 process.StartInfo.FileName = actualFFmpegPath;
-                process.StartInfo.ArgumentList.Add("-y");
-                process.StartInfo.ArgumentList.Add("-i");
-                process.StartInfo.ArgumentList.Add(filePath);
-
-                // Discard any auxiliary MJPEG/picture/data streams, keep only main video and audio
-                process.StartInfo.ArgumentList.Add("-map");
-                process.StartInfo.ArgumentList.Add("0:v:0");
-                process.StartInfo.ArgumentList.Add("-map");
-                process.StartInfo.ArgumentList.Add("0:a?");
-
-                process.StartInfo.ArgumentList.Add("-c:v");
-                process.StartInfo.ArgumentList.Add(encoder);
-
-                if (encoder == "h264_nvenc")
-                {
-                    process.StartInfo.ArgumentList.Add("-preset");
-                    process.StartInfo.ArgumentList.Add("p4");
-                    process.StartInfo.ArgumentList.Add("-profile:v");
-                    process.StartInfo.ArgumentList.Add("high");
-                    process.StartInfo.ArgumentList.Add("-cq");
-                    process.StartInfo.ArgumentList.Add("23");
-                }
-                else if (encoder == "libx264")
-                {
-                    process.StartInfo.ArgumentList.Add("-preset");
-                    process.StartInfo.ArgumentList.Add("ultrafast");
-                    process.StartInfo.ArgumentList.Add("-crf");
-                    process.StartInfo.ArgumentList.Add("22");
-                }
-
-                if (encoder != "copy")
-                {
-                    process.StartInfo.ArgumentList.Add("-pix_fmt");
-                    process.StartInfo.ArgumentList.Add("yuv420p");
-                }
-
-                if (encoder == "copy" && isAac)
-                {
-                    process.StartInfo.ArgumentList.Add("-c:a");
-                    process.StartInfo.ArgumentList.Add("copy");
-                }
-                else
-                {
-                    process.StartInfo.ArgumentList.Add("-c:a");
-                    process.StartInfo.ArgumentList.Add("aac");
-                    process.StartInfo.ArgumentList.Add("-b:a");
-                    process.StartInfo.ArgumentList.Add("192k");
-                }
-
-                // Place moov atom at beginning of MP4 for fast streaming and instant Windows Media Player playback
-                process.StartInfo.ArgumentList.Add("-movflags");
-                process.StartInfo.ArgumentList.Add("+faststart");
-
-                process.StartInfo.ArgumentList.Add(tempOutput);
                 process.StartInfo.UseShellExecute = false;
                 process.StartInfo.CreateNoWindow = true;
+                process.StartInfo.RedirectStandardError = true;
+                process.ErrorDataReceived += (_, args) =>
+                {
+                    if (args.Data is not null)
+                        errors.Add(args.Data);
+                };
+                foreach (
+                    var argument in BuildConversionArguments(filePath, tempOutput, codecs, encoder)
+                )
+                    process.StartInfo.ArgumentList.Add(argument);
 
                 process.Start();
                 ChildProcessTracker.Track(process);
-                await process.WaitForExitAsync(cancellationToken);
+                process.BeginErrorReadLine();
+                await process.WaitForExitWithCancellationAsync(cancellationToken);
 
                 if (
                     process.ExitCode == 0
@@ -123,41 +78,130 @@ public static class MediaCompatibility
                     && new FileInfo(tempOutput).Length > 0
                 )
                 {
+                    var converted = await ProbeStreamCodecsAsync(
+                        actualFFmpegPath,
+                        tempOutput,
+                        cancellationToken
+                    );
+                    if (converted is null || !converted.Value.CanKeepOriginal)
+                    {
+                        errors.Add(
+                            $"Encoder {encoder} did not produce verified H.264/YUV420p/AAC output."
+                        );
+                        continue;
+                    }
+                    cancellationToken.ThrowIfCancellationRequested();
                     await FileUtils.ReplaceFileWithRetryAsync(
                         tempOutput,
                         filePath,
                         cancellationToken
                     );
-                    break;
+                    return;
                 }
             }
-        }
-        catch
-        {
-            // Transcoding failed; preserve original file
+            throw new InvalidOperationException(
+                $"Could not convert the video to H.264/YUV420p with AAC audio. {errors}"
+            );
         }
         finally
         {
-            await FileUtils.TryDeleteWithRetryAsync(
-                tempOutput,
-                cancellationToken: cancellationToken
-            );
+            try
+            {
+                // Cleanup still has to run when the download token has been cancelled.
+                await FileUtils.TryDeleteWithRetryAsync(tempOutput);
+            }
+            finally
+            {
+                ConversionGate.Release();
+            }
         }
     }
 
-    private static async Task<(bool IsH264, bool IsAac)> ProbeStreamCodecsAsync(
+    internal static string RequireVideoFFmpeg(string filePath, string? ffmpegPath)
+    {
+        if (!Path.GetExtension(filePath).Equals(".mp4", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException(
+                "Video downloads must use MP4 for H.264 playback compatibility."
+            );
+
+        var actualPath = ffmpegPath ?? FFmpeg.TryGetCliFilePath();
+        if (string.IsNullOrWhiteSpace(actualPath) || !File.Exists(actualPath))
+            throw new InvalidOperationException(
+                "FFmpeg is required to verify and convert video downloads to H.264. Configure or download FFmpeg in Settings."
+            );
+        return actualPath;
+    }
+
+    internal static IReadOnlyList<string> BuildConversionArguments(
+        string filePath,
+        string tempOutput,
+        StreamCodecs codecs,
+        string encoder
+    )
+    {
+        var threads = ThreadLimit.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var arguments = new List<string>
+        {
+            "-nostdin",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            // Input decoder and output encoder thread limits are separate FFmpeg options.
+            "-threads",
+            threads,
+            "-filter_threads",
+            "1",
+            "-i",
+            filePath,
+            "-map",
+            $"0:{codecs.VideoIndex}",
+            "-map",
+            "0:a?",
+            "-c:v",
+            encoder,
+            "-threads:v",
+            threads,
+        };
+
+        if (encoder == "h264_nvenc")
+            arguments.AddRange(["-preset", "p4", "-cq", "23"]);
+        else if (encoder == "libx264")
+            arguments.AddRange(["-preset", "ultrafast", "-crf", "22"]);
+
+        if (encoder != "copy")
+            arguments.AddRange(["-pix_fmt", "yuv420p", "-profile:v", "high"]);
+
+        arguments.AddRange(["-c:a", codecs.CopyAudio ? "copy" : "aac", "-threads:a", "1"]);
+        if (!codecs.CopyAudio)
+            arguments.AddRange(["-b:a", "192k"]);
+
+        arguments.AddRange(["-tag:v", "avc1", "-movflags", "+faststart", tempOutput]);
+        return arguments;
+    }
+
+    internal readonly record struct StreamCodecs(
+        int VideoIndex,
+        bool CopyVideo,
+        bool CopyAudio,
+        bool HasAuxiliaryVideo,
+        bool IsMp4 = true
+    )
+    {
+        public bool CanKeepOriginal => CopyVideo && CopyAudio && !HasAuxiliaryVideo && IsMp4;
+    }
+
+    private static async Task<StreamCodecs?> ProbeStreamCodecsAsync(
         string ffmpegPath,
         string filePath,
         CancellationToken cancellationToken
     )
     {
-        var isH264 = false;
-        var isAac = false;
-
         try
         {
             using var process = new Process();
             process.StartInfo.FileName = ffmpegPath;
+            process.StartInfo.ArgumentList.Add("-nostdin");
             process.StartInfo.ArgumentList.Add("-hide_banner");
             process.StartInfo.ArgumentList.Add("-i");
             process.StartInfo.ArgumentList.Add(filePath);
@@ -167,47 +211,66 @@ public static class MediaCompatibility
 
             process.Start();
             ChildProcessTracker.Track(process);
-            var stdErrTask = process.StandardError.ReadToEndAsync(cancellationToken);
-            await process.WaitForExitAsync(cancellationToken);
-            var stdErr = await stdErrTask;
-
-            var lines = stdErr.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries);
-            foreach (var line in lines)
-            {
-                var trimmed = line.Trim();
-                if (
-                    trimmed.StartsWith("Stream #", StringComparison.OrdinalIgnoreCase)
-                    && trimmed.Contains("Video:", StringComparison.OrdinalIgnoreCase)
-                )
-                {
-                    if (
-                        trimmed.Contains("h264", StringComparison.OrdinalIgnoreCase)
-                        || trimmed.Contains("avc1", StringComparison.OrdinalIgnoreCase)
-                    )
-                    {
-                        isH264 = true;
-                    }
-                }
-                else if (
-                    trimmed.StartsWith("Stream #", StringComparison.OrdinalIgnoreCase)
-                    && trimmed.Contains("Audio:", StringComparison.OrdinalIgnoreCase)
-                )
-                {
-                    if (
-                        trimmed.Contains("aac", StringComparison.OrdinalIgnoreCase)
-                        || trimmed.Contains("mp4a", StringComparison.OrdinalIgnoreCase)
-                    )
-                    {
-                        isAac = true;
-                    }
-                }
-            }
+            // No output is requested: FFmpeg only inspects the input and exits with code 1.
+            var stdErrTask = process.StandardError.ReadToEndAsync();
+            await process.WaitForExitWithCancellationAsync(cancellationToken);
+            return ParseStreamCodecs(await stdErrTask);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch
         {
-            // Ignored, defaults to false to force transcoding to standard H.264/AAC
+            return null;
+        }
+    }
+
+    internal static StreamCodecs? ParseStreamCodecs(string diagnostic)
+    {
+        int? videoIndex = null;
+        var copyVideo = false;
+        // A silent video needs no audio conversion. All mapped audio must be AAC to copy it.
+        var copyAudio = true;
+        var videoCount = 0;
+        var isMp4 = diagnostic.Contains("Input #0, mov,mp4,", StringComparison.OrdinalIgnoreCase);
+        foreach (var line in diagnostic.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries))
+        {
+            var match = StreamLineRegex().Match(line.Trim());
+            if (!match.Success)
+                continue;
+
+            var codec = match.Groups["codec"].Value;
+            if (match.Groups["type"].Value == "Video")
+            {
+                videoCount++;
+                if (
+                    videoIndex is not null
+                    || line.Contains("attached pic", StringComparison.OrdinalIgnoreCase)
+                )
+                    continue;
+
+                videoIndex = int.Parse(
+                    match.Groups["index"].Value,
+                    System.Globalization.CultureInfo.InvariantCulture
+                );
+                copyVideo =
+                    (codec is "h264" or "avc1") && CompatiblePixelFormatRegex().IsMatch(line);
+            }
+            else
+            {
+                copyAudio &= codec is "aac" or "mp4a";
+            }
         }
 
-        return (isH264, isAac);
+        return videoIndex is { } index
+            ? new StreamCodecs(index, copyVideo, copyAudio, videoCount > 1, isMp4)
+            : null;
     }
+
+    [GeneratedRegex(@"^Stream #0:(?<index>\d+).*?: (?<type>Video|Audio): (?<codec>\w+)")]
+    private static partial Regex StreamLineRegex();
+
+    [GeneratedRegex(@"\byuvj?420p\b")]
+    private static partial Regex CompatiblePixelFormatRegex();
 }

@@ -1618,7 +1618,13 @@ public partial class AtxAgentClient : IDisposable
 
         var all = screen.AllElements;
         return all.Any(e =>
-            e.Matches("Your shortcuts", partialMatch: true)
+            (
+                e.Enabled
+                && e.Clickable
+                && e.ClassName == "android.widget.Button"
+                && (e.Matches("Close menu.", false) || e.Matches("Close menu", false))
+            )
+            || e.Matches("Your shortcuts", partialMatch: true)
             || e.Matches("Go to Accounts Center", partialMatch: true)
             || e.Matches("Switch profile", partialMatch: true)
             || e.Matches("Create Facebook Page", partialMatch: true)

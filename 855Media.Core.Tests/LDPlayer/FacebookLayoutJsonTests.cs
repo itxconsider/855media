@@ -12,12 +12,12 @@ public class LayoutConfigurationCollection { }
 public class FacebookLayoutJsonTests
 {
     private const string Dashboard =
-        "<hierarchy><node package='com.facebook.katana' bounds='[0,0][720,1280]'><node text='Creator dashboard' bounds='[80,40][600,100]'/><node text='Insights' enabled='true' clickable='true' bounds='[100,180][420,260]'/></node></hierarchy>";
+        "<hierarchy><node package='com.facebook.katana' bounds='[0,0][720,1280]'><node text='Studio dashboard preview' bounds='[80,40][600,100]'/><node text='Insights' enabled='true' clickable='true' bounds='[100,180][420,260]'/></node></hierarchy>";
 
     private static FacebookLayoutConfiguration Config(int version = 2) =>
         new()
         {
-            DashboardHeaderAliases = ["Creator dashboard"],
+            DashboardHeaderAliases = ["Studio dashboard preview"],
             Variants =
             [
                 new()
@@ -102,7 +102,7 @@ public class FacebookLayoutJsonTests
         {
             var config = new FacebookLayoutConfiguration
             {
-                DashboardHeaderAliases = ["Creator dashboard"],
+                DashboardHeaderAliases = ["Studio dashboard preview"],
                 Variants =
                 [
                     new()

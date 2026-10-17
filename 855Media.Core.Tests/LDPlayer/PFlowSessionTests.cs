@@ -91,6 +91,27 @@ public class PFlowSessionTests
     }
 
     [Fact]
+    public async Task HiddenAndroid9ClearAllIsRevealedThenTaskEmptinessIsVerified()
+    {
+        var ld = DispatchProxy.Create<ILDPlayerService, Device>();
+        var fake = (Device)(object)ld;
+        fake.Layout = System.IO.File.ReadAllText(
+            System.IO.Path.Combine(
+                AppContext.BaseDirectory,
+                "Fixtures",
+                "PFlowLayouts",
+                "ld12-android9-recents.xml"
+            )
+        );
+        fake.RevealAfterSwipes = 1;
+        await PFlowSession.ClearAppsAsync(ld, 12, null, default);
+        Assert.Equal(1, fake.Swipes);
+        Assert.Equal(1, fake.Taps);
+        Assert.True(fake.EmptyState);
+        Assert.Equal(2, fake.Home);
+    }
+
+    [Fact]
     public void ExplicitSystemTaskTypesAreNotAppCardsAndNamesCannotSubstituteForTypes()
     {
         var home =
@@ -115,6 +136,8 @@ public class PFlowSessionTests
         public bool EmptyState;
         public string? Layout;
         public bool DelayLayout;
+        public int RevealAfterSwipes,
+            Swipes;
         public (int X, int Y) LastTap;
         private int dumps;
         public int Home,
@@ -137,6 +160,24 @@ public class PFlowSessionTests
                         : Occupied
                     );
                 case "DumpUiHierarchyAsync":
+                    if (Layout != null && Swipes < RevealAfterSwipes)
+                    {
+                        var doc = System.Xml.Linq.XDocument.Parse(Layout);
+                        doc.Descendants("node")
+                            .Where(n =>
+                                ((string?)n.Attribute("text"))?.Equals(
+                                    "Clear all",
+                                    StringComparison.OrdinalIgnoreCase
+                                ) == true
+                                || ((string?)n.Attribute("content-desc"))?.Equals(
+                                    "Clear all",
+                                    StringComparison.OrdinalIgnoreCase
+                                ) == true
+                            )
+                            .ToList()
+                            .ForEach(n => n.Remove());
+                        return Task.FromResult<string?>(doc.ToString());
+                    }
                     if (Layout != null)
                         return Task.FromResult<string?>(
                             DelayLayout && dumps++ == 0 ? "<hierarchy/>" : Layout
@@ -163,6 +204,10 @@ public class PFlowSessionTests
                     LastTap = ((int)args![1]!, (int)args[2]!);
                     EmptyState = Mode != "still-present";
                     return Task.FromResult(Mode != "tap-failed");
+                case "SwipeAsync":
+                    Assert.True((int)args![2]! < (int)args[4]!);
+                    Swipes++;
+                    return Task.FromResult(true);
                 default:
                     throw new NotSupportedException(method.Name);
             }

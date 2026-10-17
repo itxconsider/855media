@@ -45,6 +45,8 @@ public partial class PFlowPersonaSwitcherService
                 e.Matches("Story tray", partialMatch: false)
                 || e.Matches("Edit profile", partialMatch: false)
                 || e.Matches("Professional dashboard", partialMatch: false)
+                || e.Matches("Creator Dashboard", partialMatch: false)
+                || e.Matches("Business Dashboard", partialMatch: false)
                 || (
                     e.Selected
                     && e.ContentDesc.StartsWith("Profile, tab", StringComparison.OrdinalIgnoreCase)
@@ -57,11 +59,74 @@ public partial class PFlowPersonaSwitcherService
         Confirmed,
         NavigationFailed,
         Rejected,
+        SwitchStalled,
     }
 
     private static bool NativeNavigationBlocked(string? xml) =>
         PFlowLoginScreen.RequiresAuthentication(PFlowLoginScreen.Classify(xml))
-        || PFlowUiPrivacy.ContainsInput(xml);
+        || PFlowUiPrivacy.ContainsInput(xml)
+        || ScreenTimeHierarchy
+            .Nodes(xml)
+            .Any(n =>
+                (string?)n.Attribute("package") is { Length: > 0 } package
+                && package is not ("com.facebook.katana" or "com.android.systemui")
+            );
+
+    private async Task<BloksScreenInfo?> ReadNativeScreenAsync(
+        int index,
+        string? path,
+        CancellationToken ct
+    )
+    {
+        var screen = await _ldPlayer.DumpBloksScreenAsync(index, path, ct);
+        if (screen == null)
+            return null;
+        var xml = await PFlowEmailUpdatePrompt.DismissAsync(
+            _ldPlayer,
+            index,
+            screen.RawXml,
+            path,
+            ct,
+            _nativeDelay
+        );
+        return xml == screen.RawXml ? screen : AtxAgentClient.ParseBloksHierarchy(xml);
+    }
+
+    private async Task<string?> WaitForNativeSwitchAsync(
+        int index,
+        string? xml,
+        string? path,
+        CancellationToken ct
+    )
+    {
+        if (!PFlowIdentitySwitchLayout.IsSwitching(xml))
+            return xml;
+        await PFlowTrace.SessionAsync(
+            index,
+            "native.switch.wait",
+            "timeoutSeconds=30; noNavigation=true",
+            ct
+        );
+        var until = _nativeNow().AddSeconds(30);
+        while (_nativeNow() < until)
+        {
+            ct.ThrowIfCancellationRequested();
+            await _nativeDelay(TimeSpan.FromMilliseconds(500), ct);
+            var current = await _ldPlayer.DumpUiHierarchyAsync(index, path, ct);
+            if (string.IsNullOrWhiteSpace(current) || !ScreenTimeHierarchy.Nodes(current).Any())
+                continue;
+            if (!PFlowIdentitySwitchLayout.IsSwitching(current))
+                return current;
+        }
+        await PFlowTrace.SessionAsync(
+            index,
+            "native.switch.stalled",
+            "timeoutSeconds=30; identityUnconfirmed=true",
+            ct
+        );
+        await PFlowDiagnostics.CaptureAsync(_ldPlayer, index, "identity-switch-stalled", path);
+        return null;
+    }
 
     private async Task<bool> SelectNativeTargetAsync(
         int index,
@@ -82,13 +147,28 @@ public partial class PFlowPersonaSwitcherService
             var result = await SelectNativeTargetAttemptAsync(index, target, path, ct);
             if (result == NativeSwitchResult.Confirmed)
                 return true;
-            if (result != NativeSwitchResult.NavigationFailed || attempt != 0)
+            if (
+                result
+                    is not (NativeSwitchResult.NavigationFailed or NativeSwitchResult.SwitchStalled)
+                || attempt != 0
+            )
                 return false;
-            // Only navigation failure can restart the app. Never clear data/cache or retry login.
+            // Navigation failure or a timed-out switch can restart once. Preserve app data/login.
             var current = await _ldPlayer.DumpUiHierarchyAsync(index, path, ct);
             if (NativeNavigationBlocked(current))
                 return false;
-            await PFlowTrace.SessionAsync(index, "native.navigation.restart", "attempt=1", ct);
+            // The loader may have completed between its timeout and this fresh read.
+            if (
+                result == NativeSwitchResult.SwitchStalled
+                && !PFlowIdentitySwitchLayout.IsSwitching(current)
+            )
+                continue;
+            await PFlowTrace.SessionAsync(
+                index,
+                "native.navigation.restart",
+                $"attempt=1; reason={(result == NativeSwitchResult.SwitchStalled ? "switch-stalled" : "navigation-failed")}",
+                ct
+            );
             if (
                 !await _ldPlayer.StopFacebookAppAsync(index, path, ct)
                 || !await _ldPlayer.LaunchAppAsync(index, "com.facebook.katana", path, ct)
@@ -106,7 +186,7 @@ public partial class PFlowPersonaSwitcherService
         CancellationToken ct
     )
     {
-        var screen = await _ldPlayer.DumpBloksScreenAsync(index, path, ct);
+        var screen = await ReadNativeScreenAsync(index, path, ct);
         if (screen == null)
         {
             if (!await _ldPlayer.LaunchAppAsync(index, "com.facebook.katana", path, ct))
@@ -115,21 +195,33 @@ public partial class PFlowPersonaSwitcherService
             while ((screen == null || screen.AllElements.Count == 0) && _nativeNow() < readyUntil)
             {
                 await _nativeDelay(TimeSpan.FromMilliseconds(500), ct);
-                screen = await _ldPlayer.DumpBloksScreenAsync(index, path, ct);
+                screen = await ReadNativeScreenAsync(index, path, ct);
             }
             if (screen == null)
                 return NativeSwitchResult.NavigationFailed;
         }
         if (NativeNavigationBlocked(screen.RawXml))
             return NativeSwitchResult.Rejected;
-        if (
-            !IsNativeSwitcherSheetOpen(screen.RawXml)
-            && !AtxAgentClient.IsMenuPageInBloks(screen)
-            && FindProfileHeaderSwitcherButton(screen.RawXml) == null
-            && !CanRevealNativeNavigation(screen)
-            && !ScreenTimeService.IsScreen(screen.RawXml, "Reels")
-            && !screen.AllElements.Any(e => IsNativeNavigationTarget(e, screen))
-        )
+        if (PFlowIdentitySwitchLayout.IsSwitching(screen.RawXml))
+        {
+            var settled = await WaitForNativeSwitchAsync(index, screen.RawXml, path, ct);
+            if (settled == null)
+                return NativeSwitchResult.SwitchStalled;
+            screen = AtxAgentClient.ParseBloksHierarchy(settled);
+            if (NativeNavigationBlocked(settled))
+                return NativeSwitchResult.Rejected;
+        }
+        if (IsOwnNativeTarget(screen, target))
+        {
+            await PFlowTrace.SessionAsync(
+                index,
+                "native.route.current-target",
+                "alreadyActive=true",
+                ct
+            );
+            return NativeSwitchResult.Confirmed;
+        }
+        if (PlanNativeRoute(screen).Kind == NativeRouteKind.Feed)
             if (
                 !await _ldPlayer.OpenDeepLinkAsync(
                     index,
@@ -166,7 +258,7 @@ public partial class PFlowPersonaSwitcherService
         while (_nativeNow() < until)
         {
             ct.ThrowIfCancellationRequested();
-            screen = await _ldPlayer.DumpBloksScreenAsync(index, path, ct);
+            screen = await ReadNativeScreenAsync(index, path, ct);
             if (screen == null)
             {
                 await _nativeDelay(TimeSpan.FromMilliseconds(500), ct);
@@ -174,6 +266,17 @@ public partial class PFlowPersonaSwitcherService
             }
             if (NativeNavigationBlocked(screen.RawXml))
                 return NativeSwitchResult.Rejected;
+            if (PFlowIdentitySwitchLayout.IsSwitching(screen.RawXml))
+            {
+                var settled = await WaitForNativeSwitchAsync(index, screen.RawXml, path, ct);
+                if (settled == null)
+                    return NativeSwitchResult.SwitchStalled;
+                screen = AtxAgentClient.ParseBloksHierarchy(settled);
+                if (NativeNavigationBlocked(settled))
+                    return NativeSwitchResult.Rejected;
+                if (IsOwnNativeTarget(screen, target))
+                    return NativeSwitchResult.Confirmed;
+            }
             if (IsNativeSwitcherSheetOpen(screen.RawXml))
                 break;
             if (_nativeNow() - lastTapUtc < TimeSpan.FromSeconds(3))
@@ -181,7 +284,8 @@ public partial class PFlowPersonaSwitcherService
                 await _nativeDelay(TimeSpan.FromMilliseconds(500), ct);
                 continue;
             }
-            var dropdown = FindProfileHeaderSwitcherButton(screen.RawXml);
+            var route = PlanNativeRoute(screen, CanTap);
+            var dropdown = route.Dropdown;
             if (dropdown != null)
             {
                 var (x, y) = ParseNodeBoundsCenter(dropdown);
@@ -192,16 +296,13 @@ public partial class PFlowPersonaSwitcherService
                 await _nativeDelay(TimeSpan.FromMilliseconds(1500), ct);
                 continue;
             }
-            var nav = screen
-                .AllElements.Where(e => CanTap(e) && IsNativeNavigationTarget(e, screen))
-                .OrderByDescending(e => e.Matches("Go to profile", partialMatch: false))
-                .FirstOrDefault();
+            var nav = route.Navigation;
             if (nav != null)
             {
                 if (!await TapNavigation(nav, "native.navigation.tap"))
                     return NativeSwitchResult.NavigationFailed;
             }
-            else if (reveals < 3 && CanRevealNativeNavigation(screen))
+            else if (reveals < 3 && route.Kind == NativeRouteKind.Reveal)
             {
                 reveals++;
                 var (w, h) = ParseScreenDimensions(screen.RawXml);
@@ -270,7 +371,7 @@ public partial class PFlowPersonaSwitcherService
             )
                 return NativeSwitchResult.NavigationFailed;
             await _nativeDelay(TimeSpan.FromMilliseconds(500), ct);
-            screen = await _ldPlayer.DumpBloksScreenAsync(index, path, ct);
+            screen = await ReadNativeScreenAsync(index, path, ct);
             if (screen == null || !IsNativeSwitcherSheetOpen(screen.RawXml))
                 return NativeSwitchResult.Rejected;
         }
@@ -289,7 +390,7 @@ public partial class PFlowPersonaSwitcherService
             )
                 return NativeSwitchResult.NavigationFailed;
             await _nativeDelay(TimeSpan.FromMilliseconds(500), ct);
-            screen = await _ldPlayer.DumpBloksScreenAsync(index, path, ct);
+            screen = await ReadNativeScreenAsync(index, path, ct);
             if (screen == null || !IsNativeSwitcherSheetOpen(screen.RawXml))
                 return NativeSwitchResult.Rejected;
         }
@@ -314,7 +415,7 @@ public partial class PFlowPersonaSwitcherService
             ? await _ldPlayer.PressBackAsync(index, path, ct)
             : await _ldPlayer.TapAsync(index, row.Value.X, row.Value.Y, path, ct);
         if (!acknowledged)
-            return NativeSwitchResult.NavigationFailed;
+            return NativeSwitchResult.Rejected; // An unacknowledged selection must not be retried as navigation.
         // Row/back acknowledgement arrives before Facebook closes the sheet and
         // replaces the previous identity's profile. Do not tap that stale screen.
         await _nativeDelay(TimeSpan.FromSeconds(2), ct);
@@ -328,6 +429,11 @@ public partial class PFlowPersonaSwitcherService
                 await _nativeDelay(TimeSpan.FromMilliseconds(500), ct);
                 continue;
             }
+            if (NativeNavigationBlocked(current))
+                return NativeSwitchResult.Rejected;
+            current = await WaitForNativeSwitchAsync(index, current, path, ct);
+            if (current == null)
+                return NativeSwitchResult.SwitchStalled;
             if (NativeNavigationBlocked(current))
                 return NativeSwitchResult.Rejected;
             if (!IsNativeSwitcherSheetOpen(current))
@@ -400,7 +506,17 @@ public partial class PFlowPersonaSwitcherService
         );
         if (confirmed)
             return NativeSwitchResult.Confirmed;
-        screen = await _ldPlayer.DumpBloksScreenAsync(index, path, ct);
+        screen = await ReadNativeScreenAsync(index, path, ct);
+        // A loader can appear just after the sheet closes. It remains recoverable,
+        // whereas an ordinary wrong actor must remain a non-retryable rejection.
+        if (PFlowIdentitySwitchLayout.IsSwitching(screen?.RawXml))
+        {
+            var settled = await WaitForNativeSwitchAsync(index, screen!.RawXml, path, ct);
+            if (settled == null)
+                return NativeSwitchResult.SwitchStalled;
+            if (IsOwnNativeTarget(AtxAgentClient.ParseBloksHierarchy(settled), target))
+                return NativeSwitchResult.Confirmed;
+        }
         // Keep evidence of the post-switch failure before session cleanup returns Home.
         // A found/tapped row alone is not confirmation of the requested personal actor.
         try
@@ -658,6 +774,52 @@ public partial class PFlowPersonaSwitcherService
                 || n.Attribute("content-desc")?.Value is "Selected" or "Checked"
             );
 
+    internal static (string Label, int X, int Y, bool Selected)? FindNativePageNameCandidate(
+        string? xml,
+        string cached
+    )
+    {
+        if (
+            !IsNativeSwitcherSheetOpen(xml)
+            || NativeNavigationBlocked(xml)
+            || FindNativeTargetInSwitcher(xml, cached, "Page") != null
+        )
+            return null;
+        static string Normal(string s) => Regex.Replace(s.Trim(), @"\s+", " ");
+        var expected = Normal(cached);
+        var shorter = PFlowPageName.RepeatedNameCandidate(expected);
+        var candidates = new List<(string Label, int X, int Y, bool Selected)>();
+        foreach (var row in FindNativeSwitcherRows(xml).Where(IsNativePageRow))
+        {
+            var label = Normal(row.Attribute("content-desc")?.Value ?? "");
+            if (label.Length == 0)
+                continue;
+            label = Regex.Replace(
+                label,
+                @",\s*\d+\s+notifications?\s*$",
+                "",
+                RegexOptions.IgnoreCase
+            );
+            var truncated = label.EndsWith('…') || label.EndsWith("...", StringComparison.Ordinal);
+            var prefix = truncated ? label.TrimEnd('.', '…').Trim() : label;
+            var compatible =
+                expected.Length >= 4
+                && prefix.Length >= 4
+                && (
+                    truncated
+                        ? expected.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                            || prefix.StartsWith(expected + " ", StringComparison.OrdinalIgnoreCase)
+                        : label.StartsWith(expected + " ", StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(label, shorter, StringComparison.OrdinalIgnoreCase)
+                );
+            if (!compatible || ScreenTimeHierarchy.Center(row) is not { } point)
+                continue;
+            candidates.Add((label, point.X, point.Y, IsNativeRowSelected(row)));
+        }
+        // This identifies a navigation candidate only. The caller must verify live UIDs.
+        return candidates.Count == 1 ? candidates[0] : null;
+    }
+
     internal static (int X, int Y, bool IsSelected)? FindNativeTargetInSwitcher(
         string? xml,
         string name,
@@ -752,6 +914,33 @@ public partial class PFlowPersonaSwitcherService
             var isMenuScreen = AtxAgentClient.IsMenuPageInBloks(
                 AtxAgentClient.ParseBloksHierarchy(xml)
             );
+            // In this drawer, Switch profile is the avatar shortcut. The adjacent
+            // More options button opens the full identity sheet.
+            if (isMenuScreen)
+            {
+                var header = FacebookLayoutRegistry
+                    .Match(xml, FacebookScreenKind.Menu)
+                    .Control(FacebookControlRole.ActiveProfile);
+                if (header != null)
+                {
+                    var options = nodes
+                        .Where(n =>
+                            n.Attribute("enabled")?.Value != "false"
+                            && n.Attribute("clickable")?.Value == "true"
+                            && (
+                                n.Attribute("content-desc")?.Value == "More options"
+                                || n.Attribute("text")?.Value == "More options"
+                            )
+                            && ParseNodeBoundsCenter(n) is var point
+                            && point.Item1 > header.X
+                            && Math.Abs(point.Item2 - header.Y) <= 60
+                        )
+                        .Take(2)
+                        .ToArray();
+                    if (options.Length == 1)
+                        return options[0];
+                }
+            }
             var semanticSwitcher = nodes.FirstOrDefault(n =>
                 n.Attribute("enabled")?.Value != "false"
                 && n.Attribute("clickable")?.Value == "true"
@@ -816,6 +1005,61 @@ public partial class PFlowPersonaSwitcherService
                 var (_, nameY) = ParseNodeBoundsCenter(nameNode);
                 if (nameY <= 0)
                     continue;
+
+                // Compact Page headers put the chevron immediately after the
+                // left-aligned title instead of at the screen's right edge.
+                var title = (nameNode.Attribute("text")?.Value ?? "").Trim();
+                if (title.Length == 0)
+                    title = (nameNode.Attribute("content-desc")?.Value ?? "").Trim();
+                if (
+                    !isMenuScreen
+                    && FacebookLayoutRegistry
+                        .Match(xml, FacebookScreenKind.OwnProfile, new(TargetName: title))
+                        .IsMatch
+                )
+                {
+                    var titleBounds = Regex.Match(
+                        nameNode.Attribute("bounds")?.Value ?? "",
+                        @"\[(\d+),(\d+)\]\[(\d+),(\d+)\]"
+                    );
+                    if (titleBounds.Success)
+                    {
+                        var titleRight = int.Parse(titleBounds.Groups[3].Value);
+                        var inline = nodes
+                            .Where(node =>
+                                node.Attribute("package")?.Value == "com.facebook.katana"
+                                && node.Attribute("clickable")?.Value == "true"
+                                && FacebookLayoutRegistry.UsableCenter(node) is { } point
+                                && point.X > titleRight
+                                && point.X - titleRight <= screenWidth * 0.12
+                                && Math.Abs(point.Y - nameY) <= screenWidth * 0.05
+                                && string.IsNullOrWhiteSpace(node.Attribute("text")?.Value)
+                                && (
+                                    string.IsNullOrWhiteSpace(node.Attribute("content-desc")?.Value)
+                                    || Regex.IsMatch(
+                                        node.Attribute("content-desc")!.Value,
+                                        @"^(?:chevron|dropdown)$",
+                                        RegexOptions.IgnoreCase
+                                    )
+                                )
+                                && Regex.Match(
+                                    node.Attribute("bounds")?.Value ?? "",
+                                    @"\[(\d+),(\d+)\]\[(\d+),(\d+)\]"
+                                )
+                                    is { Success: true } bounds
+                                && int.Parse(bounds.Groups[3].Value)
+                                    - int.Parse(bounds.Groups[1].Value)
+                                    <= screenWidth * 0.14
+                                && int.Parse(bounds.Groups[4].Value)
+                                    - int.Parse(bounds.Groups[2].Value)
+                                    <= screenWidth * 0.14
+                            )
+                            .Take(2)
+                            .ToArray();
+                        if (inline.Length == 1)
+                            return inline[0];
+                    }
+                }
 
                 var explicitlyNamed = nodes.FirstOrDefault(node =>
                 {

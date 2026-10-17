@@ -70,6 +70,42 @@ public class FacebookLayoutComponentsTests
     }
 
     [Fact]
+    public void MuseSidebarPreservesActiveProfileAndNeverExposesCardCloseAsDismiss()
+    {
+        var xml = Fixture("menu-muse-sidebar-screenshot");
+        var match = FacebookLayoutRegistry.Match(xml, FacebookScreenKind.Menu, new("Target Page"));
+        Assert.True(match.IsMatch, match.Diagnostic);
+        Assert.Equal("menu.muse-sidebar.v1", match.VariantId);
+        Assert.NotNull(match.Control(FacebookControlRole.ActiveProfile));
+        Assert.Null(match.Control(FacebookControlRole.Dismiss));
+        Assert.False(
+            FacebookLayoutRegistry
+                .Match(xml, FacebookScreenKind.OwnProfile, new("Target Page"))
+                .IsMatch
+        );
+        Assert.False(
+            FacebookLayoutRegistry.Match(xml, FacebookScreenKind.Menu, new("Other Page")).IsMatch
+        );
+        Assert.False(ScreenTimeService.IsScreen(xml, "Feed"));
+    }
+
+    [Fact]
+    public void HiddenMuseCardDoesNotCreateASidebarVariant()
+    {
+        var doc = XDocument.Parse(Fixture("menu-muse-sidebar-screenshot"));
+        doc.Descendants("node")
+            .Single(n => n.Attribute("text")?.Value == "Muse")
+            .Parent!.SetAttributeValue("visible-to-user", "false");
+        var match = FacebookLayoutRegistry.Match(
+            doc.ToString(),
+            FacebookScreenKind.Menu,
+            new("Target Page")
+        );
+        Assert.True(match.IsMatch, match.Diagnostic);
+        Assert.NotEqual("menu.muse-sidebar.v1", match.VariantId);
+    }
+
+    [Fact]
     public void MultipleActiveHeadersCannotSelectTheFirstOne()
     {
         var doc = XDocument.Parse(Fixture("ld14-page-menu-spaced-name"));

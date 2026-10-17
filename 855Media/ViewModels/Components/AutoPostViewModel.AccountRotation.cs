@@ -71,6 +71,7 @@ public partial class AutoPostViewModel
         CancellationToken ct
     )
     {
+        InvalidatePostTargetSession(worker.Index);
         _pFlowOwners.TryRemove(worker.Index, out _);
         async Task Progress(string step) =>
             await Dispatcher.UIThread.InvokeAsync(() =>
@@ -79,6 +80,8 @@ public partial class AutoPostViewModel
         await CreateRunSessionPreparation().PrepareAsync(account.Binding, Progress, ct);
         // Preparing the device must not imply navigating the account switcher.
         // A fresh token identity can establish the account while leaving its current actor alone.
+        await CheckPostProcessAsync(worker.Index, ct);
+        _postProcessIds.TryGetValue(worker.Index, out var beforeProcess);
         var graph = await new PFlowGraphIdentityReader().TryReadUidAsync(
             _ldPlayerService,
             worker.Index,
@@ -94,6 +97,19 @@ public partial class AutoPostViewModel
             && !PFlowLoginScreen.RequiresAuthentication(PFlowLoginScreen.Classify(current))
         )
         {
+            await CheckPostProcessAsync(worker.Index, ct);
+            if (
+                _postProcessIds.TryGetValue(worker.Index, out var afterProcess)
+                && beforeProcess == afterProcess
+                && !string.IsNullOrWhiteSpace(afterProcess)
+            )
+                _startupIdentities[worker.Index] = new(
+                    account.Binding,
+                    afterProcess,
+                    current,
+                    graph,
+                    DateTime.UtcNow
+                );
             _pFlowActiveBindings[worker.Index] = account.Binding;
             _pFlowAccountAttention.TryRemove(worker.Index, out _);
             await PFlowTrace.SessionAsync(
@@ -180,6 +196,16 @@ public partial class AutoPostViewModel
                 {
                     foreach (var type in new[] { "Reel", "Picture", "Video", "Story" })
                     {
+                        if (
+                            !_pFlowJobs.Any(j =>
+                                j.AccountBinding == account.Binding
+                                && j.TargetId == page.PageId
+                                && j.IsProfile == page.IsProfile
+                                && j.PostType == type
+                                && j.State == PFlowState.Queued
+                            )
+                        )
+                            continue;
                         await RequireAccountTransitionIdleAsync(worker.Index, c);
                         await ExecutePFlowForPageAsync(worker, page, type, c);
                     }

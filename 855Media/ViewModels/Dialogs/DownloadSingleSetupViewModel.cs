@@ -169,6 +169,8 @@ public partial class DownloadSingleSetupViewModel(
             return;
 
         filePath = _855Media.Core.Utils.FileUtils.SanitizeFilePath(filePath);
+        if (!SelectedDownloadOption.IsAudioOnly && Video.Source != VideoSource.FacebookPhoto)
+            filePath = Path.ChangeExtension(filePath, ".mp4");
 
         // Download does not start immediately, so lock in the file path to avoid conflicts
         Directory.CreateForFile(filePath);

@@ -236,12 +236,20 @@ internal sealed partial class ScreenTimeInteractions
                     : ScreenTimeHierarchy.IsUnsafe(target.Xml)
             )
             || !center.HasValue
+            || (
+                target != null
+                && !FacebookLayoutRegistry.Match(xml, FacebookScreenKind.PostActionBar).IsMatch
+            )
             || ScreenTimeHierarchy
                 .Nodes(xml)
                 .Any(n =>
                     ScreenTimeHierarchy
                         .Label(n)
                         .Contains("Remove ", StringComparison.OrdinalIgnoreCase)
+                    || ScreenTimeHierarchy.IsAppliedReactionLabel((string?)n.Attribute("text"))
+                    || ScreenTimeHierarchy.IsAppliedReactionLabel(
+                        (string?)n.Attribute("content-desc")
+                    )
                 )
         )
         {
@@ -279,6 +287,10 @@ internal sealed partial class ScreenTimeInteractions
                         .Label(n)
                         .Trim()
                         .StartsWith("Remove ", StringComparison.OrdinalIgnoreCase)
+                    || ScreenTimeHierarchy.IsAppliedReactionLabel((string?)n.Attribute("text"))
+                    || ScreenTimeHierarchy.IsAppliedReactionLabel(
+                        (string?)n.Attribute("content-desc")
+                    )
                 )
         )
         {
@@ -311,7 +323,16 @@ internal sealed partial class ScreenTimeInteractions
                     throw new InvalidOperationException(
                         "Reaction picker lost the verified post identity."
                     );
-                sent = sent && await Tap(ScreenTimeHierarchy.ReactionChoice(picker, reaction), ct);
+                var pickerMatch = FacebookLayoutRegistry.Match(
+                    picker,
+                    FacebookScreenKind.ReactionPicker
+                );
+                var role = Enum.Parse<FacebookControlRole>("Reaction" + reaction);
+                var choice = pickerMatch.Control(role);
+                sent =
+                    sent
+                    && choice != null
+                    && await _ld.TapAsync(_index, choice.X, choice.Y, _path, ct);
             }
             if (!sent)
                 throw new InvalidOperationException("Reaction acknowledgement is missing.");
@@ -325,6 +346,12 @@ internal sealed partial class ScreenTimeInteractions
                             ? ScreenTimeHierarchy.HasOnlyPost(after, targetKey)
                             : ScreenTimeFeedTarget.Resolve(after)?.Key == targetKey
                     )
+                    && FacebookLayoutRegistry
+                        .Match(
+                            target == null ? after : ScreenTimeFeedTarget.Resolve(after)?.Xml,
+                            FacebookScreenKind.AppliedReaction
+                        )
+                        .IsMatch
                     && ScreenTimeHierarchy.Control(
                         target == null ? after : ScreenTimeFeedTarget.Resolve(after)?.Xml,
                         "Remove " + reaction + " reaction"
@@ -386,12 +413,11 @@ internal sealed partial class ScreenTimeInteractions
             if (
                 !ScreenTimeHierarchy.HasOnlyPost(xml, draft.PostId)
                 || ScreenTimeHierarchy.IsUnsafe(xml)
-                || ScreenTimeHierarchy
-                    .Nodes(xml)
-                    .Any(n =>
-                        ScreenTimeHierarchy.Label(n).Trim()
-                        == $"Comment by {_settings.OwnerName}: {draft.Text}"
-                    )
+                || ScreenTimeHierarchy.HasPublishedComment(
+                    CommentPanelScope(xml, draft.PostId),
+                    _settings.OwnerName,
+                    draft.Text
+                )
             )
             {
                 Skipped++;
@@ -541,32 +567,40 @@ internal sealed partial class ScreenTimeInteractions
             new System.Xml.Linq.XElement(scope)
         ).ToString();
         if (
-            ScreenTimeHierarchy.Control(panel, "Send comment") == null
-            || !ScreenTimeHierarchy
+            !ScreenTimeHierarchy
                 .Nodes(xml)
-                .Where(n =>
-                    ScreenTimeHierarchy
-                        .Label(n)
-                        .Trim()
-                        .StartsWith("Comment as ", StringComparison.OrdinalIgnoreCase)
+                .SelectMany(n =>
+                    new[] { (string?)n.Attribute("text"), (string?)n.Attribute("content-desc") }
                 )
-                .Select(n => ScreenTimeHierarchy.Label(n).Trim())
+                .Select(label => label?.Trim() ?? "")
+                .Where(label => label.StartsWith("Comment as ", StringComparison.OrdinalIgnoreCase))
                 .Distinct()
                 .SequenceEqual(new[] { "Comment as " + _settings.OwnerName })
         )
             return null;
-        return panel;
+        return FacebookLayoutRegistry
+            .Match(xml, FacebookScreenKind.CommentSheet, new(_settings.OwnerName))
+            .IsMatch
+            ? panel
+            : null;
     }
 
     private bool CommentPanelMatches(string? xml, string postId) =>
         CommentPanelScope(xml, postId) != null;
 
     private bool CommentConfirmed(string? xml, string postId, string text) =>
-        ScreenTimeHierarchy
-            .Nodes(CommentPanelScope(xml, postId))
-            .Any(n =>
-                ScreenTimeHierarchy.Label(n).Trim() == $"Comment by {_settings.OwnerName}: {text}"
-            );
+        FacebookLayoutRegistry
+            .Match(
+                xml,
+                FacebookScreenKind.PublishedComment,
+                new(_settings.OwnerName, CommentText: text)
+            )
+            .IsMatch
+        && ScreenTimeHierarchy.HasPublishedComment(
+            CommentPanelScope(xml, postId),
+            _settings.OwnerName,
+            text
+        );
 
     private static bool HasTypedComment(string? xml, string text) =>
         ScreenTimeHierarchy

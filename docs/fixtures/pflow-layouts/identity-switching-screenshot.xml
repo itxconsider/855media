@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Reconstructed from the user's 2026-10-16 screenshot; not captured device XML. -->
+<hierarchy rotation="0">
+  <node package="com.facebook.katana" class="android.widget.FrameLayout" enabled="true" clickable="false" bounds="[0,0][325,585]">
+    <node package="com.facebook.katana" class="android.view.ViewGroup" enabled="true" clickable="false" bounds="[18,69][309,557]">
+      <node package="com.facebook.katana" class="android.widget.ImageView" content-desc="Profile picture" enabled="true" clickable="false" bounds="[131,218][196,283]" />
+      <node package="com.facebook.katana" class="android.widget.TextView" text="Switching to" enabled="true" clickable="false" visible-to-user="true" bounds="[122,298][207,316]" />
+      <node package="com.facebook.katana" class="android.widget.TextView" text="Sue Li..." enabled="true" clickable="false" visible-to-user="true" bounds="[139,317][190,337]" />
+      <node package="com.facebook.katana" class="android.widget.ImageView" content-desc="Facebook" enabled="true" clickable="false" bounds="[142,458][186,502]" />
+    </node>
+  </node>
+</hierarchy>

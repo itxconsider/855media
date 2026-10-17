@@ -367,6 +367,14 @@ public sealed class ScreenTimeService : IScreenTimeService
             for (var attempt = 0; attempt < 12; attempt++)
             {
                 lastScreen = await _ld.DumpUiHierarchyAsync(index, path, ct);
+                lastScreen = await PFlowEmailUpdatePrompt.DismissAsync(
+                    _ld,
+                    index,
+                    lastScreen,
+                    path,
+                    ct,
+                    _delay
+                );
                 if (name == "Marketplace" && ScreenTimeNavigation.IsMarketplaceAgeGate(lastScreen))
                     throw new MarketplaceAgeGateDetectedException(lastScreen!);
                 var initialBrowse = await ObserveBrowse(lastScreen);
@@ -663,6 +671,14 @@ public sealed class ScreenTimeService : IScreenTimeService
                 {
                     ct.ThrowIfCancellationRequested();
                     xml = await _ld.DumpUiHierarchyAsync(index, path, ct);
+                    xml = await PFlowEmailUpdatePrompt.DismissAsync(
+                        _ld,
+                        index,
+                        xml,
+                        path,
+                        ct,
+                        _delay
+                    );
                     var browseDecision = await ObserveBrowse(xml);
                     if (name == "Marketplace" && ScreenTimeNavigation.IsMarketplaceAgeGate(xml))
                         throw new MarketplaceAgeGateDetectedException(xml!);

@@ -203,7 +203,14 @@ public sealed class PFlowSessionPreparation(
                     @"(?<![\w.])com\.facebook\.katana/"
                 )
             )
-                return await ld.DumpUiHierarchyAsync(binding.DeviceIndex, path, ct) ?? "";
+                return await PFlowEmailUpdatePrompt.DismissAsync(
+                        ld,
+                        binding.DeviceIndex,
+                        await ld.DumpUiHierarchyAsync(binding.DeviceIndex, path, ct),
+                        path,
+                        ct,
+                        _startupDelay
+                    ) ?? "";
             if (string.IsNullOrWhiteSpace(activity))
             {
                 // Logout changes activities; Android may briefly report no focused window.

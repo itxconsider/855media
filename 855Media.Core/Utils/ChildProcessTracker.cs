@@ -38,6 +38,8 @@ public static class ChildProcessTracker
                 if (!process.HasExited)
                 {
                     process.Kill(entireProcessTree: true);
+                    // Do not release conversion slots or delete temporary files while it is exiting.
+                    await process.WaitForExitAsync(CancellationToken.None);
                 }
             }
             catch

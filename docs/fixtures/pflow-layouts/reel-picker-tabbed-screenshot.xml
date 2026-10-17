@@ -1,0 +1,13 @@
+<!-- Screenshot reconstruction, not a captured accessibility hierarchy. Bounds are illustrative. -->
+<hierarchy><node package="com.facebook.katana" bounds="[0,0][332,571]">
+  <node text="Create reel" bounds="[126,30][210,55]" />
+  <node text="Music" bounds="[16,120][62,140]" />
+  <node text="Templates" bounds="[76,120][140,140]" />
+  <node text="Drafts" bounds="[160,120][204,140]" />
+  <node text="Green screen" bounds="[215,120][299,140]" />
+  <node text="Recents" bounds="[10,154][74,183]" />
+  <node text="Videos" bounds="[79,154][136,183]" />
+  <node text="Albums" bounds="[140,154][202,183]" />
+  <node text="Select" bounds="[248,154][322,183]" />
+  <node text="00:59" bounds="[14,301][52,319]" />
+</node></hierarchy>

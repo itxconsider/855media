@@ -1602,6 +1602,17 @@ public partial class LDPlayerService : ILDPlayerService
             return true;
 
         bool needsDismiss = false;
+        if (PFlowEmailUpdatePrompt.Card(xml) != null)
+        {
+            await PFlowEmailUpdatePrompt.DismissAsync(
+                this,
+                index,
+                xml,
+                customPath,
+                cancellationToken
+            );
+            return true;
+        }
 
         // 1. External browser opened (Chrome, WebView, etc.)
         if (
@@ -4540,49 +4551,30 @@ public partial class LDPlayerService : ILDPlayerService
             await PressHomeAsync(index, customPath, cancellationToken);
             if (await PressRecentAppsAsync(index, customPath, cancellationToken))
             {
-                // Recents animates asynchronously; inspect its own controls
-                // and resource IDs, rather than an arbitrary Facebook label.
-                for (var attempt = 0; attempt < 4; attempt++)
+                await Task.Delay(650, cancellationToken);
+                var button = await PFlowRecentAppsNavigation.FindClearAsync(
+                    this,
+                    index,
+                    customPath,
+                    cancellationToken
+                );
+                var point = RecentAppsClearPoint(button);
+                if (
+                    point.HasValue
+                    && await TapAsync(
+                        index,
+                        point.Value.X,
+                        point.Value.Y,
+                        customPath,
+                        cancellationToken
+                    )
+                )
                 {
                     await Task.Delay(650, cancellationToken);
-                    var xml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
-                    var button = FindRecentAppsClearTarget(xml);
-                    if (button != null)
-                    {
-                        var (x, y) = ParseNodeBoundsCenter(button);
-                        if (await TapAsync(index, x, y, customPath, cancellationToken))
-                        {
-                            await Task.Delay(650, cancellationToken);
-                            var after = await DumpUiHierarchyAsync(
-                                index,
-                                customPath,
-                                cancellationToken
-                            );
-                            cleared =
-                                !string.IsNullOrWhiteSpace(after)
-                                && FindRecentAppsClearTarget(after) == null;
-                        }
-                        break;
-                    }
-                    // Some launchers put Clear all beyond the first card.
-                    if (
-                        attempt >= 1
-                        && xml?.Contains("launcher", StringComparison.OrdinalIgnoreCase) == true
-                    )
-                    {
-                        var (width, height) = ParseScreenDimensions(xml);
-                        if (width > 0 && height > 0)
-                            await SwipeAsync(
-                                index,
-                                width / 4,
-                                height / 2,
-                                width * 3 / 4,
-                                height / 2,
-                                300,
-                                customPath,
-                                cancellationToken
-                            );
-                    }
+                    var after = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
+                    cleared =
+                        !string.IsNullOrWhiteSpace(after)
+                        && FindRecentAppsClearTarget(after) == null;
                 }
             }
         }
@@ -5993,7 +5985,11 @@ public partial class LDPlayerService : ILDPlayerService
         );
         if (graphPage != null && (graphPage.Id == pageId || graphPage.Id == pageUid))
         {
-            info.PageName = graphPage.Name;
+            info.PageName =
+                PFlowPageDetailsNavigation.FindFullHeaderName(
+                    screen,
+                    expectedPageName ?? graphPage.Name
+                ) ?? graphPage.Name;
             info.ProfilePictureUrl = graphPage.PictureUrl ?? info.ProfilePictureUrl;
         }
 
@@ -6819,75 +6815,13 @@ public partial class LDPlayerService : ILDPlayerService
         {
             if (progress != null)
                 await progress("Personal account: opening Accounts Center to look for birthday.");
-            await OpenDeepLinkAsync(
+            result.Birthdate = await PFlowPersonalBirthdayReader.ReadAsync(
+                this,
                 index,
-                BloksConstants.AccountsCenterDeepLink,
-                BloksConstants.KatanaPackage,
+                accountName,
                 customPath,
                 cancellationToken
             );
-            await PFlowFetchPacing.DelayAsync(1200, cancellationToken);
-            screen = await DumpBloksScreenAsync(index, customPath, cancellationToken);
-
-            if (screen != null)
-            {
-                var personalDetails = FindHierarchyTapTarget(
-                    screen,
-                    ["Personal details", "Personal information"]
-                );
-                if (personalDetails != null)
-                {
-                    if (progress != null)
-                        await progress("Personal account: opening Personal details.");
-                    await TapAsync(
-                        index,
-                        personalDetails.CenterX,
-                        personalDetails.CenterY,
-                        customPath,
-                        cancellationToken
-                    );
-                    await PFlowFetchPacing.DelayAsync(1000, cancellationToken);
-                    screen = await DumpBloksScreenAsync(index, customPath, cancellationToken);
-                }
-
-                if (screen != null)
-                {
-                    result.Birthdate = ExtractHierarchyFieldValue(
-                        screen,
-                        ["Birthday", "Date of birth", "Birth date"]
-                    );
-                    if (string.IsNullOrWhiteSpace(result.Birthdate))
-                    {
-                        var birthday = FindHierarchyTapTarget(
-                            screen,
-                            ["Birthday", "Date of birth", "Birth date"]
-                        );
-                        if (birthday != null)
-                        {
-                            if (progress != null)
-                                await progress("Personal account: reading the Birthday field.");
-                            await TapAsync(
-                                index,
-                                birthday.CenterX,
-                                birthday.CenterY,
-                                customPath,
-                                cancellationToken
-                            );
-                            await PFlowFetchPacing.DelayAsync(800, cancellationToken);
-                            screen = await DumpBloksScreenAsync(
-                                index,
-                                customPath,
-                                cancellationToken
-                            );
-                            if (screen != null)
-                                result.Birthdate = ExtractHierarchyFieldValue(
-                                    screen,
-                                    ["Birthday", "Date of birth", "Birth date"]
-                                );
-                        }
-                    }
-                }
-            }
         }
 
         if (progress != null)

@@ -22,8 +22,21 @@ internal static class PFlowProfileDetailsReader
         delay ??= PFlowFetchPacing.DelayAsync;
         if (!PFlowProfileDates.MatchesName(details, name))
             return string.Empty;
-        BloksElement? FindEntry(BloksScreenInfo current) =>
-            current.AllElements.FirstOrDefault(e =>
+        (int X, int Y)? FindEntry(BloksScreenInfo current)
+        {
+            var match = FacebookLayoutRegistry.MatchScreen(
+                current,
+                FacebookScreenKind.ProfileDetails,
+                new(name)
+            );
+            if (match.IsMatch)
+            {
+                var control = match.Control(FacebookControlRole.Transparency);
+                return control == null ? null : (control.X, control.Y);
+            }
+            if (match.Status == FacebookLayoutStatus.Ambiguous)
+                return null;
+            var legacy = current.AllElements.FirstOrDefault(e =>
                 e.Enabled
                 && e.Clickable
                 && e.Width > 0
@@ -33,6 +46,8 @@ internal static class PFlowProfileDetailsReader
                     || e.Matches(profile ? "Profile transparency" : "Page transparency", false)
                 )
             );
+            return legacy == null ? null : (legacy.CenterX, legacy.CenterY);
+        }
         var target = FindEntry(details);
         // The join-date text can render before the transparency link.
         for (var wait = 0; target == null && wait < 4; wait++)
@@ -47,7 +62,7 @@ internal static class PFlowProfileDetailsReader
                 return string.Empty;
             target = FindEntry(current);
         }
-        if (target == null || !await ld.TapAsync(index, target.CenterX, target.CenterY, path, ct))
+        if (target == null || !await ld.TapAsync(index, target.Value.X, target.Value.Y, path, ct))
             return string.Empty;
         try
         {
@@ -140,11 +155,26 @@ internal static class PFlowProfileDetailsReader
             || PFlowPersonaSwitcherService.IsNativeSwitcherSheetOpen(xml)
             || !PFlowProfileDates.MatchesName(screen, name)
         )
+        {
+            await PFlowFetchTrace.WriteAsync(
+                index,
+                "profile.details.skipped",
+                "reason=own-profile-or-name-not-confirmed",
+                ct
+            );
             return result;
+        }
         result.Birthdate = profile
             ? PFlowProfileDates.Birthdate(screen, confirmedProfileContext: true)
             : string.Empty;
         var title = PFlowPageDetailsNavigation.FindHeaderName(screen, name);
+        if (title == null)
+            await PFlowFetchTrace.WriteAsync(
+                index,
+                "profile.details.header-not-found",
+                "Name tap unavailable; Transparency was not opened, so date availability is unknown.",
+                ct
+            );
         if (title != null && await ld.TapAsync(index, title.CenterX, title.CenterY, path, ct))
         {
             BloksScreenInfo? details = null;

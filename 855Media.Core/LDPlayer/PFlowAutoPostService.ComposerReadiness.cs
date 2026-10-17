@@ -63,16 +63,33 @@ public partial class PFlowAutoPostService
             var (width, height) = ComposerViewport(xml);
             foreach (var button in node.AncestorsAndSelf("node").Take(3))
             {
-                if (button.Attribute("clickable")?.Value != "true")
-                    continue;
-                var point = ScreenTimeHierarchy.Center(button);
                 if (
-                    point.HasValue
-                    && point.Value.X > 0
-                    && point.Value.Y > 0
-                    && (width <= 0 || point.Value.X < width)
-                    && (height <= 0 || point.Value.Y < height)
+                    button.Attribute("clickable")?.Value != "true"
+                    && !(
+                        !requireEnabled
+                        && button.Attribute("class")?.Value == "android.widget.Button"
+                        && button.Attribute("enabled")?.Value == "false"
+                    )
                 )
+                    continue;
+                // Read this candidate's bounds directly. The tap-oriented Center
+                // helper intentionally excludes disabled controls, even when this
+                // lookup is only diagnosing their visible presence.
+                var bounds = Regex.Match(
+                    button.Attribute("bounds")?.Value ?? "",
+                    @"\[(\d+),(\d+)\]\[(\d+),(\d+)\]"
+                );
+                if (!bounds.Success)
+                    continue;
+                var left = int.Parse(bounds.Groups[1].Value);
+                var top = int.Parse(bounds.Groups[2].Value);
+                var right = int.Parse(bounds.Groups[3].Value);
+                var bottom = int.Parse(bounds.Groups[4].Value);
+                if (right <= left || bottom <= top)
+                    continue;
+                var x = (left + right) / 2;
+                var y = (top + bottom) / 2;
+                if (x > 0 && y > 0 && (width <= 0 || x < width) && (height <= 0 || y < height))
                     return button;
             }
         }
@@ -86,10 +103,12 @@ public partial class PFlowAutoPostService
         Func<string, Task<bool>> identityMatches,
         string? path,
         CancellationToken ct,
-        Func<TimeSpan, CancellationToken, Task>? delay = null
+        Func<TimeSpan, CancellationToken, Task>? delay = null,
+        Func<DateTime>? now = null
     )
     {
         delay ??= Task.Delay;
+        now ??= () => DateTime.UtcNow;
         async Task CheckContext()
         {
             ct.ThrowIfCancellationRequested();
@@ -156,14 +175,17 @@ public partial class PFlowAutoPostService
                 ct
             );
         }
-        var until = DateTime.UtcNow.AddSeconds(30);
+        var until = now().AddSeconds(30);
+        var disabledLogged = false;
         var publishScrolls = 0;
         while (FindVisiblePublishControl(xml, publishLabels) == null)
         {
             await CheckContext();
-            if (DateTime.UtcNow >= until)
+            if (now() >= until)
                 throw new InvalidOperationException(
-                    "Publish control did not become enabled; no Share tap was made."
+                    FindVisiblePublishControl(xml, publishLabels, requireEnabled: false) != null
+                        ? "Publish control remained visible but disabled for 30 seconds; no Share tap was made."
+                        : "Publish control was not visible before the readiness timeout; no Share tap was made."
                 );
             // A visible but disabled button needs loading time, not more scrolling.
             if (FindVisiblePublishControl(xml, publishLabels, requireEnabled: false) == null)
@@ -176,6 +198,16 @@ public partial class PFlowAutoPostService
             }
             else
             {
+                if (!disabledLogged)
+                {
+                    disabledLogged = true;
+                    await PFlowTrace.SessionAsync(
+                        job.DeviceIndex,
+                        "composer.publish.wait",
+                        "visible=true; enabled=false; scrollingPaused=true",
+                        ct
+                    );
+                }
                 await delay(TimeSpan.FromMilliseconds(500), ct);
                 xml = await _ldPlayer.DumpUiHierarchyAsync(job.DeviceIndex, path, ct) ?? "";
             }

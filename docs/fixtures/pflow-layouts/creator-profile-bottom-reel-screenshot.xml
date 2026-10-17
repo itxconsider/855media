@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Reconstructed from user screenshots; not captured device XML. -->
+<hierarchy rotation="0">
+  <node package="com.facebook.katana" class="android.widget.TextView" text="" content-desc="" enabled="true" clickable="false" visible-to-user="true" selected="false" bounds="[0,0][325,585]">
+    <node package="com.facebook.katana" class="android.widget.TextView" text="Tail Talks+" content-desc="" enabled="true" clickable="false" visible-to-user="true" selected="false" bounds="[106,280][220,306]" />
+    <node package="com.facebook.katana" class="android.widget.Button" text="" content-desc="" enabled="true" clickable="true" visible-to-user="true" selected="false" bounds="[288,278][316,309]" />
+    <node package="com.facebook.katana" class="android.widget.TextView" text="16 followers - 0 following - 40 posts" content-desc="" enabled="true" clickable="false" visible-to-user="true" selected="false" bounds="[45,309][284,329]" />
+    <node package="com.facebook.katana" class="android.widget.Button" text="Creator Dashboard" content-desc="" enabled="true" clickable="true" visible-to-user="true" selected="false" bounds="[12,426][185,459]" />
+    <node package="com.facebook.katana" class="android.widget.Button" text="" content-desc="Menu" enabled="true" clickable="true" visible-to-user="true" selected="false" bounds="[10,28][36,56]" />
+    <node package="com.facebook.katana" class="android.widget.TextView" text="Digital creator" content-desc="" enabled="true" clickable="false" visible-to-user="true" selected="false" bounds="[112,348][215,369]" />
+    <node package="com.facebook.katana" class="android.widget.Button" text="Create reel" content-desc="" enabled="true" clickable="true" visible-to-user="true" selected="false" bounds="[193,426][317,459]" />
+    <node package="com.facebook.katana" class="android.widget.Button" text="All" content-desc="" enabled="true" clickable="true" visible-to-user="true" selected="true" bounds="[10,477][52,511]" />
+    <node package="com.facebook.katana" class="android.widget.Button" text="" content-desc="Home, tab 1 of 5" enabled="true" clickable="true" visible-to-user="true" selected="false" bounds="[0,534][65,582]" />
+    <node package="com.facebook.katana" class="android.widget.Button" text="" content-desc="Professional dashboard, tab 2 of 5" enabled="true" clickable="true" visible-to-user="true" selected="false" bounds="[65,534][130,582]" />
+    <node package="com.facebook.katana" class="android.widget.Button" text="" content-desc="Reels, tab 3 of 5" enabled="true" clickable="true" visible-to-user="true" selected="false" bounds="[130,534][195,582]" />
+    <node package="com.facebook.katana" class="android.widget.Button" text="" content-desc="Notifications, tab 4 of 5" enabled="true" clickable="true" visible-to-user="true" selected="false" bounds="[195,534][260,582]" />
+    <node package="com.facebook.katana" class="android.widget.Button" text="" content-desc="Profile, tab 5 of 5" enabled="true" clickable="true" visible-to-user="true" selected="true" bounds="[260,534][325,582]" />
+  </node>
+</hierarchy>

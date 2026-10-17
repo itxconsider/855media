@@ -39,6 +39,7 @@ internal sealed record ScreenTimeFeedTarget(
                 !labels.Any(l =>
                     l.Equals("Public", StringComparison.OrdinalIgnoreCase)
                     || l.Contains("Shared with Public", StringComparison.OrdinalIgnoreCase)
+                    || Regex.IsMatch(l, @"Shared with:\s*Public(?:$|\s)", RegexOptions.IgnoreCase)
                 )
             )
                 continue;
@@ -104,9 +105,10 @@ internal sealed record ScreenTimeFeedTarget(
         // Count even disabled/inaccessible reaction controls while checking scope.
         // Otherwise an enclosing feed can merge content from a neighbouring post.
         return (
-            text.Equals("Like", StringComparison.OrdinalIgnoreCase)
-            || desc.Equals("Like", StringComparison.OrdinalIgnoreCase)
-            || desc.StartsWith("Like button.", StringComparison.OrdinalIgnoreCase)
+            ScreenTimeHierarchy.IsLikeLabel(text)
+            || ScreenTimeHierarchy.IsLikeLabel(desc)
+            || ScreenTimeHierarchy.IsAppliedReactionLabel(text)
+            || ScreenTimeHierarchy.IsAppliedReactionLabel(desc)
             || text.StartsWith("Remove ", StringComparison.OrdinalIgnoreCase)
                 && text.EndsWith(" reaction", StringComparison.OrdinalIgnoreCase)
             || desc.StartsWith("Remove ", StringComparison.OrdinalIgnoreCase)

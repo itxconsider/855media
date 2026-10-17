@@ -117,10 +117,35 @@ public class App : Application, IDisposable
             _ => PlatformSettings?.GetColorValues().ThemeVariant ?? PlatformThemeVariant.Light,
         };
 
-        this.LocateMaterialTheme<MaterialThemeBase>().CurrentTheme =
+        var theme =
             actualTheme == PlatformThemeVariant.Light
                 ? Theme.Create(Theme.Light, Color.Parse("#111111"), Color.Parse("#333333"))
-                : Theme.Create(Theme.Dark, Color.Parse("#EEEEEE"), Color.Parse("#CCCCCC"));
+                : Theme.Create(Theme.Dark, Color.Parse("#737373"), Color.Parse("#737373"));
+        if (actualTheme == PlatformThemeVariant.Dark)
+        {
+            // Material controls and application panels share the reference palette.
+            theme.Background = Color.Parse("#111111");
+            theme.Paper = Color.Parse("#1B1B1B");
+            theme.CardBackground = Color.Parse("#242424");
+            theme.ToolBarBackground = Color.Parse("#151515");
+            theme.Body = Color.Parse("#FCFCFC");
+            theme.BodyLight = Color.Parse("#ABABAB");
+            theme.ColumnHeader = Color.Parse("#FCFCFC");
+            theme.Divider = Color.Parse("#2D2D2D");
+            theme.Selection = Color.Parse("#383838");
+            theme.ToolForeground = Color.Parse("#FCFCFC");
+            theme.ToolBackground = Color.Parse("#202020");
+            theme.ToolTipBackground = Color.Parse("#242424");
+            theme.ChipBackground = Color.Parse("#242424");
+            theme.SnackbarBackground = Color.Parse("#242424");
+            theme.SnackbarMouseOver = Color.Parse("#383838");
+            theme.TextBoxBorder = Color.Parse("#454545");
+            theme.TextFieldBoxBackground = Color.Parse("#1B1B1B");
+            theme.TextFieldBoxHoverBackground = Color.Parse("#202020");
+            theme.CheckBoxOff = Color.Parse("#ABABAB");
+            theme.CheckBoxDisabled = Color.Parse("#454545");
+        }
+        this.LocateMaterialTheme<MaterialThemeBase>().CurrentTheme = theme;
     }
 
     public override void Initialize()

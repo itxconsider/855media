@@ -6,6 +6,56 @@ namespace _855Media.Core.Tests.LDPlayer;
 
 public class PFlowPreselectedShareTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task VerifiedAlternativeLaunchesDirectlyWithoutOnce(bool rejectTap)
+    {
+        var ld = DispatchProxy.Create<ILDPlayerService, ChooserDevice>();
+        var device = (ChooserDevice)(object)ld;
+        device.DirectAlternative = true;
+        device.RejectDestinationTap = rejectTap;
+        var job = new PFlowJob
+        {
+            State = PFlowState.IdentityVerified,
+            TargetName = "Target",
+            TargetId = "123",
+            SourcePath = "synthetic.mp4",
+            PostType = "Reel",
+            Size = 1,
+            Sha256 = "HASH",
+        };
+        var service = new PFlowAutoPostService(ld);
+        if (rejectTap)
+        {
+            var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                service.PublishAsync(
+                    job,
+                    _ => Task.CompletedTask,
+                    null,
+                    CancellationToken.None,
+                    dryRun: true
+                )
+            );
+            Assert.Contains("destination tap was not acknowledged", error.Message);
+        }
+        else
+        {
+            await service.PublishAsync(
+                job,
+                _ => Task.CompletedTask,
+                null,
+                CancellationToken.None,
+                dryRun: true
+            );
+            Assert.Equal(PFlowState.CancelledBeforeSubmission, job.State);
+        }
+        Assert.Equal(1, device.AlternativeTaps);
+        Assert.Equal(0, device.OnceTaps);
+        Assert.Equal(0, device.ShareTaps);
+        Assert.Equal(0, device.OtherTaps);
+    }
+
     [Fact]
     public async Task PhotoJobChangesPreselectedReelsToFeedAndUsesOnce()
     {
@@ -115,6 +165,9 @@ public class PFlowPreselectedShareTests
 
     public class ChooserDevice : DispatchProxy
     {
+        public bool DirectAlternative,
+            RejectDestinationTap;
+        public int AlternativeTaps;
         public bool ChangeDestination;
         public bool SkipChooser;
         public bool Photo;
@@ -141,6 +194,9 @@ public class PFlowPreselectedShareTests
                     if (!_composer)
                     {
                         var xml = PFlowShareDestinationTests.SelectedReelsXml;
+                        if (DirectAlternative)
+                            xml = xml.Replace("Share with Reels", "Share with Feed")
+                                .Replace("text='Feed'", "text='Reels'");
                         if (FeedTaps > 0)
                             xml = xml.Replace("Share with Reels", "Share with Feed");
                         if (++_chooserReads > 1 && ChangeDestination)
@@ -163,7 +219,14 @@ public class PFlowPreselectedShareTests
                     return Task.FromResult(true);
                 case "TapAsync":
                     var y = (int)args![2]!;
-                    if (y == 926 && (int)args[1]! == 442)
+                    if (DirectAlternative && y == 1159)
+                    {
+                        AlternativeTaps++;
+                        if (RejectDestinationTap)
+                            return Task.FromResult(false);
+                        _composer = true;
+                    }
+                    else if (y == 926 && (int)args[1]! == 442)
                     {
                         OnceTaps++;
                         _composer = true;

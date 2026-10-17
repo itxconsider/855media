@@ -27,6 +27,16 @@ public enum FacebookScreenKind
     AndroidRecents,
     ShareChooser,
     Authentication,
+    PostActionBar,
+    AppliedReaction,
+    ReactionPicker,
+    CommentSheet,
+    PublishedComment,
+    ReelPicker,
+    ReelEditor,
+    IdentitySwitching,
+    EmailUpdatePrompt,
+    ProfileDetails,
 }
 
 public enum FacebookLayoutStatus
@@ -50,13 +60,31 @@ public enum FacebookControlRole
     ExpandSection,
     CopyProfileLink,
     ClearRecentApps,
+    Like,
+    Comment,
+    AppliedReaction,
+    ReactionLike,
+    ReactionLove,
+    ReactionCare,
+    ReactionHaha,
+    ReactionWow,
+    ReactionSad,
+    ReactionAngry,
+    CommentInput,
+    SendComment,
+    Reel,
+    Continue,
+    Skip,
+    ContinueInEnglish,
+    Transparency,
 }
 
 public sealed record FacebookLayoutContext(
     string? TargetName = null,
     string? TargetUid = null,
     string? PostType = null,
-    string? SectionLabel = null
+    string? SectionLabel = null,
+    string? CommentText = null
 );
 
 // A match belongs to one captured hierarchy. Controls must not be reused after navigation.
@@ -269,6 +297,16 @@ public static partial class FacebookLayoutRegistry
                         Chooser,
                         ComposerOverlay,
                         Rule(
+                            "profile-details-overlay",
+                            "Name-details sheet is not the underlying own profile",
+                            IsNameDetailsSheet
+                        ),
+                        Rule(
+                            "weekly-progress-variant",
+                            "Weekly progress uses its own profile variant",
+                            HasWeeklyProgressCard
+                        ),
+                        Rule(
                             "menu",
                             "Menu content is not an own profile",
                             o => AtxAgentClient.IsMenuPageInBloks(o.Screen)
@@ -307,6 +345,7 @@ public static partial class FacebookLayoutRegistry
                 Composer("composer.reel-settings.v1", FacebookScreenKind.ReelComposer, true),
                 Composer("composer.reel-caption.v1", FacebookScreenKind.ReelComposer, false),
                 BrowseLayout("feed.home.v1", FacebookScreenKind.NewsFeed, false),
+                BrowseLayout("feed.stacked-create.v1", FacebookScreenKind.NewsFeed, false, true),
                 BrowseLayout("feed.scrolled.v1", FacebookScreenKind.NewsFeed, true),
                 BrowseLayout("reels.tabbed.v1", FacebookScreenKind.ReelsFeed, false),
                 BrowseLayout("reels.fullscreen.v1", FacebookScreenKind.ReelsFeed, true),
@@ -314,7 +353,24 @@ public static partial class FacebookLayoutRegistry
                     "create.menu.v1",
                     FacebookScreenKind.CreateMenu,
                     PFlowStoryLayout.IsCreateMenu,
-                    FacebookControlRole.Story
+                    FacebookControlRole.Story,
+                    FacebookControlRole.Reel
+                ),
+                StoryLayout(
+                    "reel.picker.v1",
+                    FacebookScreenKind.ReelPicker,
+                    PFlowReelLayout.IsPicker
+                ),
+                StoryLayout(
+                    "reel.picker-tabbed.v1",
+                    FacebookScreenKind.ReelPicker,
+                    PFlowReelLayout.IsTabbedPicker
+                ),
+                StoryLayout(
+                    "reel.editor.v1",
+                    FacebookScreenKind.ReelEditor,
+                    PFlowReelLayout.IsEditor,
+                    FacebookControlRole.Continue
                 ),
                 StoryLayout(
                     "story.picker.v1",
@@ -363,6 +419,7 @@ public static partial class FacebookLayoutRegistry
                 ),
             }
                 .Concat(ComponentDefinitions())
+                .Concat(InteractionDefinitions())
                 .ToArray()
         );
 
@@ -402,7 +459,8 @@ public static partial class FacebookLayoutRegistry
     private static FacebookLayoutDefinition BrowseLayout(
         string id,
         FacebookScreenKind screen,
-        bool alternate
+        bool alternate,
+        bool stackedCreate = false
     ) =>
         new(
             id,
@@ -415,11 +473,22 @@ public static partial class FacebookLayoutRegistry
                     o => screen == FacebookScreenKind.NewsFeed ? o.FeedEvidence : o.ReelsEvidence
                 ),
                 Rule(
+                    "browse-create-cards",
+                    "Stacked story/reel creation cards are a distinct Feed variant",
+                    o =>
+                        screen != FacebookScreenKind.NewsFeed
+                        || PFlowReelLayout.HasStackedCreateCards(o) == stackedCreate
+                ),
+                Rule(
                     "browse-variant",
                     "Home/scrolled Feed or tabbed/fullscreen Reels structure",
                     o =>
-                        (screen == FacebookScreenKind.NewsFeed ? o.ScrolledFeed : o.FullscreenReels)
-                        == alternate
+                        stackedCreate
+                        || (
+                            screen == FacebookScreenKind.NewsFeed
+                                ? o.ScrolledFeed
+                                : o.FullscreenReels
+                        ) == alternate
                 ),
             ],
             [
@@ -441,7 +510,9 @@ public static partial class FacebookLayoutRegistry
                         )
                 ),
             ],
-            screen == FacebookScreenKind.NewsFeed ? [FacebookControlRole.Create] : []
+            screen == FacebookScreenKind.NewsFeed
+                ? [FacebookControlRole.Create, FacebookControlRole.Reel, FacebookControlRole.Story]
+                : []
         );
 
     private static FacebookLayoutDefinition Switcher(string id, string variant) =>
@@ -529,7 +600,9 @@ public static partial class FacebookLayoutRegistry
     ) =>
         Evaluate(
             observation,
-            observation.Catalog.Definitions.Where(d => expected == null || d.Screen == expected)
+            observation.Catalog.Definitions.Where(d =>
+                expected == null ? !IsInteractionComponent(d.Screen) : d.Screen == expected
+            )
         );
 
     internal static FacebookLayoutMatch Evaluate(
@@ -547,6 +620,7 @@ public static partial class FacebookLayoutRegistry
         var foreign =
             packages.Length > 0
             && !packages.Contains("com.facebook.katana", StringComparer.Ordinal);
+        var switching = PFlowIdentitySwitchLayout.IsSwitching(o.Xml);
         var evaluations = definitionsArray
             .Select(d => new FacebookLayoutEvaluation(
                 d.Id,
@@ -572,6 +646,11 @@ public static partial class FacebookLayoutRegistry
                         : Array.Empty<string>()
                 )
                     .Concat(d.Exclusions.Where(o.Test).Select(r => r.Id))
+                    .Concat(
+                        switching && d.Screen != FacebookScreenKind.IdentitySwitching
+                            ? new[] { "identity-switch-in-progress" }
+                            : Array.Empty<string>()
+                    )
                     .ToArray()
             ))
             .ToArray();
@@ -648,6 +727,21 @@ public static partial class FacebookLayoutRegistry
         FacebookScreenKind screen
     )
     {
+        if (screen == FacebookScreenKind.EmailUpdatePrompt)
+        {
+            if (
+                role == FacebookControlRole.Dismiss
+                && PFlowEmailUpdatePrompt.DismissControl(o.Xml) is { } control
+            )
+                yield return (control.X, control.Y);
+            yield break;
+        }
+        if (IsInteractionComponent(screen))
+        {
+            foreach (var point in FindInteractionControls(o, role, screen))
+                yield return point;
+            yield break;
+        }
         if (
             role
             is FacebookControlRole.ActiveProfile
@@ -657,6 +751,13 @@ public static partial class FacebookLayoutRegistry
         )
         {
             foreach (var point in FindComponentControls(o, role, screen))
+                yield return point;
+            yield break;
+        }
+        if (screen == FacebookScreenKind.NewsFeed && role == FacebookControlRole.Reel)
+        {
+            var entry = PFlowReelLayout.CreateEntry(o.Xml);
+            if (entry != null && PFlowStoryLayout.ControlCenter(entry) is { } point)
                 yield return point;
             yield break;
         }
@@ -681,14 +782,25 @@ public static partial class FacebookLayoutRegistry
             FacebookControlRole.Dashboard => new[]
             {
                 "Professional dashboard",
+                "Creator Dashboard",
+                "Business Dashboard",
                 "Professional tools",
                 "Dashboard",
             },
             FacebookControlRole.Analytics => new[] { "Analytics" },
+            FacebookControlRole.Transparency => new[] { "Transparency and privacy policy" },
+            FacebookControlRole.Reel => new[] { "Reel", "Create reel" },
+            FacebookControlRole.Continue => new[] { "Next", "Continue" },
+            FacebookControlRole.Skip => new[] { "Skip" },
+            FacebookControlRole.ContinueInEnglish => new[] { "Continue in English (US)" },
             FacebookControlRole.Create => new[]
             {
                 "Create, Double tap to create a new post, story, or reel",
                 "Create",
+            },
+            FacebookControlRole.Story when screen == FacebookScreenKind.NewsFeed => new[]
+            {
+                "Create story",
             },
             FacebookControlRole.Story => new[] { "Story" },
             FacebookControlRole.Publish when screen == FacebookScreenKind.StoryEditor => new[]
@@ -707,6 +819,10 @@ public static partial class FacebookLayoutRegistry
             var node in o.Nodes.Where(n =>
                 n.Attribute("enabled")?.Value != "false"
                 && n.Attribute("visible-to-user")?.Value != "false"
+                && (
+                    role is not (FacebookControlRole.Skip or FacebookControlRole.ContinueInEnglish)
+                    || n.Attribute("package")?.Value == "com.facebook.katana"
+                )
             )
         )
         {
@@ -744,7 +860,8 @@ public static partial class FacebookLayoutRegistry
     internal static (int X, int Y)? UsableCenter(
         XElement node,
         bool storyPicker = false,
-        bool storyTray = false
+        bool storyTray = false,
+        bool readOnlyList = false
     )
     {
         var point = ScreenTimeHierarchy.Center(node);
@@ -754,6 +871,23 @@ public static partial class FacebookLayoutRegistry
         {
             if (
                 ancestor.Attribute("enabled")?.Value == "false"
+                    && !(
+                        readOnlyList
+                        && ancestor != node
+                        && ancestor.Attribute("class")?.Value == "android.view.ViewGroup"
+                        && ancestor.Attribute("clickable")?.Value == "false"
+                        && ancestor
+                            .Elements("node")
+                            .Any(n =>
+                                n.Attribute("class")?.Value
+                                == "androidx.recyclerview.widget.RecyclerView"
+                            )
+                        && node.Ancestors("node")
+                            .Any(n =>
+                                n.Attribute("class")?.Value
+                                == "androidx.recyclerview.widget.RecyclerView"
+                            )
+                    )
                     && !(
                         storyTray
                         && ancestor != node

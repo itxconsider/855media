@@ -136,11 +136,14 @@ public sealed partial class PFlowRunner
             job.Error = "";
             job.Evidence = "";
             job.IdentityEvidence = "";
+            job.TargetContinuation = null;
             job.MediaSelectionEvidence = "";
+            job.ReelTitle = "";
             job.StoryCountBefore = null;
             job.StoryCountAfter = null;
             job.SubmittedUtc = null;
             job.NoPublicationVerified = false;
+            job.TargetIdentityConfirmationRequired = false;
             job.ConfirmedUtc = null;
             job.RemoteCleanupState = "Pending";
             try
@@ -198,7 +201,11 @@ public sealed partial class PFlowRunner
             )
                 await CleanupRemoteAsync(job, ldPath, cleanup.Token);
             await _history.SaveAsync(job, CancellationToken.None);
-            await progress(job.State + (job.Error.Length == 0 ? "" : ": " + job.Error));
+            await progress(
+                job.TargetIdentityConfirmationRequired
+                    ? PFlowDispatchQueueStore.HistoryStatus(job)
+                    : job.State + (job.Error.Length == 0 ? "" : ": " + job.Error)
+            );
             return job.State == PFlowState.Confirmed;
         }
         finally
@@ -217,11 +224,28 @@ public sealed partial class PFlowRunner
 
     public async Task CleanupRemoteAsync(PFlowJob job, string? ldPath, CancellationToken ct)
     {
+        if (job.RequiresPublicationReviewBeforeCleanup)
+        {
+            job.RemoteCleanupState = "Held for publication review";
+            return;
+        }
         if (job.MayHaveSubmitted && job.State != PFlowState.Confirmed)
             return;
         try
         {
-            await PFlowJobBindingGuard.RequireAsync(_ld, job, ldPath, ct);
+            for (var attempt = 0; ; attempt++)
+            {
+                try
+                {
+                    await PFlowJobBindingGuard.RequireAsync(_ld, job, ldPath, ct);
+                    break;
+                }
+                catch (InvalidOperationException ex)
+                    when (ex.Message == PFlowJobBindingGuard.UnavailableMessage && attempt < 2)
+                {
+                    await Task.Delay(600, ct);
+                }
+            }
             // Only generated paths owned by this job are eligible. No gallery/folder deletion.
             if (
                 !Guid.TryParseExact(job.JobId, "N", out _)
@@ -239,6 +263,13 @@ public sealed partial class PFlowRunner
             if (removed.Trim() != "REMOVED")
                 throw new IOException("Remote deletion was not verified.");
             job.RemoteCleanupState = "Verified";
+            job.Error = string.Join(
+                " | ",
+                job.Error.Split(" | ", StringSplitOptions.None)
+                    .Where(error =>
+                        !error.StartsWith("Emulator cleanup: ", StringComparison.Ordinal)
+                    )
+            );
         }
         catch (Exception ex)
         {
@@ -256,6 +287,12 @@ public sealed partial class PFlowRunner
     {
         if (!job.DeleteRequested || job.State != PFlowState.Confirmed)
             return;
+        if (job.RequiresPublicationReviewBeforeCleanup)
+        {
+            job.LocalDeleteState = "Held for publication review";
+            await _history.SaveAsync(job, ct);
+            return;
+        }
         var gate = SourceGates.GetOrAdd(Path.GetFullPath(job.SourcePath), _ => new(1, 1));
         await gate.WaitAsync(ct);
         try
@@ -274,17 +311,24 @@ public sealed partial class PFlowRunner
                 consumers.Count == 0
                 || consumers.Any(j =>
                     !history.Any(h =>
-                        h.DuplicateKey == j.DuplicateKey && h.State == PFlowState.Confirmed
+                        h.DuplicateKey == j.DuplicateKey
+                        && h.State == PFlowState.Confirmed
+                        && !h.RequiresPublicationReviewBeforeCleanup
                     )
                 )
                 || history.Any(h =>
                     h.SourcePath.Equals(job.SourcePath, StringComparison.OrdinalIgnoreCase)
-                    && h.State is not (PFlowState.Confirmed or PFlowState.CancelledBeforeSubmission)
+                    && (
+                        h.RequiresPublicationReviewBeforeCleanup
+                        || h.State
+                            is not (PFlowState.Confirmed or PFlowState.CancelledBeforeSubmission)
+                    )
                     && !(
                         h.State == PFlowState.Failed
                         && history.Any(resolved =>
                             resolved.DuplicateKey == h.DuplicateKey
                             && resolved.State == PFlowState.Confirmed
+                            && !resolved.RequiresPublicationReviewBeforeCleanup
                         )
                     )
                 )

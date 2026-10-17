@@ -41,6 +41,10 @@ public class VideoDownloader(IReadOnlyList<Cookie>? initialCookies = null) : IDi
             if (options.Count > 0)
                 return options;
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch
         {
             // Fall back to resolving available formats with yt-dlp if YoutubeExplode manifest parsing fails (HTTP 400 Bad Request / 403)
@@ -86,6 +90,12 @@ public class VideoDownloader(IReadOnlyList<Cookie>? initialCookies = null) : IDi
     )
     {
         filePath = FileUtils.SanitizeFilePath(filePath);
+        var isAudioOnly = downloadOption.IsAudioOnly || downloadOption.Container.IsAudioOnly;
+        if (!isAudioOnly)
+        {
+            ffmpegPath = MediaCompatibility.RequireVideoFFmpeg(filePath, ffmpegPath);
+            downloadOption = downloadOption with { Container = Container.Mp4 };
+        }
         var dirPath = Path.GetDirectoryName(filePath);
         if (!string.IsNullOrWhiteSpace(dirPath))
             Directory.CreateDirectory(dirPath);
@@ -112,7 +122,7 @@ public class VideoDownloader(IReadOnlyList<Cookie>? initialCookies = null) : IDi
                     translateCaptionsToEnglish
                 );
 
-                if (!downloadOption.Container.IsAudioOnly)
+                if (!isAudioOnly)
                 {
                     await MediaCompatibility.EnsureWindowsCompatibleAsync(
                         filePath,
@@ -128,10 +138,7 @@ public class VideoDownloader(IReadOnlyList<Cookie>? initialCookies = null) : IDi
             ClosedCaptionTrackInfo? englishTrack = null;
             ClosedCaptionManifest? captionManifest = null;
 
-            if (
-                (includeSubtitles || translateCaptionsToEnglish)
-                && !downloadOption.Container.IsAudioOnly
-            )
+            if ((includeSubtitles || translateCaptionsToEnglish) && !isAudioOnly)
             {
                 try
                 {
@@ -217,6 +224,10 @@ public class VideoDownloader(IReadOnlyList<Cookie>? initialCookies = null) : IDi
                     progress?.ToDoubleBased(),
                     cancellationToken
                 );
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch
             {
@@ -315,7 +326,7 @@ public class VideoDownloader(IReadOnlyList<Cookie>? initialCookies = null) : IDi
                 }
             }
 
-            if (!downloadOption.Container.IsAudioOnly)
+            if (!isAudioOnly)
             {
                 await MediaCompatibility.EnsureWindowsCompatibleAsync(
                     filePath,
@@ -362,7 +373,7 @@ public class VideoDownloader(IReadOnlyList<Cookie>? initialCookies = null) : IDi
 
         try
         {
-            await YtDlp.RunAsync(arguments, progress, cancellationToken);
+            await YtDlp.RunAsync(arguments, progress, cancellationToken, captureOutput: false);
         }
         catch (Exception ex)
         {
@@ -380,7 +391,12 @@ public class VideoDownloader(IReadOnlyList<Cookie>? initialCookies = null) : IDi
                 );
                 try
                 {
-                    await YtDlp.RunAsync(fallbackArgs, progress, cancellationToken);
+                    await YtDlp.RunAsync(
+                        fallbackArgs,
+                        progress,
+                        cancellationToken,
+                        captureOutput: false
+                    );
                     EnsureYtDlpSrtFile(filePath, translateCaptionsToEnglish);
                     return;
                 }
@@ -396,7 +412,12 @@ public class VideoDownloader(IReadOnlyList<Cookie>? initialCookies = null) : IDi
                         includeSubtitles: includeSubtitles,
                         translateCaptionsToEnglish: translateCaptionsToEnglish
                     );
-                    await YtDlp.RunAsync(anyFormatArgs, progress, cancellationToken);
+                    await YtDlp.RunAsync(
+                        anyFormatArgs,
+                        progress,
+                        cancellationToken,
+                        captureOutput: false
+                    );
                     EnsureYtDlpSrtFile(filePath, translateCaptionsToEnglish);
                     return;
                 }
@@ -414,7 +435,12 @@ public class VideoDownloader(IReadOnlyList<Cookie>? initialCookies = null) : IDi
                     includeSubtitles: includeSubtitles,
                     translateCaptionsToEnglish: translateCaptionsToEnglish
                 );
-                await YtDlp.RunAsync(anyFormatArgs, progress, cancellationToken);
+                await YtDlp.RunAsync(
+                    anyFormatArgs,
+                    progress,
+                    cancellationToken,
+                    captureOutput: false
+                );
                 EnsureYtDlpSrtFile(filePath, translateCaptionsToEnglish);
                 return;
             }
@@ -471,13 +497,23 @@ public class VideoDownloader(IReadOnlyList<Cookie>? initialCookies = null) : IDi
     {
         var ext = Path.GetExtension(filePath);
         var isAudioOnly =
-            downloadOption.Container.IsAudioOnly
+            downloadOption.IsAudioOnly
+            || downloadOption.Container.IsAudioOnly
             || ext.Equals(".mp3", StringComparison.OrdinalIgnoreCase)
             || ext.Equals(".m4a", StringComparison.OrdinalIgnoreCase)
             || ext.Equals(".opus", StringComparison.OrdinalIgnoreCase)
             || ext.Equals(".wav", StringComparison.OrdinalIgnoreCase);
 
-        var arguments = new List<string> { "--no-playlist", "--force-overwrites", "-o", filePath };
+        var outputTemplate = isAudioOnly
+            ? filePath
+            : Path.ChangeExtension(filePath, null) + ".%(ext)s";
+        var arguments = new List<string>
+        {
+            "--no-playlist",
+            "--force-overwrites",
+            "-o",
+            outputTemplate,
+        };
 
         var ffmpegCliPath = ffmpegPath ?? FFmpeg.TryGetCliFilePath();
         if (!string.IsNullOrWhiteSpace(ffmpegCliPath))
@@ -573,7 +609,7 @@ public class VideoDownloader(IReadOnlyList<Cookie>? initialCookies = null) : IDi
                 || downloadOption.Container == YoutubeExplode.Videos.Streams.Container.Mp4
             )
             {
-                arguments.Add("--recode-video");
+                arguments.Add("--remux-video");
                 arguments.Add("mp4");
             }
         }
@@ -631,8 +667,8 @@ public class VideoDownloader(IReadOnlyList<Cookie>? initialCookies = null) : IDi
                 || downloadOption.Container == YoutubeExplode.Videos.Streams.Container.Mp4
             )
             {
-                // Re-encode incompatible VP9/AV1/Opus streams to H.264/AAC if necessary
-                arguments.Add("--recode-video");
+                // Container conversion only. MediaCompatibility handles codec conversion once.
+                arguments.Add("--remux-video");
                 arguments.Add("mp4");
             }
         }

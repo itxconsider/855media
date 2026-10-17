@@ -193,7 +193,10 @@ public partial record VideoDownloadOption
 
         var options = new HashSet<VideoDownloadOption>(comparer);
 
-        options.AddRange(GetVideoAndAudioOptions());
+        // All video outputs are MP4; their source streams may still need H.264 conversion.
+        options.AddRange(
+            GetVideoAndAudioOptions().Select(o => o with { Container = Container.Mp4 })
+        );
         options.AddRange(GetAudioOnlyOptions());
 
         return options.ToArray();

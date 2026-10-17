@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
@@ -38,8 +38,13 @@ public partial class PFlowAutoPostService
         }
         Task<string> Shell(string command) =>
             _ldPlayer.ExecuteAdbAsync(job.DeviceIndex, "shell " + command, customPath, ct);
-        async Task<string> Observe() =>
-            await _ldPlayer.DumpUiHierarchyAsync(job.DeviceIndex, customPath, ct) ?? "";
+        async Task<string> Observe()
+        {
+            var observed =
+                await _ldPlayer.DumpUiHierarchyAsync(job.DeviceIndex, customPath, ct) ?? "";
+            PFlowPageIdentityRestriction.ThrowIfVisible(job, observed);
+            return observed;
+        }
         async Task<string> WaitFor(FacebookScreenKind kind)
         {
             var timer = Stopwatch.StartNew();
@@ -295,7 +300,16 @@ public partial class PFlowAutoPostService
                 job.IsProfile
                     ? PFlowNativeAccountNavigator.OwnProfile(profile)
                         || HasLabel(profile, ["Edit profile"])
-                    : HasLabel(profile, ["Professional dashboard", "Manage Page", "Edit Page"])
+                    : HasLabel(
+                        profile,
+                        [
+                            "Professional dashboard",
+                            "Creator Dashboard",
+                            "Business Dashboard",
+                            "Manage Page",
+                            "Edit Page",
+                        ]
+                    )
             )
         )
             throw new InvalidOperationException(
@@ -584,9 +598,7 @@ public partial class PFlowAutoPostService
                 evidence = null;
             if (evidence != null)
             {
-                job.Evidence = evidence;
-                job.ConfirmedUtc = DateTime.UtcNow;
-                await Stage(PFlowState.Confirmed);
+                await Stage(PFlowConfirmation.RecordPublicationEvidence(job, evidence));
                 return;
             }
             await Task.Delay(400, ct);

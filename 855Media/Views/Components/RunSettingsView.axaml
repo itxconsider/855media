@@ -55,7 +55,7 @@
                 <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,18">
                     <StackPanel Spacing="6">
                         <StackPanel Orientation="Horizontal" Spacing="10">
-                            <materialIcons:MaterialIcon Kind="TuneVertical" Width="24" Height="24" Foreground="#A5B4FC" VerticalAlignment="Center"/>
+                            <materialIcons:MaterialIcon Kind="TuneVertical" Width="24" Height="24" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center"/>
                             <TextBlock Text="Run settings" FontSize="23" FontWeight="SemiBold"/>
                         </StackPanel>
                         <TextBlock Text="Configure ScreenTime and posting for the next run." Classes="settings-note"/>

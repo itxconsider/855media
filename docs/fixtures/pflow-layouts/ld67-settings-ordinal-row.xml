@@ -1,0 +1,18 @@
+<!-- LD-67 Settings action subtree; unrelated content removed. -->
+<hierarchy>
+  <node package="com.facebook.katana" bounds="[0,0][720,1280]">
+    <node package="com.facebook.katana" class="android.view.ViewGroup" enabled="false" clickable="false" bounds="[0,48][632,1280]">
+      <node package="com.facebook.katana" class="androidx.recyclerview.widget.RecyclerView" enabled="true" clickable="false" bounds="[0,48][632,1280]">
+        <node index="0" text="" resource-id="" class="android.widget.Button" package="com.facebook.katana" content-desc="" checkable="false" checked="false" clickable="true" enabled="true" focusable="true" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" visible-to-user="true" bounds="[24,921][608,1001]">
+          <node index="0" text="" resource-id="" class="android.view.ViewGroup" package="com.facebook.katana" content-desc="Settings, button 1 of 7" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" visible-to-user="true" bounds="[24,921][608,1001]">
+            <node index="0" text="" resource-id="" class="android.view.ViewGroup" package="com.facebook.katana" content-desc="" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" visible-to-user="true" bounds="[40,921][608,1001]">
+              <node index="0" text="" resource-id="" class="android.view.ViewGroup" package="com.facebook.katana" content-desc="" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" visible-to-user="true" bounds="[112,951][224,972]">
+                <node index="0" text="Settings" resource-id="" class="android.view.ViewGroup" package="com.facebook.katana" content-desc="Settings" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" visible-to-user="true" bounds="[112,951][224,972]" />
+              </node>
+            </node>
+          </node>
+        </node>
+      </node>
+    </node>
+  </node>
+</hierarchy>

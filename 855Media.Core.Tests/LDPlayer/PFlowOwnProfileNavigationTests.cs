@@ -7,6 +7,74 @@ namespace _855Media.Core.Tests.LDPlayer;
 
 public class PFlowOwnProfileNavigationTests
 {
+    [Fact]
+    public void CreatorDashboardUsesSameOwnPageAndNavigationRules()
+    {
+        var xml = File.ReadAllText(
+                Path.Combine(
+                    AppContext.BaseDirectory,
+                    "Fixtures",
+                    "PFlowLayouts",
+                    "ld56-page-business-dashboard.xml"
+                )
+            )
+            .Replace("Business Dashboard", "Creator Dashboard");
+        var screen = AtxAgentClient.ParseBloksHierarchy(xml);
+        Assert.True(PFlowOwnProfileNavigation.IsOwnPageProfile(screen, "Z Outdoors+"));
+        Assert.False(PFlowOwnProfileNavigation.IsOwnPageProfile(screen, "Other Page"));
+        Assert.True(
+            PFlowPostTargetSession.HasOwnProfile(new PFlowJob { TargetName = "Z Outdoors+" }, xml)
+        );
+        var match = FacebookLayoutRegistry.Match(
+            xml,
+            FacebookScreenKind.OwnProfile,
+            new FacebookLayoutContext(TargetName: "Z Outdoors+")
+        );
+        Assert.True(match.IsMatch);
+        Assert.NotNull(match.Control(FacebookControlRole.Dashboard));
+    }
+
+    [Fact]
+    public void BusinessDashboardOwnPageRequiresMatchingTarget()
+    {
+        var xml = File.ReadAllText(
+            Path.Combine(
+                AppContext.BaseDirectory,
+                "Fixtures",
+                "PFlowLayouts",
+                "ld56-page-business-dashboard.xml"
+            )
+        );
+        var screen = AtxAgentClient.ParseBloksHierarchy(xml);
+        Assert.True(PFlowOwnProfileNavigation.IsOwnPageProfile(screen, "Z Outdoors+"));
+        Assert.False(PFlowOwnProfileNavigation.IsOwnPageProfile(screen, "Other Page"));
+        Assert.True(
+            PFlowPostTargetSession.HasOwnProfile(new PFlowJob { TargetName = "Z Outdoors+" }, xml)
+        );
+    }
+
+    [Fact]
+    public void ProfileSuffixDrawerUsesActiveHeaderAndFullSwitcherDropdown()
+    {
+        var xml = File.ReadAllText(
+            Path.Combine(
+                AppContext.BaseDirectory,
+                "Fixtures",
+                "PFlowLayouts",
+                "ld56-menu-profile-suffix.xml"
+            )
+        );
+        var screen = AtxAgentClient.ParseBloksHierarchy(xml);
+        var header = PFlowOwnProfileNavigation.FindTarget(screen, "W500 COM");
+        Assert.NotNull(header);
+        Assert.Null(PFlowOwnProfileNavigation.FindTarget(screen, "Other Page"));
+        var dropdown = PFlowPersonaSwitcherService.FindProfileHeaderSwitcherButton(xml);
+        Assert.NotNull(dropdown);
+        Assert.Equal("More options", dropdown!.Attribute("content-desc")?.Value);
+        Assert.Equal((540, 148), ScreenTimeHierarchy.Center(dropdown));
+        Assert.True(FacebookLayoutRegistry.Match(xml, FacebookScreenKind.Menu).IsMatch);
+    }
+
     [Theory]
     [InlineData("Target Page")]
     [InlineData("Target  Page")]

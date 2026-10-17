@@ -1,4 +1,4 @@
-﻿<UserControl
+<UserControl
     x:Class="_855Media.Views.Components.VideoUpscalerView"
     xmlns="https://github.com/avaloniaui"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -9,7 +9,7 @@
     x:Name="RootControl"
     x:DataType="components:VideoUpscalerViewModel"
     DragDrop.AllowDrop="True"
-    FontFamily="Segoe UI Variable Text, Segoe UI, -apple-system, Roboto, Ubuntu, Cantarell, sans-serif">
+    FontFamily="{DynamicResource AppFontFamily}">
 
     <UserControl.Styles>
         <!-- Studio Tab Button Style -->

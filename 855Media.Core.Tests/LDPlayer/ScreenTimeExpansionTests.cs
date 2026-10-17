@@ -296,6 +296,31 @@ public class ScreenTimeExpansionTests
     }
 
     [Fact]
+    public async Task PressedReactionStateConfirmsWithoutBeingToggledAgain()
+    {
+        using var h = new History();
+        var e = await Engine(h, "reaction");
+        e.Device.PressedReactionLabel = true;
+        await e.Actions.ReactAsync(default);
+        await e.Actions.ReactAsync(default);
+        Assert.Equal(1, e.Device.Taps);
+        Assert.Equal(1, e.Actions.Reactions);
+        Assert.Equal("Confirmed", h.Store.ReadActions().Single().State);
+    }
+
+    [Fact]
+    public async Task SplitCommentRowConfirmsAfterSendControlDisappears()
+    {
+        using var h = new History();
+        var e = await Engine(h, "comment");
+        e.Device.SplitCommentRow = true;
+        await e.Actions.CommentAsync((_, _) => Task.FromResult(true), default);
+        Assert.Equal(1, e.Device.SendTaps);
+        Assert.Equal(1, e.Actions.Comments);
+        Assert.Equal("Confirmed", h.Store.ReadActions().Single().State);
+    }
+
+    [Fact]
     public async Task CommentWithoutConfirmationDoesNotResend()
     {
         using var h = new History();
@@ -382,6 +407,8 @@ public class ScreenTimeExpansionTests
 
     public class Fake : DispatchProxy
     {
+        public bool SplitCommentRow;
+        public bool PressedReactionLabel;
         public bool HideStoryControls;
         public int BackTaps;
         public string ComposerOwner = "Owner";
@@ -445,8 +472,18 @@ public class ScreenTimeExpansionTests
                     : "<hierarchy><node text='View story by Other' clickable='true' enabled='true' bounds='[0,0][10,10]'/></hierarchy>";
             string id = HideId ? "" : "<node text='Post ID: 123'/>";
             if (Mode == "reaction")
-                return $"<hierarchy>{id}<node text='{(_reacted && Confirm ? "Remove Like reaction" : "Like")}' clickable='true' bounds='[0,0][10,10]'/></hierarchy>";
-            return $"<hierarchy><node>{id}<node text='Comment as {ComposerOwner}' clickable='true' bounds='[0,0][10,10]'/>{(_input ? $"<node class='android.widget.EditText' text='{_text}'/>" : "")}<node text='Send comment' clickable='true' bounds='[20,20][30,30]'/>{(Existing || _sent && Confirm ? "<node text='Comment by Owner: Nice'/>" : "")}</node></hierarchy>";
+                return $"<hierarchy>{id}<node text='{(_reacted && Confirm ? (PressedReactionLabel ? "Like button, pressed. Double tap and hold to change reaction." : "Remove Like reaction") : "Like")}' clickable='true' bounds='[0,0][10,10]'/></hierarchy>";
+            var comment =
+                Existing || _sent && Confirm
+                    ? SplitCommentRow
+                        ? "<node><node text='Owner'/><node text='Just now'/><node text='Nice'/><node text='Reply'/></node>"
+                        : "<node text='Comment by Owner: Nice'/>"
+                    : "";
+            var send =
+                SplitCommentRow && _sent
+                    ? ""
+                    : "<node text='Send comment' clickable='true' bounds='[20,20][30,30]'/>";
+            return $"<hierarchy><node>{id}<node text='Comment as {ComposerOwner}' clickable='true' bounds='[0,0][10,10]'/>{(_input ? $"<node class='android.widget.EditText' text='{_text}'/>" : "")}{send}{comment}</node></hierarchy>";
         }
     }
 }

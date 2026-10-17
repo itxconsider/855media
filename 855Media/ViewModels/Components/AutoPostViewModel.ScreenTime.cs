@@ -84,6 +84,7 @@ public partial class AutoPostViewModel
         CancellationToken ct
     )
     {
+        InvalidatePostTargetSession(worker.Index);
         var profiles = Pages
             .Where(p =>
                 ResolveDeviceIndex(p.DeviceName) == worker.Index

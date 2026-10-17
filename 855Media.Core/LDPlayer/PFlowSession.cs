@@ -136,17 +136,8 @@ public static class PFlowSession
                 throw new InvalidOperationException(
                     "Recent-app state is unsupported or unavailable; clearing was not confirmed."
                 );
-            (int X, int Y)? target = null;
-            for (var attempt = 0; attempt < 4; attempt++)
-            {
-                if (attempt > 0)
-                    await Task.Delay(400, ct);
-                var xml = await ld.DumpUiHierarchyAsync(index, path, ct);
-                var control = LDPlayerService.FindRecentAppsClearTarget(xml);
-                target = LDPlayerService.RecentAppsClearPoint(control);
-                if (target.HasValue)
-                    break;
-            }
+            var clearControl = await PFlowRecentAppsNavigation.FindClearAsync(ld, index, path, ct);
+            var target = LDPlayerService.RecentAppsClearPoint(clearControl);
             if (target == null)
             {
                 await PFlowTrace.SessionAsync(

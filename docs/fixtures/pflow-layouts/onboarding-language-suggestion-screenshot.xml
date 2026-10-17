@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Reconstructed from the user's 2026-10-16 screenshot; not a device XML capture. -->
+<hierarchy rotation="0">
+  <node package="com.facebook.katana" class="android.widget.FrameLayout" enabled="true" visible-to-user="true" bounds="[0,0][325,585]">
+    <node package="com.facebook.katana" class="android.widget.TextView" text="设置语言" enabled="true" bounds="[129,34][196,55]" />
+    <node package="com.facebook.katana" class="android.widget.TextView" text="试用中文(简体) 版 Facebook" enabled="true" bounds="[11,220][312,248]" />
+    <node package="com.facebook.katana" class="android.widget.TextView" text="想不想看看中文(简体) 版 Facebook 长什么样？你可以随时在语言设置页面中换回原来的语言哦！" enabled="true" bounds="[20,264][309,321]" />
+    <node package="com.facebook.katana" class="android.widget.Button" text="试用中文(简体) 版" enabled="true" clickable="true" bounds="[7,495][312,533]" />
+    <node package="com.facebook.katana" class="android.widget.Button" text="Continue in English (US)" enabled="true" clickable="true" visible-to-user="true" bounds="[7,538][312,575]" />
+  </node>
+</hierarchy>

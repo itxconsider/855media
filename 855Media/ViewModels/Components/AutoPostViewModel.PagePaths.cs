@@ -31,6 +31,22 @@ public partial class PageMediaPathEdit : ObservableObject
     public IAsyncRelayCommand BrowseFileCommand { get; }
     public IAsyncRelayCommand BrowseFolderCommand { get; }
     public bool CanBrowseFile => !FolderOnly;
+    public string? CaptionProperty =>
+        Key switch
+        {
+            "VideoReelPath" => "ReelTitleFromTextFile",
+            "ImagePath" => "PhotoTitleFromTextFile",
+            "VideoLongPath" => "VideoTitleFromTextFile",
+            _ => null,
+        };
+    public bool HasCaption => CaptionProperty != null;
+    public bool IsStory => Key == "StoryPath";
+
+    [ObservableProperty]
+    private bool _applyCaption;
+
+    [ObservableProperty]
+    private bool _useTitleFromTextFile;
 
     partial void OnPathChanged(string value)
     {
@@ -120,13 +136,6 @@ public partial class AutoPostViewModel
     [ObservableProperty]
     private bool _isSavingBulkPaths;
 
-    [ObservableProperty]
-    private bool _bulkApplyCaption;
-
-    [ObservableProperty]
-    private string _bulkCaptionSource = "Filename";
-    public string[] BulkCaptionSources { get; } =
-    ["Filename", "Matching .txt file", "Configured caption"];
     public ObservableCollection<PageMediaPathEdit> BulkPathEdits { get; } = [];
     private List<FacebookPageTargetViewModel> _bulkPathTargets = [];
 
@@ -147,19 +156,8 @@ public partial class AutoPostViewModel
         BulkPathsTargets =
             $"{_bulkPathTargets.Count} selected targets\n"
             + string.Join(" • ", _bulkPathTargets.Select(p => $"{p.DeviceName}: {p.PageName}"));
-        BulkApplyCaption = false;
-        BulkCaptionSource = "Filename";
         BulkPathsError = string.Empty;
         BulkPathEdits.Clear();
-        BulkPathEdits.Add(
-            new(
-                "StoryPath",
-                "Stories",
-                false,
-                FacebookPageTarget.StoryExtensions,
-                BrowseBulkPathAsync
-            )
-        );
         BulkPathEdits.Add(
             new(
                 "VideoReelPath",
@@ -175,6 +173,15 @@ public partial class AutoPostViewModel
                 "Photos",
                 false,
                 [".jpg", ".jpeg", ".png", ".webp"],
+                BrowseBulkPathAsync
+            )
+        );
+        BulkPathEdits.Add(
+            new(
+                "StoryPath",
+                "Stories",
+                false,
+                FacebookPageTarget.StoryExtensions,
                 BrowseBulkPathAsync
             )
         );
@@ -263,7 +270,8 @@ public partial class AutoPostViewModel
             return;
         }
         var edits = BulkPathEdits.Where(e => e.Apply).ToList();
-        if (edits.Count == 0 && !BulkApplyCaption)
+        var captionEdits = BulkPathEdits.Where(e => e.HasCaption && e.ApplyCaption).ToList();
+        if (edits.Count == 0 && captionEdits.Count == 0)
         {
             BulkPathsError = "Choose a path or caption source to update.";
             return;
@@ -278,11 +286,7 @@ public partial class AutoPostViewModel
         }
         var keys = edits
             .Select(e => e.Key)
-            .Concat(
-                BulkApplyCaption
-                    ? new[] { "UseTitleFromTextFile", "UseCaptionFromFilename" }
-                    : Array.Empty<string>()
-            )
+            .Concat(captionEdits.Select(e => e.CaptionProperty!))
             .ToArray();
         var originals = _bulkPathTargets
             .SelectMany(p =>
@@ -304,13 +308,11 @@ public partial class AutoPostViewModel
                 typeof(FacebookPageTargetViewModel)
                     .GetProperty(e.Key)!
                     .SetValue(p, e.Clear ? "" : PageMediaPathEdit.Normalize(e.Path));
-            if (BulkApplyCaption)
-                foreach (var p in _bulkPathTargets)
-                {
-                    p.UseTitleFromTextFile = BulkCaptionSource == "Matching .txt file";
-                    p.UseCaptionFromFilename = BulkCaptionSource == "Filename";
-                    p.SyncToModel();
-                }
+            foreach (var p in _bulkPathTargets)
+            foreach (var e in captionEdits)
+                typeof(FacebookPageTargetViewModel)
+                    .GetProperty(e.CaptionProperty!)!
+                    .SetValue(p, e.UseTitleFromTextFile);
             await PersistPagesSnapshotAsync();
             RefreshDisplayedManagePages();
             IsBulkPathsOpen = false;

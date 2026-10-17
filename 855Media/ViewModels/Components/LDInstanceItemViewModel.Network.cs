@@ -80,7 +80,7 @@ public partial class LDInstanceItemViewModel
                 PublicIp = "Unavailable";
                 NetworkLocation = "Unavailable";
                 NetworkDetail =
-                    "This LD's network lookup failed. Check its connection and refresh IPs to retry.";
+                    "This LD's network lookup failed. Check its connection and use Refresh devices to retry.";
                 _networkNextCheck = DateTimeOffset.UtcNow.AddMinutes(1);
             });
         }

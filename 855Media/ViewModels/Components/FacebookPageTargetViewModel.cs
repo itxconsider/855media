@@ -331,6 +331,15 @@ public partial class FacebookPageTargetViewModel : ObservableObject
     public string GroupVideoPathStatus =>
         PageMediaPathEdit.Describe(GroupVideoPath, [".mp4", ".mkv", ".mov"], true);
 
+    [ObservableProperty]
+    private bool _reelTitleFromTextFile;
+
+    [ObservableProperty]
+    private bool _photoTitleFromTextFile;
+
+    [ObservableProperty]
+    private bool _videoTitleFromTextFile;
+
     // Per-page Config
     [ObservableProperty]
     private bool _useTitleFromTextFile;
@@ -470,6 +479,9 @@ public partial class FacebookPageTargetViewModel : ObservableObject
         Notifications = model.Notifications;
         ManagedBy = model.ManagedBy;
 
+        ReelTitleFromTextFile = model.ReelTitleFromTextFile ?? model.UseTitleFromTextFile;
+        PhotoTitleFromTextFile = model.PhotoTitleFromTextFile ?? model.UseTitleFromTextFile;
+        VideoTitleFromTextFile = model.VideoTitleFromTextFile ?? model.UseTitleFromTextFile;
         UseTitleFromTextFile = model.UseTitleFromTextFile;
         UseCaptionFromFilename = model.UseCaptionFromFilename;
         TitleVideoReel = model.TitleVideoReel;
@@ -626,6 +638,9 @@ public partial class FacebookPageTargetViewModel : ObservableObject
         Model.Notifications = Notifications;
         Model.ManagedBy = ManagedBy;
 
+        Model.ReelTitleFromTextFile = ReelTitleFromTextFile;
+        Model.PhotoTitleFromTextFile = PhotoTitleFromTextFile;
+        Model.VideoTitleFromTextFile = VideoTitleFromTextFile;
         Model.UseTitleFromTextFile = UseTitleFromTextFile;
         Model.UseCaptionFromFilename = UseCaptionFromFilename;
         Model.TitleVideoReel = TitleVideoReel;

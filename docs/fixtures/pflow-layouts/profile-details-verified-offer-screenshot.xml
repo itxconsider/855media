@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Reconstructed from the user screenshot, not a live device hierarchy capture. -->
+<hierarchy rotation="0">
+  <node package="com.facebook.katana" class="android.widget.FrameLayout" bounds="[0,0][316,585]">
+    <node package="com.facebook.katana" class="android.widget.TextView" text="Nick Parlet" bounds="[118,101][201,118]" />
+    <node package="com.facebook.katana" class="android.widget.TextView" text="To keep Facebook safe, we're showing information about people and their profiles." bounds="[4,128][308,155]" />
+    <node package="com.facebook.katana" class="android.view.ViewGroup" bounds="[4,169][309,319]">
+      <node package="com.facebook.katana" text="Get verified with Meta One" />
+      <node package="com.facebook.katana" text="Build customer trust with a verified badge, plus impersonation protection and direct account support." />
+      <node package="com.facebook.katana" class="android.widget.Button" content-desc="Close" clickable="true" enabled="true" bounds="[269,180][298,210]" />
+      <node package="com.facebook.katana" class="android.widget.Button" text="Try for $1" clickable="true" enabled="true" bounds="[15,276][298,309]" />
+    </node>
+    <node package="com.facebook.katana" class="android.view.ViewGroup" bounds="[4,335][309,469]">
+      <node package="com.facebook.katana" text="Created October 2026" bounds="[47,352][220,376]" />
+      <node package="com.facebook.katana" text="Reel creator" bounds="[47,394][160,415]" />
+      <node package="com.facebook.katana" class="android.widget.Button" text="Transparency and privacy policy" clickable="true" enabled="true" bounds="[14,421][299,461]" />
+    </node>
+    <node package="com.facebook.katana" text="About Nick Parlet" bounds="[4,484][170,503]" />
+    <node package="com.facebook.katana" text="Name pronunciation" bounds="[47,531][225,554]" />
+  </node>
+</hierarchy>

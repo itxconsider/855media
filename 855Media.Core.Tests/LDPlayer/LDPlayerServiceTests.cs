@@ -1580,12 +1580,13 @@ public class LDPlayerServiceTests
     }
 
     [Fact]
-    public async Task PFlowPersonaSwitcherService_DirectInvocation_SwitchesSuccessfully()
+    public async Task PFlowPersonaSwitcherService_NameOnlyInvocationRecognizesOwnProfile()
     {
         var menuXml =
             @"<hierarchy rotation=""0"">
             <node class=""android.widget.FrameLayout"" bounds=""[0,0][720,1280]"">
                 <node text=""My Test Persona"" bounds=""[100,100][400,200]"" />
+                <node text=""Edit profile"" bounds=""[100,250][400,300]"" />
             </node>
         </hierarchy>";
 

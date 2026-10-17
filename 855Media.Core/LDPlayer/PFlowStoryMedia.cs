@@ -51,6 +51,11 @@ internal sealed record PFlowStoryMedia(
     internal static PFlowStoryMedia? Read(string output, PFlowJob job)
     {
         ValidateJob(job);
+        return ReadAlbum(output, job, AlbumFor(job));
+    }
+
+    internal static PFlowStoryMedia? ReadAlbum(string output, PFlowJob job, string album)
+    {
         var rows = Regex.Matches(output, @"(?m)^Row:\s*\d+\s+([^\r\n]*)");
         if (rows.Count != 1)
             return null;
@@ -70,7 +75,7 @@ internal sealed record PFlowStoryMedia(
             || id <= 0
             || Canonical(Field("_data")) != Canonical(job.RemotePath)
             || Field("_display_name") != System.IO.Path.GetFileName(job.RemotePath)
-            || Field("bucket_display_name") != AlbumFor(job)
+            || Field("bucket_display_name") != album
             || Field("mime_type") != PFlowMediaIntent.MimeType(job.SourcePath)
             || !long.TryParse(Field("_size"), out var size)
             || size != job.Size
@@ -79,13 +84,6 @@ internal sealed record PFlowStoryMedia(
         )
             return null;
         _ = long.TryParse(Field("duration"), out var duration);
-        return new(
-            id,
-            Canonical(job.RemotePath),
-            AlbumFor(job),
-            Field("mime_type"),
-            size,
-            duration
-        );
+        return new(id, Canonical(job.RemotePath), album, Field("mime_type"), size, duration);
     }
 }

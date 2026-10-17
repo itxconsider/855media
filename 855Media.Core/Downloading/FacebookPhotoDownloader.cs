@@ -8,6 +8,7 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using _855Media.Core.Resolving;
+using _855Media.Core.Utils;
 using Gress;
 
 namespace _855Media.Core.Downloading;
@@ -67,7 +68,7 @@ public class FacebookPhotoDownloader
                 downloadedSuccessfully = true;
                 break;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 lastException = ex;
             }
@@ -85,7 +86,7 @@ public class FacebookPhotoDownloader
                 downloadedSuccessfully = true;
                 break;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 lastException = ex;
             }
@@ -264,7 +265,10 @@ public class FacebookPhotoDownloader
                         using var proc = Process.Start(startInfo);
                         if (proc is not null)
                         {
-                            await proc.WaitForExitAsync(cancellationToken);
+                            ChildProcessTracker.Track(proc);
+                            var errorTask = proc.StandardError.ReadToEndAsync();
+                            await proc.WaitForExitWithCancellationAsync(cancellationToken);
+                            await errorTask;
                             if (
                                 proc.ExitCode == 0
                                 && File.Exists(destinationPath)
@@ -275,6 +279,10 @@ public class FacebookPhotoDownloader
                                 return;
                             }
                         }
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
                     }
                     catch
                     {

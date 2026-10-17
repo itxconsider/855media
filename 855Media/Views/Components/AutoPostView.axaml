@@ -44,24 +44,11 @@
     </UserControl.Resources>
     <Grid>
         <!-- Compact dashboard: only the tables scroll; their space follows the window. -->
-        <Grid x:Name="DashboardLayout" Margin="20,16" RowDefinitions="Auto,Auto,*">
-            <Grid Grid.Row="0" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" Margin="0,0,0,12">
-                <StackPanel Spacing="3">
-                    <TextBlock Text="PFlow" FontSize="23" FontWeight="Bold" Foreground="{DynamicResource AntigravityTextBrush}" />
-                    <TextBlock Text="Prepare targets, verify identity and track each post." Foreground="{DynamicResource AntigravityMutedBrush}" FontSize="12" />
-                </StackPanel>
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                    <Button Content="Targets &amp; media" Command="{Binding OpenManagePagesCommand}" Classes="action-btn" IsEnabled="{Binding !IsRunning}" />
-                    <Button Content="Run settings" Command="{Binding OpenConfigCommand}" Classes="action-btn" IsEnabled="{Binding !IsRunning}" />
-                    <Button Content="Start PFlow" Command="{Binding StartAutomationCommand}" IsEnabled="{Binding !IsRunning}" Classes="action-btn btn-success" />
-                    <Button Content="Stop run" Command="{Binding StopAutomationCommand}" IsEnabled="{Binding IsRunning}" Classes="action-btn btn-danger" />
-                </StackPanel>
-                <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding PFlowNextStep}" TextWrapping="Wrap" Margin="0,8,0,0" FontSize="12" Foreground="{DynamicResource AntigravityAccentBrush}" />
-            </Grid>
-
-            <Border Grid.Row="1" Classes="card-panel" Padding="14,10" Margin="0,0,0,12">
+        <Grid x:Name="DashboardLayout" Margin="20,16" RowDefinitions="Auto,*">
+            <Border x:Name="RunOptionsCard" Grid.Row="0" Classes="card-panel" Padding="14,8" Margin="0,0,0,8">
                 <StackPanel Spacing="8">
-                    <WrapPanel>
+                    <Grid ColumnDefinitions="*,Auto">
+                    <WrapPanel Grid.Column="0">
                         <TextBlock Text="{Binding PFlowDeviceSummary}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,22,4" />
                         <TextBlock Text="{Binding PFlowTargetSummary}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,22,4" />
                         <CheckBox IsChecked="{Binding PFlowDryRun}" IsEnabled="{Binding !IsRunning}" Content="Preview without publishing" Margin="0,0,22,4" ToolTip.Tip="{Binding PFlowModeSummary}" />
@@ -70,10 +57,15 @@
                             <TextBlock Text="Concurrent LDs" VerticalAlignment="Center" />
                             <NumericUpDown Value="{Binding RunThread}" Minimum="1" Maximum="32" Width="70" Height="30" FormatString="0" IsEnabled="{Binding !IsRunning}" />
                         </StackPanel>
-                        <Button Command="{Binding LoadDevicesCommand}" Content="Refresh devices" Classes="action-btn" Margin="0,0,8,4" IsEnabled="{Binding !IsRunning}" />
-                        <Button Content="Refresh IPs" Command="{Binding RefreshNetworkInfoCommand}" Classes="action-btn" Margin="0,0,8,4" ToolTip.Tip="Read each running LD's public IP. City is approximate." />
                     </WrapPanel>
-                    <Expander Header="LDPlayer options" HorizontalAlignment="Stretch" IsExpanded="False" FontSize="12">
+                <StackPanel x:Name="RunActionButtons" Grid.Column="1" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="12,0,0,4">
+                        <Button x:Name="RefreshDevicesButton" Command="{Binding LoadDevicesCommand}" ToolTip.Tip="Refresh devices and their public IP information." Content="Refresh devices" Classes="action-btn" Margin="0" IsEnabled="{Binding !IsRunning}" />
+                    <Button Content="Targets &amp; media" Command="{Binding OpenManagePagesCommand}" Classes="action-btn" IsEnabled="{Binding !IsRunning}" />
+                    <Button Content="Run settings" Command="{Binding OpenConfigCommand}" Classes="action-btn" IsEnabled="{Binding !IsRunning}" />
+                    <Button x:Name="AutomationToggleButton" Content="{Binding AutomationButtonText}" Command="{Binding AutomationButtonCommand}" IsEnabled="{Binding CanToggleAutomation}" Classes="action-btn" Classes.btn-success="{Binding !IsRunning}" Classes.btn-danger="{Binding IsRunning}" />
+                </StackPanel>
+                    </Grid>
+                    <Expander Header="LD Options" HorizontalAlignment="Stretch" IsExpanded="False" FontSize="12">
                         <StackPanel Spacing="8" Margin="0,8,0,0">
                             <Grid ColumnDefinitions="Auto,*,Auto">
                                 <TextBlock Text="LDPlayer folder" VerticalAlignment="Center" Margin="0,0,12,0" />
@@ -91,7 +83,9 @@
                 </StackPanel>
             </Border>
 
-            <Grid x:Name="DashboardTables" Grid.Row="2" ColumnDefinitions="2*,6,3*">
+
+
+            <Grid x:Name="DashboardTables" Grid.Row="1" ColumnDefinitions="2*,6,3*">
                 <Border Grid.Column="0" Classes="card-panel" Padding="14,10">
                     <Grid RowDefinitions="Auto,*">
                         <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,8">
@@ -114,16 +108,30 @@
                             CornerRadius="8"
                             VerticalScrollBarVisibility="Visible"
                             HorizontalScrollBarVisibility="Auto">
+                            <DataGrid.Styles>
+                                <Style Selector="DataGridColumnHeader">
+                                    <Setter Property="Padding" Value="8,10" />
+                                    <Setter Property="HorizontalContentAlignment" Value="Left" />
+                                </Style>
+                                <Style Selector="DataGridCell">
+                                    <Setter Property="Padding" Value="0" />
+                                    <Setter Property="VerticalContentAlignment" Value="Center" />
+                                </Style>
+                                <Style Selector="DataGridCell > TextBlock">
+                                    <Setter Property="Margin" Value="8,0" />
+                                    <Setter Property="VerticalAlignment" Value="Center" />
+                                </Style>
+                            </DataGrid.Styles>
                             <DataGrid.Columns>
                                 <DataGridTemplateColumn Width="46" MinWidth="40">
                                     <DataGridTemplateColumn.Header>
                                         <CheckBox IsChecked="{Binding $parent[UserControl].((components:AutoPostViewModel)DataContext).IsAllSelected, Mode=TwoWay}"
-                                                  HorizontalAlignment="Center" VerticalAlignment="Center" Margin="6,0,0,0" ToolTip.Tip="Select All / Deselect All" />
+                                                  HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0" ToolTip.Tip="Select All / Deselect All" />
                                     </DataGridTemplateColumn.Header>
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate DataType="components:LDInstanceItemViewModel">
                                             <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}"
-                                                      HorizontalAlignment="Center" VerticalAlignment="Center" Margin="6,0,0,0" />
+                                                      HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0" />
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
@@ -145,7 +153,7 @@
                                         <DataTemplate DataType="components:LDInstanceItemViewModel">
                                             <Border
                                                 Padding="8,3"
-                                                Margin="4"
+                                                Margin="0,4"
                                                 CornerRadius="6"
                                                 Background="{DynamicResource AntigravityElevatedBrush}"
                                                 HorizontalAlignment="Left">
@@ -157,7 +165,7 @@
                                 <DataGridTemplateColumn Header="Actions" Width="112" MinWidth="108">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate DataType="components:LDInstanceItemViewModel">
-                                            <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center" IsEnabled="{Binding !$parent[UserControl].((components:AutoPostViewModel)DataContext).IsRunning}">
+                                            <StackPanel Orientation="Horizontal" Spacing="4" Margin="8,0,0,0" HorizontalAlignment="Left" IsEnabled="{Binding !$parent[UserControl].((components:AutoPostViewModel)DataContext).IsRunning}">
                                                 <Button Command="{Binding LaunchCommand}" ToolTip.Tip="Start LDPlayer" Padding="6" Width="28" Height="28">
                                                     <materialIcons:MaterialIcon Kind="Play" Width="14" Height="14" Foreground="#10B981" />
                                                 </Button>
@@ -189,6 +197,7 @@
                                 </WrapPanel>
                                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                                     <Button Command="{Binding ShowPFlowHistoryCommand}" Classes="action-btn" Content="History &amp; review" Padding="8,4" FontSize="12" />
+                                    <Button Command="{Binding RetryQueueCommand}" Classes="action-btn" Content="Retry failed / cancelled" IsEnabled="{Binding !IsRunning}" Padding="8,4" FontSize="12" ToolTip.Tip="Requeue retryable jobs using the same files and targets. Review Unknown jobs in History first." />
                                     <Button Command="{Binding ClearTasksCommand}" Classes="action-btn" Content="Clear queue" IsEnabled="{Binding !IsRunning}" Padding="8,4" FontSize="12" />
                                 </StackPanel>
                             </Grid>
@@ -269,12 +278,14 @@
                     <Border Grid.Row="1" Background="{DynamicResource AntigravityCardBrush}" CornerRadius="8" Padding="12" Margin="0,0,0,12">
                         <Grid ColumnDefinitions="*,Auto">
                             <WrapPanel>
-                                <Button Content="Fetch accounts &amp; Pages" Command="{Binding FetchSelectedPagesInfoCommand}" IsEnabled="{Binding !IsBusy}" Classes="action-btn btn-success" Margin="0,0,8,4" />
+                                <Button Content="Fetch accounts" Command="{Binding FetchSelectedPagesInfoCommand}" IsEnabled="{Binding !IsBusy}" Classes="action-btn btn-success" Margin="0,0,8,4" ToolTip.Tip="Fetch accounts and their Pages from selected devices" />
                                 <Button Content="Stop fetch" Command="{Binding CancelFetchCommand}" IsVisible="{Binding IsBusy}" Classes="action-btn btn-danger" Margin="0,0,8,4" />
-                                <Button Content="Assign media to checked targets" Command="{Binding OpenBulkPathsCommand}" Classes="action-btn" Margin="0,0,8,4" />
-                                <ToggleButton Content="LD list" IsChecked="{Binding IsLdPanelVisible, Mode=TwoWay}" Margin="0,0,8,4" Padding="12,6" ToolTip.Tip="Show or hide the device list" /><ToggleButton Content="Post queue" IsChecked="{Binding IsPostQueuePanelVisible, Mode=TwoWay}" Margin="0,0,8,4" Padding="12,6" ToolTip.Tip="Show or hide queue settings" /><Button Content="Refresh media counts" Command="{Binding RefreshVisibleMediaCountsCommand}" IsEnabled="{Binding !IsRefreshingMediaCounts}" Classes="action-btn" Margin="0,0,8,4" /><Button Content="Add target" Command="{Binding AddNewPageCommand}" Classes="action-btn" Margin="0,0,8,4" />
-                                <Button Content="Review / bulk delete posts" Command="{Binding ReviewPagePostsCommand}" IsEnabled="{Binding !IsBusy}" Classes="action-btn" Margin="0,0,8,4" />
-                                <Button Content="Remove checked" Command="{Binding DeleteSelectedPagesCommand}" Classes="action-btn" Margin="0,0,8,4" />
+                                <Button Content="Assign media" Command="{Binding OpenBulkPathsCommand}" Classes="action-btn" Margin="0,0,8,4" ToolTip.Tip="Assign media to checked targets" />
+                                <ToggleButton Content="Devices" IsChecked="{Binding IsLdPanelVisible, Mode=TwoWay}" Margin="0,0,8,4" Padding="12,6" ToolTip.Tip="Show or hide the device list" />
+                                <ToggleButton Content="Post queue" IsChecked="{Binding IsPostQueuePanelVisible, Mode=TwoWay}" Margin="0,0,8,4" Padding="12,6" ToolTip.Tip="Show or hide queue settings" />
+                                <Button Content="Refresh counts" Command="{Binding RefreshVisibleMediaCountsCommand}" IsEnabled="{Binding !IsRefreshingMediaCounts}" Classes="action-btn" Margin="0,0,8,4" ToolTip.Tip="Refresh media counts for visible targets" />
+                                <Button Content="Manage posts" Command="{Binding ReviewPagePostsCommand}" IsEnabled="{Binding !IsBusy}" Classes="action-btn" Margin="0,0,8,4" ToolTip.Tip="Review Page posts and bulk delete selected posts" />
+                                <Button Content="Remove selected" Command="{Binding DeleteSelectedPagesCommand}" Classes="action-btn" Margin="0,0,8,4" ToolTip.Tip="Remove checked targets from the saved list" />
                             </WrapPanel>
                             <TextBlock Grid.Column="1" Text="{Binding PFlowTargetSummary}" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityMutedBrush}" />
                         </Grid>
@@ -937,35 +948,6 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
                     <!-- Content Layout -->
                     <ScrollViewer Grid.Row="1" IsEnabled="{Binding !IsSavingBulkPaths}">
                         <StackPanel Spacing="14">
-                            <!-- Page Name, Type & Strategy -->
-                            <Grid ColumnDefinitions="*, 140, Auto">
-                                <StackPanel Grid.Column="0" Spacing="4">
-                                    <TextBlock Text="Page / Profile Name" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                    <TextBox Text="{Binding SelectedPageForEdit.PageName}" Height="34" />
-                                </StackPanel>
-                                <StackPanel Grid.Column="1" Spacing="4" Margin="12,0,0,0">
-                                    <TextBlock Text="Target Type" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                    <ComboBox ItemsSource="{x:Static components:AutoPostViewModel.TargetTypes}" SelectedItem="{Binding SelectedPageForEdit.Type}" Height="34" HorizontalAlignment="Stretch" />
-                                </StackPanel>
-                                <CheckBox Grid.Column="2" Content="Use Title From Text File" IsChecked="{Binding SelectedPageForEdit.UseTitleFromTextFile}" VerticalAlignment="Bottom" Margin="16,0,0,6" />
-                            </Grid>
-
-                            <!-- Identifiers Row: Page ID (Canonical), Persona UID (NPE Profile), User UID -->
-                            <Grid ColumnDefinitions="*, 8, *, 8, *">
-                                <StackPanel Grid.Column="0" Spacing="4">
-                                    <TextBlock Text="Page ID (Canonical)" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                    <TextBox Text="{Binding SelectedPageForEdit.PageId}" Height="32" />
-                                </StackPanel>
-                                <StackPanel Grid.Column="2" Spacing="4">
-                                    <TextBlock Text="Persona UID (NPE Profile)" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                    <TextBox Text="{Binding SelectedPageForEdit.PersonaUid}" Height="32" Foreground="#A78BFA" />
-                                </StackPanel>
-                                <StackPanel Grid.Column="4" Spacing="4">
-                                    <TextBlock Text="Admin User UID" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                    <TextBox Text="{Binding SelectedPageForEdit.UserUid}" Height="32" IsReadOnly="True" />
-                                </StackPanel>
-                            </Grid>
-
                             <!-- Maturity & Daily Post Limits Banner -->
                             <Border Background="{DynamicResource AntigravityCardBrush}" CornerRadius="8" Padding="12,8" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1">
                                 <Grid ColumnDefinitions="*, *, *">
@@ -984,23 +966,36 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
                                 </Grid>
                             </Border>
 
+                            <!-- Identifiers Row: Page ID (Canonical), Persona UID (NPE Profile), User UID -->
+                            <Grid ColumnDefinitions="*, 8, *, 8, *, 8, *">
+                                <StackPanel Grid.Column="0" Spacing="4">
+                                    <TextBlock Text="Page / Profile Name" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                    <TextBox Text="{Binding SelectedPageForEdit.PageName}" Height="32" IsReadOnly="True" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Spacing="4">
+                                    <TextBlock Text="Page ID (Canonical)" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                    <TextBox Text="{Binding SelectedPageForEdit.PageId}" IsReadOnly="True" Height="32" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="4" Spacing="4">
+                                    <TextBlock Text="Persona UID (NPE Profile)" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                    <TextBox Text="{Binding SelectedPageForEdit.PersonaUid}" IsReadOnly="True" Height="32" Foreground="#A78BFA" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="6" Spacing="4">
+                                    <TextBlock Text="Admin User UID" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                    <TextBox Text="{Binding SelectedPageForEdit.UserUid}" Height="32" IsReadOnly="True" />
+                                </StackPanel>
+                            </Grid>
+
+                            <TextBlock Text="Target type and account identity are determined by Fetch. Fetch again to update them." FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+
                             <TextBlock Text="Media sources • choose a file or shared folder. Counts include matching files in the folder’s top level." TextWrapping="Wrap" FontSize="12" />
-                            <StackPanel Spacing="6" Margin="0,0,0,12">
-                                <TextBlock Text="Story source (photo/video file or folder)" FontWeight="SemiBold" />
-                                <Grid ColumnDefinitions="*,Auto,Auto">
-                                    <TextBox Text="{Binding SelectedPageForEdit.StoryPath, Mode=TwoWay}" Watermark="Choose Story media…" />
-                                    <Button Grid.Column="1" Command="{Binding BrowseStoryFileCommand}" Content="File…" Margin="4,0,0,0" />
-                                    <Button Grid.Column="2" Command="{Binding BrowseStoryFolderCommand}" Content="Folder…" Margin="4,0,0,0" />
-                                </Grid>
-                                <TextBlock Text="{Binding SelectedPageForEdit.StoryPathStatus}" FontSize="11" TextWrapping="Wrap" />
-                                <TextBlock Text="Stories use the current Facebook audience. File backup/deletion follows Run settings. Text overlays are not added." FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                            </StackPanel>
-                            <!-- Posting sources: Reels and photos -->
-                            <Grid ColumnDefinitions="*, *" RowDefinitions="Auto, Auto">
+                            <!-- Posting sources: Reel, Photo, then Story -->
+                            <Grid ColumnDefinitions="*, *, *" RowDefinitions="Auto, Auto">
                                  <!-- Reel Column -->
                                 <StackPanel Grid.Column="0" Spacing="6" Margin="0,0,8,0">
                                     <TextBlock Text="Reel caption" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" />
-                                    <TextBox Text="{Binding SelectedPageForEdit.TitleVideoReel, Mode=TwoWay}" AcceptsReturn="True" Height="70" TextWrapping="Wrap" />
+                                    <CheckBox Content="Use title from text file" IsChecked="{Binding SelectedPageForEdit.ReelTitleFromTextFile, Mode=TwoWay}" />
+                                    <TextBlock Text="Unchecked: use media filename. Checked: use matching .txt; fall back to filename if unavailable." FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                     <TextBlock Text="Reel source (file or folder)" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                     <Grid ColumnDefinitions="*, Auto, Auto">
                                         <TextBox Grid.Column="0" Text="{Binding SelectedPageForEdit.VideoReelPath, Mode=TwoWay}" ToolTip.Tip="{Binding SelectedPageForEdit.VideoReelPath}" Height="38" Watermark="C:\Media\Reels or file..." />
@@ -1017,7 +1012,8 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
                                 <!-- Image Column -->
                                 <StackPanel Grid.Column="1" Spacing="6" Margin="4,0,4,0">
                                     <TextBlock Text="Photo caption" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" />
-                                    <TextBox Text="{Binding SelectedPageForEdit.TitleImage, Mode=TwoWay}" AcceptsReturn="True" Height="70" TextWrapping="Wrap" />
+                                    <CheckBox Content="Use title from text file" IsChecked="{Binding SelectedPageForEdit.PhotoTitleFromTextFile, Mode=TwoWay}" />
+                                    <TextBlock Text="Unchecked: use media filename. Checked: use matching .txt; fall back to filename if unavailable." FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                     <TextBlock Text="Photo source (file or folder)" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                     <Grid ColumnDefinitions="*, Auto, Auto">
                                         <TextBox Grid.Column="0" Text="{Binding SelectedPageForEdit.ImagePath, Mode=TwoWay}" ToolTip.Tip="{Binding SelectedPageForEdit.ImagePath}" Height="38" Watermark="C:\Media\Images or file..." />
@@ -1031,10 +1027,30 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
                                     <TextBlock Text="{Binding SelectedPageForEdit.ImagePathStatus}" FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                 </StackPanel>
 
+                                <StackPanel Grid.Column="2" Spacing="6" Margin="8,0,0,0">
+                                    <TextBlock Text="Story" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                    <Border MinHeight="24">
+                                        <TextBlock Text="No caption or text overlay" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                    </Border>
+                                    <TextBlock Text="Uses the current Facebook audience. File backup/deletion follows Run settings." FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                    <TextBlock Text="Story source (photo/video file or folder)" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                    <Grid ColumnDefinitions="*, Auto, Auto">
+                                        <TextBox Text="{Binding SelectedPageForEdit.StoryPath, Mode=TwoWay}" ToolTip.Tip="{Binding SelectedPageForEdit.StoryPath}" Height="38" Watermark="C:\Media\Stories or file..." />
+                                        <Button Grid.Column="1" Command="{Binding BrowseStoryFileCommand}" Margin="4,0,0,0" Height="38" Padding="7,4" Background="{DynamicResource AntigravityCardBrush}" ToolTip.Tip="Browse Story photo or video">
+                                            <TextBlock Text="File…" />
+                                        </Button>
+                                        <Button Grid.Column="2" Command="{Binding BrowseStoryFolderCommand}" Margin="4,0,0,0" Height="38" Padding="7,4" Background="{DynamicResource AntigravityCardBrush}" ToolTip.Tip="Browse Story folder">
+                                            <TextBlock Text="Folder…" />
+                                        </Button>
+                                    </Grid>
+                                    <TextBlock Text="{Binding SelectedPageForEdit.StoryPathStatus}" FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                </StackPanel>
+
                                 <!-- Additional saved Reel source -->
-                                <StackPanel Grid.Row="1" Grid.ColumnSpan="2" IsVisible="{Binding SelectedPageForEdit.HasAdditionalReelSource}" Spacing="6" Margin="0,12,0,0">
+                                <StackPanel Grid.Row="1" Grid.ColumnSpan="3" IsVisible="{Binding SelectedPageForEdit.HasAdditionalReelSource}" Spacing="6" Margin="0,12,0,0">
                                     <TextBlock Text="Additional Reel caption" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" />
-                                    <TextBox Text="{Binding SelectedPageForEdit.TitleVideoLong, Mode=TwoWay}" AcceptsReturn="True" Height="70" TextWrapping="Wrap" />
+                                    <CheckBox Content="Use title from text file" IsChecked="{Binding SelectedPageForEdit.VideoTitleFromTextFile, Mode=TwoWay}" />
+                                    <TextBlock Text="Unchecked: use media filename. Checked: use matching .txt; fall back to filename if unavailable." FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                     <TextBlock Text="Additional Reel source (from saved video configuration)" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                     <Grid ColumnDefinitions="*, Auto, Auto">
                                         <TextBox Grid.Column="0" Text="{Binding SelectedPageForEdit.VideoLongPath, Mode=TwoWay}" ToolTip.Tip="{Binding SelectedPageForEdit.VideoLongPath}" Height="38" Watermark="C:\Media\Videos or file..." />
@@ -1113,33 +1129,40 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
 
 
         <Border IsVisible="{Binding IsBulkPathsOpen}" Background="#D0000000">
-            <Border Classes="modal-window" MaxWidth="980">
+            <Border Classes="modal-window" MaxWidth="1600">
                 <Grid RowDefinitions="Auto,*,Auto">
                     <StackPanel Spacing="8" Margin="0,0,0,16">
                         <TextBlock Text="Update media paths for selected Pages" FontSize="20" FontWeight="Bold" />
                         <ScrollViewer MaxHeight="120"><TextBlock Text="{Binding BulkPathsTargets}" TextWrapping="Wrap" /></ScrollViewer>
-                        <TextBlock Text="Check the paths to replace. Unchecked paths keep their current settings. A shared folder can be used by every selected target." TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                        <TextBlock Text="Check the paths and caption rules to update. Unchecked updates keep their current settings. A shared folder can be used by every selected target." TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
                     </StackPanel>
                     <ScrollViewer Grid.Row="1">
                         <StackPanel Spacing="12">
-                            <Border Padding="12" Margin="0,0,0,12" BorderThickness="1" CornerRadius="8" BorderBrush="{DynamicResource AntigravityBorderBrush}"><StackPanel Spacing="8">
-                                <CheckBox Content="Update caption source for all selected targets" IsChecked="{Binding BulkApplyCaption}" />
-                                <ComboBox ItemsSource="{Binding BulkCaptionSources}" SelectedItem="{Binding BulkCaptionSource}" IsEnabled="{Binding BulkApplyCaption}" />
-                                <TextBlock Text="Filename uses the media name without its extension. Matching .txt reads the file beside each media file (video.mp4 → video.txt); missing or empty text uses the configured caption. Unchecked keeps existing caption settings. Applies to Reels, photos and long videos." TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                            </StackPanel></Border>
                             <ItemsControl ItemsSource="{Binding BulkPathEdits}" IsEnabled="{Binding !IsSavingBulkPaths}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate><StackPanel /></ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="components:PageMediaPathEdit">
-                                        <Border Padding="12" Margin="0,0,0,8" CornerRadius="8" BorderThickness="1" BorderBrush="{DynamicResource AntigravityBorderBrush}">
+                                        <Border Padding="8" Margin="0,0,8,12">
                                             <StackPanel Spacing="7">
                                                 <Grid ColumnDefinitions="*,Auto">
                                                     <CheckBox Content="{Binding Label}" IsChecked="{Binding Apply}" FontWeight="SemiBold" />
                                                     <CheckBox Grid.Column="1" Content="Clear saved path" IsChecked="{Binding Clear}" />
                                                 </Grid>
+                                                <StackPanel Spacing="6" IsVisible="{Binding HasCaption}">
+                                                    <CheckBox Content="Update caption rule" IsChecked="{Binding ApplyCaption}" />
+                                                    <CheckBox Content="Use title from text file" IsChecked="{Binding UseTitleFromTextFile}" IsEnabled="{Binding ApplyCaption}" />
+                                                    <TextBlock Text="Unchecked: use media filename. Checked: use matching .txt; fall back to filename if unavailable." FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                                </StackPanel>
+                                                <StackPanel Spacing="6" IsVisible="{Binding IsStory}">
+                                                    <TextBlock Text="No caption or text overlay" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                                    <TextBlock Text="Uses the current Facebook audience. File backup/deletion follows Run settings." FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                                </StackPanel>
                                                 <Grid ColumnDefinitions="*,Auto,Auto" IsEnabled="{Binding !Clear}">
-                                                    <TextBox Text="{Binding Path, Mode=TwoWay}" Watermark="Paste an absolute path or choose a file / folder" ToolTip.Tip="{Binding Path}" />
-                                                    <Button Grid.Column="1" Content="File…" IsVisible="{Binding CanBrowseFile}" Command="{Binding BrowseFileCommand}" Margin="8,0,0,0" />
-                                                    <Button Grid.Column="2" Content="Folder…" Command="{Binding BrowseFolderCommand}" Margin="8,0,0,0" />
+                                                    <TextBox Text="{Binding Path, Mode=TwoWay}" Watermark="Paste an absolute path or choose a file / folder" ToolTip.Tip="{Binding Path}" Height="38" />
+                                                    <Button Grid.Column="1" Content="File…" IsVisible="{Binding CanBrowseFile}" Command="{Binding BrowseFileCommand}" Margin="4,0,0,0" Height="38" Padding="7,4" Background="{DynamicResource AntigravityCardBrush}" />
+                                                    <Button Grid.Column="2" Content="Folder…" Command="{Binding BrowseFolderCommand}" Margin="4,0,0,0" Height="38" Padding="7,4" Background="{DynamicResource AntigravityCardBrush}" />
                                                 </Grid>
                                                 <TextBlock Text="{Binding Preview}" TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" FontSize="12" />
                                             </StackPanel>

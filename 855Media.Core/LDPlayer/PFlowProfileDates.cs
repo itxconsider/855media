@@ -15,6 +15,8 @@ internal static class PFlowProfileDates
 
     internal static bool HasFullDate(string? value) => !string.IsNullOrEmpty(Date(value));
 
+    internal static string ValidDate(string? value) => Date(value);
+
     private static BloksElement[] ProfileContentElements(BloksScreenInfo screen)
     {
         // A sticky navigation tab can contain a plain "Posts" or "Friends" child.
@@ -72,12 +74,19 @@ internal static class PFlowProfileDates
     private static string Label(BloksElement element) =>
         (string.IsNullOrWhiteSpace(element.Text) ? element.ContentDesc : element.Text).Trim();
 
-    internal static bool MatchesName(BloksScreenInfo screen, string name) =>
-        !string.IsNullOrWhiteSpace(name)
-        && screen.AllElements.Any(e =>
-            e.Text.Trim().Equals(name.Trim(), StringComparison.OrdinalIgnoreCase)
-            || e.ContentDesc.Trim().Equals(name.Trim(), StringComparison.OrdinalIgnoreCase)
+    internal static bool MatchesName(BloksScreenInfo screen, string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return false;
+        // Native headers wrap names and can insert nonbreaking spaces. Preserve
+        // exact full-name matching after normalizing only presentation whitespace.
+        static string Normalize(string value) => Regex.Replace(value.Trim(), @"\s+", " ");
+        var expected = Normalize(name);
+        return screen.AllElements.Any(e =>
+            Normalize(e.Text).Equals(expected, StringComparison.OrdinalIgnoreCase)
+            || Normalize(e.ContentDesc).Equals(expected, StringComparison.OrdinalIgnoreCase)
         );
+    }
 
     internal static string Birthdate(BloksScreenInfo screen, bool confirmedProfileContext = false)
     {
@@ -180,7 +189,7 @@ internal static class PFlowProfileDates
         foreach (
             var row in screen.AllElements.Where(e =>
                 Regex.IsMatch(
-                    Label(e),
+                    Regex.Replace(Label(e), @"\s+", " "),
                     profile
                         ? @"^Profile created(?:\s*[:,]\s*.*)?$"
                         : @"^(?:Page created|Created(?:\s*[-–:]\s*.*)?)$",

@@ -11,6 +11,77 @@ namespace _855Media.Core.Tests.LDPlayer;
 
 public class PFlowConfirmationTests
 {
+    [Theory]
+    [InlineData("Your reel has been published!", "Reel", true)]
+    [InlineData(" Your reel\nwas successfully published. ", "Reel", true)]
+    [InlineData("Your reel is now live", "Reel", true)]
+    [InlineData("Reel shared successfully", "Video", true)]
+    [InlineData("Your post was published", "Picture", true)]
+    [InlineData("Your story has been shared", "Story", true)]
+    [InlineData("Facebook upload complete", "Reel", false)]
+    [InlineData("Your reel is uploading", "Reel", false)]
+    [InlineData("Your reel could not be published", "Reel", false)]
+    [InlineData("Your reel has been published to another Page", "Reel", false)]
+    [InlineData("Reel published", "Story", false)]
+    [InlineData("Your reel was published", "Picture", false)]
+    public void DirectSuccessRequiresExplicitPublicationAndCorrectType(
+        string message,
+        string type,
+        bool expected
+    ) => Assert.Equal(expected, PFlowConfirmation.IsPublicationSuccess(message, type));
+
+    [Theory]
+    [InlineData("text", "", "true", "", true)]
+    [InlineData("content-desc", "", "true", "", true)]
+    [InlineData("text", "android.widget.EditText", "true", "", false)]
+    [InlineData("text", "", "false", "", false)]
+    [InlineData("text", "", "true", "other.app", false)]
+    public void DirectMessagesExcludeInputsHiddenAndForeignNodes(
+        string attribute,
+        string className,
+        string visible,
+        string package,
+        bool expected
+    )
+    {
+        var node = new System.Xml.Linq.XElement(
+            "node",
+            new System.Xml.Linq.XAttribute(attribute, "Your reel has been published!"),
+            new System.Xml.Linq.XAttribute("class", className),
+            new System.Xml.Linq.XAttribute("visible-to-user", visible),
+            new System.Xml.Linq.XAttribute("package", package)
+        );
+        var xml = new System.Xml.Linq.XElement("hierarchy", node).ToString();
+        Assert.Equal(
+            expected,
+            PFlowAutoPostService.NewPublicationEvidence(
+                xml,
+                new System.Collections.Generic.HashSet<string>(),
+                "Reel"
+            ) != null
+        );
+        Assert.Null(
+            PFlowAutoPostService.NewPublicationEvidence(
+                xml,
+                new System.Collections.Generic.HashSet<string> { "Your reel has been\npublished." },
+                "Reel"
+            )
+        );
+    }
+
+    [Fact]
+    public void DirectWaitIsBoundedForNormalAndShortConfirmationWindows()
+    {
+        Assert.Equal(
+            TimeSpan.FromSeconds(8),
+            PFlowConfirmation.DirectConfirmationGrace(TimeSpan.FromMinutes(2))
+        );
+        Assert.Equal(
+            TimeSpan.FromMilliseconds(500),
+            PFlowConfirmation.DirectConfirmationGrace(TimeSpan.FromSeconds(2))
+        );
+    }
+
     public static string Dump(
         string title = "Facebook upload complete",
         int version = 20,

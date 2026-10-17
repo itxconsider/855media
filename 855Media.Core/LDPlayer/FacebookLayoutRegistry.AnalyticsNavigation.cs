@@ -27,7 +27,26 @@ public static partial class FacebookLayoutRegistry
                     o => DashboardNavigationVariant(o) == variant
                 ),
             ],
-            [Authentication, Loading, SwitcherOverlay, Chooser, ComposerOverlay],
+            [
+                Authentication,
+                Loading,
+                SwitcherOverlay,
+                Chooser,
+                ComposerOverlay,
+                Rule(
+                    "weekly-profile-card",
+                    "Inline profile tasks with a dashboard entry button are not the dashboard",
+                    o =>
+                        HasWeeklyProgressCard(o)
+                        && o.Nodes.Any(n =>
+                            n.Attribute("clickable")?.Value == "true"
+                            && (
+                                n.Attribute("text")?.Value == "Creator Dashboard"
+                                || n.Attribute("content-desc")?.Value == "Creator Dashboard"
+                            )
+                        )
+                ),
+            ],
             [FacebookControlRole.Analytics]
         );
 

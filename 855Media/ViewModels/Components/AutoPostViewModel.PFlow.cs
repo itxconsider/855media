@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -29,6 +29,12 @@ public partial class AutoPostViewModel
             .Where(w => w.IsSelected)
             .Select(w => w.Index)
             .ToArray();
+        foreach (
+            var task in Tasks.Where(t =>
+                selectedDeviceIndices.Contains(ResolveDeviceIndex(t.DeviceName))
+            )
+        )
+            PFlowTaskRouting.RestoreUnmatchedQueueRow(task);
         if (
             !config.ScreenTimeOnly
             && !config.ScreenTime.HasActions
@@ -51,6 +57,9 @@ public partial class AutoPostViewModel
         _pFlowJobs.Clear();
         _pFlowTasks.Clear();
         _pFlowOwners.Clear();
+        _postTargetSessions.Clear();
+        _startupIdentities.Clear();
+        _postProcessIds.Clear();
         _pFlowBatchDryRun = PFlowDryRun;
         var uniqueAcrossTargets = UploadUniqueFile;
         var selectedWorkers = (ShowOnlyOpen ? DisplayedInstances : Instances)
@@ -218,11 +227,11 @@ public partial class AutoPostViewModel
                         throw new InvalidOperationException(
                             "Target differs from its assigned personal account binding."
                         );
-                    foreach (var file in candidates)
+                    foreach (var task in queued)
                     {
+                        var file = task.FilePath;
                         if (!IsPFlowMedia(file, type))
                             continue;
-                        var task = queued.FirstOrDefault(t => t.FilePath == file);
                         var job = new PFlowJob
                         {
                             AccountBinding = binding,
@@ -237,14 +246,12 @@ public partial class AutoPostViewModel
                             PostType = type,
                             Caption =
                                 type == "Story" ? ""
-                                : task?.Title is { Length: > 0 } ? task.Title
+                                : task.Title is { Length: > 0 } ? task.Title
                                 : ResolveCaptionForMedia(
                                     file,
-                                    type == "Reel" ? targetModel.GetReelCaptionForFile(file)
-                                        : type == "Picture" ? page.TitleImage
-                                        : page.TitleVideoLong,
-                                    page.UseTitleFromTextFile,
-                                    page.UseCaptionFromFilename
+                                    type == "Picture" ? page.PhotoTitleFromTextFile
+                                        : type == "Video" ? page.VideoTitleFromTextFile
+                                        : page.ReelTitleFromTextFile
                                 ),
                             BackupRequested =
                                 type == "Story" ? config.BackupStoryFile
@@ -260,28 +267,28 @@ public partial class AutoPostViewModel
                         await PFlowJob.FingerprintAsync(job, CancellationToken.None);
                         if (history.Any(h => h.DuplicateKey == job.DuplicateKey && !h.CanRetry))
                         {
-                            if (task != null)
-                                task.Status = "Skipped (P-Flow history)";
+                            task.Status = "Skipped (P-Flow history)";
                             continue;
                         }
                         if (_pFlowJobs.Any(j => j.DuplicateKey == job.DuplicateKey))
+                        {
+                            task.Status = "Skipped (Duplicate file already queued for this target)";
                             continue;
+                        }
                         if (uniqueAcrossTargets && _pFlowJobs.Any(j => j.Sha256 == job.Sha256))
                         {
-                            if (task != null)
-                                task.Status = "Skipped (Unique file)";
+                            task.Status = "Skipped (Unique file)";
                             continue;
                         }
                         job.State = PFlowState.Queued;
                         if (!await _pFlowHistory.ReserveAsync(job))
                         {
-                            if (task != null)
-                                task.Status = "Skipped (Reserved elsewhere)";
+                            task.Status = "Skipped (Reserved elsewhere)";
                             continue;
                         }
+                        task.PFlowJobId = job.JobId;
                         _pFlowJobs.Add(job);
-                        if (task != null)
-                            _pFlowTasks[job.JobId] = task;
+                        _pFlowTasks[job.JobId] = task;
                     }
                     if (page.Model != null)
                     {
@@ -297,7 +304,11 @@ public partial class AutoPostViewModel
         }
         // Ensure unmatched legacy queue rows cannot execute via name-only virtual targets.
         foreach (
-            var task in Tasks.Where(t => t.Status == "Queued" && !_pFlowTasks.Values.Contains(t))
+            var task in Tasks.Where(t =>
+                t.Status == "Queued"
+                && selectedDeviceIndices.Contains(ResolveDeviceIndex(t.DeviceName))
+                && !_pFlowTasks.Values.Contains(t)
+            )
         )
             task.Status = "Skipped (No verified target/file job)";
     }
@@ -333,6 +344,8 @@ public partial class AutoPostViewModel
         )
         {
             ct.ThrowIfCancellationRequested();
+            if (job.State != PFlowState.Queued)
+                continue;
             _pFlowTasks.TryGetValue(job.JobId, out var task);
             var records = await _pFlowHistory.ReadAsync(ct);
             int uncertain = records.Count(j =>
@@ -357,6 +370,15 @@ public partial class AutoPostViewModel
                     c => VerifyPFlowIdentityAsync(worker, page, c, job),
                     async step =>
                     {
+                        var cancelled = PFlowPageIdentityRestriction.CancelQueued(job, _pFlowJobs);
+                        foreach (var pending in cancelled)
+                            await _pFlowHistory.SaveAsync(pending, CancellationToken.None);
+                        await Dispatcher.UIThread.InvokeAsync(() =>
+                        {
+                            foreach (var pending in cancelled)
+                                if (_pFlowTasks.TryGetValue(pending.JobId, out var pendingTask))
+                                    pendingTask.Status = pending.CurrentStep;
+                        });
                         await Dispatcher.UIThread.InvokeAsync(() =>
                         {
                             worker.Status = $"P-Flow [{page.PageName}] {step}";
@@ -372,6 +394,7 @@ public partial class AutoPostViewModel
             bool confirmed = await RunJob();
             if (
                 job.State == PFlowState.Failed
+                && !job.TargetIdentityConfirmationRequired
                 && !job.SubmittedUtc.HasValue
                 && !ct.IsCancellationRequested
             )
@@ -393,6 +416,8 @@ public partial class AutoPostViewModel
                     throw new InvalidOperationException(PFlowLoginScreen.Message(authentication));
                 }
             }
+            if (job.TargetIdentityConfirmationRequired)
+                InvalidatePostTargetSession(worker.Index);
             await RefreshMediaCountsForPagesAsync(new[] { page });
             if (_pFlowAccountAttention.ContainsKey(worker.Index))
                 throw new InvalidOperationException(
@@ -413,7 +438,17 @@ public partial class AutoPostViewModel
                 });
                 await PersistPagesSnapshotAsync();
             }
-            if (job.State == PFlowState.Unknown)
+            if (
+                job.TargetIdentityConfirmationRequired
+                && !await PFlowPageIdentityRestriction.DismissAsync(
+                    _ldPlayerService,
+                    worker.Index,
+                    LdFolder,
+                    ct
+                )
+            )
+                break;
+            if (PFlowPageIdentityRestriction.StopsWorker(job))
                 break; // Leave the unresolved composer/uploader for review.
             if (
                 job.State == PFlowState.Failed
@@ -466,11 +501,26 @@ public partial class AutoPostViewModel
             ?? throw new InvalidOperationException(
                 "Target has no account in the immutable run plan."
             );
+        if (expectedJob != null)
+        {
+            try
+            {
+                await CheckPostProcessAsync(worker.Index, ct);
+            }
+            catch
+            {
+                InvalidatePostTargetSession(worker.Index);
+                throw;
+            }
+        }
         await CreateRunSessionPreparation()
             .RestorePostForegroundFromLauncherAsync(account.Binding, ct);
-        var sessionScreen = PFlowLoginScreen.Classify(
-            await _ldPlayerService.DumpUiHierarchyAsync(worker.Index, LdFolder, ct)
+        string? initialXml = await _ldPlayerService.DumpUiHierarchyAsync(
+            worker.Index,
+            LdFolder,
+            ct
         );
+        var sessionScreen = PFlowLoginScreen.Classify(initialXml);
         if (
             PFlowLoginScreen.RequiresAuthentication(sessionScreen)
             && sessionScreen != PFlowLoginScreenKind.LoginRequired
@@ -484,9 +534,12 @@ public partial class AutoPostViewModel
             || !_pFlowActiveBindings.TryGetValue(worker.Index, out var verifiedBinding)
             || verifiedBinding != account.Binding
         )
+        {
             await EnsureRunAccountAsync(worker, account, ct);
+            initialXml = null; // Account preparation can change the UI.
+        }
         // Both ScreenTime's startup callback and every PFlow job enter here.
-        // This fresh check deliberately runs even for a cached active binding.
+        // Posting can reuse a confirmed target session; other callers verify fresh UID.
         try
         {
             return await VerifyLiveTargetUidAsync(
@@ -495,11 +548,13 @@ public partial class AutoPostViewModel
                 plannedTarget,
                 account,
                 ct,
-                requireOwnProfile: expectedJob != null
+                postingJob: expectedJob,
+                initialXml: initialXml
             );
         }
         catch
         {
+            InvalidatePostTargetSession(worker.Index);
             _pFlowOwners.TryRemove(worker.Index, out _);
             _pFlowActiveBindings.TryRemove(worker.Index, out _);
             throw;
@@ -552,30 +607,6 @@ public partial class AutoPostViewModel
             window.Show();
     }
 
-    private static string ResolveCaptionForMedia(
-        string mediaFile,
-        string directCaption,
-        bool useTitleFromTextFile,
-        bool useCaptionFromFilename = false
-    )
-    {
-        if (useTitleFromTextFile)
-        {
-            try
-            {
-                var txtPath = Path.ChangeExtension(mediaFile, ".txt");
-                if (File.Exists(txtPath))
-                {
-                    var text = File.ReadAllText(txtPath).Trim();
-                    if (!string.IsNullOrWhiteSpace(text))
-                        return text;
-                }
-            }
-            catch { }
-        }
-
-        return useCaptionFromFilename
-            ? Path.GetFileNameWithoutExtension(mediaFile)
-            : directCaption ?? string.Empty;
-    }
+    private static string ResolveCaptionForMedia(string mediaFile, bool useTitleFromTextFile) =>
+        PFlowMediaCaption.Resolve(mediaFile, useTitleFromTextFile);
 }

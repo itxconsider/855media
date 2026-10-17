@@ -10,7 +10,7 @@ using Microsoft.Data.Sqlite;
 
 namespace _855Media.Core.LDPlayer;
 
-public sealed class PFlowHistoryStore
+public sealed partial class PFlowHistoryStore
 {
     public static string DefaultPath =>
         Path.Combine(

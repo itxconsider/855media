@@ -5,14 +5,17 @@ using Xunit;
 
 namespace _855Media.Core.Tests.LDPlayer;
 
-public class PFlowSharedSwitchTests
+public partial class PFlowSharedSwitchTests
 {
     private static string Fixture(string name) =>
         File.ReadAllText(
             Path.Combine(AppContext.BaseDirectory, "Fixtures", "PFlowScreenTime", name + ".xml")
         );
 
-    private static (PFlowPersonaSwitcherService Service, SwitchDevice Device) Harness(string start)
+    private static (PFlowPersonaSwitcherService Service, SwitchDevice Device) Harness(
+        string start,
+        Action<TimeSpan>? onDelay = null
+    )
     {
         var ld = DispatchProxy.Create<ILDPlayerService, SwitchDevice>();
         var device = (SwitchDevice)(object)ld;
@@ -26,12 +29,92 @@ public class PFlowSharedSwitchTests
                 {
                     ct.ThrowIfCancellationRequested();
                     now += duration;
+                    onDelay?.Invoke(duration);
                     return Task.CompletedTask;
                 },
                 () => now
             ),
             device
         );
+    }
+
+    [Theory]
+    [InlineData("sheet")]
+    [InlineData("dropdown")]
+    [InlineData("own")]
+    public async Task NameOnlyEntryUsesSameNativeSmartRoute(string start)
+    {
+        var (service, device) = Harness(start);
+        Assert.True(await service.SwitchToPersonaAsync(950, "Gerardo Lopez"));
+        Assert.Equal(0, device.DeepLinks);
+        Assert.Equal(0, device.Stops);
+        if (start == "own")
+            Assert.Equal(0, device.Taps);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AlreadyActiveOwnTargetNeedsNoNavigation(bool page)
+    {
+        var (service, device) = Harness("own");
+        device.PageActor = page;
+        Assert.True(
+            await service.SwitchToPersonaAsync(
+                950,
+                new FacebookPageTarget
+                {
+                    Type = page ? "Page" : "Profile",
+                    PageName = page ? "KC Waterheaters" : "Gerardo Lopez",
+                    PageId = page ? "1007497349108596" : "100008345077125",
+                }
+            )
+        );
+        Assert.Equal(0, device.Taps);
+        Assert.Equal(0, device.DeepLinks);
+        Assert.Equal(0, device.Reveals);
+        Assert.Equal(0, device.Stops);
+    }
+
+    [Theory]
+    [InlineData("sheet")]
+    [InlineData("dropdown")]
+    public async Task ExistingSwitcherEntryAvoidsFeedAndNavigationDetours(string start)
+    {
+        var (service, device) = Harness(start);
+        Assert.True(await service.EnsureSwitchedToPersonalProfileAsync(950, "Gerardo Lopez"));
+        Assert.Equal(0, device.DeepLinks);
+        Assert.Equal(0, device.Reveals);
+        Assert.Equal(0, device.Stops);
+        Assert.True(device.Taps <= (start == "dropdown" ? 2 : 1));
+    }
+
+    [Fact]
+    public void VisibleMenuBeatsProfileNavigationAndExhaustedControlsAreSkipped()
+    {
+        var screen = AtxAgentClient.ParseBloksHierarchy(
+            "<hierarchy><node package='com.facebook.katana' bounds='[0,0][720,1280]'>"
+                + "<node content-desc='Go to profile' clickable='true' bounds='[10,100][100,150]'/>"
+                + "<node content-desc='Menu, tab' clickable='true' bounds='[600,1100][700,1200]'/></node></hierarchy>"
+        );
+        var route = PFlowPersonaSwitcherService.PlanNativeRoute(screen);
+        Assert.Equal(PFlowPersonaSwitcherService.NativeRouteKind.Navigate, route.Kind);
+        Assert.Equal("Menu, tab", route.Navigation!.ContentDesc);
+        var remaining = PFlowPersonaSwitcherService.PlanNativeRoute(
+            screen,
+            e => e.ContentDesc != "Menu, tab"
+        );
+        Assert.Equal("Go to profile", remaining.Navigation!.ContentDesc);
+    }
+
+    [Theory]
+    [InlineData("ld2-switcher-full", (int)PFlowPersonaSwitcherService.NativeRouteKind.SelectTarget)]
+    [InlineData("ld4-feed-hidden-menu", (int)PFlowPersonaSwitcherService.NativeRouteKind.Reveal)]
+    [InlineData("ld2-feed-menu-header", (int)PFlowPersonaSwitcherService.NativeRouteKind.Navigate)]
+    public void RouteUsesCurrentSavedScreen(string fixture, int expected)
+    {
+        var screen = AtxAgentClient.ParseBloksHierarchy(Fixture(fixture));
+        Assert.Equal(expected, (int)PFlowPersonaSwitcherService.PlanNativeRoute(screen).Kind);
     }
 
     [Theory]
@@ -212,6 +295,12 @@ public class PFlowSharedSwitchTests
         public bool FreshReadAfterReveal = true;
         public bool BackLeavesSheet;
         public bool PaddedHeader;
+        public bool SwitchAfterSelection,
+            RepeatSwitchAfterRestart;
+        public int SwitchReads = -1,
+            ActionsWhileSwitching;
+        public string SwitchOutcome = "own";
+        public string? ReopenState;
         public int Reveals,
             Stops,
             Launches,
@@ -223,6 +312,17 @@ public class PFlowSharedSwitchTests
 
         private string Screen()
         {
+            if (State == "switching")
+            {
+                if (SwitchReads == 0)
+                    State = SwitchOutcome;
+                else
+                {
+                    if (SwitchReads > 0)
+                        SwitchReads--;
+                    return FacebookLayoutRegistryTests.Fixture("identity-switching-screenshot");
+                }
+            }
             if (State == "closing")
             {
                 if (DelayedSheetReads-- > 0)
@@ -263,6 +363,18 @@ public class PFlowSharedSwitchTests
 
         protected override object? Invoke(MethodInfo? method, object?[]? args)
         {
+            if (
+                State == "switching"
+                && method!.Name
+                    is "TapAsync"
+                        or "PressBackAsync"
+                        or "SwipeAsync"
+                        or "OpenDeepLinkAsync"
+            )
+            {
+                ActionsWhileSwitching++;
+                throw new InvalidOperationException("No navigation while switching");
+            }
             foreach (var value in args ?? [])
                 if (value is CancellationToken ct)
                     ct.ThrowIfCancellationRequested();
@@ -292,12 +404,18 @@ public class PFlowSharedSwitchTests
                     State =
                         State is "visible" or "reels" ? "dropdown"
                         : State == "dropdown" ? "sheet"
+                        : SwitchAfterSelection && (Stops == 0 || RepeatSwitchAfterRestart)
+                            ? "switching"
                         : "own";
                     return Task.FromResult(true);
                 case "PressBackAsync":
                     if (BackLeavesSheet)
                         return Task.FromResult(true);
-                    State = DelayedSheetReads > 0 ? "closing" : "own";
+                    State =
+                        SwitchAfterSelection && (Stops == 0 || RepeatSwitchAfterRestart)
+                            ? "switching"
+                        : DelayedSheetReads > 0 ? "closing"
+                        : "own";
                     return Task.FromResult(true);
                 case "OpenDeepLinkAsync":
                     DeepLinks++;
@@ -307,7 +425,7 @@ public class PFlowSharedSwitchTests
                     return Task.FromResult(true);
                 case "LaunchAppAsync":
                     Launches++;
-                    State = RetryFails ? "hidden" : "visible";
+                    State = ReopenState ?? (RetryFails ? "hidden" : "visible");
                     return Task.FromResult(true);
                 case "ClearFacebookCacheAsync":
                     CacheClears++;

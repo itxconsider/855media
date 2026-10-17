@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Reconstructed from the user's screenshot; device XML and personal email are not included. -->
+<hierarchy rotation="0">
+  <node package="com.facebook.katana" class="android.widget.FrameLayout" enabled="true" clickable="false" bounds="[0,0][325,585]">
+    <node package="com.facebook.katana" class="android.view.ViewGroup" enabled="true" clickable="false" bounds="[0,59][325,307]">
+      <node package="com.facebook.katana" class="android.widget.TextView" text="Meta" enabled="true" bounds="[78,66][125,84]" />
+      <node package="com.facebook.katana" class="android.widget.TextView" text="Update your email" enabled="true" bounds="[78,88][252,108]" />
+      <node package="com.facebook.katana" class="android.widget.TextView" text="You added an email address to your account a while ago. If you have another email that's more current, it's a good time to add it to your account." enabled="true" bounds="[78,109][312,197]" />
+      <node package="com.facebook.katana" class="android.widget.Button" content-desc="Close" enabled="true" clickable="true" visible-to-user="true" bounds="[294,69][315,91]" />
+      <node package="com.facebook.katana" class="android.widget.Button" text="Update in Accounts Center" enabled="true" clickable="true" visible-to-user="true" bounds="[2,212][315,245]" />
+      <node package="com.facebook.katana" class="android.widget.Button" text="Not now" enabled="true" clickable="true" visible-to-user="true" bounds="[2,255][315,288]" />
+    </node>
+    <node package="com.facebook.katana" class="android.widget.Button" text="What's on your mind?" enabled="true" clickable="true" bounds="[50,317][243,354]" />
+    <node package="com.facebook.katana" class="android.widget.Button" content-desc="Close" enabled="true" clickable="true" bounds="[288,460][318,490]" />
+    <node package="com.facebook.katana" class="android.view.View" content-desc="Home, tab 1 of 6" selected="true" enabled="true" clickable="true" bounds="[0,531][53,585]" />
+  </node>
+</hierarchy>

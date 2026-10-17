@@ -4,7 +4,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using _855Media.Core.LDPlayer;
 using Avalonia.Threading;
-using CommunityToolkit.Mvvm.Input;
 
 namespace _855Media.ViewModels.Components;
 
@@ -26,7 +25,6 @@ public partial class AutoPostViewModel
             _networkTimer.Tick += NetworkTimerTick;
             _networkTimer.Start();
         }
-        _ = RefreshNetworkInfoAsync();
     }
 
     private void NetworkTimerTick(object? sender, EventArgs e) => _ = PollNetworkDevicesAsync();
@@ -68,9 +66,6 @@ public partial class AutoPostViewModel
             _networkPolling = false;
         }
     }
-
-    [RelayCommand]
-    private Task RefreshNetworkInfoAsync() => RefreshNetworkRowsAsync(true);
 
     private Task RefreshNetworkRowsAsync(bool force = false)
     {

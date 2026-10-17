@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Reconstructed from the user's 2026-10-16 screenshot; not a device XML capture. -->
+<hierarchy rotation="0">
+  <node package="com.facebook.katana" class="android.widget.FrameLayout" enabled="true" visible-to-user="true" bounds="[0,0][325,585]">
+    <node package="com.facebook.katana" class="android.widget.Button" text="Skip" enabled="true" clickable="true" visible-to-user="true" bounds="[273,31][316,63]" />
+    <node package="com.facebook.katana" class="android.widget.TextView" text="Allow contacts access to find people to follow" enabled="true" bounds="[12,77][312,126]" />
+    <node package="com.facebook.katana" class="android.widget.TextView" text="See who's also on Facebook by uploading your contacts and then choosing which friends to add." enabled="true" bounds="[12,136][311,190]" />
+    <node package="com.facebook.katana" class="android.widget.TextView" text="Info about contacts in your address book, including names, phone numbers and nicknames, will be sent to Facebook so we can suggest friends for you and others, and offer a better service." enabled="true" bounds="[43,220][310,300]" />
+    <node package="com.facebook.katana" class="android.widget.TextView" text="Your contacts will continuously update as you update them on your device." enabled="true" bounds="[43,319][310,350]" />
+    <node package="com.facebook.katana" class="android.widget.Button" text="Continue" enabled="true" clickable="true" visible-to-user="true" bounds="[9,546][314,582]" />
+  </node>
+</hierarchy>

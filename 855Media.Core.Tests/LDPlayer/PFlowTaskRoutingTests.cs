@@ -6,6 +6,26 @@ namespace _855Media.Core.Tests.LDPlayer;
 public sealed class PFlowTaskRoutingTests
 {
     [Theory]
+    [InlineData("Skipped (No verified target/file job)", "Queued")]
+    [InlineData("Confirmed", "Confirmed")]
+    [InlineData("Unknown", "Unknown")]
+    [InlineData(
+        "Failed: Target identity was not verified.",
+        "Failed: Target identity was not verified."
+    )]
+    [InlineData("Skipped (P-Flow history)", "Skipped (P-Flow history)")]
+    [InlineData(
+        "Skipped (Duplicate file already queued for this target)",
+        "Skipped (Duplicate file already queued for this target)"
+    )]
+    public void OnlyUnmatchedRowsCanBeRestoredForReplanning(string before, string after)
+    {
+        var task = new AutoPostTaskItem { Status = before, Type = "Reel" };
+        PFlowTaskRouting.RestoreUnmatchedQueueRow(task);
+        Assert.Equal(after, task.Status);
+    }
+
+    [Theory]
     [InlineData("Queued", "Reel", true)]
     [InlineData("Queued", "Video", true)]
     [InlineData("Queued", "Photo", true)]

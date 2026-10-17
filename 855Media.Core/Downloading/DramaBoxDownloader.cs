@@ -29,6 +29,12 @@ public class DramaBoxDownloader(IReadOnlyList<Cookie>? initialCookies = null)
     )
     {
         filePath = _855Media.Core.Utils.FileUtils.SanitizeFilePath(filePath);
+        var isAudioOnly = container.IsAudioOnly || downloadOption?.IsAudioOnly == true;
+        if (!isAudioOnly)
+        {
+            ffmpegPath = MediaCompatibility.RequireVideoFFmpeg(filePath, ffmpegPath);
+            container = Container.Mp4;
+        }
         var dirPath = Path.GetDirectoryName(filePath);
         if (!string.IsNullOrWhiteSpace(dirPath))
             Directory.CreateDirectory(dirPath);
@@ -56,12 +62,13 @@ public class DramaBoxDownloader(IReadOnlyList<Cookie>? initialCookies = null)
                     streamUrl,
                     filePath,
                     container,
+                    isAudioOnly,
                     video.Duration,
                     progress,
                     cancellationToken
                 );
 
-                if (!container.IsAudioOnly)
+                if (!isAudioOnly)
                 {
                     await MediaCompatibility.EnsureWindowsCompatibleAsync(
                         filePath,
@@ -91,7 +98,7 @@ public class DramaBoxDownloader(IReadOnlyList<Cookie>? initialCookies = null)
             "--paths",
             "temp:.tmp",
             "--output",
-            filePath,
+            isAudioOnly ? filePath : Path.ChangeExtension(filePath, null) + ".%(ext)s",
         };
 
         if (!string.IsNullOrWhiteSpace(actualFFmpegPath))
@@ -115,6 +122,7 @@ public class DramaBoxDownloader(IReadOnlyList<Cookie>? initialCookies = null)
         }
         else
         {
+            arguments.AddRange(["--merge-output-format", "mp4", "--remux-video", "mp4"]);
             var targetHeight =
                 downloadOption?.VideoQuality?.MaxHeight
                 ?? downloadPreference?.PreferredVideoQuality.GetMaxHeight();
@@ -152,9 +160,9 @@ public class DramaBoxDownloader(IReadOnlyList<Cookie>? initialCookies = null)
 
         arguments.Add(streamUrl ?? video.Url);
 
-        await YtDlp.RunAsync(arguments, progress, cancellationToken);
+        await YtDlp.RunAsync(arguments, progress, cancellationToken, captureOutput: false);
 
-        if (!container.IsAudioOnly && !string.IsNullOrWhiteSpace(actualFFmpegPath))
+        if (!isAudioOnly)
         {
             await MediaCompatibility.EnsureWindowsCompatibleAsync(
                 filePath,
@@ -169,6 +177,7 @@ public class DramaBoxDownloader(IReadOnlyList<Cookie>? initialCookies = null)
         string streamUrl,
         string outputPath,
         Container container,
+        bool isAudioOnly,
         TimeSpan? totalDuration,
         IProgress<Percentage>? progress,
         CancellationToken cancellationToken
@@ -188,7 +197,7 @@ public class DramaBoxDownloader(IReadOnlyList<Cookie>? initialCookies = null)
         process.StartInfo.ArgumentList.Add("-i");
         process.StartInfo.ArgumentList.Add(streamUrl);
 
-        if (container.IsAudioOnly)
+        if (isAudioOnly)
         {
             process.StartInfo.ArgumentList.Add("-vn");
             if (container == Container.Mp3)
@@ -214,7 +223,7 @@ public class DramaBoxDownloader(IReadOnlyList<Cookie>? initialCookies = null)
 
         process.StartInfo.ArgumentList.Add(outputPath);
 
-        var errorLines = new List<string>();
+        var errorLines = new BoundedProcessLog();
         var timeRegex = new Regex(@"time=(\d{2}):(\d{2}):(\d{2}(?:\.\d+)?)", RegexOptions.Compiled);
 
         process.ErrorDataReceived += (_, e) =>
@@ -274,7 +283,7 @@ public class DramaBoxDownloader(IReadOnlyList<Cookie>? initialCookies = null)
         if (process.ExitCode != 0)
         {
             throw new InvalidOperationException(
-                $"FFmpeg exited with error code {process.ExitCode}: {string.Join(Environment.NewLine, errorLines.TakeLast(5))}"
+                $"FFmpeg exited with error code {process.ExitCode}: {errorLines}"
             );
         }
 
