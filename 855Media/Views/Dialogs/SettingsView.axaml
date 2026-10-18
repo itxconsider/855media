@@ -404,6 +404,27 @@
                                         <ToggleSwitch DockPanel.Dock="Right" VerticalAlignment="Center" IsChecked="{Binding IsAutoUpdateEnabled}" />
                                     </DockPanel>
 
+                                    <StackPanel Margin="16,14" Spacing="8">
+                                        <TextBlock Text="TikTok cookies" FontSize="14" FontWeight="Medium" />
+                                        <TextBlock Text="Paste the contents of an exported Netscape cookies.txt file, then apply."
+                                                   FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        <TextBox Text="{Binding TikTokCookieText, Mode=TwoWay}" AcceptsReturn="True"
+                                                 Height="110" TextWrapping="NoWrap"
+                                                 Watermark="Paste TikTok cookies.txt contents here" />
+                                        <Button Content="Apply TikTok cookies" Command="{Binding SaveTikTokCookiesCommand}" />
+                                        <TextBlock Text="{Binding TikTokCookieStatus}" TextWrapping="Wrap" FontSize="12" />
+                                    </StackPanel>
+
+                                    <StackPanel Margin="16,14" Spacing="8">
+                                        <TextBlock Text="Instagram cookies" FontSize="14" FontWeight="Medium" />
+                                        <TextBlock Text="Paste a Netscape cookies.txt export from Instagram. Required for profile downloads and posts that need login."
+                                                   FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        <TextBox Text="{Binding InstagramCookieText, Mode=TwoWay}" AcceptsReturn="True"
+                                                 Height="110" TextWrapping="NoWrap" Watermark="Paste Instagram cookies.txt contents here" />
+                                        <Button Content="Apply Instagram cookies" Command="{Binding SaveInstagramCookiesCommand}" />
+                                        <TextBlock Text="{Binding InstagramCookieStatus}" TextWrapping="Wrap" FontSize="12" />
+                                    </StackPanel>
+
                                     <!-- Persist authentication -->
                                     <DockPanel Margin="16,14" LastChildFill="False" IsVisible="{OnPlatform False, Windows=True}">
                                         <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center" Spacing="2">

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -138,6 +138,8 @@ public partial class PFlowAutoPostService
     }
 
     public TimeSpan PublicationTimeout { get; set; } = TimeSpan.FromSeconds(180);
+    internal TimeSpan PublicationQuietPeriod { get; init; } =
+        PFlowPublicationSettleGate.QuietPeriod;
 
     internal static TimeSpan UploadConfirmationWindow(long bytes, TimeSpan minimum)
     {
@@ -175,7 +177,10 @@ public partial class PFlowAutoPostService
             ? $"Active session UID verified {job.TargetId} ({job.TargetName}); continuing the same target after its previous confirmed post."
             : $"Live UID verification and own-profile controls verified {job.TargetId} ({job.TargetName}) before media staging.";
         await checkpoint(job);
-        var profileVerifier = new PFlowProfilePublicationVerifier(_ldPlayer);
+        var profileVerifier = new PFlowProfilePublicationVerifier(_ldPlayer)
+        {
+            PublicationProgress = Publication,
+        };
         var requireProfileProof = PFlowProfilePublicationVerifier.Required(job);
         job.ProfilePublicationCheckRequired = false;
         if (job.PostType == "Story")
@@ -196,6 +201,11 @@ public partial class PFlowAutoPostService
                 job.SubmittedUtc = DateTime.UtcNow;
             await Step(state.ToString());
         }
+        async Task Publication(PFlowPublicationStage stage, string signal)
+        {
+            if (PFlowPublicationTracking.Transition(job, stage, signal))
+                await checkpoint(job);
+        }
         async Task<PFlowProfilePublicationVerifier.Proof?> ReadProfileProof()
         {
             if (!requireProfileProof)
@@ -207,6 +217,22 @@ public partial class PFlowAutoPostService
             {
                 for (var attempt = 0; attempt < 2; attempt++)
                 {
+                    var preflight =
+                        await _ldPlayer.DumpUiHierarchyAsync(
+                            job.DeviceIndex,
+                            customPath,
+                            profileDeadline.Token
+                        ) ?? "";
+                    if (PFlowConfirmation.HasPendingPublication(preflight))
+                    {
+                        await PFlowTrace.SessionAsync(
+                            job.DeviceIndex,
+                            "publication.profile-deferred",
+                            "Facebook upload / processing is still visible; no profile navigation.",
+                            ct
+                        );
+                        return null;
+                    }
                     var proof = await profileVerifier.VerifyAsync(
                         job,
                         customPath,
@@ -510,6 +536,9 @@ public partial class PFlowAutoPostService
             return;
         }
         var before = Labels(xml).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        // Refresh observations can extend the success-message baseline, but a
+        // newly appearing error must never become a pre-Share error to ignore.
+        var failureBefore = new HashSet<string>(before, StringComparer.OrdinalIgnoreCase);
         var baselineDump = await _ldPlayer.ExecuteAdbAsync(
             job.DeviceIndex,
             "shell dumpsys notification --noredact",
@@ -574,17 +603,60 @@ public partial class PFlowAutoPostService
         )
         {
             job.State = PFlowState.Unknown;
+            await Publication(
+                PFlowPublicationStage.Unconfirmed,
+                "Share tap acknowledgement unavailable"
+            );
             job.Error = "Share action could not be confirmed.";
             await checkpoint(job);
             return;
         }
         await Stage(PFlowState.Submitted);
-        await Step("Confirming publication");
+        await Publication(
+            PFlowPublicationStage.AwaitingConfirmation,
+            "Share tapped; awaiting Facebook status"
+        );
         var confirmationWindow = UploadConfirmationWindow(job.Size, PublicationTimeout);
         wait.Restart();
         var nextNotificationPoll = TimeSpan.Zero;
         string? pendingUploadEvidence = null;
         TimeSpan? uploadCompletedAt = null;
+        var processingSeen = false;
+        var processingActive = false;
+        var settleGate = new PFlowPublicationSettleGate(PublicationQuietPeriod);
+        var uploadOngoing = false;
+        var feedRefreshedAfterProcessing = false;
+        var nextPendingHomeRefresh = TimeSpan.FromSeconds(30);
+        async Task<bool> RefreshWaitingHome(string observed)
+        {
+            if (wait.Elapsed < nextPendingHomeRefresh)
+                return false;
+            nextPendingHomeRefresh = wait.Elapsed + TimeSpan.FromSeconds(30);
+            if (PFlowPublicationFeedRefresh.PullBounds(observed, allowPending: true) == null)
+                return false;
+            await Publication(
+                PFlowPublicationStage.RefreshingFeed,
+                "Pull-to-refresh on visible Home while publication remains pending"
+            );
+            var refreshed = await PFlowPublicationFeedRefresh.RefreshCurrentHomeAsync(
+                _ldPlayer,
+                job,
+                customPath,
+                ct
+            );
+            nextPendingHomeRefresh = wait.Elapsed + TimeSpan.FromSeconds(30);
+            settleGate.Reset();
+            feedRefreshedAfterProcessing = false;
+            await PFlowTrace.SessionAsync(
+                job.DeviceIndex,
+                "publication.pending-home-refresh",
+                $"refreshed={refreshed}; intervalSeconds=30; publicationConfirmed=false",
+                ct
+            );
+            // A gesture can change the hierarchy even when its result is inconclusive.
+            // Always re-observe instead of accepting evidence from the old screen.
+            return true;
+        }
         async Task<string?> ReadSuccessToast()
         {
             if (!toastAvailable)
@@ -597,23 +669,51 @@ public partial class PFlowAutoPostService
                 ? "Fresh Facebook toast: " + toast.Message.Trim()
                 : null;
         }
-        while (wait.Elapsed < confirmationWindow)
+        while (
+            wait.Elapsed
+            < confirmationWindow + (processingSeen ? TimeSpan.FromMinutes(5) : TimeSpan.Zero)
+        )
         {
             ct.ThrowIfCancellationRequested();
             var freshToast = await ReadSuccessToast();
             xml = await _ldPlayer.DumpUiHierarchyAsync(job.DeviceIndex, customPath, ct) ?? "";
             PFlowPageIdentityRestriction.ThrowIfVisible(job, xml);
-            if (HasLabel(xml, ["Couldn't post", "Upload failed", "Unable to publish"]))
+            var settledForProfile = PFlowPublicationCycle.Observe(
+                job,
+                settleGate,
+                xml,
+                wait.Elapsed
+            );
+            var publicationFailure = PFlowPublicationFailure.Read(xml, job.Caption, failureBefore);
+            if (publicationFailure != null)
             {
-                // Facebook may keep/retry a background upload despite the visible error.
-                // A Share tap has happened, so neither another tap nor file cleanup is safe.
-                job.State = PFlowState.Unknown;
-                job.Error =
-                    "Facebook reported a publication error after Share. Verify the target's posts before retrying.";
+                publicationFailure.Record(job);
                 await checkpoint(job);
                 return;
             }
-            // Stay on Facebook's post-submit surface so scrolling cannot hide its result.
+            var pendingState = PFlowPublicationTracking.Pending(xml);
+            if (pendingState != null)
+            {
+                await Publication(pendingState.Stage, pendingState.Evidence);
+                feedRefreshedAfterProcessing = false;
+                processingSeen = true;
+                pendingUploadEvidence = null;
+                uploadCompletedAt = null;
+                processingActive = true;
+                if (await RefreshWaitingHome(xml))
+                    continue;
+                await Task.Delay(1000, ct);
+                continue;
+            }
+            if (processingActive)
+            {
+                await Publication(
+                    PFlowPublicationStage.AwaitingConfirmation,
+                    "Pending UI label cleared; waiting for stable publication evidence"
+                );
+                processingActive = false;
+            }
+            // Prefer direct publication evidence from each fresh post-submit observation.
             var evidence = NewPublicationEvidence(xml, before, job.PostType);
             if (evidence == null && xml.Contains(job.AppPackage, StringComparison.Ordinal))
                 evidence = freshToast ?? await ReadSuccessToast();
@@ -637,19 +737,36 @@ public partial class PFlowAutoPostService
                     notifications,
                     Labels(xml).Any() && !IsComposer(xml, job.PostType)
                 );
-                if (notifications.Any(n => n.Ongoing))
+                uploadOngoing = notifications.Any(n => n.Ongoing);
+                if (uploadOngoing)
                 {
+                    if (!notificationBaseline.Any(n => n.Ongoing))
+                        processingSeen = true;
+                    await Publication(
+                        PFlowPublicationStage.Uploading,
+                        "Android notification: Facebook media upload ongoing"
+                    );
+                    settleGate.Reset();
+                    settledForProfile = false;
                     pendingUploadEvidence = null;
                     uploadCompletedAt = null;
+                    if (await RefreshWaitingHome(xml))
+                        continue;
                 }
                 if (uploadEvidence != null && pendingUploadEvidence == null)
                 {
+                    settleGate.Reset();
+                    settledForProfile = false;
                     pendingUploadEvidence = uploadEvidence;
                     uploadCompletedAt = wait.Elapsed;
+                    await Publication(
+                        PFlowPublicationStage.UploadComplete,
+                        "Fresh Android notification: Facebook upload complete"
+                    );
                     await PFlowTrace.SessionAsync(
                         job.DeviceIndex,
                         "publication.upload-complete",
-                        "Waiting briefly for direct Facebook publication confirmation before profile fallback.",
+                        "Fresh upload completion detected; confirming after checking for pending stages, active uploads and Facebook errors. Home refresh is optional.",
                         ct
                     );
                 }
@@ -657,7 +774,145 @@ public partial class PFlowAutoPostService
             }
             if (
                 evidence == null
+                && PFlowPublicationCycle.ReadCompletedMediaStages(
+                    job,
+                    xml,
+                    uploadOngoing,
+                    failureBefore
+                ) != null
+            )
+            {
+                var finalDump = await _ldPlayer.ExecuteAdbAsync(
+                    job.DeviceIndex,
+                    "shell dumpsys notification --noredact",
+                    customPath,
+                    ct
+                );
+                var finalXml =
+                    await _ldPlayer.DumpUiHierarchyAsync(job.DeviceIndex, customPath, ct) ?? "";
+                publicationFailure = PFlowPublicationFailure.Read(
+                    finalXml,
+                    job.Caption,
+                    failureBefore
+                );
+                if (publicationFailure != null)
+                {
+                    publicationFailure.Record(job);
+                    await checkpoint(job);
+                    return;
+                }
+                if (PFlowConfirmation.HasActiveNotificationList(finalDump))
+                    evidence = PFlowPublicationCycle.ReadCompletedMediaStages(
+                        job,
+                        finalXml,
+                        PFlowConfirmation
+                            .ReadUploadNotifications(finalDump, job.AppPackage)
+                            .Any(n => n.Ongoing),
+                        failureBefore
+                    );
+            }
+            if (
+                evidence == null
+                && requireProfileProof
+                && (settledForProfile || PFlowPublicationCycle.WorkObserved(job))
+                && !uploadOngoing
+                && (processingSeen || pendingUploadEvidence != null)
+                && !feedRefreshedAfterProcessing
+            )
+            {
+                await Publication(
+                    PFlowPublicationStage.RefreshingFeed,
+                    "Pending indicators cleared; refreshing Home before profile fallback"
+                );
+                var refreshed = await PFlowPublicationFeedRefresh.RefreshAsync(
+                    _ldPlayer,
+                    job,
+                    customPath,
+                    ct
+                );
+                var afterRefresh =
+                    await _ldPlayer.DumpUiHierarchyAsync(job.DeviceIndex, customPath, ct) ?? "";
+                publicationFailure = PFlowPublicationFailure.Read(
+                    afterRefresh,
+                    job.Caption,
+                    failureBefore
+                );
+                if (publicationFailure != null)
+                {
+                    publicationFailure.Record(job);
+                    await checkpoint(job);
+                    return;
+                }
+                settleGate.Reset();
+                if (!refreshed)
+                {
+                    if (PFlowConfirmation.HasPendingPublication(afterRefresh))
+                    {
+                        processingSeen = true;
+                        pendingUploadEvidence = null;
+                        uploadCompletedAt = null;
+                        continue;
+                    }
+                    feedRefreshedAfterProcessing = true;
+                    await Publication(
+                        PFlowPublicationStage.AwaitingConfirmation,
+                        "Home refresh unverified; continuing publication monitoring"
+                    );
+                    await PFlowTrace.SessionAsync(
+                        job.DeviceIndex,
+                        "publication.feed-refresh-unverified",
+                        "Refresh is optional; continuing completion checks without resubmitting.",
+                        ct
+                    );
+                    continue;
+                }
+                feedRefreshedAfterProcessing = true;
+                before.UnionWith(Labels(afterRefresh));
+                await PFlowTrace.SessionAsync(
+                    job.DeviceIndex,
+                    "publication.feed-refreshed",
+                    "Home feed refreshed; rechecking processing before publication verification.",
+                    ct
+                );
+                continue;
+            }
+            if (evidence == null && !notificationBaseline.Any(n => n.Ongoing))
+            {
+                var cycleEvidence = PFlowPublicationCycle.Read(
+                    job,
+                    xml,
+                    settledForProfile,
+                    uploadOngoing,
+                    failureBefore
+                );
+                if (cycleEvidence != null && notificationBaselineAvailable)
+                {
+                    // Check again at the completion boundary, rather than rely on
+                    // the notification sample from the previous polling interval.
+                    var finalDump = await _ldPlayer.ExecuteAdbAsync(
+                        job.DeviceIndex,
+                        "shell dumpsys notification --noredact",
+                        customPath,
+                        ct
+                    );
+                    var finalOngoing = PFlowConfirmation
+                        .ReadUploadNotifications(finalDump, job.AppPackage)
+                        .Any(n => n.Ongoing);
+                    if (!PFlowConfirmation.HasActiveNotificationList(finalDump) || finalOngoing)
+                    {
+                        cycleEvidence = null;
+                        settleGate.Reset();
+                        settledForProfile = false;
+                        uploadOngoing = finalOngoing;
+                    }
+                }
+                evidence = cycleEvidence;
+            }
+            if (
+                evidence == null
                 && pendingUploadEvidence != null
+                && (!requireProfileProof || settledForProfile)
+                && (!PFlowPublicationCycle.WorkObserved(job) || settledForProfile)
                 && wait.Elapsed - uploadCompletedAt!.Value
                     >= PFlowConfirmation.DirectConfirmationGrace(confirmationWindow)
             )
@@ -669,6 +924,11 @@ public partial class PFlowAutoPostService
                     "publication.confirmation-route",
                     PFlowConfirmation.IsNotificationOnly(evidence)
                             ? "profile-fallback; reason=upload-only"
+                        : evidence.StartsWith(
+                            PFlowPublicationCycle.EvidencePrefix,
+                            StringComparison.Ordinal
+                        )
+                            ? "observed-publication-cycle; success-banner-optional"
                         : evidence.StartsWith("Fresh Facebook toast:", StringComparison.Ordinal)
                             ? "direct-app-toast"
                         : "direct-app-message",
@@ -682,6 +942,33 @@ public partial class PFlowAutoPostService
                     var proof = await ReadProfileProof();
                     if (proof == null)
                     {
+                        var afterCheck =
+                            await _ldPlayer.DumpUiHierarchyAsync(job.DeviceIndex, customPath, ct)
+                            ?? "";
+                        publicationFailure = PFlowPublicationFailure.Read(
+                            afterCheck,
+                            job.Caption,
+                            failureBefore
+                        );
+                        if (publicationFailure != null)
+                        {
+                            publicationFailure.Record(job);
+                            await checkpoint(job);
+                            return;
+                        }
+                        if (PFlowConfirmation.HasPendingPublication(afterCheck))
+                        {
+                            processingSeen = true;
+                            processingActive = false;
+                            pendingUploadEvidence = null;
+                            uploadCompletedAt = null;
+                            settleGate.Reset();
+                            continue;
+                        }
+                        await Publication(
+                            PFlowPublicationStage.Unconfirmed,
+                            "Target profile check did not produce publication proof"
+                        );
                         job.Evidence = evidence;
                         job.Error =
                             "Upload result received, but the matching Reel was not verified on the target profile. Review the Page before retrying; files were retained.";
@@ -699,10 +986,45 @@ public partial class PFlowAutoPostService
                     }
                 }
                 else
+                {
+                    if (!PFlowConfirmation.IsNotificationOnly(evidence))
+                        job.ProfilePublicationCheckRequired = false;
                     await Stage(PFlowConfirmation.RecordPublicationEvidence(job, evidence));
+                }
                 return;
             }
             await Task.Delay(400, ct);
+        }
+        xml = await _ldPlayer.DumpUiHierarchyAsync(job.DeviceIndex, customPath, ct) ?? "";
+        PFlowPageIdentityRestriction.ThrowIfVisible(job, xml);
+        var finalFailure = PFlowPublicationFailure.Read(xml, job.Caption, failureBefore);
+        if (finalFailure != null)
+        {
+            finalFailure.Record(job);
+            await checkpoint(job);
+            return;
+        }
+        if (
+            PFlowConfirmation.HasPendingPublication(xml)
+            || requireProfileProof
+                && (
+                    !settleGate.Observe(xml, wait.Elapsed)
+                    || (processingSeen || pendingUploadEvidence != null)
+                        && !feedRefreshedAfterProcessing
+                )
+        )
+        {
+            await Publication(
+                PFlowPublicationStage.Unconfirmed,
+                "Confirmation timeout while Facebook was still pending or unsettled"
+            );
+            job.State = PFlowState.Unknown;
+            job.Error =
+                "Facebook processing has not reached a stable completed screen. Profile matching was not attempted; files were retained. Check the publication outcome before retrying.";
+            job.RemoteCleanupState = "Held for publication review";
+            job.LocalDeleteState = "Held for publication review";
+            await checkpoint(job);
+            return;
         }
         if (requireProfileProof)
         {
@@ -721,9 +1043,26 @@ public partial class PFlowAutoPostService
                 await Stage(PFlowConfirmation.RecordPublicationEvidence(job, proof.Evidence));
                 return;
             }
+            var finalProfileFrame =
+                await _ldPlayer.DumpUiHierarchyAsync(job.DeviceIndex, customPath, ct) ?? "";
+            finalFailure = PFlowPublicationFailure.Read(
+                finalProfileFrame,
+                job.Caption,
+                failureBefore
+            );
+            if (finalFailure != null)
+            {
+                finalFailure.Record(job);
+                await checkpoint(job);
+                return;
+            }
             job.RemoteCleanupState = "Held for publication review";
             job.LocalDeleteState = "Held for publication review";
         }
+        await Publication(
+            PFlowPublicationStage.Unconfirmed,
+            "Publication confirmation wait expired without proof"
+        );
         job.State = PFlowState.Unknown;
         job.Error =
             $"No new publication confirmation was exposed within {confirmationWindow.TotalSeconds:F0} seconds. The upload may still finish; verify the target's posts before retrying.";
@@ -864,6 +1203,8 @@ public partial class PFlowAutoPostService
 
     internal static string? NewPublicationEvidence(string xml, ISet<string> before, string type)
     {
+        if (PFlowConfirmation.HasPendingPublication(xml))
+            return null;
         var baseline = before
             .Select(PFlowConfirmation.NormalizeSuccessMessage)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);

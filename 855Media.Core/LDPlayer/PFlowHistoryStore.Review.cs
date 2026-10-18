@@ -70,6 +70,14 @@ public sealed partial class PFlowHistoryStore
             job.Error = published
                 ? ""
                 : "Manual review verified no publication; a new attempt is permitted.";
+            PFlowPublicationTracking.Transition(
+                job,
+                published ? PFlowPublicationStage.Published : PFlowPublicationStage.NotPublished,
+                published
+                    ? "Manual review verified publication"
+                    : "Manual review verified no publication",
+                now
+            );
             job.CurrentStep = published
                 ? "Manually reviewed: published"
                 : "Manually reviewed: not published";

@@ -1,6 +1,10 @@
 param(
-    [string]$Version = "2.2.0"
+    [string]$Version = "3.0.0"
 )
+
+$ErrorActionPreference = "Stop"
+Set-Location -LiteralPath $PSScriptRoot
+if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw "Version must use major.minor.patch format." }
 
 Write-Host "=============================================" -ForegroundColor Cyan
 Write-Host "Publishing 855Media v$Version (win-x64) to dist" -ForegroundColor Cyan
@@ -9,9 +13,18 @@ Write-Host "=============================================" -ForegroundColor Cyan
 $outputDir = "dist/855Media-win-x64"
 $versionedDir = "dist/855Media-v$Version-win-x64"
 
+# Validate exact output paths before removing previous build outputs.
+$distRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "dist"))
+foreach ($buildPath in @($outputDir, $versionedDir)) {
+    $resolvedBuildPath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot $buildPath))
+    if (-not $resolvedBuildPath.StartsWith($distRoot + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Build output must remain inside dist: $resolvedBuildPath"
+    }
+}
+
 # 1. Clean previous publish folder
 Write-Host "Cleaning output folders..." -ForegroundColor Gray
-if (Test-Path $outputDir) { Remove-Item -Path $outputDir -Recurse -Force }
+if (Test-Path -LiteralPath $outputDir) { Remove-Item -LiteralPath $outputDir -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 
 # 2. Publish main application self-contained
@@ -37,8 +50,7 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "Copying dependencies & assets..." -ForegroundColor Yellow
 $binaries = @(
     @{ Src = "855Media/bin/Release/net10.0/ffmpeg.exe"; Dest = "$outputDir/ffmpeg.exe" },
-    @{ Src = "855Media/bin/Release/net10.0/yt-dlp.exe"; Dest = "$outputDir/yt-dlp.exe" },
-    @{ Src = "tiktok_cookies.txt"; Dest = "$outputDir/tiktok_cookies.txt" }
+    @{ Src = "855Media/bin/Release/net10.0/yt-dlp.exe"; Dest = "$outputDir/yt-dlp.exe" }
 )
 
 foreach ($item in $binaries) {
@@ -49,7 +61,7 @@ foreach ($item in $binaries) {
 
 # 4. Sync to versioned directory
 Write-Host "Syncing to $versionedDir..." -ForegroundColor Gray
-if (Test-Path $versionedDir) { Remove-Item -Path $versionedDir -Recurse -Force }
+if (Test-Path -LiteralPath $versionedDir) { Remove-Item -LiteralPath $versionedDir -Recurse -Force }
 Copy-Item -Path $outputDir -Destination $versionedDir -Recurse -Force
 
 # 5. Create distribution zip archives

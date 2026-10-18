@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
@@ -1533,6 +1533,11 @@ public partial class AutoPostViewModel : ViewModelBase
             var postBootDelay = Math.Max(0, config.DelayAfterOpen);
             worker.Status = $"Waiting {postBootDelay}s after LD start...";
             await Task.Delay(TimeSpan.FromSeconds(postBootDelay), ct);
+            if (hasQueuedJobs)
+            {
+                worker.Status = "Cleaning confirmed post media / albums...";
+                await CleanupConfirmedPostsForWorkerAsync(worker.Index, ct);
+            }
             worker.Status = "Checking internet inside LD...";
             await PFlowSession.WaitInternetAsync(_ldPlayerService, worker.Index, LdFolder, ct);
 
@@ -1548,7 +1553,7 @@ public partial class AutoPostViewModel : ViewModelBase
 
             if (_pFlowJobs.Any(j => j.DeviceIndex == worker.Index && j.State == PFlowState.Unknown))
             {
-                worker.Status = "P-Flow: Unknown publication; Facebook left open.";
+                worker.Status = "P-Flow: queue finished; Unknown publication needs History review.";
                 return;
             }
             if (config.ClearRecent)
@@ -2469,6 +2474,8 @@ public partial class AutoPostViewModel : ViewModelBase
 
             foreach (var page in accountDetails.Pages)
             {
+                if (isRootSnapshot)
+                    PFlowPageAccessReconciliation.InvalidateRootCandidate(page);
                 page.LivePageAccessVerified ??= false;
                 var personaUid = !string.IsNullOrWhiteSpace(page.PersonaUid)
                     ? page.PersonaUid
@@ -2508,6 +2515,14 @@ public partial class AutoPostViewModel : ViewModelBase
                     pageTarget.RelationshipStatus
                 );
                 pageTarget.Type = "Page";
+                pageTarget.PageAccessIssue = PFlowPageAccessReconciliation.ResultIssue(
+                    page.LivePageAccessVerified == true,
+                    page.PageAccessIssue == PFlowPageAccessReconciliation.Unavailable
+                        ? page.PageAccessIssue
+                        : pageTarget.PageAccessIssue,
+                    null
+                );
+                page.PageAccessIssue = pageTarget.PageAccessIssue;
                 pageTarget.LivePageAccessVerified = page.LivePageAccessVerified;
                 if (pageTarget.LivePageAccessVerified != true)
                     pageTarget.IsSelected = false;
@@ -2731,6 +2746,33 @@ public partial class AutoPostViewModel : ViewModelBase
     )
     {
         var pages = rootDetails.Pages;
+        // Invalidate the requested scope before the first lookup. Full discovery
+        // supplies all retained candidates; single-Page fetch must not touch siblings.
+        foreach (var candidate in pages)
+            PFlowPageAccessReconciliation.InvalidateRootCandidate(candidate);
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            foreach (
+                var row in Pages.Where(p =>
+                    p.DeviceName == target.Name
+                    && p.AppClone == target.FbClone
+                    && p.UserUid == rootDetails.Uid
+                    && !p.IsProfile
+                    && PFlowPageAccessReconciliation.IncludesPage(p.Model, pages)
+                )
+            )
+            {
+                row.Model.LivePageAccessVerified = false;
+                row.Model.PageAccessIssue = PFlowPageAccessReconciliation.ResultIssue(
+                    false,
+                    row.Model.PageAccessIssue,
+                    null
+                );
+                row.IsSelected = false;
+                row.RefreshAccessStatus();
+            }
+        });
+        await PersistPagesSnapshotAsync();
         var succeeded = 0;
         var attempted = 0;
         for (var i = 0; i < pages.Count; i++)
@@ -2760,8 +2802,12 @@ public partial class AutoPostViewModel : ViewModelBase
                 }
             });
             await PersistPagesSnapshotAsync();
-            if (i > 0)
-                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+            await FetchDelayAsync(
+                target,
+                DelayBeforeSwitchPage,
+                "Before switching Page",
+                cancellationToken
+            );
             await ReportFetchProgressAsync(
                 target,
                 $"Page UI {i + 1}/{pages.Count}: opening",
@@ -2806,6 +2852,17 @@ public partial class AutoPostViewModel : ViewModelBase
                 // Non-null UI results are returned only after the selected Page and its
                 // authenticated own-profile controls have been confirmed.
                 page.LivePageAccessVerified = pageUiInfo != null;
+                page.PageAccessIssue = PFlowPageAccessReconciliation.ResultIssue(
+                    pageUiInfo != null,
+                    page.PageAccessIssue,
+                    pageUiInfo == null
+                        ? await _ldPlayerService.DumpUiHierarchyAsync(
+                            target.Index,
+                            LdFolder,
+                            cancellationToken
+                        )
+                        : null
+                );
                 await Dispatcher.UIThread.InvokeAsync(() =>
                 {
                     var row = Pages.FirstOrDefault(p =>
@@ -2816,6 +2873,7 @@ public partial class AutoPostViewModel : ViewModelBase
                     if (row != null)
                     {
                         row.Model.LivePageAccessVerified = page.LivePageAccessVerified;
+                        row.Model.PageAccessIssue = page.PageAccessIssue;
                         if (page.LivePageAccessVerified != true)
                             row.IsSelected = false;
                         row.RefreshAccessStatus();
@@ -3057,7 +3115,7 @@ public partial class AutoPostViewModel : ViewModelBase
                     StatusSummary = $"Booting {target.Name} (Index {target.Index})...";
                     await _ldPlayerService.LaunchInstanceAsync(target.Index, LdFolder, ct);
 
-                    var staggerSec = Math.Clamp(DelayOpenEachLD > 0 ? DelayOpenEachLD : 3, 2, 8);
+                    var staggerSec = Math.Max(0, DelayOpenEachLD);
                     await Task.Delay(TimeSpan.FromSeconds(staggerSec), ct);
                 }
                 finally
@@ -3079,10 +3137,11 @@ public partial class AutoPostViewModel : ViewModelBase
                     return false;
                 }
 
-                await Task.Delay(2000, ct);
+                await FetchDelayAsync(target, DelayAfterOpenLD, "After LD opens", ct);
             }
 
-            await ArrangeFetchWindowsAsync(ct);
+            await PrepareFetchFacebookAsync(target, ct);
+            await FetchDelayAsync(target, DelayOpenApp, "Before opening Facebook", ct);
             ct.ThrowIfCancellationRequested();
             var facebookReady = await _ldPlayerService.WaitForFacebookReadyAsync(
                 target.Index,
@@ -3318,6 +3377,7 @@ public partial class AutoPostViewModel : ViewModelBase
                 );
                 if (autoCloseIfBooted && (!wasRunning || CloseLDAfterAction))
                 {
+                    await FetchDelayAsync(target, DelayBeforeCloseLD, "Before closing LD", ct);
                     target.Status = "Closing...";
                     try
                     {

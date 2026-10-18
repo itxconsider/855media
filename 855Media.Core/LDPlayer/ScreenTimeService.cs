@@ -616,24 +616,24 @@ public sealed class ScreenTimeService : IScreenTimeService
                         return;
                     }
                 }
-                // Reopen the destination once after all gesture profiles fail.
+                // Pull down on the current Reels screen once after all gesture profiles fail.
                 // A second consecutive failure stops instead of refreshing indefinitely.
                 if (!reelsRefreshUsed && _now() < until)
                 {
                     reelsRefreshUsed = true;
                     await CaptureNavigationFailureAsync("Reels", gestureXml);
+                    await RequireCurrentScreenAsync();
                     browseFlow?.BeginRecovery();
-                    if (
-                        !await _ld.SendKeyAsync(index, 4, path, ct)
-                        || !await _ld.OpenDeepLinkAsync(
-                            index,
-                            link,
-                            "com.facebook.katana",
-                            path,
-                            ct
-                        )
-                    )
-                        throw new InvalidOperationException("ScreenTime could not refresh Reels.");
+                    if (!await _ld.SwipeAsync(index, w / 2, h / 3, w / 2, h * 4 / 5, 450, path, ct))
+                        throw new InvalidOperationException(
+                            "ScreenTime Reels pull-to-refresh was not acknowledged."
+                        );
+                    await PFlowTrace.SessionAsync(
+                        index,
+                        "ScreenTime.reels.refresh.drag",
+                        $"direction=down; start=({w / 2},{h / 3}); end=({w / 2},{h * 4 / 5}); durationMs=450",
+                        ct
+                    );
                     for (
                         var refreshAttempt = 0;
                         refreshAttempt < 12 && _now() < until;

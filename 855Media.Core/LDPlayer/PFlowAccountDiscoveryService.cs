@@ -17,6 +17,31 @@ namespace _855Media.Core.LDPlayer;
 /// </summary>
 public class PFlowAccountDiscoveryService : IPFlowAccountDiscoveryService
 {
+    // A Page can repeat its single display label in both legacy person-name fields.
+    // The cached name itself can also be the concatenation of those repeated fields.
+    internal static string ResolveRootPageName(string resolved, string dump, bool isPage)
+    {
+        if (!isPage)
+            return resolved;
+        string Field(string key) =>
+            Regex
+                .Match(
+                    dump,
+                    @"(?:^|[\r\n\t])" + key + @"[\r\n\s]+([^\r\n]{1,60})",
+                    RegexOptions.IgnoreCase
+                )
+                .Groups[1]
+                .Value.Trim();
+        var first = Field("first_name");
+        var last = Field("last_name");
+        return
+            first.Length > 0
+            && string.Equals(first, last, StringComparison.Ordinal)
+            && Regex.Replace(resolved.Trim(), @"\s+", " ") == first + " " + last
+            ? first
+            : resolved;
+    }
+
     private readonly ILDPlayerService _ldPlayer;
     private readonly AtxAgentClient? _atxClient;
     private readonly IPFlowBloksService _bloks;
@@ -944,9 +969,9 @@ for f in $LP_DIR/logged_in_*; do
 
     f_str=$(extract_printable ""$f"")
     name=$(echo ""$f_str"" | get_next_line ""name"")
+    fname=$(echo ""$f_str"" | get_next_line ""first_name"")
+    lname=$(echo ""$f_str"" | get_next_line ""last_name"")
     if [ -z ""$name"" ]; then
-        fname=$(echo ""$f_str"" | get_next_line ""first_name"")
-        lname=$(echo ""$f_str"" | get_next_line ""last_name"")
         if [ -n ""$fname"" ]; then
             name=""$fname $lname""
         fi
@@ -972,6 +997,10 @@ for f in $LP_DIR/logged_in_*; do
     fi
 
     [ -z ""$page_id"" ] && page_id=""$uid""
+
+    if [ ""$type"" = ""Page"" ] && [ -n ""$fname"" ] && [ ""$fname"" = ""$lname"" ] && [ ""$name"" = ""$fname $lname"" ]; then
+        name=""$fname""
+    fi
 
     echo ""ACCOUNT|$type|$uid|$page_id|$name|$user_uid|$email|$pic""
 done
@@ -1276,6 +1305,7 @@ done
                         || !string.IsNullOrWhiteSpace(pageId)
                         || (!string.IsNullOrWhiteSpace(activeUid) && uid != activeUid)
                     );
+                name = ResolveRootPageName(name, dump, isPage);
                 var userUid = Regex
                     .Match(
                         dump,
@@ -1884,6 +1914,8 @@ done
                     body.Contains("is_page", StringComparison.OrdinalIgnoreCase)
                     || pageIdMatch.Success;
                 string type = isPage ? "Page" : "Profile";
+
+                name = ResolveRootPageName(name, body, isPage);
 
                 var emailMatch = Regex.Match(
                     body,

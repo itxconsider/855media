@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -87,14 +87,6 @@ public partial class AutoPostViewModel
             );
         await _pFlowHistory.RecoverAsync();
         var history = await _pFlowHistory.ReadAsync();
-        if (
-            history.Any(j =>
-                j.State == PFlowState.Unknown && selectedWorkers.Any(w => w.Index == j.DeviceIndex)
-            )
-        )
-            throw new InvalidOperationException(
-                "Review Unknown jobs in P-Flow History before reusing that LD instance."
-            );
         if (config.ScreenTimeOnly)
             return;
         var batch = Guid.NewGuid().ToString("N");
@@ -313,6 +305,33 @@ public partial class AutoPostViewModel
             task.Status = "Skipped (No verified target/file job)";
     }
 
+    private async Task CleanupConfirmedPostsForWorkerAsync(int deviceIndex, CancellationToken ct)
+    {
+        var history = await _pFlowHistory.ReadAsync(ct);
+        foreach (
+            var job in history.Where(j =>
+                j.DeviceIndex == deviceIndex
+                && j.State == PFlowState.Confirmed
+                && j.RemoteCleanupState != "Verified"
+            )
+        )
+        {
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            deadline.CancelAfter(TimeSpan.FromSeconds(30));
+            await new PFlowRunner(_ldPlayerService, _pFlowHistory, _atxClient).CleanupRemoteAsync(
+                job,
+                LdFolder,
+                deadline.Token
+            );
+            await _pFlowHistory.SaveAsync(job, CancellationToken.None);
+            ct.ThrowIfCancellationRequested();
+            if (job.RemoteCleanupState != "Verified")
+                throw new InvalidOperationException(
+                    $"LD-{deviceIndex}: confirmed post cleanup is pending. {job.Error}"
+                );
+        }
+    }
+
     private static bool IsPFlowMedia(string path, string type) =>
         (
             type == "Story" ? FacebookPageTarget.StoryExtensions
@@ -416,7 +435,11 @@ public partial class AutoPostViewModel
                     throw new InvalidOperationException(PFlowLoginScreen.Message(authentication));
                 }
             }
-            if (job.TargetIdentityConfirmationRequired)
+            if (confirmed && job.RemoteCleanupState != "Verified")
+                throw new InvalidOperationException(
+                    "Post confirmed, but emulator media / album cleanup is pending. Remaining queued posts were stopped."
+                );
+            if (job.TargetIdentityConfirmationRequired || job.State == PFlowState.Unknown)
                 InvalidatePostTargetSession(worker.Index);
             await RefreshMediaCountsForPagesAsync(new[] { page });
             if (_pFlowAccountAttention.ContainsKey(worker.Index))
@@ -448,8 +471,6 @@ public partial class AutoPostViewModel
                 )
             )
                 break;
-            if (PFlowPageIdentityRestriction.StopsWorker(job))
-                break; // Leave the unresolved composer/uploader for review.
             if (
                 job.State == PFlowState.Failed
                 && !job.SubmittedUtc.HasValue
@@ -594,7 +615,11 @@ public partial class AutoPostViewModel
             _atxClient,
             LdFolder,
             () => IsRunning || IsBusy,
-            async () => await RefreshMediaCountsForPagesAsync(Pages.ToArray())
+            async () =>
+            {
+                await ReconcileSavedPostQueueAsync();
+                await RefreshMediaCountsForPagesAsync(Pages.ToArray());
+            }
         );
         await window.RefreshAsync();
         if (

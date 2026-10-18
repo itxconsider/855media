@@ -15,12 +15,17 @@ namespace _855Media.Core.Resolving;
 
 public class QueryResolver(IReadOnlyList<Cookie>? initialCookies = null) : IDisposable
 {
-    private readonly YoutubeClient _youtube = new(Http.Client, initialCookies ?? []);
+    private readonly YoutubeClient _youtube = new(
+        Http.Client,
+        CookieUtils.GetYouTubeCookies(initialCookies)
+    );
     private readonly YouTubeQueryResolver _youTubeResolver = new(initialCookies);
     private readonly TikTokQueryResolver _tikTok = new(initialCookies);
+    private readonly InstagramQueryResolver _instagram = new(initialCookies);
     private readonly FacebookQueryResolver _facebook = new();
     private readonly DramaBoxQueryResolver _dramaBox = new(initialCookies);
-    private readonly bool _isAuthenticated = initialCookies?.Any() == true;
+    private readonly bool _isAuthenticated =
+        CookieUtils.GetYouTubeCookies(initialCookies).Count > 0;
 
     private async Task<QueryResult?> TryResolvePlaylistAsync(
         string query,
@@ -183,6 +188,9 @@ public class QueryResolver(IReadOnlyList<Cookie>? initialCookies = null) : IDisp
 
         if (TikTokQueryResolver.IsTikTokQuery(query))
             return await _tikTok.ResolveAsync(query, cancellationToken);
+
+        if (InstagramQueryResolver.IsInstagramQuery(query))
+            return await _instagram.ResolveAsync(query, cancellationToken);
 
         if (DramaBoxQueryResolver.IsDramaBoxQuery(query))
             return await _dramaBox.ResolveAsync(query, cancellationToken);

@@ -8,6 +8,53 @@ namespace _855Media.Core.Tests.LDPlayer;
 public class PFlowStoryTests
 {
     [Fact]
+    public async Task StoryObservedPublishingCycleCanCompleteWithoutBannerOrCopyrightScan()
+    {
+        var job = Job();
+        var ld = DispatchProxy.Create<ILDPlayerService, StoryDevice>();
+        var device = (StoryDevice)(object)ld;
+        device.Job = job;
+        device.NoConfirmation = true;
+        device.PostingReadsRemaining = 1;
+        device.ClearPostShareXml = FacebookLayoutRegistryTests.Fixture(
+            "ld55-feed",
+            "PFlowScreenTime"
+        );
+        await new PFlowAutoPostService(ld) { PublicationQuietPeriod = TimeSpan.Zero }.PublishAsync(
+            job,
+            _ => Task.CompletedTask,
+            null,
+            default
+        );
+        Assert.Equal(PFlowState.Confirmed, job.State);
+        Assert.StartsWith(PFlowPublicationCycle.EvidencePrefix, job.Evidence);
+        Assert.Equal(1, device.ShareTaps);
+    }
+
+    [Fact]
+    public async Task StoryFailureUsesActualDescriptionAndMarksFailed()
+    {
+        var job = Job();
+        var ld = DispatchProxy.Create<ILDPlayerService, StoryDevice>();
+        var device = (StoryDevice)(object)ld;
+        device.Job = job;
+        device.PublicationErrorDescription = "Couldn't share story: connection lost";
+        await new PFlowAutoPostService(ld).PublishAsync(
+            job,
+            _ => Task.CompletedTask,
+            null,
+            default
+        );
+        Assert.Equal(PFlowState.Failed, job.State);
+        Assert.Equal(device.PublicationErrorDescription, job.Error);
+        Assert.Equal("content-desc", job.PublicationErrorAttribute);
+        Assert.Equal(1, device.ShareTaps);
+        Assert.Equal(0, device.Deletes);
+        Assert.False(job.CanRetry);
+        Assert.True(job.RequiresPublicationReviewBeforeCleanup);
+    }
+
+    [Fact]
     public void UploadLikeContentWithLongPunctuationIsNotAStatus()
     {
         var content = "Uploading" + new string('.', 1000) + " new ideas";
@@ -809,10 +856,21 @@ public class PFlowStoryTests
         public bool DelayedGallery;
         public int SelectedReads;
         public int ExistingStories;
+        public string? PublicationErrorDescription;
+        public string? ClearPostShareXml;
         private string _screen = "profile";
 
         private string PostShareXml()
         {
+            if (ShareTaps > 0 && PublicationErrorDescription != null)
+                return new XElement(
+                    "hierarchy",
+                    new XElement(
+                        "node",
+                        new XAttribute("package", "com.facebook.katana"),
+                        new XAttribute("content-desc", PublicationErrorDescription)
+                    )
+                ).ToString();
             var pending = "";
             if (ShareTaps > 0 && PostingReadsRemaining > 0)
             {
@@ -821,6 +879,8 @@ public class PFlowStoryTests
                 pending =
                     "<node text='Posting story…'/><node text='Keep Facebook open while your upload finishes.'/>";
             }
+            if (ShareTaps > 0 && pending.Length == 0 && ClearPostShareXml != null)
+                return ClearPostShareXml;
             return "<hierarchy><node package='com.facebook.katana' text='"
                 + (NoConfirmation ? "Home" : "Story shared")
                 + "'/>"

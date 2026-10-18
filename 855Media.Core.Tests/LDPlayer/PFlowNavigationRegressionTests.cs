@@ -45,12 +45,39 @@ public class PFlowNavigationRegressionTests
             service.RunAsync(957, settings, _ => Task.FromResult(true), _ => Task.CompletedTask)
         );
         Assert.Equal(8, fake.Swipes);
+        Assert.Equal(1, fake.PullRefreshes);
+        Assert.Equal(0, fake.Backs);
         Assert.Equal(new[] { 350, 350 }, fake.ContinuousSwipes);
         Assert.Equal(
             new[] { (300, 100), (200, 50), (100, 75), (300, 100), (200, 50), (100, 75) },
             fake.HoldSwipes.Select(v => (v.Hold, v.Movement)).ToArray()
         );
         Assert.Equal(0, fake.Taps);
+    }
+
+    [Fact]
+    public async Task ReelsPullRefreshResumesSwipingWithoutBackOrReopeningLink()
+    {
+        var (service, fake, _) = Harness();
+        fake.StartFixture = "ld1-reels-interest";
+        fake.StuckReels = true;
+        fake.RefreshUnstucksReels = true;
+        var settings = Settings();
+        settings.NewsFeed = false;
+        settings.WatchVideo = true;
+        settings.WatchVideoMin = settings.WatchVideoMax = 40;
+        settings.Options.ReelDwellSeconds = 1;
+        var result = await service.RunAsync(
+            937,
+            settings,
+            _ => Task.FromResult(true),
+            _ => Task.CompletedTask
+        );
+        Assert.Equal(1, result.CompletedSteps);
+        Assert.Equal(1, fake.PullRefreshes);
+        Assert.Equal(fake.BackKeysAtPull, fake.BackKeysAtResumedSwipe);
+        Assert.Equal(fake.DeepLinksAtPull, fake.DeepLinksAtResumedSwipe);
+        Assert.True(fake.Swipes > 3);
     }
 
     [Fact]
@@ -219,6 +246,8 @@ public class PFlowNavigationRegressionTests
             );
             Assert.Contains("all three gesture profiles and refresh recovery", ex.Message);
             Assert.Equal(6, fake.Swipes);
+            Assert.Equal(1, fake.PullRefreshes);
+            Assert.Equal(0, fake.Backs);
             Assert.Equal(
                 new[] { (300, 100), (200, 50), (100, 75), (300, 100), (200, 50), (100, 75) },
                 fake.HoldSwipes.Select(v => (v.Hold, v.Movement)).ToArray()
@@ -1392,6 +1421,14 @@ public class PFlowNavigationRegressionTests
         public bool ChapterAfterSwipe,
             ChapterRecoverySucceeds;
         public bool StuckReels;
+        public int PullRefreshes;
+        public int BackKeys,
+            DeepLinks;
+        public int BackKeysAtPull,
+            DeepLinksAtPull;
+        public int BackKeysAtResumedSwipe = -1,
+            DeepLinksAtResumedSwipe = -1;
+        public bool RefreshUnstucksReels;
         public int ReadsBeforeReelChange;
         public bool MissingKeyDuringRender;
         public int ChapterBacks;
@@ -1534,6 +1571,11 @@ public class PFlowNavigationRegressionTests
                         AtxAgentClient.ParseBloksHierarchy(Screen())
                     );
                 case "HoldAndSwipeAsync":
+                    if (PullRefreshes > 0)
+                    {
+                        BackKeysAtResumedSwipe = BackKeys;
+                        DeepLinksAtResumedSwipe = DeepLinks;
+                    }
                     HoldSwipes.Add(
                         (
                             (int)args![1]!,
@@ -1549,8 +1591,24 @@ public class PFlowNavigationRegressionTests
                 case "TakeScreenshotAsync":
                     return Task.FromResult<byte[]?>(null);
                 case "SwipeAsync":
+                    if ((int)args![4]! > (int)args[2]!)
+                    {
+                        PullRefreshes++;
+                        BackKeysAtPull = BackKeys;
+                        DeepLinksAtPull = DeepLinks;
+                        if (RefreshUnstucksReels)
+                            StuckReels = false;
+                        return Task.FromResult(true);
+                    }
                     ContinuousSwipes.Add((int)args![5]!);
                     Swipes++;
+                    return Task.FromResult(true);
+                case "OpenDeepLinkAsync":
+                    DeepLinks++;
+                    return Task.FromResult(true);
+                case "SendKeyAsync":
+                    if ((int)args![1]! == 4)
+                        BackKeys++;
                     return Task.FromResult(true);
                 case "PressBackAsync":
                     Backs++;

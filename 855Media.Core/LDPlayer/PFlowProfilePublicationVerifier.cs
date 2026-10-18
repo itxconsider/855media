@@ -22,6 +22,7 @@ internal sealed class PFlowProfilePublicationVerifier(ILDPlayerService ld)
         CancellationToken,
         Task<bool>
     >? VerifyIdentityOverride { get; init; }
+    internal Func<PFlowPublicationStage, string, Task>? PublicationProgress { get; init; }
     internal string FailureReason { get; private set; } = "";
     internal Func<TimeSpan, CancellationToken, Task> Delay { get; init; } = Task.Delay;
 
@@ -152,7 +153,11 @@ internal sealed class PFlowProfilePublicationVerifier(ILDPlayerService ld)
     private async Task<bool> OpenProfile(PFlowJob job, string? path, CancellationToken ct)
     {
         var initial = await Observe(job, path, ct);
-        if (!Safe(initial) || PFlowAutoPostService.HasComposerLayoutEvidence(initial, "Reel"))
+        if (
+            !Safe(initial)
+            || PFlowConfirmation.HasPendingPublication(initial)
+            || PFlowAutoPostService.HasComposerLayoutEvidence(initial, "Reel")
+        )
             return false;
         if (!await Identity(job, path, ct))
             return false;
@@ -242,12 +247,27 @@ internal sealed class PFlowProfilePublicationVerifier(ILDPlayerService ld)
         try
         {
             FailureReason = "opening-target-profile";
+            if (PublicationProgress != null)
+                await PublicationProgress(
+                    PFlowPublicationStage.CheckingProfile,
+                    "Opening mapped target profile"
+                );
             if (!await OpenProfile(job, path, token))
                 return null;
             FailureReason = "refreshing-target-profile";
+            if (PublicationProgress != null)
+                await PublicationProgress(
+                    PFlowPublicationStage.RefreshingProfile,
+                    "Pull-to-refresh on mapped target profile"
+                );
             if (!await RefreshProfile(job, path, token))
                 return null;
             FailureReason = "matching-caption-and-publication-time";
+            if (PublicationProgress != null)
+                await PublicationProgress(
+                    PFlowPublicationStage.CheckingProfile,
+                    "Reading target post caption and publication age"
+                );
             var proof = await ReadProfilePost(job, path, token);
             if (proof == null || !await Identity(job, path, token))
                 return null;
@@ -281,6 +301,7 @@ internal sealed class PFlowProfilePublicationVerifier(ILDPlayerService ld)
     {
         if (
             !Safe(xml)
+            || PFlowConfirmation.HasPendingPublication(xml)
             || !job.SubmittedUtc.HasValue
             || PFlowAutoPostService.HasComposerLayoutEvidence(xml, "Reel")
         )

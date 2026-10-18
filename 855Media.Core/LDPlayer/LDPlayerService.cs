@@ -7501,6 +7501,7 @@ public partial class LDPlayerService : ILDPlayerService
                         || !string.IsNullOrWhiteSpace(pageId)
                         || (!string.IsNullOrWhiteSpace(activeUid) && uid != activeUid)
                     );
+                name = PFlowAccountDiscoveryService.ResolveRootPageName(name, dump, isPage);
                 var userUid = Regex
                     .Match(
                         dump,

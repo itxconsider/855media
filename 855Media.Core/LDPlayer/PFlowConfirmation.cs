@@ -14,6 +14,9 @@ public sealed record PFlowUploadNotification(string Key, long Version, string Ti
 
 public static class PFlowConfirmation
 {
+    internal static bool HasPendingPublication(string? xml) =>
+        PFlowPublicationTracking.Pending(xml) != null;
+
     internal static string NormalizeSuccessMessage(string value) =>
         Regex.Replace(value.Trim(), @"\s+", " ").TrimEnd('.', '!', ' ', '\u2026');
 
@@ -49,6 +52,11 @@ public static class PFlowConfirmation
         job.Evidence = evidence;
         if (IsNotificationOnly(evidence))
         {
+            PFlowPublicationTracking.Transition(
+                job,
+                PFlowPublicationStage.Unconfirmed,
+                "Upload notification alone does not confirm publication"
+            );
             job.ConfirmedUtc = null;
             job.Error =
                 "Upload completed, but publication on the target was not verified. Review the Page before retrying; files were retained.";
@@ -56,6 +64,20 @@ public static class PFlowConfirmation
             job.LocalDeleteState = "Held for publication review";
             return PFlowState.Unknown;
         }
+        var completedCycle = evidence.StartsWith(
+            PFlowPublicationCycle.EvidencePrefix,
+            StringComparison.Ordinal
+        );
+        if (completedCycle)
+            job.ProfilePublicationCheckRequired = false;
+        PFlowPublicationTracking.Transition(
+            job,
+            PFlowPublicationStage.Published,
+            evidence.StartsWith("Target profile Reel verified:", StringComparison.Ordinal)
+                    ? "Target profile caption, author and publication time verified"
+                : completedCycle ? "Observed publication states completed; success banner optional"
+                : "Fresh Facebook publication confirmation"
+        );
         job.ConfirmedUtc = DateTime.UtcNow;
         return PFlowState.Confirmed;
     }

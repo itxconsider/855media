@@ -82,6 +82,33 @@ public class PFlowComposerReadinessTests
     }
 
     [Fact]
+    public async Task PartiallyVisibleDisabledPublishControlIsRevealedBeforeWaiting()
+    {
+        var (service, device) = Harness("partial");
+        Assert.Null(
+            PFlowAutoPostService.FindVisiblePublishControl(device.Xml(), ["Share now"], false)
+        );
+        var ready = await Prepare(service, device, "");
+        Assert.Equal(1, device.Down);
+        Assert.NotNull(PFlowAutoPostService.FindVisiblePublishControl(ready, ["Share now"]));
+        Assert.Equal(0, device.Taps);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void ButtonClippedByScrollableParentIsNotVisibleEvenWithOnscreenCenter(
+        bool requireEnabled
+    )
+    {
+        var xml =
+            "<hierarchy><node bounds='[0,0][720,1280]' clickable='true'><node scrollable='true' bounds='[0,100][720,1000]'><node text='Share now' clickable='true' enabled='true' bounds='[20,950][700,1030]'/></node></node></hierarchy>";
+        Assert.Null(
+            PFlowAutoPostService.FindVisiblePublishControl(xml, ["Share now"], requireEnabled)
+        );
+    }
+
+    [Fact]
     public void DisabledAndOffscreenControlsAreNotReady()
     {
         var root = "<hierarchy><node bounds='[0,0][720,1280]'>{0}</node></hierarchy>";
@@ -127,11 +154,13 @@ public class PFlowComposerReadinessTests
                 ? "<hierarchy><node text='Home'/></hierarchy>"
                 : "<hierarchy><node bounds='[0,0][720,1280]'><node text='Reel Settings'/>"
                     + (
-                        State is "top" or "wrong-caption"
+                        State == "partial"
+                            ? "<node class='android.widget.Button' text='Share now' enabled='false' clickable='false' bounds='[160,1200][688,1340]'/>"
+                        : State is "top" or "wrong-caption"
                             ? "<node class='android.widget.EditText' text='"
                                 + (State == "top" ? "Full caption" : "Wrong caption")
                                 + "' bounds='[10,140][690,300]'/>"
-                            : "<node text='Scheduling options'/><node text='Share now' enabled='true' clickable='true' bounds='[160,1176][688,1256]'/>"
+                        : "<node text='Scheduling options'/><node text='Share now' enabled='true' clickable='true' bounds='[160,1176][688,1256]'/>"
                     )
                     + "</node></hierarchy>";
 

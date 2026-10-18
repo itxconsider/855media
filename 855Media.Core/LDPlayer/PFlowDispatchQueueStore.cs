@@ -137,6 +137,8 @@ public sealed class PFlowDispatchQueueStore(string? path = null)
             && job.Error.StartsWith("Previous process ended", StringComparison.Ordinal)
         )
             return "Queued";
+        if (job.HasFacebookPublicationFailure)
+            return "Failed: " + job.Error;
         if (job.RequiresPublicationReviewBeforeCleanup)
             return "Unknown (Publication needs review)";
         if (

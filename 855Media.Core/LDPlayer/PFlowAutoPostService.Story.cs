@@ -36,6 +36,11 @@ public partial class PFlowAutoPostService
                 job.SubmittedUtc = DateTime.UtcNow;
             await Step(state.ToString());
         }
+        async Task Publication(PFlowPublicationStage stage, string signal)
+        {
+            if (PFlowPublicationTracking.Transition(job, stage, signal))
+                await checkpoint(job);
+        }
         Task<string> Shell(string command) =>
             _ldPlayer.ExecuteAdbAsync(job.DeviceIndex, "shell " + command, customPath, ct);
         async Task<string> Observe()
@@ -508,29 +513,60 @@ public partial class PFlowAutoPostService
         if (!await _ldPlayer.TapAsync(job.DeviceIndex, share.X, share.Y, customPath, ct))
         {
             job.State = PFlowState.Unknown;
+            await Publication(
+                PFlowPublicationStage.Unconfirmed,
+                "Story Share acknowledgement unavailable"
+            );
             job.Error = "Story Share action could not be confirmed. Review before retrying.";
             await checkpoint(job);
             return;
         }
         await Stage(PFlowState.Submitted);
-        await Step("Waiting for Story publication confirmation");
+        await Publication(
+            PFlowPublicationStage.AwaitingConfirmation,
+            "Story Share tapped; awaiting Facebook status"
+        );
         var timer = Stopwatch.StartNew();
         var window = UploadConfirmationWindow(job.Size, PublicationTimeout);
         var nextNotification = TimeSpan.Zero;
         var nextStoryInspection = TimeSpan.FromSeconds(2);
         var storyInspectionDelay = TimeSpan.FromSeconds(6);
         var uploadOngoing = false;
+        var hadPendingUi = false;
+        var completionGate = new PFlowPublicationSettleGate(PublicationQuietPeriod);
         while (timer.Elapsed < window)
         {
             ct.ThrowIfCancellationRequested();
             xml = await Observe();
-            if (
-                HasLabel(
-                    xml,
-                    ["Couldn't share story", "Couldn't post", "Upload failed", "Unable to publish"]
-                )
-            )
-                break;
+            var publicationFailure = PFlowPublicationFailure.Read(xml, job.Caption, before);
+            if (publicationFailure != null)
+            {
+                publicationFailure.Record(job);
+                await checkpoint(job);
+                return;
+            }
+            var cycleSettled = PFlowPublicationCycle.Observe(
+                job,
+                completionGate,
+                xml,
+                timer.Elapsed
+            );
+            var pendingState = PFlowPublicationTracking.Pending(xml);
+            if (pendingState != null)
+            {
+                hadPendingUi = true;
+                await Publication(pendingState.Stage, pendingState.Evidence);
+                await Task.Delay(400, ct);
+                continue;
+            }
+            if (hadPendingUi)
+            {
+                hadPendingUi = false;
+                await Publication(
+                    PFlowPublicationStage.AwaitingConfirmation,
+                    "Pending Story UI label cleared; awaiting publication evidence"
+                );
+            }
             var evidence = NewPublicationEvidence(xml, before, "Story");
             if (evidence == null && toastAvailable)
             {
@@ -554,6 +590,15 @@ public partial class PFlowAutoPostService
                     job.AppPackage
                 );
                 uploadOngoing = currentNotifications.Any(n => n.Ongoing);
+                if (uploadOngoing)
+                {
+                    completionGate.Reset();
+                    cycleSettled = false;
+                    await Publication(
+                        PFlowPublicationStage.Uploading,
+                        "Android notification: Facebook media upload ongoing"
+                    );
+                }
                 evidence = PFlowConfirmation.NewUploadCompletion(
                     baseline,
                     currentNotifications,
@@ -561,7 +606,42 @@ public partial class PFlowAutoPostService
                         && !PFlowStoryLayout.IsEditor(new(xml))
                         && !PFlowStoryLayout.IsPicker(new(xml))
                 );
+                if (evidence != null)
+                    await Publication(
+                        PFlowPublicationStage.UploadComplete,
+                        "Fresh Android notification: Facebook upload complete"
+                    );
                 nextNotification = timer.Elapsed + TimeSpan.FromSeconds(2);
+            }
+            if (
+                evidence != null
+                && PFlowConfirmation.IsNotificationOnly(evidence)
+                && PFlowPublicationCycle.WorkObserved(job)
+            )
+                evidence = null; // An observed cycle still needs its clear-screen interval.
+            if (evidence == null && !baseline.Any(n => n.Ongoing))
+            {
+                var cycleEvidence = PFlowPublicationCycle.Read(
+                    job,
+                    xml,
+                    cycleSettled,
+                    uploadOngoing,
+                    before
+                );
+                if (cycleEvidence != null && baselineAvailable)
+                {
+                    var finalDump = await Shell("dumpsys notification --noredact");
+                    var finalOngoing = PFlowConfirmation
+                        .ReadUploadNotifications(finalDump, job.AppPackage)
+                        .Any(n => n.Ongoing);
+                    if (!PFlowConfirmation.HasActiveNotificationList(finalDump) || finalOngoing)
+                    {
+                        cycleEvidence = null;
+                        completionGate.Reset();
+                        uploadOngoing = finalOngoing;
+                    }
+                }
+                evidence = cycleEvidence;
             }
             if (
                 evidence == null
@@ -579,7 +659,22 @@ public partial class PFlowAutoPostService
                 && PFlowStoryLayout.OwnStoryEntry(xml) != null
             )
             {
+                await Publication(
+                    PFlowPublicationStage.CheckingStory,
+                    "Reading the target's own Story viewer"
+                );
                 var inspected = await InspectOwnStory(xml, baseline: false);
+                var inspectionFailure = PFlowPublicationFailure.Read(
+                    inspected.Xml,
+                    job.Caption,
+                    before
+                );
+                if (inspectionFailure != null)
+                {
+                    inspectionFailure.Record(job);
+                    await checkpoint(job);
+                    return;
+                }
                 evidence = PFlowStoryLayout.NewOwnStoryEvidence(job, inspected.Xml);
                 await PFlowTrace.SessionAsync(
                     job.DeviceIndex,
@@ -595,7 +690,14 @@ public partial class PFlowAutoPostService
                 // is the only UI result used for this inspection.
             }
             if (PFlowStoryLayout.HasPendingUpload(xml))
+            {
+                completionGate.Reset();
+                await Publication(
+                    PFlowPublicationStage.Uploading,
+                    "Facebook own Story viewer: upload still pending"
+                );
                 evidence = null;
+            }
             if (evidence != null)
             {
                 await Stage(PFlowConfirmation.RecordPublicationEvidence(job, evidence));
@@ -603,6 +705,17 @@ public partial class PFlowAutoPostService
             }
             await Task.Delay(400, ct);
         }
+        var finalFailure = PFlowPublicationFailure.Read(await Observe(), job.Caption, before);
+        if (finalFailure != null)
+        {
+            finalFailure.Record(job);
+            await checkpoint(job);
+            return;
+        }
+        await Publication(
+            PFlowPublicationStage.Unconfirmed,
+            "Story confirmation wait expired without publication proof"
+        );
         job.State = PFlowState.Unknown;
         job.Error =
             "Story publication was not confirmed. The upload may still finish; review the target's Story before retrying.";

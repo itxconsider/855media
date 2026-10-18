@@ -15,7 +15,7 @@ using _855Media.Core.Utils;
 
 namespace _855Media.Core.Resolving;
 
-public class TikTokQueryResolver(IReadOnlyList<Cookie>? initialCookies = null)
+public partial class TikTokQueryResolver(IReadOnlyList<Cookie>? initialCookies = null)
 {
     public static bool IsTikTokQuery(string query) =>
         query.Contains("tiktok.com", StringComparison.OrdinalIgnoreCase);
@@ -67,6 +67,31 @@ public class TikTokQueryResolver(IReadOnlyList<Cookie>? initialCookies = null)
             arguments.Add(NormalizeQuery(query));
 
             json = await YtDlp.RunAsync(arguments, cancellationToken: cancellationToken);
+        }
+        catch (InvalidOperationException ex) when (IsProfileLookupError(ex.Message))
+        {
+            var profileId = await TryResolveProfileIdAsync(
+                query,
+                initialCookies,
+                cancellationToken
+            );
+            if (profileId is null)
+                throw new InvalidOperationException(
+                    "TikTok profile verification failed. Open the creator profile in your browser, complete any verification, export fresh cookies, and retry the profile URL.",
+                    ex
+                );
+            var retryArguments = new List<string>
+            {
+                "--ignore-config",
+                "--dump-single-json",
+                "--no-warnings",
+                "--no-progress",
+                "--flat-playlist",
+            };
+            if (!string.IsNullOrWhiteSpace(cookieFilePath))
+                retryArguments.AddRange(["--cookies", cookieFilePath]);
+            retryArguments.Add("tiktokuser:" + profileId);
+            json = await YtDlp.RunAsync(retryArguments, cancellationToken: cancellationToken);
         }
         catch (InvalidOperationException ex) when (IsTikTokBotOrRateLimitError(ex))
         {
@@ -685,6 +710,13 @@ public class TikTokQueryResolver(IReadOnlyList<Cookie>? initialCookies = null)
         || query.Contains("/v/", StringComparison.OrdinalIgnoreCase)
         || query.Contains("vt.tiktok.com", StringComparison.OrdinalIgnoreCase)
         || query.Contains("vm.tiktok.com", StringComparison.OrdinalIgnoreCase);
+
+    internal static bool IsProfileLookupError(string message) =>
+        message.Contains("[tiktok:user]", StringComparison.OrdinalIgnoreCase)
+        && message.Contains(
+            "Unable to extract secondary user ID",
+            StringComparison.OrdinalIgnoreCase
+        );
 
     private static bool IsTikTokBotOrRateLimitError(Exception ex) =>
         ex.Message.Contains("429", StringComparison.OrdinalIgnoreCase)

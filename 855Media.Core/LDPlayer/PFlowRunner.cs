@@ -142,6 +142,7 @@ public sealed partial class PFlowRunner
             job.StoryCountBefore = null;
             job.StoryCountAfter = null;
             job.SubmittedUtc = null;
+            PFlowPublicationTracking.Reset(job);
             job.NoPublicationVerified = false;
             job.TargetIdentityConfirmationRequired = false;
             job.ConfirmedUtc = null;
@@ -179,6 +180,14 @@ public sealed partial class PFlowRunner
                     : ex is OperationCanceledException ? PFlowState.CancelledBeforeSubmission
                     : PFlowState.Failed;
                 job.Error = ex.Message;
+                if (job.MayHaveSubmitted)
+                    PFlowPublicationTracking.Transition(
+                        job,
+                        PFlowPublicationStage.Unconfirmed,
+                        ex is OperationCanceledException
+                            ? "Monitoring cancelled after Share; review publication"
+                            : "Monitoring interrupted after Share; review publication"
+                    );
                 await _history.SaveAsync(job, CancellationToken.None);
                 if (ex is not OperationCanceledException)
                     await PFlowDiagnostics.CaptureAsync(
@@ -262,6 +271,32 @@ public sealed partial class PFlowRunner
             );
             if (removed.Trim() != "REMOVED")
                 throw new IOException("Remote deletion was not verified.");
+            var album =
+                job.PostType == "Story" ? "Story_" + job.JobId
+                : job.NativeReelAlbum && job.PostType is "Reel" or "Video" ? "Reel_" + job.JobId
+                : null;
+            if (album != null)
+            {
+                var folder = "/sdcard/DCIM/855Media/" + album;
+                // Remove only this job's empty folder. Unexpected contents must block cleanup.
+                var albumRemoved = await _ld.ExecuteAdbAsync(
+                    job.DeviceIndex,
+                    "shell sh -c "
+                        + PFlowAutoPostService.ShellQuote(
+                            "if [ -d "
+                                + PFlowAutoPostService.ShellQuote(folder)
+                                + " ]; then rmdir "
+                                + PFlowAutoPostService.ShellQuote(folder)
+                                + "; fi; test ! -e "
+                                + PFlowAutoPostService.ShellQuote(folder)
+                                + " && echo ALBUM_REMOVED"
+                        ),
+                    ldPath,
+                    ct
+                );
+                if (albumRemoved.Trim() != "ALBUM_REMOVED")
+                    throw new IOException("Job album folder removal was not verified.");
+            }
             job.RemoteCleanupState = "Verified";
             job.Error = string.Join(
                 " | ",

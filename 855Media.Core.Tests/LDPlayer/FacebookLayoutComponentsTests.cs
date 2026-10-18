@@ -6,6 +6,29 @@ namespace _855Media.Core.Tests.LDPlayer;
 
 public class FacebookLayoutComponentsTests
 {
+    [Fact]
+    public void MenuHeaderAllowsLineBreakBeforeProfileSuffixAndUsesActiveRow()
+    {
+        var xml = Fixture("ld34-menu-profile-newline");
+        var match = FacebookLayoutRegistry.Match(xml, FacebookScreenKind.Menu, new("Target Page"));
+        Assert.True(match.IsMatch, match.Diagnostic);
+        var profile = match.Control(FacebookControlRole.ActiveProfile);
+        Assert.NotNull(profile);
+        Assert.Equal((250, 148), (profile.X, profile.Y));
+        Assert.NotNull(
+            PFlowOwnProfileNavigation.FindTarget(
+                AtxAgentClient.ParseBloksHierarchy(xml),
+                "Target Page"
+            )
+        );
+        Assert.Null(
+            PFlowOwnProfileNavigation.FindTarget(
+                AtxAgentClient.ParseBloksHierarchy(xml),
+                "Other Page"
+            )
+        );
+    }
+
     private static string Fixture(string name) => FacebookLayoutRegistryTests.Fixture(name);
 
     [Fact]

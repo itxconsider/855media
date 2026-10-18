@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -56,11 +56,11 @@ public partial class AutoPostViewModel
                 delay: PFlowFetchPacing.DelayAsync,
                 requireRecoveryIdle: (b, c) => RequireAccountTransitionIdleAsync(b.DeviceIndex, c)
             );
-            await new PFlowSessionPreparation(_ldPlayerService, LdFolder).PrepareAsync(
-                account.Binding,
-                Progress,
-                ct
-            );
+            await PrepareFetchStartupAsync(worker, ct);
+            await new PFlowSessionPreparation(_ldPlayerService, LdFolder)
+            {
+                AppOpenDelay = TimeSpan.FromSeconds(Math.Max(0, DelayOpenApp)),
+            }.PrepareAsync(account.Binding, Progress, ct);
             await new PFlowAutomaticSessionService(
                 navigator,
                 new PFlowCredentialStore(),

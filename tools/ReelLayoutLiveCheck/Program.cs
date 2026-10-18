@@ -1,6 +1,105 @@
 using System.Xml.Linq;
 using _855Media.Core.LDPlayer;
 
+if (args.Length == 2 && args[0] is "--root-names" or "--read-ui" or "--page-route")
+{
+    using var rootAtx = new AtxAgentClient();
+    var rootLd = new LDPlayerService(rootAtx);
+    if (args[0] is "--read-ui" or "--page-route")
+    {
+        if (args[0] == "--page-route")
+        {
+            if (args[1] != "34")
+                throw new InvalidOperationException(
+                    "This diagnostic target belongs only to LD-34."
+                );
+            using var routeTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(100));
+            using var routeLease = await PFlowDeviceLease.AcquireAsync(
+                int.Parse(args[1]),
+                routeTimeout.Token
+            );
+            var graph = await new PFlowGraphIdentityReader().TryReadUidAsync(
+                rootLd,
+                34,
+                @"C:\LDPlayer\LDPlayer9",
+                routeTimeout.Token
+            );
+            if (
+                graph?.UnderlyingUid == "61593876357670"
+                && graph.Id is "61594923060519" or "1406696292517646"
+            )
+            {
+                var currentUi = await rootLd.DumpUiHierarchyAsync(
+                    34,
+                    @"C:\LDPlayer\LDPlayer9",
+                    routeTimeout.Token
+                );
+                if (PFlowPersonaSwitcherService.IsNativeSwitcherSheetOpen(currentUi))
+                    await rootLd.PressBackAsync(34, @"C:\LDPlayer\LDPlayer9", routeTimeout.Token);
+                Console.WriteLine(
+                    "Current Page profile route confirmed="
+                        + await PFlowLiveUidVerification.OpenCurrentTargetProfileAsync(
+                            rootLd,
+                            34,
+                            @"C:\LDPlayer\LDPlayer9",
+                            new FacebookPageTarget
+                            {
+                                Type = "Page",
+                                PageName = "Metsätalous",
+                                PageId = "1406696292517646",
+                                PersonaUid = "61594923060519",
+                                UserUid = "61593876357670",
+                            },
+                            routeTimeout.Token
+                        )
+                );
+            }
+            else
+                Console.WriteLine(
+                    "Profile route confirmed="
+                        + await rootLd.SwitchToPageByIdAsync(
+                            int.Parse(args[1]),
+                            "Metsätalous",
+                            "1406696292517646",
+                            @"C:\LDPlayer\LDPlayer9",
+                            routeTimeout.Token
+                        )
+                );
+        }
+        var ui =
+            await rootLd.DumpUiHierarchyAsync(
+                int.Parse(args[1]),
+                @"C:\LDPlayer\LDPlayer9",
+                CancellationToken.None
+            ) ?? "";
+        Directory.CreateDirectory("artifacts/menu-read");
+        File.WriteAllText(
+            "artifacts/menu-read/current.xml",
+            PFlowUiPrivacy.RedactForDiagnostics(ui)
+        );
+        Console.WriteLine("Saved redacted hierarchy to artifacts/menu-read/current.xml");
+        return;
+    }
+    var rootAccounts = await rootLd.ExtractFacebookAccountsFromRootShellAsync(
+        int.Parse(args[1]),
+        "com.facebook.katana",
+        @"C:\LDPlayer\LDPlayer9",
+        CancellationToken.None
+    );
+    Console.WriteLine(
+        System.Text.Json.JsonSerializer.Serialize(
+            rootAccounts.Select(a => new
+            {
+                a.Type,
+                a.Name,
+                a.PageId,
+                PersonaUid = a.Uid,
+            })
+        )
+    );
+    return;
+}
+
 if (args.Contains("--write-catalog"))
 {
     File.WriteAllText(

@@ -16,7 +16,9 @@ public partial class FacebookPageTargetViewModel : ObservableObject
             : Model.LivePageAccessVerified switch
             {
                 true => "Access verified",
-                false => "Access not verified · posting blocked",
+                false => Model.PageAccessIssue == PFlowPageAccessReconciliation.Unavailable
+                    ? "Access unavailable · posting blocked"
+                    : "Access not verified · posting blocked",
                 _ => "Cached access · confirm before posting",
             };
 
@@ -26,7 +28,9 @@ public partial class FacebookPageTargetViewModel : ObservableObject
             : Model.LivePageAccessVerified switch
             {
                 true => "Verified",
-                false => "Not verified",
+                false => Model.PageAccessIssue == PFlowPageAccessReconciliation.Unavailable
+                    ? "Access unavailable"
+                    : "Not verified",
                 _ => "Cached",
             };
 
@@ -210,6 +214,7 @@ public partial class FacebookPageTargetViewModel : ObservableObject
 
     public string BirthdateDisplay => FacebookDateDisplay.Format(Birthdate);
     public string CreationDateDisplay => FacebookDateDisplay.Format(CreationDate);
+    public long CreationDateSortKey => FacebookTableSort.CreationDateKey(CreationDate);
 
     partial void OnBirthdateChanged(string value) => OnPropertyChanged(nameof(BirthdateDisplay));
 
@@ -219,6 +224,7 @@ public partial class FacebookPageTargetViewModel : ObservableObject
     partial void OnCreationDateChanged(string value)
     {
         OnPropertyChanged(nameof(CreationDateDisplay));
+        OnPropertyChanged(nameof(CreationDateSortKey));
         if (Model != null)
             Model.CreationDate = value;
         RefreshMaturityStatus();
@@ -261,6 +267,19 @@ public partial class FacebookPageTargetViewModel : ObservableObject
     private PFlowAvailableMedia? _reelAvailability;
     private PFlowAvailableMedia? _photoAvailability;
     private PFlowAvailableMedia? _storyAvailability;
+
+    private static long MediaSortKey(PFlowAvailableMedia? media, string error = "") =>
+        media == null || !string.IsNullOrEmpty(error) || !string.IsNullOrEmpty(media.Error)
+            ? -1
+            : FacebookTableSort.MediaCountKey(media.Files.Count, media.Total);
+
+    public long ReelFilesSortKey => MediaSortKey(_reelAvailability, Model.ReelFilesError);
+    public long PhotoFilesSortKey => MediaSortKey(_photoAvailability, Model.PhotoFilesError);
+    public long StoryFilesSortKey => MediaSortKey(_storyAvailability);
+    public long GroupFilesSortKey =>
+        string.IsNullOrEmpty(Model.GroupFilesError) && int.TryParse(FileInGroup, out var count)
+            ? count
+            : -1;
     public string StoryFilesDisplay => _storyAvailability?.Display ?? "… / …";
     public string StoryFilesTooltip =>
         _storyAvailability?.Summary ?? "Calculating Story availability from posting history.";
@@ -573,6 +592,10 @@ public partial class FacebookPageTargetViewModel : ObservableObject
 
     private void RefreshMediaCountLabels()
     {
+        OnPropertyChanged(nameof(ReelFilesSortKey));
+        OnPropertyChanged(nameof(PhotoFilesSortKey));
+        OnPropertyChanged(nameof(StoryFilesSortKey));
+        OnPropertyChanged(nameof(GroupFilesSortKey));
         OnPropertyChanged(nameof(ReelFilesDisplay));
         OnPropertyChanged(nameof(PhotoFilesDisplay));
         OnPropertyChanged(nameof(GroupFilesDisplay));

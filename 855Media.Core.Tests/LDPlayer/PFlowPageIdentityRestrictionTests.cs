@@ -59,10 +59,6 @@ public sealed partial class PFlowTests
         );
 
         Assert.True(current.TargetIdentityConfirmationRequired);
-        Assert.False(PFlowPageIdentityRestriction.StopsWorker(current));
-        Assert.True(
-            PFlowPageIdentityRestriction.StopsWorker(new PFlowJob { State = PFlowState.Unknown })
-        );
         Assert.Equal(PFlowState.Unknown, current.State);
         Assert.False(current.NoPublicationVerified);
         Assert.Equal(1, fake.ShareTaps);

@@ -97,7 +97,6 @@
                                                 <NumericUpDown Classes="settings-number" Value="{Binding MarketPlaceMax}" Minimum="1" Maximum="3600" FormatString="0" Grid.Column="3" IsEnabled="{Binding IsMarketPlace}"/>
                                             </Grid>
                                             <CheckBox IsChecked="{Binding IsReadNotification}" Content="Read notifications"/>
-                                            <CheckBox IsChecked="{Binding IsClearRecentApp}" Content="Clear recent apps at session end"/>
                                         </StackPanel>
                                     </Border>
                                     <Border Classes="settings-card">
@@ -326,16 +325,17 @@
                                 <StackPanel Spacing="14" Margin="0,0,14,14">
                                     <Border Classes="settings-card">
                                         <StackPanel Spacing="12">
-                                            <TextBlock Classes="settings-heading" Text="Before the run"/>
-                                            <CheckBox IsChecked="{Binding ClearCacheFBBeforeOpen}" Content="Clear Facebook cache before opening"/>
+                                            <TextBlock Classes="settings-heading" Text="Before run"/>
+                                            <CheckBox IsChecked="{Binding ClearCacheFBBeforeOpen}" Content="Clear Facebook cache"/>
                                         </StackPanel>
                                     </Border>
                                     <Border Classes="settings-card">
                                         <StackPanel Spacing="12">
-                                            <TextBlock Classes="settings-heading" Text="After the run"/>
-                                            <CheckBox IsChecked="{Binding SwitchToProfileAfterPost}" Content="Return to the personal profile"/>
-                                            <CheckBox IsChecked="{Binding CloseLDAfterAction}" Content="Close LDPlayer when finished"/>
-                                            <CheckBox IsChecked="{Binding SleepPcAfterActionDone}" Content="Sleep the PC when finished"/>
+                                            <TextBlock Classes="settings-heading" Text="After run"/>
+                                            <CheckBox IsChecked="{Binding SwitchToProfileAfterPost}" Content="Return to profile" ToolTip.Tip="Switch back to the personal profile after the run."/>
+                                            <CheckBox IsChecked="{Binding IsClearRecentApp}" Content="Clear Facebook App" ToolTip.Tip="Stop Facebook and clear recent apps after the run. Login and app data are kept."/>
+                                            <CheckBox IsChecked="{Binding CloseLDAfterAction}" Content="Close LDPlayer"/>
+                                            <CheckBox IsChecked="{Binding SleepPcAfterActionDone}" Content="Sleep PC"/>
                                         </StackPanel>
                                     </Border>
                                     <Border Classes="settings-card">

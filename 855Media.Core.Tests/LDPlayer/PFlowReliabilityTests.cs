@@ -233,7 +233,14 @@ public sealed partial class PFlowTests
                 default
             )
         );
-        Assert.Equal(PFlowState.Unknown, job.State);
+        Assert.Equal(PFlowState.Failed, job.State);
+        Assert.Equal(error, job.Error);
+        Assert.Equal(error, job.PublicationErrorMessage);
+        Assert.Equal("text", job.PublicationErrorAttribute);
+        Assert.True(job.HasFacebookPublicationFailure);
+        Assert.True(job.RequiresPublicationReviewBeforeCleanup);
+        Assert.False(job.CanRetry);
+        Assert.StartsWith("Failed: " + error, PFlowDispatchQueueStore.HistoryStatus(job));
         Assert.Equal(1, fake.ShareTaps);
         Assert.Equal(0, fake.Deletes);
         Assert.True(File.Exists(job.SourcePath));

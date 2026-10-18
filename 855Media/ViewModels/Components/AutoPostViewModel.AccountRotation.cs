@@ -23,14 +23,11 @@ public partial class AutoPostViewModel
                 .Concat(_pFlowJobs)
                 .Any(j =>
                     j.DeviceIndex == index
-                    && j.State
-                        is PFlowState.Unknown
-                            or PFlowState.SubmitRequested
-                            or PFlowState.Submitted
+                    && j.State is PFlowState.SubmitRequested or PFlowState.Submitted
                 )
         )
             throw new InvalidOperationException(
-                "Publication needs review; this LD cannot change accounts or continue tasks."
+                "Publication is still being monitored; this LD cannot change accounts yet."
             );
         if (new ScreenTimeHistoryStore().NeedsReview(index))
             throw new InvalidOperationException(

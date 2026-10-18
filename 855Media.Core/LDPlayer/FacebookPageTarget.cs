@@ -28,6 +28,7 @@ public partial class FacebookPageTarget
 
     // Root cache is a candidate only. False blocks posting until a live Page switch succeeds.
     public bool? LivePageAccessVerified { get; set; }
+    public string PageAccessIssue { get; set; } = "";
 
     public string DeviceName { get; set; } = string.Empty;
     public string AppClone { get; set; } = "FB-01";
@@ -477,6 +478,7 @@ public class FacebookPageInfo
 {
     public string ProfilePictureUrl { get; set; } = string.Empty;
     public bool? LivePageAccessVerified { get; set; }
+    public string PageAccessIssue { get; set; } = "";
     public string PageId { get; set; } = string.Empty;
     public string PersonaUid { get; set; } = string.Empty;
     public string UserUid { get; set; } = string.Empty;

@@ -9,6 +9,38 @@ namespace _855Media.Core.Tests.LDPlayer;
 public sealed partial class PFlowTests
 {
     [Fact]
+    public async Task CopyrightScanWaitsForActualPublicationBeforeConfirmation()
+    {
+        var job = await Job();
+        var ld = FakeLd.Create(job);
+        var device = (FakeLd)(object)ld;
+        device.NotificationSuccess = true;
+        device.PostShareSequence.Enqueue(
+            "<hierarchy><node package='com.facebook.katana' text='Running copyright scan...'/><node text='Keep Facebook open.'/><node text='Reel published'/></hierarchy>"
+        );
+        device.PostShareXml =
+            "<hierarchy><node package='com.facebook.katana' text='Your reel has been published!'/></hierarchy>";
+        var observedWaiting = false;
+        await new PFlowRunner(ld, _store, confirmationTimeout: TimeSpan.FromSeconds(4)).RunAsync(
+            job,
+            _ => Task.FromResult(true),
+            step =>
+            {
+                observedWaiting |= step.Contains("copyright scan", StringComparison.Ordinal);
+                if (step.Contains("copyright scan", StringComparison.Ordinal))
+                    Assert.Null(job.ConfirmedUtc);
+                return Task.CompletedTask;
+            },
+            null,
+            CancellationToken.None
+        );
+        Assert.True(observedWaiting);
+        Assert.Equal(PFlowState.Confirmed, job.State);
+        Assert.False(job.ProfilePublicationCheckRequired);
+        Assert.Equal(1, device.ShareTaps);
+    }
+
+    [Fact]
     public async Task PublicationFailureTakesPrecedenceOverSuccessText()
     {
         var job = await Job();
@@ -23,7 +55,8 @@ public sealed partial class PFlowTests
             null,
             CancellationToken.None
         );
-        Assert.Equal(PFlowState.Unknown, job.State);
+        Assert.Equal(PFlowState.Failed, job.State);
+        Assert.Equal("Upload failed", job.Error);
         Assert.Null(job.ConfirmedUtc);
         Assert.Equal(0, device.Deletes);
         Assert.Equal(1, device.ShareTaps);

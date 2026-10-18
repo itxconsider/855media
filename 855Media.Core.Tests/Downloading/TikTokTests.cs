@@ -10,6 +10,94 @@ namespace _855Media.Core.Tests.Downloading;
 
 public class TikTokTests
 {
+    [Fact]
+    public void ProfileChallenge_SolvesProofAndPreservesPayload()
+    {
+        var seed = System.Text.Encoding.UTF8.GetBytes("fixture-seed");
+        var expected = System.Security.Cryptography.SHA256.HashData(
+            seed.Concat(System.Text.Encoding.ASCII.GetBytes("42")).ToArray()
+        );
+        var payload = System.Text.Json.JsonSerializer.Serialize(
+            new
+            {
+                v = new { a = Convert.ToBase64String(seed), c = Convert.ToBase64String(expected) },
+                s = "fixture-signature",
+            }
+        );
+        var html =
+            "<p id=\"cs\" class=\""
+            + Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(payload)).TrimEnd('=')
+            + "\"></p>";
+        var solved = TikTokQueryResolver.SolveProfileChallenge(html);
+        using var result = System.Text.Json.JsonDocument.Parse(Convert.FromBase64String(solved!));
+        Assert.Equal("NDI=", result.RootElement.GetProperty("d").GetString());
+        Assert.Equal("fixture-signature", result.RootElement.GetProperty("s").GetString());
+        Assert.Null(TikTokQueryResolver.SolveProfileChallenge("<html>no challenge</html>"));
+    }
+
+    [Fact]
+    public void ProfileId_UsesRequestedCreatorInsteadOfRecommendation()
+    {
+        var id = "MS4wLjABAAAA" + new string('a', 64);
+        var html =
+            "<script id=\"__UNIVERSAL_DATA_FOR_REHYDRATION__\">"
+            + "{\"recommendation\":{\"secUid\":\"wrong\"},\"__DEFAULT_SCOPE__\":{\"webapp.user-detail\":{\"userInfo\":{\"user\":{\"uniqueId\":\"creator\",\"secUid\":\""
+            + id
+            + "\"}}}}}</script>";
+        Assert.Equal(id, TikTokQueryResolver.ExtractProfileId(html, "creator"));
+        Assert.Null(TikTokQueryResolver.ExtractProfileId(html, "other"));
+    }
+
+    [Theory]
+    [InlineData("ERROR: [tiktok:user] creator: Unable to extract secondary user ID.", true)]
+    [InlineData("ERROR: [tiktok] video unavailable", false)]
+    [InlineData("ERROR: Unable to extract secondary user ID.", false)]
+    public void ProfileLookupError_IsIdentified(string message, bool expected) =>
+        Assert.Equal(expected, TikTokQueryResolver.IsProfileLookupError(message));
+
+    [Fact]
+    public void TikTokJsonCookies_DoNotReachYouTubeCookieContainer()
+    {
+        var cookies = new[]
+        {
+            new System.Net.Cookie(
+                "tiktok_json",
+                "{\"enable_itp_optimization\":24}",
+                "/",
+                ".tiktok.com"
+            ),
+            new System.Net.Cookie("youtube_auth", "fixture", "/", ".youtube.com"),
+            new System.Net.Cookie("google_auth", "fixture", "/", "accounts.google.com"),
+            new System.Net.Cookie("unrelated", "fixture", "/", "notyoutube.com"),
+        };
+
+        var youtubeCookies = _855Media.Core.Utils.CookieUtils.GetYouTubeCookies(cookies);
+        Assert.Equal(2, youtubeCookies.Count);
+        Assert.DoesNotContain(
+            youtubeCookies,
+            c => c.Name == "tiktok_json" || c.Name == "unrelated"
+        );
+        using var resolver = new QueryResolver(cookies);
+        using var downloader = new VideoDownloader(cookies);
+    }
+
+    [Fact]
+    public void CookieUtils_ParseNetscapeCookies_AcceptsPastedTextAndEmptyValues()
+    {
+        var cookies = _855Media.Core.Utils.CookieUtils.ParseNetscapeCookies(
+            "# Netscape HTTP Cookie File\r\n"
+                + ".tiktok.com\tTRUE\t/\tTRUE\t0\tsessionid\tfixture\r\n"
+                + "www.tiktok.com\tFALSE\t/\tFALSE\t0\tempty\t\r\n"
+                + "invalid row\r\n"
+        );
+
+        Assert.Equal(2, cookies.Count);
+        Assert.Equal(".tiktok.com", cookies[0].Domain);
+        Assert.Equal("www.tiktok.com", cookies[1].Domain);
+        Assert.Equal("", cookies[1].Value);
+        Assert.Equal(DateTime.MinValue, cookies[0].Expires);
+    }
+
     [Theory]
     [InlineData("https://www.tiktok.com/shortdrama/episode/7684420063587292161/", true)]
     [InlineData("https://www.tiktok.com/shortdrama/episode/7684420063587292161/1", true)]
@@ -151,7 +239,7 @@ public class TikTokTests
             );
             Assert.Equal("fixture_cookie", cookie.Name);
             Assert.Equal("fixture_value", cookie.Value);
-            Assert.Equal("example.test", cookie.Domain);
+            Assert.Equal(".example.test", cookie.Domain);
             Assert.Equal("/", cookie.Path);
             Assert.True(cookie.Secure);
             Assert.True(cookie.HttpOnly);

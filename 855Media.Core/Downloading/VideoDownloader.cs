@@ -19,7 +19,10 @@ namespace _855Media.Core.Downloading;
 
 public class VideoDownloader(IReadOnlyList<Cookie>? initialCookies = null) : IDisposable
 {
-    private readonly YoutubeClient _youtube = new(Http.Client, initialCookies ?? []);
+    private readonly YoutubeClient _youtube = new(
+        Http.Client,
+        CookieUtils.GetYouTubeCookies(initialCookies)
+    );
     private readonly IReadOnlyList<Cookie>? _cookies = initialCookies;
 
     public async Task<IReadOnlyList<VideoDownloadOption>> GetDownloadOptionsAsync(

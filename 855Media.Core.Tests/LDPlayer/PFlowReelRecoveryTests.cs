@@ -119,7 +119,7 @@ public class PFlowReelRecoveryTests
     }
 
     [Fact]
-    public async Task RecordedNonClickableDisabledShareWaitsThenBecomesReadyWithoutScrolling()
+    public async Task RecordedNonClickableDisabledShareScrollsOnceThenBecomesReady()
     {
         var ld = DispatchProxy.Create<ILDPlayerService, RecoveryDevice>();
         var device = (RecoveryDevice)(object)ld;
@@ -140,7 +140,8 @@ public class PFlowReelRecoveryTests
             (_, _) => Task.CompletedTask
         );
         Assert.NotNull(PFlowAutoPostService.FindVisiblePublishControl(ready, ["Share now"]));
-        Assert.Equal(0, device.Swipes + device.Taps);
+        Assert.Equal(1, device.Swipes);
+        Assert.Equal(0, device.Taps);
         Assert.Equal(2, device.Reads);
     }
 
@@ -152,6 +153,7 @@ public class PFlowReelRecoveryTests
         device.StaysDisabled = true;
         device.DisabledXml = Fixture("ld56-reel-settings-disabled-share");
         var clock = DateTime.UtcNow;
+        var started = clock;
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             new PFlowAutoPostService(ld).PrepareComposerReadinessAsync(
                 new PFlowJob { DeviceIndex = 999 },
@@ -169,7 +171,72 @@ public class PFlowReelRecoveryTests
             )
         );
         Assert.Contains("visible but disabled", error.Message);
-        Assert.Equal(0, device.Swipes + device.Taps);
+        Assert.Contains("180 seconds", error.Message);
+        Assert.Equal(PFlowAutoPostService.DisabledPublishWait, clock - started);
+        Assert.Equal(1, device.Swipes);
+        Assert.Equal(0, device.Taps);
+    }
+
+    [Fact]
+    public async Task DisabledShareCanBecomeReadyAfterTheOldThirtySecondLimit()
+    {
+        var ld = DispatchProxy.Create<ILDPlayerService, RecoveryDevice>();
+        var device = (RecoveryDevice)(object)ld;
+        device.DisabledXml = Fixture("ld56-reel-settings-disabled-share");
+        device.EnableAfterReads = 90;
+        var started = DateTime.UtcNow;
+        var clock = started;
+        var ready = await new PFlowAutoPostService(ld).PrepareComposerReadinessAsync(
+            new PFlowJob { DeviceIndex = 999 },
+            device.DisabledXml,
+            ["Share now"],
+            _ => Task.FromResult(true),
+            null,
+            default,
+            (duration, _) =>
+            {
+                clock += duration;
+                return Task.CompletedTask;
+            },
+            () => clock
+        );
+        Assert.Equal(TimeSpan.FromSeconds(45), clock - started);
+        Assert.NotNull(PFlowAutoPostService.FindVisiblePublishControl(ready, ["Share now"]));
+        Assert.Equal(1, device.Swipes);
+        Assert.Equal(0, device.Taps);
+    }
+
+    [Fact]
+    public async Task DisabledShareWaitRemainsCancellableAfterThirtySeconds()
+    {
+        var ld = DispatchProxy.Create<ILDPlayerService, RecoveryDevice>();
+        var device = (RecoveryDevice)(object)ld;
+        device.DisabledXml = Fixture("ld56-reel-settings-disabled-share");
+        device.StaysDisabled = true;
+        var started = DateTime.UtcNow;
+        var clock = started;
+        using var cancellation = new CancellationTokenSource();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            new PFlowAutoPostService(ld).PrepareComposerReadinessAsync(
+                new PFlowJob { DeviceIndex = 999 },
+                device.DisabledXml,
+                ["Share now"],
+                _ => Task.FromResult(true),
+                null,
+                cancellation.Token,
+                (duration, _) =>
+                {
+                    clock += duration;
+                    if (clock - started >= TimeSpan.FromSeconds(45))
+                        cancellation.Cancel();
+                    return Task.CompletedTask;
+                },
+                () => clock
+            )
+        );
+        Assert.Equal(TimeSpan.FromSeconds(45), clock - started);
+        Assert.Equal(1, device.Swipes);
+        Assert.Equal(0, device.Taps);
     }
 
     public class RecoveryDevice : DispatchProxy
@@ -178,6 +245,7 @@ public class PFlowReelRecoveryTests
             Taps,
             Reads;
         public bool StaysDisabled;
+        public int EnableAfterReads = 2;
         public string DisabledXml = "";
 
         protected override object? Invoke(MethodInfo? method, object?[]? args)
@@ -192,7 +260,7 @@ public class PFlowReelRecoveryTests
                     throw new Exception("Recovery/readiness must not tap");
                 case "DumpUiHierarchyAsync":
                     Reads++;
-                    if (Reads < 2 || StaysDisabled)
+                    if (Reads < EnableAfterReads || StaysDisabled)
                         return Task.FromResult<string?>(DisabledXml);
                     var doc = XDocument.Parse(DisabledXml);
                     foreach (

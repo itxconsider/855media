@@ -9,6 +9,8 @@ namespace _855Media.Core.LDPlayer;
 
 public partial class PFlowAutoPostService
 {
+    internal static readonly TimeSpan DisabledPublishWait = TimeSpan.FromMinutes(3);
+
     private static (int Width, int Height) ComposerViewport(string? xml)
     {
         // Offscreen descendants can extend past the actual window bounds.
@@ -87,10 +89,34 @@ public partial class PFlowAutoPostService
                 var bottom = int.Parse(bounds.Groups[4].Value);
                 if (right <= left || bottom <= top)
                     continue;
-                var x = (left + right) / 2;
-                var y = (top + bottom) / 2;
-                if (x > 0 && y > 0 && (width <= 0 || x < width) && (height <= 0 || y < height))
+                // Seeing the center is insufficient: a partly offscreen button
+                // must be revealed before either waiting on it or tapping it.
+                var fullyVisible =
+                    left >= 0
+                    && top >= 0
+                    && (width <= 0 || right <= width)
+                    && (height <= 0 || bottom <= height);
+                foreach (
+                    var viewport in button
+                        .Ancestors("node")
+                        .Where(n => n.Attribute("scrollable")?.Value == "true")
+                )
+                {
+                    var clip = Regex.Match(
+                        viewport.Attribute("bounds")?.Value ?? "",
+                        @"^\[(\d+),(\d+)\]\[(\d+),(\d+)\]$"
+                    );
+                    if (clip.Success)
+                        fullyVisible &=
+                            left >= int.Parse(clip.Groups[1].Value)
+                            && top >= int.Parse(clip.Groups[2].Value)
+                            && right <= int.Parse(clip.Groups[3].Value)
+                            && bottom <= int.Parse(clip.Groups[4].Value);
+                }
+                if (fullyVisible)
                     return button;
+                // Do not replace an obscured button with its larger clickable wrapper.
+                break;
             }
         }
         return null;
@@ -175,21 +201,22 @@ public partial class PFlowAutoPostService
                 ct
             );
         }
-        var until = now().AddSeconds(30);
+        var discoveryUntil = now().AddSeconds(30);
+        DateTime? disabledUntil = null;
         var disabledLogged = false;
+        var disabledScrollDone = false;
         var publishScrolls = 0;
         while (FindVisiblePublishControl(xml, publishLabels) == null)
         {
             await CheckContext();
-            if (now() >= until)
-                throw new InvalidOperationException(
-                    FindVisiblePublishControl(xml, publishLabels, requireEnabled: false) != null
-                        ? "Publish control remained visible but disabled for 30 seconds; no Share tap was made."
-                        : "Publish control was not visible before the readiness timeout; no Share tap was made."
-                );
-            // A visible but disabled button needs loading time, not more scrolling.
+            // Reveal missing controls; for a visible disabled control, make one
+            // bounded scroll/recheck before waiting for preparation to complete.
             if (FindVisiblePublishControl(xml, publishLabels, requireEnabled: false) == null)
             {
+                if (now() >= discoveryUntil)
+                    throw new InvalidOperationException(
+                        "Publish control was not visible before the readiness timeout; no Share tap was made."
+                    );
                 if (publishScrolls++ >= 6)
                     throw new InvalidOperationException(
                         "Publish control was not found after scrolling; no Share tap was made."
@@ -198,13 +225,26 @@ public partial class PFlowAutoPostService
             }
             else
             {
+                // Give media preparation its own budget from the first observed
+                // disabled control, separate from searching for an offscreen button.
+                disabledUntil ??= now().Add(DisabledPublishWait);
+                if (now() >= disabledUntil.Value)
+                    throw new InvalidOperationException(
+                        $"Publish control remained visible but disabled for {DisabledPublishWait.TotalSeconds:0} seconds; no Share tap was made."
+                    );
+                if (!disabledScrollDone)
+                {
+                    disabledScrollDone = true;
+                    await Scroll(true, "composer.publish.disabled-scroll");
+                    continue;
+                }
                 if (!disabledLogged)
                 {
                     disabledLogged = true;
                     await PFlowTrace.SessionAsync(
                         job.DeviceIndex,
                         "composer.publish.wait",
-                        "visible=true; enabled=false; scrollingPaused=true",
+                        $"visible=true; enabled=false; scrollingPaused=true; timeoutSeconds={DisabledPublishWait.TotalSeconds:0}",
                         ct
                     );
                 }

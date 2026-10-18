@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -9,6 +9,68 @@ namespace _855Media.ViewModels.Components;
 
 public partial class AutoPostViewModel
 {
+    private async Task FetchDelayAsync(
+        LDInstanceItemViewModel worker,
+        int seconds,
+        string reason,
+        CancellationToken ct
+    )
+    {
+        if (seconds <= 0)
+            return;
+        await ReportFetchProgressAsync(worker, reason, $"{worker.Name}: {reason} ({seconds}s).");
+        await Task.Delay(TimeSpan.FromSeconds(seconds), ct);
+    }
+
+    private async Task PrepareFetchStartupAsync(
+        LDInstanceItemViewModel worker,
+        CancellationToken ct
+    )
+    {
+        var instance = (await _ldPlayerService.GetInstancesAsync(LdFolder, ct)).Single(i =>
+            i.Index == worker.Index
+        );
+        if (!instance.IsAndroidStarted)
+        {
+            await _bootGate.WaitAsync(ct);
+            try
+            {
+                if (!await _ldPlayerService.LaunchInstanceAsync(worker.Index, LdFolder, ct))
+                    throw new InvalidOperationException("Assigned LD did not start.");
+                await FetchDelayAsync(worker, DelayOpenEachLD, "Between LD starts", ct);
+            }
+            finally
+            {
+                _bootGate.Release();
+            }
+            if (
+                !await _ldPlayerService.WaitForBootCompletedAsync(
+                    worker.Index,
+                    TimeSpan.FromSeconds(90),
+                    LdFolder,
+                    ct
+                )
+            )
+                throw new InvalidOperationException("Android boot timed out.");
+            await FetchDelayAsync(worker, DelayAfterOpenLD, "After LD opens", ct);
+        }
+        await PrepareFetchFacebookAsync(worker, ct);
+    }
+
+    private async Task PrepareFetchFacebookAsync(
+        LDInstanceItemViewModel worker,
+        CancellationToken ct
+    )
+    {
+        await ArrangeFetchWindowsAsync(ct);
+        await RequireAccountTransitionIdleAsync(worker.Index, ct);
+        if (
+            ClearCacheFBBeforeOpen
+            && !await _ldPlayerService.ClearFacebookCacheAsync(worker.Index, LdFolder, ct)
+        )
+            throw new InvalidOperationException("Facebook cache could not be cleared.");
+    }
+
     private async Task<bool> FetchMappedAccountsAsync(
         LDInstanceItemViewModel worker,
         PFlowPersonalAccount[] accounts,
@@ -48,6 +110,7 @@ public partial class AutoPostViewModel
         var attemptedPages = 0;
         try
         {
+            await PrepareFetchStartupAsync(worker, ct);
             foreach (var account in selected)
             {
                 async Task Progress(string step) =>
@@ -56,11 +119,10 @@ public partial class AutoPostViewModel
                         "Account " + account.Binding.OwnerUid,
                         worker.Name + ": " + step
                     );
-                await new PFlowSessionPreparation(_ldPlayerService, LdFolder).PrepareAsync(
-                    account.Binding,
-                    Progress,
-                    ct
-                );
+                await new PFlowSessionPreparation(_ldPlayerService, LdFolder)
+                {
+                    AppOpenDelay = TimeSpan.FromSeconds(Math.Max(0, DelayOpenApp)),
+                }.PrepareAsync(account.Binding, Progress, ct);
                 await service.EnsureAsync(account, Progress, ct, deviceLeaseAlreadyHeld: true);
                 var root = await _ldPlayerService.ExtractFacebookAccountsFromRootShellAsync(
                     worker.Index,
@@ -195,7 +257,9 @@ public partial class AutoPostViewModel
             // Keep authentication challenges and failed observations visible for user action.
             if (completed)
             {
-                using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+                using var cleanup = new CancellationTokenSource(
+                    TimeSpan.FromSeconds(Math.Max(0, DelayBeforeCloseLD) + 30)
+                );
                 await RequireAccountTransitionIdleAsync(worker.Index, cleanup.Token);
                 if (IsClearRecentApp)
                     await PFlowSession.ClearAppsAsync(
@@ -205,7 +269,15 @@ public partial class AutoPostViewModel
                         cleanup.Token
                     );
                 if (autoCloseIfBooted && (!wasRunning || CloseLDAfterAction))
+                {
+                    await FetchDelayAsync(
+                        worker,
+                        DelayBeforeCloseLD,
+                        "Before closing LD",
+                        cleanup.Token
+                    );
                     await _ldPlayerService.QuitInstanceAsync(worker.Index, LdFolder, cleanup.Token);
+                }
             }
         }
     }

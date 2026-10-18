@@ -549,6 +549,23 @@ public partial class DashboardViewModel : ViewModelBase
                     download.DownloadPreference
                 );
             }
+            else if (download.Video?.Source == VideoSource.Instagram)
+            {
+                var container =
+                    download.DownloadOption?.Container
+                    ?? download.DownloadPreference?.PreferredContainer
+                    ?? YoutubeExplode.Videos.Streams.Container.Mp4;
+                await new InstagramDownloader(_settingsService.LastAuthCookies).DownloadVideoAsync(
+                    download.FilePath!,
+                    download.Video,
+                    container,
+                    download.DownloadOption,
+                    _settingsService.FFmpegFilePath,
+                    download.Progress.Merge(progress),
+                    download.CancellationToken,
+                    download.DownloadPreference
+                );
+            }
             else if (download.Video?.Source == VideoSource.DramaBox)
             {
                 var container =
@@ -978,6 +995,10 @@ public partial class DashboardViewModel : ViewModelBase
 
     private async Task<IReadOnlyList<VideoDownloadOption>> GetDownloadOptionsAsync(VideoInfo video)
     {
+        // An Instagram carousel entry must keep its selected media index during download.
+        if (video.Source == VideoSource.Instagram)
+            return YtDlp.GetDefaultOptions();
+
         if (video.Source == VideoSource.YouTube && video.YoutubeVideo is { } youtubeVideo)
         {
             using var downloader = new VideoDownloader(_settingsService.LastAuthCookies);

@@ -206,11 +206,18 @@
 
         <!--  Tooltip  -->
         <Style Selector="ToolTip">
+            <Setter Property="Background" Value="{DynamicResource AntigravityElevatedBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource AntigravityTextBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource AntigravityBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
             <Setter Property="TextElement.FontFamily" Value="{DynamicResource AppFontFamily}" />
             <Setter Property="TextElement.FontSize" Value="14" />
             <Setter Property="TextElement.FontWeight" Value="Normal" />
             <Setter Property="TextElement.FontStyle" Value="Normal" />
             <Setter Property="TextElement.FontStretch" Value="Normal" />
+        </Style>
+        <Style Selector="ToolTip TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource AntigravityTextBrush}" />
         </Style>
 
         <!--  Flyout presenter  -->

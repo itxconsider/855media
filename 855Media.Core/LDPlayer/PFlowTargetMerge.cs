@@ -20,6 +20,13 @@ public static class PFlowTargetMerge
             );
         var result = saved.CreateSnapshot();
         result.LivePageAccessVerified = incoming.LivePageAccessVerified;
+        result.PageAccessIssue = PFlowPageAccessReconciliation.ResultIssue(
+            incoming.LivePageAccessVerified == true,
+            incoming.PageAccessIssue == PFlowPageAccessReconciliation.Unavailable
+                ? incoming.PageAccessIssue
+                : saved.PageAccessIssue,
+            null
+        );
         if (result.LivePageAccessVerified == false)
             result.IsSelected = false;
         string Prefer(string current, string previous) =>

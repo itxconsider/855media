@@ -8,9 +8,6 @@ namespace _855Media.Core.LDPlayer;
 
 public static class PFlowPageIdentityRestriction
 {
-    public static bool StopsWorker(PFlowJob job) =>
-        job.State == PFlowState.Unknown && !job.TargetIdentityConfirmationRequired;
-
     public static async System.Threading.Tasks.Task<bool> DismissAsync(
         ILDPlayerService ld,
         int device,

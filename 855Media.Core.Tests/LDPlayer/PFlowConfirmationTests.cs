@@ -12,6 +12,25 @@ namespace _855Media.Core.Tests.LDPlayer;
 public class PFlowConfirmationTests
 {
     [Theory]
+    [InlineData("Running copyright scan…", true)]
+    [InlineData("Running copyright scan...", true)]
+    [InlineData("Checking for copyright", true)]
+    [InlineData("Processing your reel", true)]
+    [InlineData("Your reel has been published", false)]
+    public void CopyrightAndProcessingArePendingPublication(string text, bool expected)
+    {
+        var node = new System.Xml.Linq.XElement(
+            "node",
+            new System.Xml.Linq.XAttribute("text", text),
+            new System.Xml.Linq.XAttribute("package", "com.facebook.katana")
+        );
+        var root = new System.Xml.Linq.XElement("hierarchy", node);
+        Assert.Equal(expected, PFlowConfirmation.HasPendingPublication(root.ToString()));
+        node.SetAttributeValue("visible-to-user", "false");
+        Assert.False(PFlowConfirmation.HasPendingPublication(root.ToString()));
+    }
+
+    [Theory]
     [InlineData("Your reel has been published!", "Reel", true)]
     [InlineData(" Your reel\nwas successfully published. ", "Reel", true)]
     [InlineData("Your reel is now live", "Reel", true)]

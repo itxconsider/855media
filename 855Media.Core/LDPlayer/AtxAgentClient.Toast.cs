@@ -27,7 +27,7 @@ public partial class AtxAgentClient
                         jsonrpc = "2.0",
                         id = Guid.NewGuid().ToString("N"),
                         method,
-                        @params = legacy ? new object[] { 10000 } : Array.Empty<object>(),
+                        @params = legacy ? [10000] : Array.Empty<object>(),
                     }
                 ),
                 Encoding.UTF8,

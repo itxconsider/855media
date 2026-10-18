@@ -222,7 +222,7 @@ public sealed class PFlowHistoryWindow : Window
     private sealed record Row(PFlowJob Job)
     {
         public override string ToString() =>
-            $"{Job.CreatedUtc.ToLocalTime():yyyy-MM-dd HH:mm}  LD-{Job.DeviceIndex}  {Job.TargetName}  {Job.PostType}  {System.IO.Path.GetFileName(Job.SourcePath)}  — {(Job.TargetIdentityConfirmationRequired ? "Page phone verification required" : Job.RequiresPublicationReviewBeforeCleanup ? "Needs publication review" : Job.State.ToString())}";
+            $"{Job.CreatedUtc.ToLocalTime():yyyy-MM-dd HH:mm}  LD-{Job.DeviceIndex}  {Job.TargetName}  {Job.PostType}  {System.IO.Path.GetFileName(Job.SourcePath)}  — {(Job.TargetIdentityConfirmationRequired ? "Page phone verification required" : Job.HasFacebookPublicationFailure ? "Failed: " + Job.Error : Job.RequiresPublicationReviewBeforeCleanup ? "Needs publication review" : Job.State.ToString())}";
     }
 
     private Row[] VisibleRows() => _list.ItemsSource?.Cast<Row>().ToArray() ?? [];
@@ -248,7 +248,26 @@ public sealed class PFlowHistoryWindow : Window
         _details.Text =
             $"Job: {job.JobId}\nState: {job.State}; last step: {job.CurrentStep}\nSubmitted: {job.SubmittedUtc?.ToLocalTime():yyyy-MM-dd HH:mm:ss}; confirmed: {job.ConfirmedUtc?.ToLocalTime():yyyy-MM-dd HH:mm:ss}"
             + $"\nTarget: {job.TargetId} / owner {job.OwnerUid}\nSource: {job.SourcePath}\nSHA-256: {job.Sha256}\nCaption: {job.Caption}\nPost link: {job.PostUrl}\nEvidence: {job.Evidence}\nError: {job.Error}"
-            + $"\nBackup: {job.BackupState}; local: {job.LocalDeleteState}; remote: {job.RemoteCleanupState}";
+            + $"\nBackup: {job.BackupState}; local: {job.LocalDeleteState}; remote: {job.RemoteCleanupState}"
+            + $"\nPublication stage: {job.PublicationStage} � {job.PublicationStageEvidence}"
+            + (
+                job.PublicationTransitions.Count == 0
+                    ? ""
+                    : "\nPublication timeline:\n"
+                        + string.Join(
+                            "\n",
+                            job.PublicationTransitions.Select(
+                                (transition, index) =>
+                                {
+                                    var ended =
+                                        index + 1 < job.PublicationTransitions.Count
+                                            ? job.PublicationTransitions[index + 1].StartedUtc
+                                            : job.UpdatedUtc;
+                                    return $"{transition.StartedUtc.ToLocalTime():HH:mm:ss}  {transition.Stage}  ({Math.Max(0, (ended - transition.StartedUtc).TotalSeconds):F1}s) � {transition.Signal}";
+                                }
+                            )
+                        )
+            );
     }
 
     private void Filter()
@@ -348,6 +367,8 @@ public sealed class PFlowHistoryWindow : Window
                 publicationUtc
             );
             await RefreshAsync();
+            if (_filesChanged != null)
+                await _filesChanged();
             _status.Text =
                 $"Reviewed {count} posts as {(confirmed ? "Published" : "Not published")}; skipped {selected.Length - count} resolved rows. Files were not deleted.";
         }

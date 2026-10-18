@@ -445,8 +445,8 @@ public static partial class FacebookLayoutRegistry
     private static bool MatchesMenuName(BloksElement element, string label) =>
         new[] { element.Text, element.ContentDesc }.Any(value =>
             string.Equals(
-                Regex.Replace(value ?? "", @"\s+", " ").Trim(),
-                Regex.Replace(label, @"\s+", " ").Trim(),
+                Regex.Replace(Regex.Replace(value ?? "", @"\s+", " ").Trim(), @"\s+,", ","),
+                Regex.Replace(Regex.Replace(label, @"\s+", " ").Trim(), @"\s+,", ","),
                 StringComparison.OrdinalIgnoreCase
             )
         );

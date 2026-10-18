@@ -108,6 +108,7 @@ public sealed partial class PFlowHistoryStore
                 if (
                     prior.State == PFlowState.Confirmed
                         && prior.ConfirmedUtc?.ToLocalTime().Date == DateTime.Today
+                    || prior.State == PFlowState.Failed && prior.MayHaveSubmitted
                     || prior.State
                         is PFlowState.Unknown
                             or PFlowState.SubmitRequested
@@ -220,7 +221,7 @@ public sealed partial class PFlowHistoryStore
                 var record = JsonSerializer.Deserialize<PFlowJob>(reader.GetString(2))!;
                 if (record.State == PFlowState.Failed)
                 {
-                    if (!record.CanRetry)
+                    if (!record.CanRetry && !record.HasFacebookPublicationFailure)
                         abandoned.Add(record);
                     continue;
                 }
@@ -253,6 +254,12 @@ public sealed partial class PFlowHistoryStore
             job.Error = reportedFailure
                 ? "Earlier run reported an upload error after submission; publication requires review."
                 : "Previous process ended; publication requires reconciliation if submission was possible.";
+            if (job.MayHaveSubmitted)
+                PFlowPublicationTracking.Transition(
+                    job,
+                    PFlowPublicationStage.Unconfirmed,
+                    "Previous process ended before publication could be reconciled"
+                );
             await SaveAsync(job, ct);
         }
     }
@@ -325,7 +332,7 @@ public static class PFlowTrace
             Directory.CreateDirectory(Path.GetDirectoryName(PathName)!);
             await File.AppendAllTextAsync(
                 PathName,
-                $"{DateTimeOffset.Now:O} job={job.JobId} batch={job.BatchId} LD-{job.DeviceIndex} target={job.TargetId} state={job.State} step={job.CurrentStep} stepSeconds={(job.UpdatedUtc - job.StepStartedUtc).TotalSeconds:F1} totalSeconds={(job.UpdatedUtc - job.CreatedUtc).TotalSeconds:F1} backup={job.BackupState} local={job.LocalDeleteState} remote={job.RemoteCleanupState} error={job.Error.Replace('\n', ' ').Replace('\r', ' ')}{Environment.NewLine}",
+                $"{DateTimeOffset.Now:O} job={job.JobId} batch={job.BatchId} LD-{job.DeviceIndex} target={job.TargetId} state={job.State} publicationStage={job.PublicationStage} publicationStageSeconds={(job.PublicationStageStartedUtc.HasValue ? (job.UpdatedUtc - job.PublicationStageStartedUtc.Value).TotalSeconds : 0):F1} publicationSignal={job.PublicationStageEvidence} step={job.CurrentStep} stepSeconds={(job.UpdatedUtc - job.StepStartedUtc).TotalSeconds:F1} totalSeconds={(job.UpdatedUtc - job.CreatedUtc).TotalSeconds:F1} backup={job.BackupState} local={job.LocalDeleteState} remote={job.RemoteCleanupState} error={job.Error.Replace('\n', ' ').Replace('\r', ' ')}{Environment.NewLine}",
                 ct
             );
         }

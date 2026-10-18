@@ -3,10 +3,13 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
+using System.Net;
 using System.Threading.Tasks;
 using _855Media.Core.Audio;
 using _855Media.Core.LDPlayer;
 using _855Media.Core.Licensing;
+using _855Media.Core.Utils;
 using _855Media.Framework;
 using _855Media.Localization;
 using _855Media.Services;
@@ -225,6 +228,53 @@ public partial class SettingsViewModel : DialogViewModelBase
     {
         get => _settingsService.IsAuthPersisted;
         set => _settingsService.IsAuthPersisted = value;
+    }
+
+    private string _tikTokCookieText = "";
+    public string TikTokCookieText
+    {
+        get => _tikTokCookieText;
+        set => SetProperty(ref _tikTokCookieText, value);
+    }
+
+    private string _tikTokCookieStatus = "";
+    public string TikTokCookieStatus
+    {
+        get => _tikTokCookieStatus;
+        private set => SetProperty(ref _tikTokCookieStatus, value);
+    }
+
+    private static bool IsTikTokCookie(Cookie cookie) =>
+        cookie.Domain.TrimStart('.').Equals("tiktok.com", StringComparison.OrdinalIgnoreCase)
+        || cookie.Domain.EndsWith(".tiktok.com", StringComparison.OrdinalIgnoreCase);
+
+    [RelayCommand]
+    private void SaveTikTokCookies()
+    {
+        var parsed = CookieUtils
+            .ParseNetscapeCookies(TikTokCookieText)
+            .Where(IsTikTokCookie)
+            .Where(c => !c.Expired)
+            .ToArray();
+        if (parsed.Length == 0)
+        {
+            TikTokCookieStatus = "Paste unexpired TikTok cookies in Netscape cookies.txt format.";
+            return;
+        }
+
+        var otherCookies = (_settingsService.LastAuthCookies ?? Array.Empty<Cookie>()).Where(c =>
+            !IsTikTokCookie(c)
+        );
+        _settingsService.LastAuthCookies = otherCookies.Concat(parsed).ToArray();
+        _settingsService.Save();
+        TikTokCookieText = "";
+        TikTokCookieStatus =
+            $"Applied {parsed.Length} TikTok cookies. "
+            + (
+                IsAuthPersisted
+                    ? "Saved for future sessions."
+                    : "Enable Remember authentication to keep them after restarting."
+            );
     }
 
     public string? FFmpegFilePath

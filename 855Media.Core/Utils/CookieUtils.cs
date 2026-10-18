@@ -9,6 +9,22 @@ namespace _855Media.Core.Utils;
 
 public static class CookieUtils
 {
+    public static IReadOnlyList<Cookie> GetYouTubeCookies(IReadOnlyList<Cookie>? cookies) =>
+        cookies
+            ?.Where(c =>
+                !c.Expired
+                && (
+                    c.Domain.TrimStart('.')
+                        .Equals("youtube.com", StringComparison.OrdinalIgnoreCase)
+                    || c.Domain.EndsWith(".youtube.com", StringComparison.OrdinalIgnoreCase)
+                    || c.Domain.TrimStart('.')
+                        .Equals("google.com", StringComparison.OrdinalIgnoreCase)
+                    || c.Domain.EndsWith(".google.com", StringComparison.OrdinalIgnoreCase)
+                )
+            )
+            .ToArray()
+        ?? Array.Empty<Cookie>();
+
     /// <summary>
     /// Searches for an existing cookie file among candidate file names across
     /// the current directory, application base directory, up to 4 parent directories of each,
@@ -93,10 +109,23 @@ public static class CookieUtils
 
         try
         {
-            var lines = File.ReadAllLines(filePath, Encoding.UTF8);
+            return ParseNetscapeCookies(File.ReadAllText(filePath, Encoding.UTF8));
+        }
+        catch
+        {
+            return cookies;
+        }
+    }
+
+    public static IReadOnlyList<Cookie> ParseNetscapeCookies(string text)
+    {
+        var cookies = new List<Cookie>();
+        try
+        {
+            var lines = text.Split('\n');
             foreach (var line in lines)
             {
-                var trimmed = line.Trim();
+                var trimmed = line.TrimEnd('\r');
                 if (string.IsNullOrWhiteSpace(trimmed))
                     continue;
 
@@ -127,7 +156,7 @@ public static class CookieUtils
                 if (string.IsNullOrWhiteSpace(name))
                     continue;
 
-                var domain = rawDomain.TrimStart('.');
+                var domain = rawDomain;
                 if (string.IsNullOrWhiteSpace(domain))
                     domain = "tiktok.com";
 

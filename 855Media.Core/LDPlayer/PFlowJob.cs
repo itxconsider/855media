@@ -50,6 +50,13 @@ public sealed class PFlowJob
     public bool NoPublicationVerified { get; set; }
     public bool TargetIdentityConfirmationRequired { get; set; }
     public bool ProfilePublicationCheckRequired { get; set; }
+    public PFlowPublicationStage PublicationStage { get; set; }
+    public DateTime? PublicationStageStartedUtc { get; set; }
+    public string PublicationStageEvidence { get; set; } = "";
+    public string PublicationErrorMessage { get; set; } = "";
+    public string PublicationErrorAttribute { get; set; } = "";
+    public System.Collections.Generic.List<PFlowPublicationTransition> PublicationTransitions { get; set; } =
+    [];
     public string Evidence { get; set; } = "";
     public string IdentityEvidence { get; set; } = "";
 
@@ -97,8 +104,15 @@ public sealed class PFlowJob
         || SubmittedUtc.HasValue && !CanRetry;
 
     [System.Text.Json.Serialization.JsonIgnore]
+    public bool HasFacebookPublicationFailure =>
+        State == PFlowState.Failed
+        && PublicationStage == PFlowPublicationStage.PublicationError
+        && PublicationErrorMessage.Length > 0;
+
+    [System.Text.Json.Serialization.JsonIgnore]
     public bool RequiresPublicationReviewBeforeCleanup =>
         State == PFlowState.Unknown
+        || State == PFlowState.Failed && MayHaveSubmitted
         || State == PFlowState.Confirmed
             && (
                 string.IsNullOrWhiteSpace(Evidence)

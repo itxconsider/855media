@@ -197,7 +197,7 @@
                                 </WrapPanel>
                                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                                     <Button Command="{Binding ShowPFlowHistoryCommand}" Classes="action-btn" Content="History &amp; review" Padding="8,4" FontSize="12" />
-                                    <Button Command="{Binding RetryQueueCommand}" Classes="action-btn" Content="Retry failed / cancelled" IsEnabled="{Binding !IsRunning}" Padding="8,4" FontSize="12" ToolTip.Tip="Requeue retryable jobs using the same files and targets. Review Unknown jobs in History first." />
+                                    <Button Command="{Binding RetryQueueCommand}" Classes="action-btn" Content="Retry failed / cancelled" IsEnabled="{Binding !IsRunning}" Padding="8,4" FontSize="12" ToolTip.Tip="Requeue retryable jobs using the same files and targets. Unknown posts require History review before retrying those posts; other queued posts can continue." />
                                     <Button Command="{Binding ClearTasksCommand}" Classes="action-btn" Content="Clear queue" IsEnabled="{Binding !IsRunning}" Padding="8,4" FontSize="12" />
                                 </StackPanel>
                             </Grid>
@@ -205,11 +205,11 @@
                         <Grid RowDefinitions="Auto,*" Margin="0,8,0,0">
                             <StackPanel Spacing="6" Margin="0,0,0,8">
                                 <Border IsVisible="{Binding PFlowNeedsReview}" Background="{DynamicResource AntigravityElevatedBrush}" Padding="8" CornerRadius="6">
-                                    <TextBlock Text="Publication could not be confirmed. Check the target's posts and record the outcome in History before running this LD again." TextWrapping="Wrap" Foreground="#F59E0B" />
+                                    <TextBlock Text="Publication could not be confirmed. Other queued posts can continue. Check this post and record its outcome in History; its files are retained and automatic reposting is blocked." TextWrapping="Wrap" Foreground="#F59E0B" />
                                 </Border>
                                 <TextBlock IsVisible="{Binding PFlowQueueEmpty}" Text="No queued posts. Open Targets &amp; media to choose targets and prepare the queue." TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" FontSize="12" />
                             </StackPanel>
-                        <DataGrid
+                        <views:PostQueueGrid
                             Grid.Row="1"
                             ItemsSource="{Binding Tasks}"
                             x:Name="PostQueueDataGrid"
@@ -250,7 +250,7 @@
                                 <DataGridTextColumn Header="Page" Binding="{Binding Page}" Width="180" MinWidth="100" FontWeight="SemiBold" />
                                 <DataGridTemplateColumn Header="Current step / outcome" Width="340" MinWidth="240"><DataGridTemplateColumn.CellTemplate><DataTemplate DataType="ld:AutoPostTaskItem"><TextBlock Text="{Binding Status}" ToolTip.Tip="{Binding Status}" TextWrapping="Wrap" Margin="4" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
                             </DataGrid.Columns>
-                        </DataGrid>
+                        </views:PostQueueGrid>
                         </Grid>
                     </Expander>
                 </Border>
@@ -668,13 +668,13 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
 </DataGridTemplateColumn>
 <DataGridTextColumn Header="Device" Binding="{Binding DeviceName}" Width="100" />
 <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="100" />
-<DataGridTemplateColumn Header="Reel files" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding ReelFilesDisplay}" ToolTip.Tip="{Binding ReelFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
-<DataGridTemplateColumn Header="Photo files" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding PhotoFilesDisplay}" ToolTip.Tip="{Binding PhotoFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
-<DataGridTemplateColumn Header="Story files" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding StoryFilesDisplay}" ToolTip.Tip="{Binding StoryFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
-<DataGridTextColumn Header="Group files" Binding="{Binding GroupFilesDisplay}" Width="100" />
+<DataGridTemplateColumn Header="Reel files" SortMemberPath="ReelFilesSortKey" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding ReelFilesDisplay}" ToolTip.Tip="{Binding ReelFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+<DataGridTemplateColumn Header="Photo files" SortMemberPath="PhotoFilesSortKey" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding PhotoFilesDisplay}" ToolTip.Tip="{Binding PhotoFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+<DataGridTemplateColumn Header="Story files" SortMemberPath="StoryFilesSortKey" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding StoryFilesDisplay}" ToolTip.Tip="{Binding StoryFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+<DataGridTextColumn Header="Group files" SortMemberPath="GroupFilesSortKey" Binding="{Binding GroupFilesDisplay}" Width="100" />
 <DataGridTextColumn Header="Followers" Binding="{Binding FollowersDisplay}" Width="110" />
 <DataGridTextColumn Header="Views" Binding="{Binding ViewsDisplay}" Width="110" />
-<DataGridTextColumn Header="Created" Binding="{Binding CreationDateDisplay}" Width="190" />
+<DataGridTextColumn Header="Created" SortMemberPath="CreationDateSortKey" Binding="{Binding CreationDateDisplay}" Width="190" />
 <DataGridTemplateColumn Header="Status" SortMemberPath="TableStatus" Width="170">
     <DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding TableStatus}" FontSize="13" VerticalAlignment="Center" ToolTip.Tip="{Binding AccessStatus}" /></DataTemplate></DataGridTemplateColumn.CellTemplate>
 </DataGridTemplateColumn>
@@ -710,13 +710,13 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
 <DataGridTextColumn Header="Name" Binding="{Binding ProfileName}" Width="*" MinWidth="240" FontWeight="SemiBold" />
 <DataGridTextColumn Header="Device" Binding="{Binding DeviceName}" Width="100" />
 <DataGridTextColumn Header="Type" Binding="{Binding Profile.Type}" Width="100" />
-<DataGridTemplateColumn Header="Reel files" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookProfileGroupViewModel"><TextBlock Text="{Binding Profile.ReelFilesDisplay}" ToolTip.Tip="{Binding Profile.ReelFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
-<DataGridTemplateColumn Header="Photo files" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookProfileGroupViewModel"><TextBlock Text="{Binding Profile.PhotoFilesDisplay}" ToolTip.Tip="{Binding Profile.PhotoFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
-<DataGridTemplateColumn Header="Story files" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookProfileGroupViewModel"><TextBlock Text="{Binding Profile.StoryFilesDisplay}" ToolTip.Tip="{Binding Profile.StoryFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
-<DataGridTextColumn Header="Group files" Binding="{Binding Profile.GroupFilesDisplay}" Width="100" />
+<DataGridTemplateColumn Header="Reel files" SortMemberPath="Profile.ReelFilesSortKey" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookProfileGroupViewModel"><TextBlock Text="{Binding Profile.ReelFilesDisplay}" ToolTip.Tip="{Binding Profile.ReelFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+<DataGridTemplateColumn Header="Photo files" SortMemberPath="Profile.PhotoFilesSortKey" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookProfileGroupViewModel"><TextBlock Text="{Binding Profile.PhotoFilesDisplay}" ToolTip.Tip="{Binding Profile.PhotoFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+<DataGridTemplateColumn Header="Story files" SortMemberPath="Profile.StoryFilesSortKey" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookProfileGroupViewModel"><TextBlock Text="{Binding Profile.StoryFilesDisplay}" ToolTip.Tip="{Binding Profile.StoryFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+<DataGridTextColumn Header="Group files" SortMemberPath="Profile.GroupFilesSortKey" Binding="{Binding Profile.GroupFilesDisplay}" Width="100" />
 <DataGridTextColumn Header="Followers" Binding="{Binding Profile.FollowersDisplay}" Width="110" />
 <DataGridTextColumn Header="Views" Binding="{Binding Profile.ViewsDisplay}" Width="110" />
-<DataGridTextColumn Header="Created" Binding="{Binding Profile.CreationDateDisplay}" Width="190" />
+<DataGridTextColumn Header="Created" SortMemberPath="Profile.CreationDateSortKey" Binding="{Binding Profile.CreationDateDisplay}" Width="190" />
 <DataGridTextColumn Header="Status" Binding="{Binding Profile.TableStatus}" Width="170" /></DataGrid.Columns>
                                     </DataGrid>
 
@@ -760,13 +760,13 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
 </DataGridTemplateColumn>
 <DataGridTextColumn Header="Device" Binding="{Binding DeviceName}" Width="100" />
 <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="100" />
-<DataGridTemplateColumn Header="Reel files" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding ReelFilesDisplay}" ToolTip.Tip="{Binding ReelFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
-<DataGridTemplateColumn Header="Photo files" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding PhotoFilesDisplay}" ToolTip.Tip="{Binding PhotoFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
-<DataGridTemplateColumn Header="Story files" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding StoryFilesDisplay}" ToolTip.Tip="{Binding StoryFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
-<DataGridTextColumn Header="Group files" Binding="{Binding GroupFilesDisplay}" Width="100" />
+<DataGridTemplateColumn Header="Reel files" SortMemberPath="ReelFilesSortKey" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding ReelFilesDisplay}" ToolTip.Tip="{Binding ReelFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+<DataGridTemplateColumn Header="Photo files" SortMemberPath="PhotoFilesSortKey" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding PhotoFilesDisplay}" ToolTip.Tip="{Binding PhotoFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+<DataGridTemplateColumn Header="Story files" SortMemberPath="StoryFilesSortKey" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding StoryFilesDisplay}" ToolTip.Tip="{Binding StoryFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+<DataGridTextColumn Header="Group files" SortMemberPath="GroupFilesSortKey" Binding="{Binding GroupFilesDisplay}" Width="100" />
 <DataGridTextColumn Header="Followers" Binding="{Binding FollowersDisplay}" Width="110" />
 <DataGridTextColumn Header="Views" Binding="{Binding ViewsDisplay}" Width="110" />
-<DataGridTextColumn Header="Created" Binding="{Binding CreationDateDisplay}" Width="190" />
+<DataGridTextColumn Header="Created" SortMemberPath="CreationDateSortKey" Binding="{Binding CreationDateDisplay}" Width="190" />
 <DataGridTemplateColumn Header="Status" SortMemberPath="TableStatus" Width="170">
     <DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding TableStatus}" FontSize="13" VerticalAlignment="Center" ToolTip.Tip="{Binding AccessStatus}" /></DataTemplate></DataGridTemplateColumn.CellTemplate>
 </DataGridTemplateColumn>

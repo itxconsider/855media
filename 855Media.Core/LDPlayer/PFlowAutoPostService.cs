@@ -80,6 +80,7 @@ public partial class PFlowAutoPostService : IPFlowAutoPostService
                 return false;
             if (
                 !IsFacebookUploadNotificationActive(notifications)
+                && !PFlowConfirmation.HasPendingPublication(xml)
                 && !Labels(xml)
                     .Any(x =>
                         x.Contains("Uploading", StringComparison.OrdinalIgnoreCase)

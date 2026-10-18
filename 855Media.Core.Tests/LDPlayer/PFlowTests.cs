@@ -100,6 +100,35 @@ public sealed partial class PFlowTests : IDisposable
     }
 
     [Fact]
+    public async Task UnknownAllowsNextDistinctFileAfterRestartButKeepsDuplicateAndCapacityProtection()
+    {
+        var unresolved = await Job();
+        unresolved.DeviceIndex = 57;
+        Assert.True(await _store.ReserveAsync(unresolved));
+        unresolved.SubmittedUtc = DateTime.UtcNow;
+        unresolved.State = PFlowState.Unknown;
+        await _store.SaveAsync(unresolved);
+
+        var reopened = new PFlowHistoryStore(_store.FilePath);
+        await reopened.RecoverAsync();
+        Assert.False(await reopened.ReserveAsync(await Job()));
+
+        var next = await Job();
+        next.DeviceIndex = 57;
+        next.SourcePath = Path.Combine(_dir, "next.mp4");
+        await File.WriteAllTextAsync(next.SourcePath, "different video contents");
+        await PFlowJob.FingerprintAsync(next, CancellationToken.None);
+        Assert.False(await reopened.ReserveAsync(next, dailyLimit: 1));
+        Assert.True(await reopened.ReserveAsync(next, dailyLimit: 2));
+
+        var saved = (await reopened.ReadAsync()).Single(j => j.JobId == unresolved.JobId);
+        Assert.Equal(PFlowState.Unknown, saved.State);
+        Assert.True(saved.RequiresPublicationReviewBeforeCleanup);
+        Assert.False(saved.CanRetry);
+        Assert.True(File.Exists(saved.SourcePath));
+    }
+
+    [Fact]
     public async Task RenameDoesNotBypassFingerprint()
     {
         var a = await Job();
@@ -537,6 +566,27 @@ public sealed partial class PFlowTests : IDisposable
     }
 
     [Fact]
+    public async Task ConfirmedJobAlbumMustBeRemovedBeforeCleanupIsVerified()
+    {
+        var job = await Job();
+        job.NativeReelAlbum = true;
+        Confirm(job);
+        var ld = FakeLd.Create(job);
+        var fake = (FakeLd)(object)ld;
+        fake.AlbumDeleteOk = false;
+        var runner = new PFlowRunner(ld, _store);
+        await runner.CleanupRemoteAsync(job, null, CancellationToken.None);
+        Assert.Equal(PFlowState.Confirmed, job.State);
+        Assert.Equal("Pending", job.RemoteCleanupState);
+        Assert.Contains("album folder", job.Error);
+        Assert.Equal(1, fake.Deletes);
+        fake.AlbumDeleteOk = true;
+        await runner.CleanupRemoteAsync(job, null, CancellationToken.None);
+        Assert.Equal("Verified", job.RemoteCleanupState);
+        Assert.DoesNotContain("Emulator cleanup:", job.Error);
+    }
+
+    [Fact]
     public async Task UniqueRemoteNamesIgnoreSourceBasename()
     {
         var a = await Job();
@@ -609,6 +659,7 @@ public sealed partial class PFlowTests : IDisposable
             Deletes;
         public bool TransferOk = true,
             DeleteOk = true,
+            AlbumDeleteOk = true,
             SuccessMessage = true,
             ChecksumOk = true,
             HiddenActor,
@@ -671,6 +722,9 @@ public sealed partial class PFlowTests : IDisposable
                         : cmd.Contains("sha256sum") ? (ChecksumOk ? Job.Sha256 : "wrong") + " file"
                         : cmd.Contains("dumpsys activity")
                             ? "mResumedActivity: com.facebook.katana/ReelSettings"
+                        : cmd.Contains("ALBUM_REMOVED")
+                            ? AlbumDeleteOk ? "ALBUM_REMOVED"
+                                : ""
                         : cmd.Contains("REMOVED")
                             ? DeleteOk ? "REMOVED"
                                 : ""
@@ -693,7 +747,7 @@ public sealed partial class PFlowTests : IDisposable
                             ? InitialXml
                                 ?? "<hierarchy><node text='Target'/><node text='Professional dashboard'/></hierarchy>"
                         : ShareTaps > 0 && PublicationError.Length > 0
-                            ? $"<hierarchy><node text='{PublicationError}'/></hierarchy>"
+                            ? $"<hierarchy><node package='com.facebook.katana' text='{System.Security.SecurityElement.Escape(PublicationError)}'/></hierarchy>"
                         : ShareTaps > 0 && NotificationSuccess
                             ? "<hierarchy><node text='Home'/></hierarchy>"
                         : ShareTaps > 0 && SuccessMessage
