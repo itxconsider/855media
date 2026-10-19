@@ -445,8 +445,7 @@ public partial class PFlowAutoPostService
         {
             await Step("Entering and verifying caption");
             // Changing IME can recreate the editor; enable it before resolving/tapping the field.
-            if (!await _ldPlayer.EnableAdbKeyboardAsync(job.DeviceIndex, customPath, ct))
-                throw new InvalidOperationException("ADB keyboard unavailable.");
+            await PFlowAndroidTextInput.EnsureAsync(_ldPlayer, job.DeviceIndex, customPath, ct);
             xml = await _ldPlayer.DumpUiHierarchyAsync(job.DeviceIndex, customPath, ct) ?? "";
             PFlowPageIdentityRestriction.ThrowIfVisible(job, xml);
             var node = FindPFlowCaptionField(xml);

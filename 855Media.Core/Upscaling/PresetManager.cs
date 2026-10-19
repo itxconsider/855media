@@ -12,12 +12,8 @@ public record UpscalePreset(
     double Brightness,
     double Contrast,
     double Saturation,
-    bool AutoNormalize,
-    string? PreferredModelName = null
-)
-{
-    public string? RecommendedModel => PreferredModelName;
-}
+    bool AutoNormalize
+);
 
 public static class PresetManager
 {
@@ -45,14 +41,13 @@ public static class PresetManager
 
     public static readonly UpscalePreset AnimeCartoon = new(
         "Anime / Cartoon Sharp",
-        "Scrubs compression artifacts and elevates color vibrancy using the anime neural model.",
+        "Reduces compression artifacts and elevates color vibrancy using native video filters.",
         EnableDenoise: true,
         EnableDeinterlace: false,
         Brightness: 0.02,
         Contrast: 1.10,
         Saturation: 1.25,
-        AutoNormalize: false,
-        PreferredModelName: "realesr-animevideov3"
+        AutoNormalize: false
     );
 
     public static readonly UpscalePreset CinematicMaster = new(

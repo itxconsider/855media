@@ -13,6 +13,7 @@ public sealed class PFlowSessionPreparation(
 )
 {
     private readonly Func<TimeSpan, CancellationToken, Task> _startupDelay = delay ?? Task.Delay;
+    public bool CheckSurfsharkConnection { get; init; }
     public TimeSpan AppOpenDelay { get; init; } = TimeSpan.Zero;
 
     public async Task OpenFacebookAsync(
@@ -316,15 +317,21 @@ public sealed class PFlowSessionPreparation(
         if (
             !await ld.WaitForBootCompletedAsync(
                 binding.DeviceIndex,
-                TimeSpan.FromSeconds(90),
+                PFlowStartupTimeouts.AndroidBoot,
                 path,
                 ct
             )
         )
-            throw new InvalidOperationException("Android boot timed out.");
+            throw new InvalidOperationException("Android boot timed out after 180 seconds.");
         await RequireWorkerAsync(binding, ct);
         await progress("Waiting for validated internet inside this LD.");
         await PFlowSession.WaitInternetAsync(ld, binding.DeviceIndex, path, ct);
+        if (CheckSurfsharkConnection)
+        {
+            await progress("Waiting for Surfshark connection inside LD (up to 180 seconds).");
+            await PFlowConnectionChecks.WaitForSurfsharkAsync(ld, binding.DeviceIndex, path, ct);
+        }
+
         await RequireConnectionAsync(binding, ct);
         ct.ThrowIfCancellationRequested();
         await RequireWorkerAsync(binding, ct);

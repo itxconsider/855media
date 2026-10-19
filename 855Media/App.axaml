@@ -695,7 +695,7 @@
             <!--  Text box  -->
             <ControlTheme
                 x:Key="CompactTextBox"
-                BasedOn="{StaticResource {x:Type TextBox}}"
+                BasedOn="{StaticResource MaterialTextBox}"
                 TargetType="{x:Type TextBox}">
                 <Styles>
                     <Style Selector="TextBox">

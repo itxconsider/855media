@@ -18,6 +18,7 @@ public partial class AutoPostViewModel
     private bool _isAddAccountOpen;
 
     [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(CloseSelectedLdCommand))]
     private bool _isAddingAccount;
 
     [ObservableProperty]
@@ -33,6 +34,8 @@ public partial class AutoPostViewModel
     [ObservableProperty]
     private int _managePagesTabIndex;
 
+    public event Action<int>? AccountScrollRequested;
+
     [RelayCommand]
     private async Task ManageDeviceAccountsAsync(LDInstanceItemViewModel? device)
     {
@@ -45,6 +48,7 @@ public partial class AutoPostViewModel
         try
         {
             await LoadAccountMappingsAsync();
+            AccountScrollRequested?.Invoke(device.Index);
         }
         catch
         {
@@ -146,7 +150,10 @@ public partial class AutoPostViewModel
                         requireRecoveryIdle: (binding, c) =>
                             RequireAccountTransitionIdleAsync(binding.DeviceIndex, c)
                     ),
-                    new PFlowSessionPreparation(_ldPlayerService, LdFolder).PrepareAsync,
+                    new PFlowSessionPreparation(_ldPlayerService, LdFolder)
+                    {
+                        CheckSurfsharkConnection = CheckSurfsharkConnection,
+                    }.PrepareAsync,
                     c => RequireAccountTransitionIdleAsync(input.Binding.DeviceIndex, c)
                 )
             );

@@ -12,16 +12,24 @@ namespace _855Media.Framework;
 
 public class ViewModelManager(IServiceProvider services)
 {
+    private T Licensed<T>()
+        where T : ViewModelBase
+    {
+        var viewModel = services.GetRequiredService<T>();
+        viewModel.ModuleLicense =
+            services.GetRequiredService<_855Media.Core.Licensing.ILicenseService>();
+        return viewModel;
+    }
+
     public MainViewModel GetMainViewModel() => services.GetRequiredService<MainViewModel>();
 
-    public DashboardViewModel GetDashboardViewModel() =>
-        services.GetRequiredService<DashboardViewModel>();
+    public DashboardViewModel GetDashboardViewModel() => Licensed<DashboardViewModel>();
 
     public UnifiedDownloaderViewModel GetUnifiedDownloaderViewModel(
         DashboardViewModel dashboardViewModel
     )
     {
-        var viewModel = services.GetRequiredService<UnifiedDownloaderViewModel>();
+        var viewModel = Licensed<UnifiedDownloaderViewModel>();
         viewModel.Initialize(dashboardViewModel);
         return viewModel;
     }
@@ -30,7 +38,7 @@ public class ViewModelManager(IServiceProvider services)
         DashboardViewModel dashboardViewModel
     )
     {
-        var viewModel = services.GetRequiredService<YouTubeDownloaderViewModel>();
+        var viewModel = Licensed<YouTubeDownloaderViewModel>();
         viewModel.Initialize(dashboardViewModel);
         return viewModel;
     }
@@ -39,7 +47,7 @@ public class ViewModelManager(IServiceProvider services)
         DashboardViewModel dashboardViewModel
     )
     {
-        var viewModel = services.GetRequiredService<TikTokDownloaderViewModel>();
+        var viewModel = Licensed<TikTokDownloaderViewModel>();
         viewModel.Initialize(dashboardViewModel);
         return viewModel;
     }
@@ -48,7 +56,7 @@ public class ViewModelManager(IServiceProvider services)
         DashboardViewModel dashboardViewModel
     )
     {
-        var viewModel = services.GetRequiredService<FacebookDownloaderViewModel>();
+        var viewModel = Licensed<FacebookDownloaderViewModel>();
         viewModel.Initialize(dashboardViewModel);
         return viewModel;
     }
@@ -57,26 +65,23 @@ public class ViewModelManager(IServiceProvider services)
         DashboardViewModel dashboardViewModel
     )
     {
-        var viewModel = services.GetRequiredService<DramaBoxDownloaderViewModel>();
+        var viewModel = Licensed<DramaBoxDownloaderViewModel>();
         viewModel.Initialize(dashboardViewModel);
         return viewModel;
     }
 
     public HistoryViewModel GetHistoryViewModel(DashboardViewModel dashboardViewModel)
     {
-        var viewModel = services.GetRequiredService<HistoryViewModel>();
+        var viewModel = Licensed<HistoryViewModel>();
         viewModel.Initialize(dashboardViewModel);
         return viewModel;
     }
 
-    public VideoUpscalerViewModel GetVideoUpscalerViewModel() =>
-        services.GetRequiredService<VideoUpscalerViewModel>();
+    public VideoUpscalerViewModel GetVideoUpscalerViewModel() => Licensed<VideoUpscalerViewModel>();
 
-    public DubbingViewModel GetDubbingViewModel() =>
-        services.GetRequiredService<DubbingViewModel>();
+    public DubbingViewModel GetDubbingViewModel() => Licensed<DubbingViewModel>();
 
-    public AutoPostViewModel GetAutoPostViewModel() =>
-        services.GetRequiredService<AutoPostViewModel>();
+    public AutoPostViewModel GetAutoPostViewModel() => Licensed<AutoPostViewModel>();
 
     public AuthSetupViewModel GetAuthSetupViewModel() =>
         services.GetRequiredService<AuthSetupViewModel>();
@@ -89,7 +94,7 @@ public class ViewModelManager(IServiceProvider services)
         bool translateTitleToEnglish = false
     )
     {
-        var viewModel = services.GetRequiredService<DownloadViewModel>();
+        var viewModel = Licensed<DownloadViewModel>();
 
         viewModel.Video = video;
         viewModel.DownloadOption = downloadOption;
@@ -106,7 +111,7 @@ public class ViewModelManager(IServiceProvider services)
         string filePath
     )
     {
-        var viewModel = services.GetRequiredService<DownloadViewModel>();
+        var viewModel = Licensed<DownloadViewModel>();
 
         viewModel.Video = video;
         viewModel.DownloadPreference = downloadPreference;

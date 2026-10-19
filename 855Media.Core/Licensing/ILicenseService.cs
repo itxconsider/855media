@@ -15,6 +15,7 @@ public interface ILicenseService
     event Action? LicenseChanged;
 
     void Initialize(string? savedToken, DateTime? firstRunDate, DateTime? lastRunDate);
+    void Refresh();
     bool IsFeatureAllowed(LicenseFeature feature);
     LicenseActivationResult ActivateWithToken(string signedToken);
     Task<LicenseActivationResult> ActivateWithKeyOnlineAsync(

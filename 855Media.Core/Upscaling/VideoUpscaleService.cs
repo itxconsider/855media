@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
@@ -41,78 +40,14 @@ public partial class VideoUpscaleService
         RegexOptions.Compiled | RegexOptions.IgnoreCase
     );
 
-    public static string? TryGetAiEngineExecutablePath()
-    {
-        var probePaths = new[]
-        {
-            Path.Combine(
-                AppContext.BaseDirectory,
-                "tools",
-                "realesrgan",
-                "realesrgan-ncnn-vulkan.exe"
-            ),
-            Path.Combine(AppContext.BaseDirectory, "realesrgan-ncnn-vulkan.exe"),
-            Path.Combine(
-                Directory.GetCurrentDirectory(),
-                "tools",
-                "realesrgan",
-                "realesrgan-ncnn-vulkan.exe"
-            ),
-            Path.Combine(Directory.GetCurrentDirectory(), "realesrgan-ncnn-vulkan.exe"),
-        };
-
-        return probePaths.FirstOrDefault(File.Exists);
-    }
-
-    public string? AiEngineExecutablePath { get; set; }
     public string? ScratchDirectory { get; set; }
-
-    public static bool IsFaceRestorationAvailable =>
-        !string.IsNullOrWhiteSpace(TryGetFaceRestorationExecutablePath());
-
-    public static string? TryGetFaceRestorationExecutablePath()
-    {
-        var probePaths = new[]
-        {
-            Path.Combine(
-                AppContext.BaseDirectory,
-                "tools",
-                "codeformer",
-                "codeformer-ncnn-vulkan.exe"
-            ),
-            Path.Combine(AppContext.BaseDirectory, "tools", "gfpgan", "gfpgan-ncnn-vulkan.exe"),
-            Path.Combine(AppContext.BaseDirectory, "codeformer-ncnn-vulkan.exe"),
-            Path.Combine(AppContext.BaseDirectory, "gfpgan-ncnn-vulkan.exe"),
-            Path.Combine(
-                Directory.GetCurrentDirectory(),
-                "tools",
-                "codeformer",
-                "codeformer-ncnn-vulkan.exe"
-            ),
-            Path.Combine(
-                Directory.GetCurrentDirectory(),
-                "tools",
-                "gfpgan",
-                "gfpgan-ncnn-vulkan.exe"
-            ),
-            Path.Combine(Directory.GetCurrentDirectory(), "codeformer-ncnn-vulkan.exe"),
-            Path.Combine(Directory.GetCurrentDirectory(), "gfpgan-ncnn-vulkan.exe"),
-            Path.Combine(
-                AppContext.BaseDirectory,
-                "tools",
-                "realesrgan",
-                "codeformer-ncnn-vulkan.exe"
-            ),
-            Path.Combine(AppContext.BaseDirectory, "tools", "realesrgan", "gfpgan-ncnn-vulkan.exe"),
-        };
-
-        return probePaths.FirstOrDefault(File.Exists);
-    }
-
-    public string? FaceRestorationExecutablePath { get; set; }
 
     public async Task ProbeVideoAsync(UpscaleJob job, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        job.SourceVideoBitrate = 0;
+        job.SourceAudioBitrate = 0;
+        job.SourceVideoCodec = null;
         var ffmpegPath = FFmpeg.TryGetCliFilePath();
         if (string.IsNullOrWhiteSpace(ffmpegPath) || !File.Exists(job.FilePath))
         {
@@ -140,7 +75,19 @@ public partial class VideoUpscaleService
             process.Start();
             ChildProcessTracker.Track(process);
             process.BeginErrorReadLine();
-            await process.WaitForExitAsync(cancellationToken);
+            try
+            {
+                await process.WaitForExitAsync(cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                try
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+                catch { }
+                throw;
+            }
 
             var output = stderrBuilder.ToString();
 
@@ -176,6 +123,7 @@ public partial class VideoUpscaleService
 
             job.VideoFps = fps;
 
+            double durationSeconds = 0;
             var durationMatch = FfmpegDurationRegex.Match(output);
             if (
                 durationMatch.Success
@@ -186,8 +134,14 @@ public partial class VideoUpscaleService
                 )
             )
             {
+                durationSeconds = duration.TotalSeconds;
                 job.TotalFrames = (long)Math.Max(1, Math.Round(duration.TotalSeconds * fps));
             }
+            NativeExportPolicy.ReadSourceMetadata(job, output, durationSeconds);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -198,6 +152,7 @@ public partial class VideoUpscaleService
 
     public async Task ProcessJobAsync(UpscaleJob job, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (job.EnableSplitAndUpscale)
         {
             var pipeline = new SplitAndUpscalePipeline(this);
@@ -249,13 +204,6 @@ public partial class VideoUpscaleService
                 Directory.CreateDirectory(outputDir);
             }
 
-            // Check for AI upscaler binary (Real-ESRGAN NCNN Vulkan)
-            var aiEnginePath =
-                !string.IsNullOrWhiteSpace(AiEngineExecutablePath)
-                && File.Exists(AiEngineExecutablePath)
-                    ? AiEngineExecutablePath
-                    : TryGetAiEngineExecutablePath();
-
             // Separate audio stems using neural AI Demucs if speech isolation or vocal removal is selected
             string? isolatedAudioPath = null;
             if (job.AudioMode is UpscaleAudioMode.IsolateSpeech or UpscaleAudioMode.RemoveVocals)
@@ -269,57 +217,19 @@ public partial class VideoUpscaleService
                 );
             }
 
-            if (
-                job.ModelType == UpscaleModelType.FastNative
-                || job.ModelType == UpscaleModelType.NvidiaRtx
-                || job.TargetResolution == UpscaleTargetResolution.Original1x
-            )
-            {
-                if (job.ModelType == UpscaleModelType.NvidiaRtx)
-                {
-                    Log(
-                        "[Pipeline] NVIDIA RTX AI Super Resolution Pipeline selected (CUDA accelerated, Tensor-optimized edge reconstruction & NVENC)."
-                    );
-                }
-                else
-                {
-                    Log(
-                        "[Pipeline] Fast Native Pipeline selected. Bypassing AI frame extraction for direct GPU filtering & re-framing."
-                    );
-                }
-                await RunNativeScalerPipelineAsync(
-                    job,
-                    ffmpegPath,
-                    tempDir,
-                    isolatedAudioPath,
-                    Log,
-                    cancellationToken
-                );
-            }
-            else if (!string.IsNullOrWhiteSpace(aiEnginePath) && File.Exists(aiEnginePath))
-            {
-                await RunAiFramePipelineAsync(
-                    job,
-                    ffmpegPath,
-                    aiEnginePath,
-                    tempDir,
-                    isolatedAudioPath,
-                    Log,
-                    cancellationToken
-                );
-            }
-            else
-            {
-                // Native high-throughput neural/lanczos + unsharp super-resolution pipeline with real-time frame progress
-                await RunNativeScalerPipelineAsync(
-                    job,
-                    ffmpegPath,
-                    tempDir,
-                    isolatedAudioPath,
-                    Log,
-                    cancellationToken
-                );
-            }
+            Log(
+                job.ModelType == UpscaleModelType.NvidiaRtx
+                    ? "[Pipeline] NVIDIA accelerated native filtering and encoding selected."
+                    : "[Pipeline] Fast Native filtering and encoding selected."
+            );
+            await RunNativeScalerPipelineAsync(
+                job,
+                ffmpegPath,
+                tempDir,
+                isolatedAudioPath,
+                Log,
+                cancellationToken
+            );
 
             job.Progress = 100;
             job.Status = UpscaleJobStatus.Complete;
@@ -484,6 +394,44 @@ public partial class VideoUpscaleService
         CancellationToken cancellationToken
     )
     {
+        await ProbeVideoAsync(job, cancellationToken);
+        if (NativeExportPolicy.CanStreamCopy(job))
+        {
+            var copyArgs = new List<string>
+            {
+                "-y",
+                "-i",
+                job.FilePath,
+                "-map",
+                "0:v:0",
+                "-map",
+                "0:a?",
+                "-map",
+                "0:s?",
+                "-c",
+                "copy",
+            };
+            copyArgs.AddRange(
+                job.CameraMetadata?.BuildFfmpegMetadataArgs(
+                    Path.GetFileNameWithoutExtension(job.FilePath)
+                )
+                    ?? ["-map_metadata", "-1"]
+            );
+            if (job.OutputFilePath.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase))
+                copyArgs.AddRange(["-movflags", "+faststart"]);
+            copyArgs.Add(job.OutputFilePath);
+            log(
+                "[Stream Copy] No video/audio changes requested. Preserving compressed streams without re-encoding."
+            );
+            await ExecuteProcessWithProgressAsync(
+                ffmpegPath,
+                copyArgs,
+                job,
+                log,
+                cancellationToken
+            );
+            return;
+        }
         var (hwArgs, encoderArgs, isGpu) =
             job.ModelType == UpscaleModelType.NvidiaRtx
                 ? GetRtxEncoderAndHwArgs(
@@ -498,6 +446,13 @@ public partial class VideoUpscaleService
                     ffmpegPath,
                     job.SpeedMode
                 );
+        encoderArgs = NativeExportPolicy.LimitVideoBitrate(encoderArgs, job.SourceVideoBitrate);
+        var audioBitrate = NativeExportPolicy.AudioBitrate(job);
+        log(
+            job.SourceVideoBitrate > 0
+                ? $"[File Size Control] Source-based video target/peak: {job.SourceVideoBitrate / 1000.0:0.#} kb/s; audio encode limit: {audioBitrate} b/s. Playback speed changes duration, not the bitrate budget."
+                : "[File Size Control] Source bitrate could not be determined; using encoder quality defaults."
+        );
         if (
             job.TrackingMode != SmartTrackingMode.StaticCenter
             || (job.EnableMicroZoom && job.ZoomMode != SmartZoomMode.CenterCrop)
@@ -688,7 +643,8 @@ public partial class VideoUpscaleService
         {
             arguments.AddRange(["-i", isolatedAudioPath!]);
         }
-        arguments.AddRange(["-vf", videoFilter]);
+        if (!string.IsNullOrWhiteSpace(videoFilter))
+            arguments.AddRange(["-vf", videoFilter]);
         arguments.AddRange(encoderArgs);
 
         var (audioFilter, reencodeAac, isMuted) = BuildAudioPipeline(
@@ -715,7 +671,16 @@ public partial class VideoUpscaleService
             log(
                 $"[Audio Pipeline] Muxing neural isolated stem ({job.AudioMode}) as primary audio."
             );
-            arguments.AddRange(["-c:a", "aac", "-b:a", "320k", "-map", "0:s?", "-c:s", "copy"]);
+            arguments.AddRange([
+                "-c:a",
+                "aac",
+                "-b:a",
+                audioBitrate,
+                "-map",
+                "0:s?",
+                "-c:s",
+                "copy",
+            ]);
         }
         else if (reencodeAac)
         {
@@ -732,7 +697,7 @@ public partial class VideoUpscaleService
                     "-c:a",
                     "aac",
                     "-b:a",
-                    "320k",
+                    audioBitrate,
                     "-map",
                     "0:s?",
                     "-c:s",
@@ -749,7 +714,7 @@ public partial class VideoUpscaleService
                     "-c:a",
                     "aac",
                     "-b:a",
-                    "320k",
+                    audioBitrate,
                     "-map",
                     "0:s?",
                     "-c:s",
@@ -809,12 +774,14 @@ public partial class VideoUpscaleService
                 ffmpegPath,
                 job.SpeedMode
             );
+            cpuArgs = NativeExportPolicy.LimitVideoBitrate(cpuArgs, job.SourceVideoBitrate);
             var fallbackArgs = new List<string> { "-y", "-i", job.FilePath };
             if (hasIsolatedAudio)
             {
                 fallbackArgs.AddRange(["-i", isolatedAudioPath!]);
             }
-            fallbackArgs.AddRange(["-vf", videoFilter]);
+            if (!string.IsNullOrWhiteSpace(videoFilter))
+                fallbackArgs.AddRange(["-vf", videoFilter]);
             fallbackArgs.AddRange(cpuArgs);
 
             if (isMuted)
@@ -833,7 +800,7 @@ public partial class VideoUpscaleService
                     "-c:a",
                     "aac",
                     "-b:a",
-                    "320k",
+                    audioBitrate,
                     "-map",
                     "0:s?",
                     "-c:s",
@@ -852,7 +819,7 @@ public partial class VideoUpscaleService
                     "-c:a",
                     "aac",
                     "-b:a",
-                    "320k",
+                    audioBitrate,
                     "-map",
                     "0:s?",
                     "-c:s",
@@ -869,7 +836,7 @@ public partial class VideoUpscaleService
                     "-c:a",
                     "aac",
                     "-b:a",
-                    "320k",
+                    audioBitrate,
                     "-map",
                     "0:s?",
                     "-c:s",
@@ -887,679 +854,6 @@ public partial class VideoUpscaleService
                 cancellationToken
             );
         }
-    }
-
-    private async Task RunAiFramePipelineAsync(
-        UpscaleJob job,
-        string ffmpegPath,
-        string aiToolPath,
-        string tempDir,
-        string? isolatedAudioPath,
-        Action<string> log,
-        CancellationToken cancellationToken
-    )
-    {
-        var inFramesDir = Path.Combine(tempDir, "in_frames");
-        var outFramesDir = Path.Combine(tempDir, "out_frames");
-
-        Directory.CreateDirectory(inFramesDir);
-        Directory.CreateDirectory(outFramesDir);
-
-        // Stage 1: Extract Frames (with checkpoint caching: skip if already extracted)
-        var totalFrames = Directory.Exists(inFramesDir)
-            ? Directory.EnumerateFiles(inFramesDir, "*.jpg").LongCount()
-            : 0;
-
-        if (totalFrames > 0)
-        {
-            log(
-                $"[Checkpoint] Found {totalFrames} previously extracted frames in cache. Skipping extraction."
-            );
-            job.TotalFrames = totalFrames;
-        }
-        else
-        {
-            // Pre-flight check: ensure sufficient free disk space on temporary drive
-            try
-            {
-                var tempDrive = new DriveInfo(
-                    Path.GetPathRoot(Path.GetFullPath(tempDir)) ?? "C:\\"
-                );
-                if (tempDrive.IsReady)
-                {
-                    long minRequiredBytes = 2L * 1024 * 1024 * 1024; // 2 GB minimum baseline
-                    if (job.TotalFrames > 0)
-                    {
-                        minRequiredBytes = Math.Max(minRequiredBytes, job.TotalFrames * 1500000L);
-                    }
-                    if (tempDrive.AvailableFreeSpace < minRequiredBytes)
-                    {
-                        var freeGb = tempDrive.AvailableFreeSpace / (1024.0 * 1024.0 * 1024.0);
-                        var reqGb = minRequiredBytes / (1024.0 * 1024.0 * 1024.0);
-                        log(
-                            $"[Storage Warning] Low free disk space on drive {tempDrive.Name}: {freeGb:F1} GB free, estimated required: {reqGb:F1} GB."
-                        );
-                        if (tempDrive.AvailableFreeSpace < 1024L * 1024 * 1024)
-                        {
-                            throw new InvalidOperationException(
-                                $"Critically low disk space on drive {tempDrive.Name} ({freeGb:F2} GB available). Please free up disk space or set a custom Scratch Directory on another drive in Settings."
-                            );
-                        }
-                    }
-                }
-            }
-            catch (InvalidOperationException)
-            {
-                throw;
-            }
-            catch { }
-
-            log("Extracting frames for AI upscaling...");
-            int extractThreads = job.SpeedMode switch
-            {
-                RenderSpeedMode.TurboFast => Math.Min(Environment.ProcessorCount, 8),
-                RenderSpeedMode.Quality => 4,
-                _ => Math.Min(Environment.ProcessorCount, 6),
-            };
-
-            var extractArgs = new List<string>
-            {
-                "-y",
-                "-hwaccel",
-                "auto",
-                "-threads",
-                extractThreads.ToString(CultureInfo.InvariantCulture),
-                "-i",
-                job.FilePath,
-                "-fps_mode",
-                "passthrough",
-            };
-
-            var preFilters = new List<string>();
-            if (job.EnableDeinterlace)
-            {
-                preFilters.Add("yadif=mode=1");
-                log("[Pre-Processing] Enabled Deinterlacing (yadif=mode=1)");
-            }
-            if (job.EnableDenoise)
-            {
-                preFilters.Add("hqdn3d=4:3:6:4.5");
-                log("[Pre-Processing] Enabled Denoise / Deblock (hqdn3d=4:3:6:4.5)");
-            }
-
-            if (preFilters.Count > 0)
-            {
-                extractArgs.AddRange(["-vf", string.Join(",", preFilters)]);
-            }
-
-            extractArgs.AddRange(["-q:v", "1", Path.Combine(inFramesDir, "frame_%08d.jpg")]);
-
-            await ExecuteProcessAsync(ffmpegPath, extractArgs, job, log, cancellationToken);
-
-            totalFrames = Directory.EnumerateFiles(inFramesDir, "*.jpg").LongCount();
-            if (totalFrames > 0)
-            {
-                job.TotalFrames = totalFrames;
-            }
-        }
-
-        // Stage 2: Run AI Inference Tool (with checkpoint caching: skip if all frames rendered)
-        var completedOutFrames = Directory.Exists(outFramesDir)
-            ? Directory.EnumerateFiles(outFramesDir, "*.jpg").LongCount()
-            : 0;
-
-        if (totalFrames > 0 && completedOutFrames >= totalFrames)
-        {
-            log(
-                $"[Checkpoint] Found all {completedOutFrames}/{totalFrames} upscaled frames already rendered on disk. Skipping AI inference."
-            );
-            job.CurrentFrame = totalFrames;
-            job.Progress = 95.0;
-        }
-        else
-        {
-            log(
-                $"Executing AI inference engine ({Path.GetFileName(aiToolPath)}) [Speed Mode: {job.SpeedMode}]..."
-            );
-            int scale = job.TargetResolution switch
-            {
-                UpscaleTargetResolution.Scale4x => 4,
-                UpscaleTargetResolution.Scale2x => 2,
-                UpscaleTargetResolution.Uhd4k => (job.InputHeight >= 1000) ? 2 : 4,
-                UpscaleTargetResolution.Hd1080p => 2,
-                _ => 2,
-            };
-
-            string threadPoolConfig = job.SpeedMode switch
-            {
-                RenderSpeedMode.TurboFast => "2:4:4",
-                RenderSpeedMode.Quality => "1:2:2",
-                _ => "2:4:2",
-            };
-
-            var modelsDir = Path.Combine(Path.GetDirectoryName(aiToolPath)!, "models");
-            var aiArgs = new List<string>
-            {
-                "-i",
-                inFramesDir,
-                "-o",
-                outFramesDir,
-                "-s",
-                scale.ToString(CultureInfo.InvariantCulture),
-                "-f",
-                "jpg",
-                "-g",
-                "auto",
-                "-j",
-                threadPoolConfig,
-            };
-
-            if (Directory.Exists(modelsDir))
-            {
-                aiArgs.AddRange(["-m", modelsDir]);
-            }
-
-            // Safe Tile Size Estimation based on detected VRAM
-            var gpuInfo = HardwareDetector.GetGpuInfo(ffmpegPath);
-            int tileSize = gpuInfo.SafeTileSize;
-            if (tileSize > 0)
-            {
-                // In TurboFast, if VRAM is adequate (>= 6GB), un-tile or enlarge tile size to reduce stitching overhead
-                if (job.SpeedMode == RenderSpeedMode.TurboFast && gpuInfo.DedicatedVramGb >= 6.0)
-                {
-                    log(
-                        $"[VRAM Optimization] Detected {gpuInfo.DedicatedVramGb:F1} GB VRAM. Turbo mode enabled: streaming un-tiled (-t 0) for max throughput."
-                    );
-                    aiArgs.AddRange(["-t", "0"]);
-                }
-                else
-                {
-                    log(
-                        $"[VRAM Optimization] Detected {gpuInfo.DedicatedVramGb:F1} GB VRAM. Using safe tile size: -t {tileSize}"
-                    );
-                    aiArgs.AddRange(["-t", tileSize.ToString(CultureInfo.InvariantCulture)]);
-                }
-            }
-            else
-            {
-                log(
-                    $"[VRAM Optimization] Detected {gpuInfo.DedicatedVramGb:F1} GB VRAM. Processing un-tiled (-t 0)"
-                );
-                aiArgs.AddRange(["-t", "0"]);
-            }
-
-            // Model selection: explicit model type, speed mode override, preset recommendation, or photorealistic default
-            string modelName;
-            var preset = !string.IsNullOrWhiteSpace(job.ActivePresetName)
-                ? PresetManager.GetPreset(job.ActivePresetName)
-                : null;
-
-            if (job.ModelType == UpscaleModelType.Animation)
-            {
-                modelName = "realesr-animevideov3";
-                log("[Model Selection] Selected Animation / Cartoons model (realesr-animevideov3)");
-            }
-            else if (
-                job.SpeedMode == RenderSpeedMode.TurboFast
-                && job.ModelType == UpscaleModelType.RealWorld
-            )
-            {
-                // In TurboFast on long videos, the compact video weights provide 3.5x faster throughput
-                modelName = "realesr-animevideov3";
-                log(
-                    "[Model Selection] Turbo Speed Mode: using high-performance compact video model (realesr-animevideov3) for accelerated rendering"
-                );
-            }
-            else if (preset != null && !string.IsNullOrWhiteSpace(preset.RecommendedModel))
-            {
-                modelName = preset.RecommendedModel;
-                log($"[Preset] Applying '{preset.Name}' recommended model: {modelName}");
-            }
-            else
-            {
-                // General photorealistic weights for people and live-action footage
-                modelName = "realesrgan-x4plus";
-                log(
-                    "[Model Selection] Selected Real-World / People photorealistic model (realesrgan-x4plus)"
-                );
-            }
-            aiArgs.AddRange(["-n", modelName]);
-
-            await ExecuteAiProcessWithProgressAsync(
-                aiToolPath,
-                aiArgs,
-                job,
-                totalFrames,
-                log,
-                cancellationToken
-            );
-        }
-
-        // Stage 2.5: Optional Face Restoration Pass (CodeFormer / GFPGAN Sidecar Module)
-        var finalFramesDir = outFramesDir;
-        if (job.EnableFaceRestoration)
-        {
-            var faceEnginePath =
-                !string.IsNullOrWhiteSpace(FaceRestorationExecutablePath)
-                && File.Exists(FaceRestorationExecutablePath)
-                    ? FaceRestorationExecutablePath
-                    : TryGetFaceRestorationExecutablePath();
-
-            if (!string.IsNullOrWhiteSpace(faceEnginePath) && File.Exists(faceEnginePath))
-            {
-                var faceFramesDir = Path.Combine(tempDir, "face_frames");
-                Directory.CreateDirectory(faceFramesDir);
-
-                var completedFaceFrames = Directory.Exists(faceFramesDir)
-                    ? Directory.EnumerateFiles(faceFramesDir, "*.jpg").LongCount()
-                    : 0;
-
-                if (totalFrames > 0 && completedFaceFrames >= totalFrames)
-                {
-                    log(
-                        $"[Checkpoint] Found all {completedFaceFrames}/{totalFrames} face-restored frames already rendered on disk. Skipping neural face pass."
-                    );
-                    finalFramesDir = faceFramesDir;
-                }
-                else
-                {
-                    log(
-                        $"[Face Restoration] Executing neural face restoration ({Path.GetFileName(faceEnginePath)}) with fidelity weight -w {job.FaceRestorationFidelity.ToString("0.##", CultureInfo.InvariantCulture)}..."
-                    );
-
-                    await RunFaceRestorationProcessAsync(
-                        faceEnginePath,
-                        outFramesDir,
-                        faceFramesDir,
-                        job,
-                        totalFrames,
-                        log,
-                        cancellationToken
-                    );
-                    finalFramesDir = faceFramesDir;
-                    log("[Face Restoration] Neural face restoration pass completed successfully.");
-                }
-            }
-            else
-            {
-                log(
-                    "[Face Restoration] CodeFormer/GFPGAN sidecar binary not detected in tools directory; skipping neural face pass and applying high-frequency post-processing filters."
-                );
-            }
-        }
-
-        // Stage 3: Re-encode & Mux with Full Stream Preservation (All original audio tracks & subtitles)
-        log("Muxing upscaled frames with full original audio & subtitle streams...");
-        double baseFps = job.VideoFps > 0 ? job.VideoFps : (job.Fps > 0 ? job.Fps : 30.0);
-        if (job.TargetFramerate != TargetFramerate.Original)
-        {
-            baseFps = (double)job.TargetFramerate;
-        }
-        double outputFps = Math.Clamp(baseFps * job.PlaybackSpeed, 1.0, 240.0);
-        if (job.TargetFramerate != TargetFramerate.Original)
-        {
-            log($"[Target Framerate] Set output framerate to {outputFps:0.##} fps");
-        }
-        else if (Math.Abs(job.PlaybackSpeed - 1.0) >= 0.001)
-        {
-            log(
-                $"[Playback Speed] Adjusted output framerate from {baseFps:0.##} fps to {outputFps:0.##} fps ({job.PlaybackSpeed:0.##}x speed factor)"
-            );
-        }
-
-        var (_, encoderArgs, _) = GetEncoderAndHwArgs(
-            job.Codec,
-            job.HardwareAcceleration,
-            ffmpegPath,
-            job.SpeedMode
-        );
-
-        int muxThreads = job.SpeedMode switch
-        {
-            RenderSpeedMode.TurboFast => Math.Min(Environment.ProcessorCount, 8),
-            RenderSpeedMode.Quality => 4,
-            _ => Math.Min(Environment.ProcessorCount, 6),
-        };
-
-        bool hasIsolatedAudio =
-            !string.IsNullOrWhiteSpace(isolatedAudioPath) && File.Exists(isolatedAudioPath);
-
-        var muxArgs = new List<string>
-        {
-            "-y",
-            "-threads",
-            muxThreads.ToString(CultureInfo.InvariantCulture),
-            "-framerate",
-            outputFps.ToString(CultureInfo.InvariantCulture),
-            "-i",
-            Path.Combine(finalFramesDir, "frame_%08d.jpg"),
-            "-i",
-            job.FilePath,
-        };
-        if (hasIsolatedAudio)
-        {
-            muxArgs.AddRange(["-i", isolatedAudioPath!]);
-        }
-        muxArgs.AddRange(["-map", "0:v:0"]);
-
-        var (muxAudioFilter, muxReencodeAac, muxIsMuted) = BuildAudioPipeline(
-            job.AudioMode,
-            job.PlaybackSpeed
-        );
-
-        if (muxIsMuted)
-        {
-            log("[Audio Pipeline] Audio stream muted (silent video output).");
-            muxArgs.Add("-an");
-        }
-        else if (hasIsolatedAudio)
-        {
-            string speedFilter = BuildAudioSpeedFilter(job.PlaybackSpeed);
-            muxArgs.AddRange(["-map", "2:a:0"]);
-            if (!string.IsNullOrWhiteSpace(speedFilter))
-            {
-                log(
-                    $"[Audio Pipeline] Applied tempo adjustment ({job.PlaybackSpeed:0.##}x) to isolated stem: {speedFilter}"
-                );
-                muxArgs.AddRange(["-filter:a", speedFilter]);
-            }
-            log(
-                $"[Audio Pipeline] Muxing neural isolated stem ({job.AudioMode}) as primary audio."
-            );
-            muxArgs.AddRange(["-c:a", "aac", "-b:a", "320k"]);
-        }
-        else
-        {
-            muxArgs.AddRange(["-map", "1:a?"]);
-            if (muxReencodeAac)
-            {
-                if (!string.IsNullOrWhiteSpace(muxAudioFilter))
-                {
-                    log($"[Audio Pipeline] Applied filter ({job.AudioMode}): {muxAudioFilter}");
-                    muxArgs.AddRange(["-filter:a", muxAudioFilter, "-c:a", "aac", "-b:a", "320k"]);
-                }
-                else
-                {
-                    muxArgs.AddRange(["-c:a", "aac", "-b:a", "320k"]);
-                }
-            }
-            else
-            {
-                muxArgs.AddRange(["-c:a", "copy"]);
-            }
-        }
-
-        muxArgs.AddRange(["-map", "1:s?", "-c:s", "copy"]);
-
-        var metaArgs =
-            job.CameraMetadata?.BuildFfmpegMetadataArgs(
-                Path.GetFileNameWithoutExtension(job.FilePath)
-            )
-            ?? ["-map_metadata", "-1"];
-        muxArgs.AddRange(metaArgs);
-        log(
-            $"[Metadata Normalization] Applied profile: {job.CameraMetadata?.ProfileType.ToString() ?? "CleanNormalized"}"
-        );
-
-        if (
-            (
-                job.TrackingMode != SmartTrackingMode.StaticCenter
-                || (job.EnableMicroZoom && job.ZoomMode != SmartZoomMode.CenterCrop)
-            )
-            && job.ActionCentroidX == 0.5
-            && job.ActionCentroidY == 0.5
-        )
-        {
-            try
-            {
-                var analysisMode =
-                    job.TrackingMode == SmartTrackingMode.StaticCenter
-                        ? SmartTrackingMode.ObjectFocus
-                        : job.TrackingMode;
-
-                var analysis = await SmartActionAnalyzer.AnalyzeVideoAsync(
-                    job.FilePath,
-                    analysisMode,
-                    ffmpegPath,
-                    speedMode: job.SpeedMode,
-                    cancellationToken: cancellationToken
-                );
-                job.ActionCentroidX = analysis.OverallCentroidX;
-                job.ActionCentroidY = analysis.OverallCentroidY;
-                log(
-                    $"[Smart Action Tracking] Detected action centroid: X={job.ActionCentroidX:0.00}, Y={job.ActionCentroidY:0.00} (Scene cuts: {analysis.DetectedSceneCuts})"
-                );
-            }
-            catch (Exception ex)
-            {
-                log($"[Smart Action Tracking] Warning: Action analysis fallback: {ex.Message}");
-            }
-        }
-
-        // Resolution & Aspect Ratio clamping to prevent exceeding user target resolution or hardware encoder limits
-        double zoomPercentMux = job.EnableMicroZoom ? job.MicroZoomPercent : 0.0;
-        var arFilterMux = AspectRatioFilterBuilder.BuildFilter(
-            job.TargetAspectRatio,
-            job.TargetResolution,
-            job.TrackingMode,
-            job.ActionCentroidX,
-            job.ActionCentroidY,
-            zoomPercent: (job.TargetAspectRatio != AspectRatioMode.Original) ? zoomPercentMux : 0.0
-        );
-        string? targetScaleFilter =
-            arFilterMux
-            ?? (
-                job.TargetResolution switch
-                {
-                    UpscaleTargetResolution.Hd1080p => "scale=-2:1080:flags=lanczos",
-                    UpscaleTargetResolution.Uhd4k => "scale=-2:2160:flags=lanczos",
-                    _ => null,
-                }
-            );
-
-        var postFilterParts = new List<string>();
-        if (job.EnableMicroZoom && job.MicroZoomPercent > 0 && arFilterMux == null)
-        {
-            var zoomFilter = AspectRatioFilterBuilder.BuildMicroZoomFilter(
-                job.MicroZoomPercent,
-                job.ZoomMode,
-                job.ActionCentroidX,
-                job.ActionCentroidY
-            );
-            if (!string.IsNullOrWhiteSpace(zoomFilter))
-            {
-                postFilterParts.Add(zoomFilter);
-                log(
-                    $"[Micro-Zoom] Applied {job.MicroZoomPercent:0.#}% micro-zoom ({job.ZoomMode}): {zoomFilter}"
-                );
-            }
-        }
-        if (!string.IsNullOrWhiteSpace(targetScaleFilter))
-        {
-            postFilterParts.Add(targetScaleFilter);
-            if (arFilterMux != null)
-            {
-                log(
-                    $"[Aspect Ratio Re-Framing] Applied mode {job.TargetAspectRatio}: {arFilterMux}"
-                );
-            }
-            else
-            {
-                log(
-                    $"[Resolution Normalization] Clamping output frame to target: {targetScaleFilter}"
-                );
-            }
-        }
-
-        var postFilters = BuildPostFilters(job, log);
-        if (!string.IsNullOrWhiteSpace(postFilters))
-        {
-            postFilterParts.Add(postFilters);
-        }
-
-        string? finalVf = postFilterParts.Count > 0 ? string.Join(",", postFilterParts) : null;
-        if (!string.IsNullOrWhiteSpace(finalVf))
-        {
-            muxArgs.AddRange(["-vf", finalVf]);
-        }
-
-        muxArgs.AddRange(encoderArgs);
-        if (job.OutputFilePath.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase))
-        {
-            muxArgs.AddRange(["-movflags", "+faststart"]);
-        }
-        muxArgs.Add(job.OutputFilePath);
-
-        try
-        {
-            await ExecuteProcessAsync(ffmpegPath, muxArgs, job, log, cancellationToken);
-        }
-        catch (Exception muxEx)
-        {
-            log(
-                $"[Muxing Notice] Direct stream copy notice: '{muxEx.Message}'. Retrying with AAC audio re-encode fallback..."
-            );
-            var fallbackMux = new List<string>
-            {
-                "-y",
-                "-threads",
-                muxThreads.ToString(CultureInfo.InvariantCulture),
-                "-framerate",
-                outputFps.ToString(CultureInfo.InvariantCulture),
-                "-i",
-                Path.Combine(finalFramesDir, "frame_%08d.jpg"),
-                "-i",
-                job.FilePath,
-            };
-            if (hasIsolatedAudio)
-            {
-                fallbackMux.AddRange(["-i", isolatedAudioPath!]);
-            }
-            fallbackMux.AddRange(["-map", "0:v:0"]);
-
-            if (muxIsMuted)
-            {
-                fallbackMux.Add("-an");
-            }
-            else if (hasIsolatedAudio)
-            {
-                string speedFilter = BuildAudioSpeedFilter(job.PlaybackSpeed);
-                fallbackMux.AddRange(["-map", "2:a:0"]);
-                if (!string.IsNullOrWhiteSpace(speedFilter))
-                {
-                    fallbackMux.AddRange(["-filter:a", speedFilter]);
-                }
-                fallbackMux.AddRange(["-c:a", "aac", "-b:a", "192k"]);
-            }
-            else
-            {
-                fallbackMux.AddRange(["-map", "1:a?"]);
-                if (!string.IsNullOrWhiteSpace(muxAudioFilter))
-                {
-                    fallbackMux.AddRange(["-filter:a", muxAudioFilter]);
-                }
-                fallbackMux.AddRange(["-c:a", "aac", "-b:a", "192k"]);
-            }
-
-            fallbackMux.AddRange(["-map", "1:s?", "-c:s", "copy"]);
-            fallbackMux.AddRange(metaArgs);
-            if (!string.IsNullOrWhiteSpace(finalVf))
-            {
-                fallbackMux.AddRange(["-vf", finalVf]);
-            }
-            fallbackMux.AddRange(encoderArgs);
-            if (job.OutputFilePath.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase))
-            {
-                fallbackMux.AddRange(["-movflags", "+faststart"]);
-            }
-            fallbackMux.Add(job.OutputFilePath);
-            await ExecuteProcessAsync(ffmpegPath, fallbackMux, job, log, cancellationToken);
-        }
-    }
-
-    private static string? BuildPostFilters(UpscaleJob job, Action<string>? log)
-    {
-        var filterParts = new List<string>();
-
-        if (job.EnableMicroZoom && job.MicroZoomPercent > 0)
-        {
-            double factor = Math.Clamp(1.0 - (job.MicroZoomPercent / 100.0), 0.90, 0.99);
-            string factorStr = factor.ToString("0.##", CultureInfo.InvariantCulture);
-            string zoomFilter = $"crop=w='iw*{factorStr}':h='ih*{factorStr}'";
-            filterParts.Add(zoomFilter);
-            log?.Invoke(
-                $"[Micro-Zoom] Applied {job.MicroZoomPercent:0.#}% micro-zoom crop filter: {zoomFilter}"
-            );
-        }
-
-        if (job.EnableFacialClarity)
-        {
-            // Adaptive unsharp mask for high-frequency edge & facial feature sharpening
-            filterParts.Add("unsharp=lx=5:ly=5:la=0.75:cx=3:cy=3:ca=0.3");
-            // Micro-dither grain to eliminate waxy skin and restore natural organic texture
-            filterParts.Add("noise=c1s=5:c0f=u");
-            log?.Invoke(
-                "[Face Enhancement] Applied Facial Clarity & Edge Restoration (unsharp=lx=5:ly=5:la=0.75:cx=3:cy=3:ca=0.3,noise=c1s=5:c0f=u)"
-            );
-        }
-
-        var colorFilter = job.ColorGrading?.BuildFilterString();
-        if (!string.IsNullOrWhiteSpace(colorFilter))
-        {
-            filterParts.Add(colorFilter);
-            log?.Invoke($"[Color Grading] Applying filters: {colorFilter}");
-        }
-
-        return filterParts.Count > 0 ? string.Join(",", filterParts) : null;
-    }
-
-    private async Task RunFaceRestorationProcessAsync(
-        string faceToolPath,
-        string inFramesDir,
-        string outFramesDir,
-        UpscaleJob job,
-        long totalFrames,
-        Action<string> log,
-        CancellationToken cancellationToken
-    )
-    {
-        var isCodeFormer = Path.GetFileNameWithoutExtension(faceToolPath)
-            .Contains("codeformer", StringComparison.OrdinalIgnoreCase);
-
-        var args = new List<string>
-        {
-            "-i",
-            inFramesDir,
-            "-o",
-            outFramesDir,
-            "-s",
-            "1",
-            "-f",
-            "jpg",
-            "-g",
-            "auto",
-        };
-
-        if (isCodeFormer)
-        {
-            var fidelity = Math.Clamp(job.FaceRestorationFidelity, 0.0, 1.0);
-            args.AddRange(["-w", fidelity.ToString("0.##", CultureInfo.InvariantCulture)]);
-        }
-
-        var modelsDir = Path.Combine(Path.GetDirectoryName(faceToolPath)!, "models");
-        if (Directory.Exists(modelsDir))
-        {
-            args.AddRange(["-m", modelsDir]);
-        }
-
-        await ExecuteAiProcessWithProgressAsync(
-            faceToolPath,
-            args,
-            job,
-            totalFrames,
-            log,
-            cancellationToken
-        );
     }
 
     private static string? GetScaleFilter(UpscaleTargetResolution target, bool isGpu)
@@ -2149,6 +1443,7 @@ public partial class VideoUpscaleService
         CancellationToken cancellationToken
     )
     {
+        cancellationToken.ThrowIfCancellationRequested();
         using var process = new Process();
         process.StartInfo.FileName = fileName;
         process.StartInfo.UseShellExecute = false;
@@ -2247,194 +1542,6 @@ public partial class VideoUpscaleService
             var combinedErr = string.Join(Environment.NewLine, errorOutput.TakeLast(30));
             throw new InvalidOperationException(
                 $"FFmpeg process exited with code {process.ExitCode}: {combinedErr}"
-            );
-        }
-    }
-
-    private async Task ExecuteAiProcessWithProgressAsync(
-        string fileName,
-        IReadOnlyList<string> arguments,
-        UpscaleJob job,
-        long totalFrames,
-        Action<string> log,
-        CancellationToken cancellationToken
-    )
-    {
-        using var process = new Process();
-        process.StartInfo.FileName = fileName;
-        process.StartInfo.UseShellExecute = false;
-        process.StartInfo.CreateNoWindow = true;
-        process.StartInfo.RedirectStandardError = true;
-        process.StartInfo.RedirectStandardOutput = true;
-
-        foreach (var arg in arguments)
-        {
-            process.StartInfo.ArgumentList.Add(arg);
-        }
-
-        var errorOutput = new List<string>();
-
-        void HandleData(string? data)
-        {
-            if (string.IsNullOrWhiteSpace(data))
-                return;
-            errorOutput.Add(data);
-
-            // NCNN tools often output progress percentage like "45.00%"
-            var percentMatch = Regex.Match(data, @"(?<pct>[\d\.]+)%");
-            if (
-                percentMatch.Success
-                && double.TryParse(
-                    percentMatch.Groups["pct"].Value,
-                    CultureInfo.InvariantCulture,
-                    out var pct
-                )
-            )
-            {
-                job.Progress = Math.Min(99.0, pct);
-                if (totalFrames > 0)
-                {
-                    job.CurrentFrame = (long)(totalFrames * (pct / 100.0));
-                }
-                if (job.StartTime.HasValue)
-                {
-                    job.ElapsedTime = DateTimeOffset.Now - job.StartTime.Value;
-                }
-            }
-        }
-
-        process.ErrorDataReceived += (_, e) => HandleData(e.Data);
-        process.OutputDataReceived += (_, e) => HandleData(e.Data);
-
-        try
-        {
-            process.Start();
-            ChildProcessTracker.Track(process);
-            job.ActiveProcess = process;
-            process.BeginErrorReadLine();
-            process.BeginOutputReadLine();
-
-            await process.WaitForExitAsync(cancellationToken);
-        }
-        catch (OperationCanceledException)
-        {
-            if (!process.HasExited)
-            {
-                try
-                {
-                    process.Kill(entireProcessTree: true);
-                }
-                catch { }
-            }
-            throw;
-        }
-        finally
-        {
-            job.ActiveProcess = null;
-        }
-
-        if (process.ExitCode != 0)
-        {
-            var combinedErr = string.Join(Environment.NewLine, errorOutput.TakeLast(30));
-            throw new InvalidOperationException(
-                $"AI inference tool failed with code {process.ExitCode}: {combinedErr}"
-            );
-        }
-    }
-
-    private static async Task ExecuteProcessAsync(
-        string fileName,
-        IReadOnlyList<string> arguments,
-        UpscaleJob? job,
-        Action<string> log,
-        CancellationToken cancellationToken
-    )
-    {
-        using var process = new Process();
-        process.StartInfo.FileName = fileName;
-        process.StartInfo.UseShellExecute = false;
-        process.StartInfo.CreateNoWindow = true;
-        process.StartInfo.RedirectStandardError = true;
-
-        foreach (var arg in arguments)
-        {
-            process.StartInfo.ArgumentList.Add(arg);
-        }
-
-        var errors = new List<string>();
-        process.ErrorDataReceived += (_, e) =>
-        {
-            if (string.IsNullOrWhiteSpace(e.Data))
-                return;
-
-            errors.Add(e.Data);
-
-            if (job != null)
-            {
-                var frameMatch = FfmpegFrameRegex.Match(e.Data);
-                if (
-                    frameMatch.Success
-                    && long.TryParse(frameMatch.Groups["frame"].Value, out var frame)
-                )
-                {
-                    job.CurrentFrame = frame;
-                    if (
-                        double.TryParse(
-                            frameMatch.Groups["fps"].Value,
-                            CultureInfo.InvariantCulture,
-                            out var fps
-                        )
-                    )
-                    {
-                        job.Fps = fps;
-                    }
-                    if (job.TotalFrames > 0)
-                    {
-                        // Extraction is stage 1 (first 10% of total pipeline progress if totalFrames known)
-                        job.Progress = Math.Min(
-                            10.0,
-                            Math.Round((double)frame / job.TotalFrames * 10.0, 1)
-                        );
-                    }
-                }
-            }
-        };
-
-        try
-        {
-            process.Start();
-            ChildProcessTracker.Track(process);
-            if (job != null)
-            {
-                job.ActiveProcess = process;
-            }
-            process.BeginErrorReadLine();
-            await process.WaitForExitAsync(cancellationToken);
-        }
-        catch (OperationCanceledException)
-        {
-            if (!process.HasExited)
-            {
-                try
-                {
-                    process.Kill(entireProcessTree: true);
-                }
-                catch { }
-            }
-            throw;
-        }
-        finally
-        {
-            if (job != null)
-            {
-                job.ActiveProcess = null;
-            }
-        }
-
-        if (process.ExitCode != 0)
-        {
-            throw new InvalidOperationException(
-                string.Join(Environment.NewLine, errors.TakeLast(20))
             );
         }
     }

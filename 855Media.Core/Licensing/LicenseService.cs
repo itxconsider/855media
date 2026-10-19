@@ -9,110 +9,117 @@ namespace _855Media.Core.Licensing;
 
 public class LicenseService : ILicenseService
 {
-    private const int TrialDaysDuration = 7;
-    private static readonly HttpClient HttpClient = new() { Timeout = TimeSpan.FromSeconds(15) };
+    private static readonly HttpClient HttpClient = new(
+        new HttpClientHandler { AllowAutoRedirect = false }
+    )
+    {
+        Timeout = TimeSpan.FromSeconds(15),
+    };
+    private readonly TimeProvider _clock;
+    private readonly Func<string> _fingerprint;
+    private readonly Func<string, (bool IsValid, LicensePayload? Payload, string? Error)> _verify;
+    private LicensePayload? _payload;
+    private LicenseStatus _status = LicenseStatus.Unlicensed;
+    private DateTime _lastSeenUtc;
 
-    public LicenseStatus Status { get; private set; } = LicenseStatus.Unlicensed;
-    public LicensePayload? CurrentLicense { get; private set; }
-    public string MachineFingerprint => HardwareIdProvider.GetMachineFingerprint();
-    public int TrialDaysRemaining { get; private set; }
-    public bool IsTrialActive => Status == LicenseStatus.Trial;
+    public LicenseService()
+        : this(
+            TimeProvider.System,
+            HardwareIdProvider.GetMachineFingerprint,
+            token => LicenseCrypto.VerifyToken(token)
+        ) { }
+
+    internal LicenseService(
+        TimeProvider clock,
+        Func<string> fingerprint,
+        Func<string, (bool IsValid, LicensePayload? Payload, string? Error)> verify
+    )
+    {
+        _clock = clock;
+        _fingerprint = fingerprint;
+        _verify = verify;
+        _lastSeenUtc = UtcNow;
+    }
+
+    private DateTime UtcNow => _clock.GetUtcNow().UtcDateTime;
+    public LicenseStatus Status
+    {
+        get
+        {
+            Refresh();
+            return _status;
+        }
+    }
+    public LicensePayload? CurrentLicense => _payload is { } payload ? Copy(payload) : null;
+    public string MachineFingerprint => _fingerprint();
+    public int TrialDaysRemaining => 0;
+    public bool IsTrialActive => false;
     public bool IsProActive => Status == LicenseStatus.Active;
-
     public event Action? LicenseChanged;
 
     public void Initialize(string? savedToken, DateTime? firstRunDate, DateTime? lastRunDate)
     {
-        // 1. First priority: Check if an activated cryptographic token or serial key is saved
-        if (!string.IsNullOrWhiteSpace(savedToken))
+        _payload = null;
+        _lastSeenUtc = lastRunDate?.ToUniversalTime() ?? UtcNow;
+        _status = LicenseStatus.Unlicensed;
+        if (_lastSeenUtc - UtcNow > TimeSpan.FromHours(1))
+            _status = LicenseStatus.Expired;
+        else if (!string.IsNullOrWhiteSpace(savedToken))
         {
-            if (LicenseCrypto.VerifyShortSerialKey(savedToken))
-            {
-                Status = LicenseStatus.Active;
-                CurrentLicense = new LicensePayload
-                {
-                    LicenseKey = savedToken,
-                    CustomerName = "Licensed User",
-                    CustomerEmail = "licensed@855media.com",
-                    MachineFingerprint = MachineFingerprint,
-                    Type = LicenseType.Lifetime,
-                    IssuedAt = DateTime.UtcNow,
-                    ExpiresAt = null,
-                    AllowedFeatures = ["All"],
-                };
-                LicenseChanged?.Invoke();
-                return;
-            }
-
             var result = ValidateTokenInternal(savedToken);
-            if (result.Success && result.Payload is not null)
-            {
-                Status = LicenseStatus.Active;
-                CurrentLicense = result.Payload;
-                LicenseChanged?.Invoke();
-                return;
-            }
-            if (result.Status == LicenseStatus.HardwareMismatch)
-            {
-                Status = LicenseStatus.HardwareMismatch;
-                LicenseChanged?.Invoke();
-                return;
-            }
+            _status = result.Status;
+            if (result.Success)
+                _payload = Copy(result.Payload!);
         }
-
-        // 2. Second priority: Free Trial Period
-        var now = DateTime.UtcNow;
-
-        // Anti-tampering clock detection: if current time is before the last known execution time
-        if (lastRunDate.HasValue && now < lastRunDate.Value.AddHours(-1))
-        {
-            Status = LicenseStatus.Expired;
-            TrialDaysRemaining = 0;
-            LicenseChanged?.Invoke();
-            return;
-        }
-
-        var trialStart = firstRunDate ?? now;
-        var trialEnd = trialStart.AddDays(TrialDaysDuration);
-
-        if (now < trialEnd)
-        {
-            Status = LicenseStatus.Trial;
-            TrialDaysRemaining = Math.Max(1, (int)Math.Ceiling((trialEnd - now).TotalDays));
-        }
-        else
-        {
-            Status = LicenseStatus.Expired;
-            TrialDaysRemaining = 0;
-        }
-
         LicenseChanged?.Invoke();
+    }
+
+    public void Refresh()
+    {
+        var now = UtcNow;
+        var previous = _status;
+        if (_lastSeenUtc - now > TimeSpan.FromHours(1))
+            _status = LicenseStatus.Expired;
+        else if (
+            _status == LicenseStatus.Active
+            && _payload?.ExpiresAt is { } end
+            && now >= end.ToUniversalTime()
+        )
+            _status = LicenseStatus.Expired;
+        if (now > _lastSeenUtc)
+            _lastSeenUtc = now;
+        if (previous != _status)
+            LicenseChanged?.Invoke();
     }
 
     public bool IsFeatureAllowed(LicenseFeature feature)
     {
-        // During active trial or full license, all features are enabled
-        if (Status == LicenseStatus.Active || Status == LicenseStatus.Trial)
-            return true;
-
-        // Basic downloading is always free even if trial expires (freemium model)
-        if (feature == LicenseFeature.BasicDownloads)
-            return true;
-
-        // Pro features require an active license or trial
-        return false;
+        Refresh();
+        return Enum.IsDefined(feature)
+            && _status == LicenseStatus.Active
+            && _payload != null
+            && (
+                _payload.AllowedFeatures.Contains("All")
+                || _payload.AllowedFeatures.Contains(feature.ToString())
+            );
     }
 
     public LicenseActivationResult ActivateWithToken(string signedToken)
     {
+        Refresh();
+        if (_lastSeenUtc - UtcNow > TimeSpan.FromHours(1))
+            return LicenseActivationResult.Failed(
+                "Correct the computer clock before activation.",
+                LicenseStatus.Expired
+            );
         var result = ValidateTokenInternal(signedToken);
-        if (result.Success && result.Payload is not null)
+        if (result.Success)
         {
-            Status = LicenseStatus.Active;
-            CurrentLicense = result.Payload;
+            _payload = Copy(result.Payload!);
+            _status = LicenseStatus.Active;
+            result.SignedToken = signedToken.Trim();
             LicenseChanged?.Invoke();
         }
-
         return result;
     }
 
@@ -122,43 +129,24 @@ public class LicenseService : ILicenseService
     )
     {
         if (string.IsNullOrWhiteSpace(licenseKey))
-            return LicenseActivationResult.Failed("Please enter a license key.");
-
+            return LicenseActivationResult.Failed(
+                "Please enter an activation key or signed license token."
+            );
         var key = licenseKey.Trim();
-
-        // 1. If user pasted the full signed token directly, activate immediately
         if (key.Contains('.'))
-        {
             return ActivateWithToken(key);
-        }
-
-        // 2. Offline short serial key verification (e.g. 855M-XXXX-XXXX-XXXX)
-        if (LicenseCrypto.VerifyShortSerialKey(key))
+        if (
+            !Uri.TryCreate(apiUrl, UriKind.Absolute, out var endpoint)
+            || endpoint.Scheme != Uri.UriSchemeHttps
+            || !string.IsNullOrEmpty(endpoint.UserInfo)
+        )
+            return LicenseActivationResult.Failed(
+                "Online activation requires a configured HTTPS activation service. You can also import a signed .lic file."
+            );
+        try
         {
-            var payload = new LicensePayload
-            {
-                LicenseKey = key,
-                CustomerName = "Licensed User",
-                CustomerEmail = "licensed@855media.com",
-                MachineFingerprint = MachineFingerprint,
-                Type = LicenseType.Lifetime,
-                IssuedAt = DateTime.UtcNow,
-                ExpiresAt = null,
-                AllowedFeatures = ["All"],
-            };
-
-            Status = LicenseStatus.Active;
-            CurrentLicense = payload;
-            LicenseChanged?.Invoke();
-            return LicenseActivationResult.Succeeded(payload, "Serial key activated successfully!");
-        }
-
-        // 3. Fallback online check if API URL is specifically configured
-        if (!string.IsNullOrWhiteSpace(apiUrl))
-        {
-            try
-            {
-                var requestBody = JsonSerializer.Serialize(
+            using var content = new StringContent(
+                JsonSerializer.Serialize(
                     new
                     {
                         license_key = key,
@@ -166,78 +154,83 @@ public class LicenseService : ILicenseService
                         product = "855Media",
                         version = "1.0",
                     }
-                );
-
-                using var content = new StringContent(
-                    requestBody,
-                    Encoding.UTF8,
-                    "application/json"
-                );
-                using var response = await HttpClient.PostAsync(apiUrl, content);
-
-                if (response.IsSuccessStatusCode)
-                {
-                    var responseJson = await response.Content.ReadAsStringAsync();
-                    using var doc = JsonDocument.Parse(responseJson);
-                    if (doc.RootElement.TryGetProperty("token", out var tokenElement))
-                    {
-                        var token = tokenElement.GetString();
-                        if (!string.IsNullOrWhiteSpace(token))
-                        {
-                            return ActivateWithToken(token);
-                        }
-                    }
-                }
-            }
-            catch (Exception ex)
+                ),
+                Encoding.UTF8,
+                "application/json"
+            );
+            using var response = await HttpClient.PostAsync(endpoint, content);
+            if (response.IsSuccessStatusCode)
             {
-                return LicenseActivationResult.Failed(
-                    $"Connection error: {ex.Message}. Please check your key or activate offline."
-                );
+                using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+                if (
+                    doc.RootElement.TryGetProperty("token", out var element)
+                    && element.GetString() is { Length: > 0 } token
+                )
+                    return ActivateWithToken(token);
             }
+            return LicenseActivationResult.Failed(
+                "Activation service did not return a valid signed license."
+            );
         }
-
-        return LicenseActivationResult.Failed(
-            "Invalid license key or token. Please verify the code or select your .lic file."
-        );
+        catch (Exception ex)
+            when (ex
+                    is HttpRequestException
+                        or TaskCanceledException
+                        or JsonException
+                        or InvalidOperationException
+            )
+        {
+            return LicenseActivationResult.Failed(
+                "Activation service could not be reached or returned an invalid response. Try again or import a signed .lic file."
+            );
+        }
     }
 
     public void Deactivate()
     {
-        CurrentLicense = null;
-        Status = LicenseStatus.Unlicensed;
+        _payload = null;
+        _status = LicenseStatus.Unlicensed;
         LicenseChanged?.Invoke();
     }
 
     private LicenseActivationResult ValidateTokenInternal(string token)
     {
-        var (isValid, payload, error) = LicenseCrypto.VerifyToken(token);
-
-        if (!isValid || payload is null)
+        var (valid, payload, error) = _verify(token.Trim());
+        if (!valid || payload == null)
             return LicenseActivationResult.Failed(error ?? "Invalid digital signature.");
-
-        if (payload.IsExpired)
+        var now = UtcNow;
+        if (
+            !Enum.IsDefined(payload.Type)
+            || payload.Type == LicenseType.Trial
+            || string.IsNullOrWhiteSpace(payload.LicenseKey)
+            || payload.AllowedFeatures == null
+            || payload.AllowedFeatures.Count == 0
+            || payload.IssuedAt.ToUniversalTime() > now.AddMinutes(5)
+            || (payload.Type != LicenseType.Lifetime && !payload.ExpiresAt.HasValue)
+            || (payload.ExpiresAt.HasValue && payload.ExpiresAt.Value <= payload.IssuedAt)
+        )
             return LicenseActivationResult.Failed(
-                "This license has expired.",
+                "Invalid subscription details. A paid, signed license with valid dates and module access is required."
+            );
+        if (payload.ExpiresAt.HasValue && now >= payload.ExpiresAt.Value.ToUniversalTime())
+            return LicenseActivationResult.Failed(
+                "This subscription has expired.",
                 LicenseStatus.Expired
             );
-
-        // Check machine fingerprint binding (if license was locked to a specific device)
-        if (!string.IsNullOrWhiteSpace(payload.MachineFingerprint))
-        {
-            var expectedBytes = Encoding.UTF8.GetBytes(
-                payload.MachineFingerprint.ToUpperInvariant()
+        if (
+            string.IsNullOrWhiteSpace(payload.MachineFingerprint)
+            || !CryptographicOperations.FixedTimeEquals(
+                Encoding.UTF8.GetBytes(payload.MachineFingerprint.ToUpperInvariant()),
+                Encoding.UTF8.GetBytes(MachineFingerprint.ToUpperInvariant())
+            )
+        )
+            return LicenseActivationResult.Failed(
+                "This subscription is not bound to this computer.",
+                LicenseStatus.HardwareMismatch
             );
-            var actualBytes = Encoding.UTF8.GetBytes(MachineFingerprint.ToUpperInvariant());
-            if (!CryptographicOperations.FixedTimeEquals(expectedBytes, actualBytes))
-            {
-                return LicenseActivationResult.Failed(
-                    $"This license is locked to another computer (Device ID mismatch). Your Device ID: {MachineFingerprint}",
-                    LicenseStatus.HardwareMismatch
-                );
-            }
-        }
-
-        return LicenseActivationResult.Succeeded(payload);
+        return LicenseActivationResult.Succeeded(Copy(payload));
     }
+
+    private static LicensePayload Copy(LicensePayload payload) =>
+        JsonSerializer.Deserialize<LicensePayload>(JsonSerializer.Serialize(payload))!;
 }

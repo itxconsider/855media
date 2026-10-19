@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
@@ -49,6 +49,9 @@ public partial class AutoPostViewModel : ViewModelBase
 
     [ObservableProperty]
     private bool _clearCacheFBBeforeOpen = false;
+
+    [ObservableProperty]
+    private bool _checkSurfsharkConnection;
 
     [ObservableProperty]
     private bool _afterPostCheckCopyRight = true;
@@ -241,6 +244,7 @@ public partial class AutoPostViewModel : ViewModelBase
     [NotifyCanExecuteChangedFor(nameof(FetchSelectedPagesInfoCommand))]
     [NotifyPropertyChangedFor(nameof(CanEditAccountBulkSelection))]
     [NotifyPropertyChangedFor(nameof(CanApplyAccountBulkSelection))]
+    [NotifyCanExecuteChangedFor(nameof(CloseSelectedLdCommand))]
     private bool _isRunning;
 
     [ObservableProperty]
@@ -249,6 +253,7 @@ public partial class AutoPostViewModel : ViewModelBase
     [NotifyCanExecuteChangedFor(nameof(FetchSelectedPagesInfoCommand))]
     [NotifyPropertyChangedFor(nameof(CanEditAccountBulkSelection))]
     [NotifyPropertyChangedFor(nameof(CanApplyAccountBulkSelection))]
+    [NotifyCanExecuteChangedFor(nameof(CloseSelectedLdCommand))]
     private bool _isBusy;
 
     [ObservableProperty]
@@ -517,6 +522,8 @@ public partial class AutoPostViewModel : ViewModelBase
     [RelayCommand]
     public async Task TogglePageTypeAsync(FacebookPageTargetViewModel? target)
     {
+        if (!CanUseSubscription())
+            return;
         if (target == null)
             return;
 
@@ -555,11 +562,13 @@ public partial class AutoPostViewModel : ViewModelBase
 
     partial void OnSelectedManageInstanceChanged(LDInstanceItemViewModel? value)
     {
+        RefreshLdAccountsSection();
         RequestManageSelectionRefresh();
     }
 
     partial void OnFilterBySelectedDeviceChanged(bool value)
     {
+        RefreshLdAccountsSection();
         OnPropertyChanged(nameof(ManagePagesHeaderTitle));
         RefreshDisplayedManagePages();
     }
@@ -1116,6 +1125,8 @@ public partial class AutoPostViewModel : ViewModelBase
 
     public override async Task InitializeAsync()
     {
+        if (ModuleLicense?.IsFeatureAllowed(_855Media.Core.Licensing.LicenseFeature.All) != true)
+            return;
         await ReconcileSavedPostQueueAsync();
         await LoadConfigFromDiskAsync();
         await LoadPagesFromDiskAsync();
@@ -1126,6 +1137,8 @@ public partial class AutoPostViewModel : ViewModelBase
     [RelayCommand]
     public async Task SetPathFolderAsync()
     {
+        if (!CanUseSubscription())
+            return;
         var picked = await _dialogManager.PromptDirectoryPathAsync(LdFolder);
         if (!string.IsNullOrWhiteSpace(picked))
         {
@@ -1137,6 +1150,8 @@ public partial class AutoPostViewModel : ViewModelBase
     [RelayCommand]
     public async Task LoadDevicesAsync()
     {
+        if (!CanUseSubscription())
+            return;
         if (IsBusy)
             return;
         IsBusy = true;
@@ -1144,6 +1159,7 @@ public partial class AutoPostViewModel : ViewModelBase
 
         try
         {
+            await ResolveLdInstallationAsync();
             var detected = await _ldPlayerService.GetInstancesAsync(LdFolder);
             foreach (var row in Instances)
                 row.ResetNetworkInfo();
@@ -1193,6 +1209,8 @@ public partial class AutoPostViewModel : ViewModelBase
     [RelayCommand]
     public async Task SortWindowsAsync()
     {
+        if (!CanUseSubscription())
+            return;
         await _ldPlayerService.SortWindowsAsync(LdFolder);
         _snackbarManager.Notify("Windows auto-sorted.");
     }
@@ -1218,6 +1236,8 @@ public partial class AutoPostViewModel : ViewModelBase
     [RelayCommand]
     public async Task StartAutomationAsync()
     {
+        if (!CanUseSubscription())
+            return;
         if (IsRunning || IsBusy)
             return;
 
@@ -1357,6 +1377,7 @@ public partial class AutoPostViewModel : ViewModelBase
             DeleteVideoFile = IsDeleteVideoFile,
             BackupVideoFile = IsBackupVideoFile,
             ClearCache = ClearCacheFBBeforeOpen,
+            CheckSurfsharkConnection = CheckSurfsharkConnection,
             ClearRecent = IsClearRecentApp,
             CloseAfterAction = CloseLDAfterAction,
             AutoSort = AutoSortLDPlayer,
@@ -1486,6 +1507,7 @@ public partial class AutoPostViewModel : ViewModelBase
         CancellationToken ct
     )
     {
+        RequireSubscription();
         using var deviceLease = await PFlowDeviceLease.AcquireAsync(worker.Index, ct);
         bool appsCleared = false;
         try
@@ -1516,13 +1538,13 @@ public partial class AutoPostViewModel : ViewModelBase
             worker.Status = "Waiting for Android boot...";
             var booted = await _ldPlayerService.WaitForBootCompletedAsync(
                 worker.Index,
-                TimeSpan.FromSeconds(60),
+                PFlowStartupTimeouts.AndroidBoot,
                 LdFolder,
                 ct
             );
             if (!booted)
                 throw new InvalidOperationException(
-                    "Android did not finish booting within 60 seconds."
+                    "Android did not finish booting within 180 seconds."
                 );
 
             if (config.AutoSort)
@@ -1540,6 +1562,16 @@ public partial class AutoPostViewModel : ViewModelBase
             }
             worker.Status = "Checking internet inside LD...";
             await PFlowSession.WaitInternetAsync(_ldPlayerService, worker.Index, LdFolder, ct);
+            if (config.CheckSurfsharkConnection)
+            {
+                worker.Status = "Waiting for Surfshark connection inside LD (up to 180s)...";
+                await PFlowConnectionChecks.WaitForSurfsharkAsync(
+                    _ldPlayerService,
+                    worker.Index,
+                    LdFolder,
+                    ct
+                );
+            }
 
             if (config.ClearCache)
             {
@@ -1670,6 +1702,7 @@ public partial class AutoPostViewModel : ViewModelBase
         public bool BackupVideoFile { get; init; }
 
         public bool ClearCache { get; init; }
+        public bool CheckSurfsharkConnection { get; init; }
         public bool ClearRecent { get; init; }
         public bool CloseAfterAction { get; init; }
         public bool AutoSort { get; init; }
@@ -1846,6 +1879,8 @@ public partial class AutoPostViewModel : ViewModelBase
     [RelayCommand]
     public async Task LoadConfigFromDiskAsync()
     {
+        if (!CanUseSubscription())
+            return;
         try
         {
             var cfg = await AutoPostConfigStorage.LoadConfigAsync();
@@ -1907,6 +1942,7 @@ public partial class AutoPostViewModel : ViewModelBase
             DelayBeforeSwitchPage = DelayBeforeSwitchPage,
             CloseLDAfterAction = CloseLDAfterAction,
             ClearCacheFBBeforeOpen = ClearCacheFBBeforeOpen,
+            CheckSurfsharkConnection = CheckSurfsharkConnection,
             AfterPostCheckCopyRight = AfterPostCheckCopyRight,
             SwitchToProfileAfterPost = SwitchToProfileAfterPost,
             SleepPcAfterActionDone = SleepPcAfterActionDone,
@@ -1965,6 +2001,7 @@ public partial class AutoPostViewModel : ViewModelBase
         DelayBeforeSwitchPage = cfg.DelayBeforeSwitchPage;
         CloseLDAfterAction = cfg.CloseLDAfterAction;
         ClearCacheFBBeforeOpen = cfg.ClearCacheFBBeforeOpen;
+        CheckSurfsharkConnection = cfg.CheckSurfsharkConnection;
         AfterPostCheckCopyRight = cfg.AfterPostCheckCopyRight;
         SwitchToProfileAfterPost = cfg.SwitchToProfileAfterPost;
         SleepPcAfterActionDone = cfg.SleepPcAfterActionDone;
@@ -2122,6 +2159,8 @@ public partial class AutoPostViewModel : ViewModelBase
     [RelayCommand]
     public async Task BrowseVideoReelFileAsync()
     {
+        if (!CanUseSubscription())
+            return;
         if (SelectedPageForEdit == null)
             return;
         try
@@ -2152,6 +2191,8 @@ public partial class AutoPostViewModel : ViewModelBase
     [RelayCommand]
     public async Task BrowseVideoReelFolderAsync()
     {
+        if (!CanUseSubscription())
+            return;
         if (SelectedPageForEdit == null)
             return;
         try
@@ -2172,6 +2213,8 @@ public partial class AutoPostViewModel : ViewModelBase
     [RelayCommand]
     public async Task BrowseImageFileAsync()
     {
+        if (!CanUseSubscription())
+            return;
         if (SelectedPageForEdit == null)
             return;
         try
@@ -2202,6 +2245,8 @@ public partial class AutoPostViewModel : ViewModelBase
     [RelayCommand]
     public async Task BrowseImageFolderAsync()
     {
+        if (!CanUseSubscription())
+            return;
         if (SelectedPageForEdit == null)
             return;
         try
@@ -2222,6 +2267,8 @@ public partial class AutoPostViewModel : ViewModelBase
     [RelayCommand]
     public async Task BrowseVideoLongFileAsync()
     {
+        if (!CanUseSubscription())
+            return;
         if (SelectedPageForEdit == null)
             return;
         try
@@ -2252,6 +2299,8 @@ public partial class AutoPostViewModel : ViewModelBase
     [RelayCommand]
     public async Task BrowseVideoLongFolderAsync()
     {
+        if (!CanUseSubscription())
+            return;
         if (SelectedPageForEdit == null)
             return;
         try
@@ -2272,6 +2321,8 @@ public partial class AutoPostViewModel : ViewModelBase
     [RelayCommand]
     public async Task BrowseGroupPictureFolderAsync()
     {
+        if (!CanUseSubscription())
+            return;
         if (SelectedPageForEdit == null)
             return;
         try
@@ -2293,6 +2344,8 @@ public partial class AutoPostViewModel : ViewModelBase
     [RelayCommand]
     public async Task BrowseGroupReelFolderAsync()
     {
+        if (!CanUseSubscription())
+            return;
         if (SelectedPageForEdit == null)
             return;
         try
@@ -2314,6 +2367,8 @@ public partial class AutoPostViewModel : ViewModelBase
     [RelayCommand]
     public async Task BrowseGroupVideoFolderAsync()
     {
+        if (!CanUseSubscription())
+            return;
         if (SelectedPageForEdit == null)
             return;
         try
@@ -3024,6 +3079,8 @@ public partial class AutoPostViewModel : ViewModelBase
     [RelayCommand]
     public async Task LoadPagesFromDiskAsync()
     {
+        if (!CanUseSubscription())
+            return;
         try
         {
             var loaded = await PFlowPageStorage.LoadPagesAsync();
@@ -3125,7 +3182,7 @@ public partial class AutoPostViewModel : ViewModelBase
 
                 var booted = await _ldPlayerService.WaitForBootCompletedAsync(
                     target.Index,
-                    TimeSpan.FromSeconds(45),
+                    PFlowStartupTimeouts.AndroidBoot,
                     LdFolder,
                     ct
                 );
@@ -3133,7 +3190,7 @@ public partial class AutoPostViewModel : ViewModelBase
                 if (!booted)
                 {
                     target.Status = "Boot Failed";
-                    StatusSummary = $"Failed to boot {target.Name} within 45s.";
+                    StatusSummary = $"Failed to boot {target.Name} within 180s.";
                     return false;
                 }
 
@@ -3185,6 +3242,7 @@ public partial class AutoPostViewModel : ViewModelBase
                             await ReplaceDevicePagesInTableAsync(target, rootShellDetails);
                             await PersistPagesSnapshotAsync();
                             rootSaved = true;
+                            await RefreshFetchedAccountMappingsAsync(target);
 
                             var rootItemCount = rootShellDetails.Pages.Count + 1;
                             await ReportFetchProgressAsync(
@@ -3200,6 +3258,18 @@ public partial class AutoPostViewModel : ViewModelBase
                             FacebookAccountDetails? personalInfo = null;
                             try
                             {
+                                await PFlowSession.EnsureFetchFacebookForegroundAsync(
+                                    _ldPlayerService,
+                                    target.Index,
+                                    LdFolder,
+                                    ct,
+                                    step =>
+                                        ReportFetchProgressAsync(
+                                            target,
+                                            "Opening Facebook",
+                                            $"{target.Name}: {step}"
+                                        )
+                                );
                                 personalInfo =
                                     await _ldPlayerService.ExtractPersonalAccountDetailsFromUiAsync(
                                         target.Index,
@@ -3250,6 +3320,9 @@ public partial class AutoPostViewModel : ViewModelBase
                                     $"{target.Name}: could not verify the personal account; its root-shell rows are saved."
                                 );
                             }
+
+                            if (personalInfo?.SwitchedToProfile == true)
+                                await DiscoverUncachedPagesAsync(target, rootShellDetails, ct);
 
                             if (
                                 rootShellDetails.Pages.Count > 0
@@ -3483,6 +3556,8 @@ public partial class AutoPostViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanFetchDevicePages))]
     public async Task FetchDevicePagesAsync(LDInstanceItemViewModel? targetInstance = null)
     {
+        if (!CanUseSubscription())
+            return;
         if (IsRunning)
         {
             _snackbarManager.Notify(
@@ -3552,6 +3627,8 @@ public partial class AutoPostViewModel : ViewModelBase
     [RelayCommand]
     public async Task SwitchToPersonaAsync(FacebookPageTargetViewModel? targetPage)
     {
+        if (!CanUseSubscription())
+            return;
         if (IsRunning || IsBusy)
         {
             _snackbarManager.Notify(
@@ -3615,6 +3692,8 @@ public partial class AutoPostViewModel : ViewModelBase
     [RelayCommand]
     public async Task SwitchToPrimaryProfileAsync()
     {
+        if (!CanUseSubscription())
+            return;
         var profile =
             DisplayedManagePages.FirstOrDefault(p => p.IsProfile)
             ?? Pages.FirstOrDefault(p => p.IsProfile && MatchesSelectedDevice(p));
@@ -3696,6 +3775,8 @@ public partial class AutoPostViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanFetchSelectedPagesInfo))]
     public async Task FetchSelectedPagesInfoAsync()
     {
+        if (!CanUseSubscription())
+            return;
         if (!Instances.Any(IsEligibleFetchDevice))
         {
             StatusSummary = "Check an LDPlayer instance before fetching accounts and Pages.";
@@ -3899,6 +3980,8 @@ public partial class AutoPostViewModel : ViewModelBase
     [RelayCommand]
     public async Task AddNewPageAsync()
     {
+        if (!CanUseSubscription())
+            return;
         var targetDeviceName = SelectedManageInstance?.Name ?? $"LD-{Pages.Count + 1}";
         var existingUid =
             Pages
@@ -3928,6 +4011,8 @@ public partial class AutoPostViewModel : ViewModelBase
     [RelayCommand]
     public async Task DeleteSelectedPagesAsync()
     {
+        if (!CanUseSubscription())
+            return;
         var toRemove = DisplayedManagePages.Where(p => p.IsSelected).ToList();
         if (toRemove.Count == 0)
         {
@@ -3948,6 +4033,8 @@ public partial class AutoPostViewModel : ViewModelBase
     [RelayCommand]
     public async Task SetFileUploadAsync()
     {
+        if (!CanUseSubscription())
+            return;
         // 1. Identify target pages from selection
         var selectedPages = DisplayedManagePages.Where(p => p.IsSelected).ToList();
         if (selectedPages.Count == 0)

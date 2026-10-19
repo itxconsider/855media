@@ -4,6 +4,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -117,6 +118,8 @@ public class SplitAndUpscalePipeline
 
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            await _upscaleService.ProbeVideoAsync(masterJob, cancellationToken);
             var splitOptions =
                 masterJob.SplitOptions ?? new CustomSplitOptions { Mode = SplitMode.InHalf };
             Log(
@@ -152,31 +155,54 @@ public class SplitAndUpscalePipeline
                 ext = ".mp4";
 
             long accumulatedFrames = 0;
+            var renderKey = UpscaleCheckpoint.RenderKey(masterJob);
+            var sourceKey = UpscaleCheckpoint.SourceKey(masterJob.FilePath);
+            var partFrameCounts = slices
+                .Select(slice =>
+                    EstimatePartFrames(masterJob, (slice.End ?? durationSeconds) - slice.Start)
+                )
+                .ToArray();
+            masterJob.TotalFrames = partFrameCounts.Sum();
 
             for (int i = 0; i < slices.Count; i++)
             {
+                cancellationToken.ThrowIfCancellationRequested();
+                var partIndex = i;
                 var (startSec, endSec, partNumber) = slices[i];
+                var partDuration = (endSec ?? durationSeconds) - startSec;
                 var partInput = Path.Combine(tempDir, $"part{partNumber}_slice{ext}");
                 var partUpscaled = Path.Combine(tempDir, $"part{partNumber}_upscaled{ext}");
                 upscaledPartFiles.Add(partUpscaled);
 
-                double partBaseProgress = (double)i / slices.Count * 100.0;
-                double partWeight = 1.0 / slices.Count;
+                double partBaseProgress = startSec / durationSeconds * 100.0;
+                double partWeight = partDuration / durationSeconds;
+                var sliceKey = UpscaleCheckpoint.Key(sourceKey, startSec, endSec);
+                var partKey = UpscaleCheckpoint.Key(renderKey, startSec, endSec);
 
                 // Checkpoint check for this part:
-                bool partDone =
-                    File.Exists(partUpscaled) && new FileInfo(partUpscaled).Length > 1024;
+                bool partDone = UpscaleCheckpoint.IsFileComplete(partUpscaled, partKey);
                 if (partDone)
                 {
                     Log(
                         $"[Checkpoint] Discovered completed Part {partNumber} upscaled clip on disk. Skipping Part {partNumber}..."
                     );
-                    masterJob.Progress = (double)(i + 1) / slices.Count * 100.0;
+                    var savedFrames = UpscaleCheckpoint.GetCompletedFileFrames(
+                        partUpscaled,
+                        partKey
+                    );
+                    if (savedFrames > 0)
+                        partFrameCounts[i] = savedFrames;
+                    masterJob.TotalFrames = partFrameCounts.Sum();
+                    accumulatedFrames += partFrameCounts[i];
+                    masterJob.CurrentFrame = accumulatedFrames;
+                    masterJob.Progress = Math.Min(99.0, partBaseProgress + partWeight * 100.0);
                 }
                 else
                 {
-                    if (!File.Exists(partInput))
+                    // An interrupted slice is no safer to reuse than an interrupted encode.
+                    if (!UpscaleCheckpoint.IsFileComplete(partInput, sliceKey))
                     {
+                        File.Delete(partInput + ".complete.json");
                         await SliceStreamAsync(
                             ffmpegPath,
                             masterJob,
@@ -186,12 +212,16 @@ public class SplitAndUpscalePipeline
                             Log,
                             cancellationToken
                         );
+                        cancellationToken.ThrowIfCancellationRequested();
+                        UpscaleCheckpoint.CompleteFile(partInput, sliceKey);
                     }
+
+                    File.Delete(partUpscaled + ".complete.json");
 
                     Log(
                         $"Beginning upscale of Part {partNumber} of {slices.Count} ({partBaseProgress:F0}% - {(partBaseProgress + partWeight * 100.0):F0}%)..."
                     );
-                    var childJob = CreateChildJob(masterJob, partInput, partUpscaled);
+                    var childJob = CreateChildJob(masterJob, partInput, partUpscaled, partDuration);
                     childJob.PartNumber = partNumber;
 
                     childJob.PropertyChanged += (_, e) =>
@@ -199,7 +229,7 @@ public class SplitAndUpscalePipeline
                         if (e.PropertyName == nameof(UpscaleJob.Progress))
                         {
                             masterJob.Progress = Math.Min(
-                                100.0,
+                                99.0,
                                 partBaseProgress + (childJob.Progress * partWeight)
                             );
                         }
@@ -209,7 +239,8 @@ public class SplitAndUpscalePipeline
                         }
                         else if (e.PropertyName == nameof(UpscaleJob.TotalFrames))
                         {
-                            masterJob.TotalFrames = childJob.TotalFrames * slices.Count;
+                            partFrameCounts[partIndex] = childJob.TotalFrames;
+                            masterJob.TotalFrames = partFrameCounts.Sum();
                         }
                         else if (e.PropertyName == nameof(UpscaleJob.Fps))
                         {
@@ -254,15 +285,17 @@ public class SplitAndUpscalePipeline
                         }
                     };
 
-                    if (childJob.TotalFrames <= 0)
-                    {
-                        await _upscaleService.ProbeVideoAsync(childJob, cancellationToken);
-                    }
+                    await _upscaleService.ProbeVideoAsync(childJob, cancellationToken);
 
                     await _upscaleService.ProcessJobAsync(childJob, cancellationToken);
-                    accumulatedFrames +=
+                    cancellationToken.ThrowIfCancellationRequested();
+                    partFrameCounts[i] =
                         childJob.TotalFrames > 0 ? childJob.TotalFrames : childJob.CurrentFrame;
-                    masterJob.Progress = (double)(i + 1) / slices.Count * 100.0;
+                    UpscaleCheckpoint.CompleteFile(partUpscaled, partKey, partFrameCounts[i]);
+                    masterJob.TotalFrames = partFrameCounts.Sum();
+                    accumulatedFrames += partFrameCounts[i];
+                    masterJob.CurrentFrame = accumulatedFrames;
+                    masterJob.Progress = Math.Min(99.0, partBaseProgress + partWeight * 100.0);
                     Log($"Part {partNumber} upscaling successfully finished.");
 
                     // Immediate cleanup of sliced input to conserve disk storage
@@ -461,10 +494,18 @@ public class SplitAndUpscalePipeline
         }
     }
 
-    private static UpscaleJob CreateChildJob(
+    internal static long EstimatePartFrames(UpscaleJob masterJob, double durationSeconds) =>
+        (long)
+            Math.Max(
+                1,
+                Math.Round(durationSeconds * (masterJob.VideoFps > 0 ? masterJob.VideoFps : 30.0))
+            );
+
+    internal static UpscaleJob CreateChildJob(
         UpscaleJob masterJob,
         string inputPath,
-        string outputPath
+        string outputPath,
+        double durationSeconds
     )
     {
         return new UpscaleJob
@@ -487,14 +528,13 @@ public class SplitAndUpscalePipeline
             ZoomMode = masterJob.ZoomMode,
             SpeedMode = masterJob.SpeedMode,
             PlaybackSpeed = masterJob.PlaybackSpeed,
+            TargetFramerate = masterJob.TargetFramerate,
             AudioMode = masterJob.AudioMode,
             ActivePresetName = masterJob.ActivePresetName,
             ModelType = masterJob.ModelType,
             EnableFacialClarity = masterJob.EnableFacialClarity,
-            EnableFaceRestoration = masterJob.EnableFaceRestoration,
-            FaceRestorationFidelity = masterJob.FaceRestorationFidelity,
             VideoFps = masterJob.VideoFps,
-            TotalFrames = masterJob.TotalFrames > 0 ? masterJob.TotalFrames / 2 : 0,
+            TotalFrames = EstimatePartFrames(masterJob, durationSeconds),
             InputWidth = masterJob.InputWidth,
             InputHeight = masterJob.InputHeight,
             EnableSplitAndUpscale = false, // Critical: prevent recursive splitting

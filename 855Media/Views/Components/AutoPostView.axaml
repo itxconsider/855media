@@ -336,7 +336,8 @@
                                         <ContextMenu>
                                             <MenuItem Header="Add Account" Command="{Binding OpenAddAccountCommand}" CommandParameter="{Binding SelectedManageInstance}" />
                                             <MenuItem Header="Manage accounts" Command="{Binding ManageDeviceAccountsCommand}" CommandParameter="{Binding SelectedManageInstance}" />
-                                            <MenuItem Header="Fetch Facebook Account &amp; Pages (Root Shell)"
+                                            <MenuItem Header="Close LD [selected]" Command="{Binding CloseSelectedLdCommand}" />
+                                            <MenuItem Header="Fetch account info"
                                                       Command="{Binding FetchDevicePagesCommand}"
                                                       CommandParameter="{Binding SelectedManageInstance}">
                                                 <MenuItem.Icon>
@@ -408,7 +409,7 @@
                                                 IsEnabled="{Binding !IsBusy}"
                                                 Classes="action-btn"
                                                 Padding="8,4"
-                                                ToolTip.Tip="Extract latest Facebook profile UID, email, and managed pages via Root Shell">
+                                                ToolTip.Tip="Refresh Facebook account details and managed pages">
                                                 <StackPanel Orientation="Horizontal" Spacing="5">
                                                     <materialIcons:MaterialIcon Kind="Refresh" Width="13" Height="13" Foreground="{DynamicResource AntigravityTextBrush}" />
                                                     <TextBlock Text="Fetch Account Info" FontSize="11" FontWeight="Bold" />
@@ -790,7 +791,7 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
                                             <Button Command="{Binding FetchSelectedPagesInfoCommand}" IsEnabled="{Binding !IsBusy}" Classes="action-btn" Background="#16A34A" Foreground="White" HorizontalAlignment="Center" Padding="16,8">
                                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                                     <materialIcons:MaterialIcon Kind="LightningBoltOutline" Width="16" Height="16" />
-                                                    <TextBlock Text="Fetch Accounts (Root Shell)" FontWeight="SemiBold" FontSize="12" />
+                                                    <TextBlock Text="Fetch account info" FontWeight="SemiBold" FontSize="12" />
                                                 </StackPanel>
                                             </Button>
                                         </StackPanel>
@@ -798,11 +799,11 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
                                 </Grid>
                             </Grid>
                         </Border></TabItem>
-                            <TabItem Header="Personal accounts">
+                            <TabItem Header="LD-Accounts">
                                 <Border BorderThickness="1" BorderBrush="{DynamicResource AntigravityBorderBrush}" CornerRadius="8" Padding="12" Background="{DynamicResource AntigravityCardBrush}">
                                     <Grid RowDefinitions="Auto,Auto,Auto,Auto,*">
-                                        <TextBlock Text="Mapped personal accounts" FontWeight="Bold" FontSize="16" />
-                                        <TextBlock Grid.Row="1" Text="{Binding AccountMappingStatus}" TextWrapping="Wrap" Margin="0,8" />
+                                        <TextBlock Text="{Binding LdAccountsHeading}" FontWeight="Bold" FontSize="16" />
+                                        <TextBlock Grid.Row="1" Text="{Binding LdAccountsSummary}" TextWrapping="Wrap" Margin="0,8" />
                                         <WrapPanel Grid.Row="2" Margin="0,0,0,8">
                                             <Button Content="Refresh mappings" Classes="action-btn" Command="{Binding RefreshAccountMappingsCommand}" IsEnabled="{Binding CanEditAccountBulkSelection}" Margin="0,0,8,4" />
                                             <Button Content="Save all account options" Classes="action-btn" Command="{Binding SaveAccountSelectionsCommand}" IsEnabled="{Binding CanEditAccountBulkSelection}" Margin="0,0,8,4" />
@@ -824,7 +825,7 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
                                             <TextBlock Text="{Binding BulkAccountSelectionStatus}" TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                         </StackPanel>
                                         <ScrollViewer Grid.Row="4" HorizontalScrollBarVisibility="Disabled">
-                                            <ItemsControl ItemsSource="{Binding MappedAccounts}" IsEnabled="{Binding CanEditAccountBulkSelection}">
+                                            <ItemsControl x:Name="MappedAccountsList" ItemsSource="{Binding DisplayedMappedAccounts}" IsEnabled="{Binding CanEditAccountBulkSelection}">
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate DataType="components:PFlowAccountItemViewModel">
                                                         <Border BorderThickness="1" BorderBrush="{DynamicResource AntigravityBorderBrush}" CornerRadius="8" Padding="12" Margin="0,0,0,8">

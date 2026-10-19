@@ -141,14 +141,14 @@
                         BorderThickness="0"
                         Padding="0">
                         <StackPanel Orientation="Horizontal" Spacing="4">
-                            <!-- Downloader Tab -->
+                            <!-- Auto Post Tab -->
                             <Button
-                                Command="{Binding SelectDownloaderTabCommand}"
+                                Command="{Binding SelectAutoPostTabCommand}"
                                 Classes="tab-button"
-                                Classes.active="{Binding IsDownloaderTab}"
+                                Classes.active="{Binding IsAutoPostTab}"
                                 Theme="{DynamicResource MaterialFlatButton}">
                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding LocalizationManager.DownloaderTabTitle}" VerticalAlignment="Center" />
+                                    <TextBlock Text="AUTO POST" VerticalAlignment="Center" />
                                 </StackPanel>
                             </Button>
 
@@ -174,14 +174,14 @@
                                 </StackPanel>
                             </Button>
 
-                            <!-- Auto Post Tab -->
+                            <!-- Downloader Tab -->
                             <Button
-                                Command="{Binding SelectAutoPostTabCommand}"
+                                Command="{Binding SelectDownloaderTabCommand}"
                                 Classes="tab-button"
-                                Classes.active="{Binding IsAutoPostTab}"
+                                Classes.active="{Binding IsDownloaderTab}"
                                 Theme="{DynamicResource MaterialFlatButton}">
                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                    <TextBlock Text="AUTO POST" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding LocalizationManager.DownloaderTabTitle}" VerticalAlignment="Center" />
                                 </StackPanel>
                             </Button>
 
@@ -440,16 +440,21 @@
                                 Kind="AccountKey" />
                         </Button>
 
-                        <!-- License & Activation Button -->
-                        <Button
-                            Classes="icon-tool-btn"
-                            Command="{Binding ShowLicenseActivationCommand}"
-                            ToolTip.Tip="License &amp; Activation">
-                            <materialIcons:MaterialIcon
-                                Width="18"
-                                Height="18"
-                                Kind="KeyVariant" />
-                        </Button>
+                        <!-- Subscription time remaining -->
+                        <Border
+                            Padding="8,6"
+                            CornerRadius="6"
+                            Background="{DynamicResource MuseCloseBtnBrush}"
+                            BorderBrush="{DynamicResource AntigravityBorderBrush}"
+                            BorderThickness="1"
+                            VerticalAlignment="Center"
+                            ToolTip.Tip="Subscription time remaining. Manage in Settings → Subscription.">
+                            <TextBlock
+                                Text="{Binding LicenseBadgeText}"
+                                FontSize="12"
+                                FontWeight="SemiBold"
+                                Foreground="{DynamicResource AntigravityTextBrush}" />
+                        </Border>
 
                         <!-- Settings Button -->
                         <Button
@@ -466,7 +471,7 @@
             </Border>
 
             <!--  Tab Content Area  -->
-            <Grid Grid.Row="1">
+            <Grid Grid.Row="1" IsEnabled="{Binding HasSubscriptionAccess}">
                 <Grid.Styles>
                     <Style Selector="ContentControl">
                         <Style.Animations>
@@ -942,6 +947,14 @@
             </Grid>
 
             <!--  Real-Time Hardware Usage & System Performance Status Bar (Muse.ai Glass Dock)  -->
+            <Border Grid.Row="1" IsVisible="{Binding !HasSubscriptionAccess}" Background="{DynamicResource AntigravityCanvasBrush}" Padding="32">
+                <StackPanel MaxWidth="440" VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="16">
+                    <TextBlock Text="Activate your subscription" FontSize="24" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" />
+                    <TextBlock Text="An active subscription unlocks all 855Media modules on this computer. Manage activation and renewal in Settings." TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                    <Button Content="Open subscription settings" Command="{Binding ShowLicenseActivationCommand}" HorizontalAlignment="Left" />
+                    <Button Content="Stop running tasks" Command="{Binding StopSubscriptionWorkCommand}" HorizontalAlignment="Left" />
+                </StackPanel>
+            </Border>
             <Border
                 Grid.Row="2"
                 Background="{DynamicResource AntigravityRailBrush}"

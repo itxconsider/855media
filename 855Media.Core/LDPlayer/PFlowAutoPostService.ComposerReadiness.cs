@@ -33,7 +33,8 @@ public partial class PFlowAutoPostService
     internal static XElement? FindVisiblePublishControl(
         string? xml,
         string[] labels,
-        bool requireEnabled = true
+        bool requireEnabled = true,
+        bool requireClickable = true
     )
     {
         foreach (var doc in SafeParseXmlDocuments(xml))
@@ -66,7 +67,8 @@ public partial class PFlowAutoPostService
             foreach (var button in node.AncestorsAndSelf("node").Take(3))
             {
                 if (
-                    button.Attribute("clickable")?.Value != "true"
+                    requireClickable
+                    && button.Attribute("clickable")?.Value != "true"
                     && !(
                         !requireEnabled
                         && button.Attribute("class")?.Value == "android.widget.Button"
@@ -201,16 +203,42 @@ public partial class PFlowAutoPostService
                 ct
             );
         }
+        // The fixed Share footer can be visible before the Reel settings list
+        // reaches its last row. Reveal the end marker before considering Share ready.
+        if (
+            Labels(xml)
+                .Any(label => label.Equals("Reel Settings", StringComparison.OrdinalIgnoreCase))
+        )
+        {
+            var settingsUntil = now().AddSeconds(30);
+            for (var scroll = 0; ; scroll++)
+            {
+                await CheckContext();
+                if (FindVisiblePublishControl(xml, ["See more settings"], false, false) != null)
+                    break;
+                if (scroll >= 20 || now() >= settingsUntil)
+                    throw new InvalidOperationException(
+                        "Reel Settings did not reveal See more settings after scrolling; no Share tap was made."
+                    );
+                await Scroll(true, "composer.settings.scroll-to-end");
+            }
+            await PFlowTrace.SessionAsync(
+                job.DeviceIndex,
+                "composer.settings.end-visible",
+                "marker=See more settings; noSettingsTap=true",
+                ct
+            );
+        }
         var discoveryUntil = now().AddSeconds(30);
         DateTime? disabledUntil = null;
         var disabledLogged = false;
-        var disabledScrollDone = false;
+        var disabledScrollRetries = 0;
         var publishScrolls = 0;
         while (FindVisiblePublishControl(xml, publishLabels) == null)
         {
             await CheckContext();
-            // Reveal missing controls; for a visible disabled control, make one
-            // bounded scroll/recheck before waiting for preparation to complete.
+            // Reveal missing controls; retry a disabled control with bounded
+            // up/down cycles before waiting for media preparation to finish.
             if (FindVisiblePublishControl(xml, publishLabels, requireEnabled: false) == null)
             {
                 if (now() >= discoveryUntil)
@@ -232,10 +260,38 @@ public partial class PFlowAutoPostService
                     throw new InvalidOperationException(
                         $"Publish control remained visible but disabled for {DisabledPublishWait.TotalSeconds:0} seconds; no Share tap was made."
                     );
-                if (!disabledScrollDone)
+                if (disabledScrollRetries < 3)
                 {
-                    disabledScrollDone = true;
-                    await Scroll(true, "composer.publish.disabled-scroll");
+                    disabledScrollRetries++;
+                    await PFlowTrace.SessionAsync(
+                        job.DeviceIndex,
+                        "composer.publish.scroll-retry",
+                        $"attempt={disabledScrollRetries}; maximum=3",
+                        ct
+                    );
+                    await Scroll(false, "composer.publish.retry-up");
+                    await Scroll(true, "composer.publish.retry-down");
+                    if (
+                        Labels(xml)
+                            .Any(label =>
+                                label.Equals("Reel Settings", StringComparison.OrdinalIgnoreCase)
+                            )
+                    )
+                    {
+                        for (
+                            var scroll = 0;
+                            FindVisiblePublishControl(xml, ["See more settings"], false, false)
+                                == null;
+                            scroll++
+                        )
+                        {
+                            if (scroll >= 20 || now() >= disabledUntil.Value)
+                                throw new InvalidOperationException(
+                                    "Reel Settings end could not be restored during Share retry; no Share tap was made."
+                                );
+                            await Scroll(true, "composer.publish.retry-down");
+                        }
+                    }
                     continue;
                 }
                 if (!disabledLogged)

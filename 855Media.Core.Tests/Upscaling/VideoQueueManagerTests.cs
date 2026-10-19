@@ -7,6 +7,74 @@ namespace _855Media.Core.Tests.Upscaling;
 
 public class VideoQueueManagerTests : IDisposable
 {
+    [Fact]
+    public async Task SetupFailureBecomesFailedAndQueueContinuesToNextJob()
+    {
+        var failed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var queue = new VideoQueueManager(_service, initialConcurrency: 1);
+        var failures = 0;
+        queue.JobFailed += (_, args) =>
+        {
+            Assert.Equal(UpscaleJobStatus.Failed, args.Job.Status);
+            Assert.False(string.IsNullOrWhiteSpace(args.Job.ErrorMessage));
+            if (Interlocked.Increment(ref failures) == 2)
+                failed.TrySetResult();
+        };
+        var first = new UpscaleJob
+        {
+            FilePath = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".mp4"),
+        };
+        var second = new UpscaleJob
+        {
+            FilePath = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".mp4"),
+        };
+        await queue.EnqueueBatchAsync([first, second]);
+        await failed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.Equal(2, first.RetryCount);
+        Assert.Equal(2, second.RetryCount);
+        Assert.False(queue.IsRunning);
+    }
+
+    [Fact]
+    public async Task ManualRetryStartsWithFreshRetryBudget()
+    {
+        using var queue = new VideoQueueManager(_service, initialConcurrency: 1)
+        {
+            CanStartJob = () => false,
+        };
+        var job = new UpscaleJob
+        {
+            Status = UpscaleJobStatus.Failed,
+            RetryCount = 2,
+            ErrorMessage = "old error",
+        };
+        await queue.RetryJobAsync(job);
+        Assert.Equal(UpscaleJobStatus.Queued, job.Status);
+        Assert.Equal(0, job.RetryCount);
+        Assert.Null(job.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task InactiveSubscriptionKeepsRestoredOrNewJobsQueued()
+    {
+        var checkedAccess = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously
+        );
+        using var queue = new VideoQueueManager(_service, initialConcurrency: 1)
+        {
+            CanStartJob = () =>
+            {
+                checkedAccess.TrySetResult();
+                return false;
+            },
+        };
+        var job = new UpscaleJob { FilePath = "subscription-blocked.mp4" };
+        await queue.EnqueueJobAsync(job);
+        await checkedAccess.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(UpscaleJobStatus.Queued, job.Status);
+        queue.CancelAll();
+    }
+
     private readonly VideoUpscaleService _service = new();
     private readonly string _tempQueueFile;
 

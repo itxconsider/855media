@@ -70,17 +70,20 @@ public enum HardwareAccelerationMode
 
 public enum UpscaleModelType
 {
-    [System.ComponentModel.DataAnnotations.Display(Name = "NVIDIA RTX AI")]
-    NvidiaRtx,
+    [System.ComponentModel.DataAnnotations.Display(Name = "NVIDIA RTX")]
+    NvidiaRtx = 0,
 
-    [System.ComponentModel.DataAnnotations.Display(Name = "Real-World (RealESRGAN)")]
-    RealWorld,
+    // Keep numeric value 3 so persisted jobs retain their native mode.
+    [System.ComponentModel.DataAnnotations.Display(Name = "Fast Native")]
+    FastNative = 3,
+}
 
-    [System.ComponentModel.DataAnnotations.Display(Name = "Animation (AnimeVideo)")]
-    Animation,
-
-    [System.ComponentModel.DataAnnotations.Display(Name = "Fast Native (No AI)")]
-    FastNative,
+public static class UpscaleModelOptions
+{
+    public static UpscaleModelType Normalize(UpscaleModelType value) =>
+        value is UpscaleModelType.NvidiaRtx or UpscaleModelType.FastNative
+            ? value
+            : UpscaleModelType.FastNative;
 }
 
 public enum UpscaleAudioMode
@@ -325,11 +328,11 @@ public class UpscaleJob : INotifyPropertyChanged
 
     public string? ActivePresetName { get; set; }
 
-    private UpscaleModelType _modelType = UpscaleModelType.RealWorld;
+    private UpscaleModelType _modelType = UpscaleModelType.FastNative;
     public UpscaleModelType ModelType
     {
         get => _modelType;
-        set => SetField(ref _modelType, value);
+        set => SetField(ref _modelType, UpscaleModelOptions.Normalize(value));
     }
 
     private bool _enableFacialClarity = true;
@@ -337,20 +340,6 @@ public class UpscaleJob : INotifyPropertyChanged
     {
         get => _enableFacialClarity;
         set => SetField(ref _enableFacialClarity, value);
-    }
-
-    private bool _enableFaceRestoration;
-    public bool EnableFaceRestoration
-    {
-        get => _enableFaceRestoration;
-        set => SetField(ref _enableFaceRestoration, value);
-    }
-
-    private double _faceRestorationFidelity = 0.7;
-    public double FaceRestorationFidelity
-    {
-        get => _faceRestorationFidelity;
-        set => SetField(ref _faceRestorationFidelity, value);
     }
 
     public UpscaleJobStatus Status
@@ -379,6 +368,9 @@ public class UpscaleJob : INotifyPropertyChanged
 
     public int InputWidth { get; set; }
     public int InputHeight { get; set; }
+    public long SourceVideoBitrate { get; set; }
+    public long SourceAudioBitrate { get; set; }
+    public string? SourceVideoCodec { get; set; }
 
     private double _videoFps = 30.0;
     public double VideoFps

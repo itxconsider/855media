@@ -672,6 +672,8 @@ public sealed partial class PFlowTests : IDisposable
         public string? PostHomeXml;
         public System.Collections.Generic.Queue<string> PostShareSequence = new();
         public int MissingInstanceScans;
+        public Queue<string> CleanupIndexResults = new();
+        public List<string> CleanupIndexCommands = new();
         public int InstanceScans;
         public bool RenamedInstance;
         private bool _composerOpened;
@@ -717,6 +719,20 @@ public sealed partial class PFlowTests : IDisposable
                     );
                 case "ExecuteAdbAsync":
                     var cmd = (string)args![1]!;
+                    if (cmd.Contains("--projection _id:_data --where"))
+                    {
+                        CleanupIndexCommands.Add(cmd);
+                        return Task.FromResult(
+                            CleanupIndexResults.Count > 0
+                                ? CleanupIndexResults.Dequeue()
+                                : "No result found."
+                        );
+                    }
+                    if (cmd.Contains("content delete"))
+                    {
+                        CleanupIndexCommands.Add(cmd);
+                        return Task.FromResult("Deleted 1 rows.");
+                    }
                     return Task.FromResult(
                         cmd.Contains("dumpsys notification")
                             ? (

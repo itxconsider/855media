@@ -121,6 +121,34 @@ public sealed class PFlowPageAccess
 
 public static class PFlowDeviceRouting
 {
+    public static string ResolveInstallationDirectory(
+        ILDPlayerService ld,
+        string configuredDirectory
+    )
+    {
+        var console = ld.ResolveLdConsolePath(configuredDirectory);
+        if (
+            !File.Exists(console)
+            || !Path.GetFileName(console)
+                .Equals("ldconsole.exe", StringComparison.OrdinalIgnoreCase)
+        )
+            throw new InvalidOperationException(
+                "LDPlayer installation could not be found. Select the folder containing ldconsole.exe, then refresh devices and account mappings."
+            );
+        var actual = Path.GetDirectoryName(Path.GetFullPath(console))!;
+        // Preserve existing identity hashes when the configured directory already
+        // points to the same installation (including its original trailing slash).
+        if (
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(configuredDirectory))
+                .Equals(
+                    Path.TrimEndingDirectorySeparator(actual),
+                    StringComparison.OrdinalIgnoreCase
+                )
+        )
+            return configuredDirectory;
+        return actual;
+    }
+
     public static int Resolve(string name, IEnumerable<LDInstanceInfo> instances)
     {
         if (string.IsNullOrWhiteSpace(name))

@@ -198,17 +198,22 @@ public sealed partial class PFlowRunner
                     );
             }
             // Persist outcomes before file processing. Uncertain submissions keep staging files.
-            using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-            if (job.State == PFlowState.Confirmed)
-            {
-                await progress("Backing up / retaining source");
-                await BackupAsync(job, cleanup.Token);
-            }
             if (
                 job.State
                 is not (PFlowState.Unknown or PFlowState.SubmitRequested or PFlowState.Submitted)
             )
+            {
+                using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                await progress("Removing Android staged media / album");
                 await CleanupRemoteAsync(job, ldPath, cleanup.Token);
+                await _history.SaveAsync(job, CancellationToken.None);
+            }
+            if (job.State == PFlowState.Confirmed)
+            {
+                using var backup = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+                await progress("Backing up / retaining source");
+                await BackupAsync(job, backup.Token);
+            }
             await _history.SaveAsync(job, CancellationToken.None);
             await progress(
                 job.TargetIdentityConfirmationRequired
@@ -297,7 +302,14 @@ public sealed partial class PFlowRunner
                 if (albumRemoved.Trim() != "ALBUM_REMOVED")
                     throw new IOException("Job album folder removal was not verified.");
             }
+            await CleanupMediaIndexAsync(job, album, ldPath, ct);
             job.RemoteCleanupState = "Verified";
+            await PFlowTrace.SessionAsync(
+                job.DeviceIndex,
+                "cleanup.android.verified",
+                $"job={job.JobId}; fileRemoved=true; albumRemoved={album != null}; mediaIndexRemoved=true",
+                ct
+            );
             job.Error = string.Join(
                 " | ",
                 job.Error.Split(" | ", StringSplitOptions.None)

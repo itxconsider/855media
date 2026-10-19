@@ -263,6 +263,45 @@ public class PFlowMultiAccountTests : IDisposable
     }
 
     [Fact]
+    public async Task FreshPcRootRowsCreateRenamedLdMappingWithoutClaimingLiveAuthentication()
+    {
+        CreateInstanceFixture(2);
+        var result = PFlowAccountStore.CollectLegacy(
+            [
+                new()
+                {
+                    DeviceName = "Atlmobile Mechanic",
+                    AppClone = "FB-01",
+                    Type = "Profile",
+                    PageId = "123",
+                    UserUid = "123",
+                    PageName = "Bryan Cowan",
+                },
+                new()
+                {
+                    DeviceName = "Atlmobile Mechanic",
+                    AppClone = "FB-01",
+                    Type = "Page",
+                    PageId = "456",
+                    UserUid = "123",
+                    PageName = "Example Page",
+                },
+            ],
+            [new() { Index = 2, Name = "Atlmobile Mechanic" }],
+            directory
+        );
+        Assert.Empty(result.Issues);
+        var account = Assert.Single(result.Accounts);
+        Assert.Equal(2, account.Binding.DeviceIndex);
+        Assert.Equal("Bryan Cowan", account.Name);
+        Assert.NotEqual(PFlowAuthenticationState.Authenticated, account.Authentication);
+        Assert.Single(account.Pages);
+        var store = new PFlowAccountStore(Path.Combine(directory, "fresh-accounts.json"));
+        await store.UpdateAsync(accounts => accounts.Add(account));
+        Assert.Equal(account.Binding, Assert.Single(await store.LoadAsync()).Binding);
+    }
+
+    [Fact]
     public void LegacyMigrationRetainsPageSelectionMediaCaptionAndDates()
     {
         CreateInstanceFixture(1);

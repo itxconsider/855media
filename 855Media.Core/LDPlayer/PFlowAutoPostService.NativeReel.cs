@@ -11,12 +11,29 @@ public partial class PFlowAutoPostService
 {
     private sealed class NativeReelUnavailable(string reason) : Exception(reason);
 
+    private sealed class NativeReelProcessingTimeout()
+        : Exception("Reel editor Processing exceeded 180 seconds");
+
+    internal static bool IsReelEditorProcessing(string xml, string package) =>
+        ScreenTimeHierarchy
+            .Nodes(xml)
+            .Any(n =>
+                (string?)n.Attribute("package") == package
+                && (string?)n.Attribute("visible-to-user") != "false"
+                && !n.Ancestors().Any(a => (string?)a.Attribute("visible-to-user") == "false")
+                && (
+                    (string?)n.Attribute("text") == "Processing"
+                    || (string?)n.Attribute("content-desc") == "Processing"
+                )
+            );
+
     private async Task<string?> TryOpenNativeReelComposerAsync(
         PFlowJob job,
         Func<PFlowJob, Task> checkpoint,
         string? path,
         CancellationToken ct,
-        bool continuedSession = false
+        bool continuedSession = false,
+        bool processingRetried = false
     )
     {
         if (!job.NativeReelAlbum || job.PostType is not ("Reel" or "Video"))
@@ -270,9 +287,28 @@ public partial class PFlowAutoPostService
             job.MediaSelectionEvidence =
                 $"Bloks Reel picker; album={album}; mediaId={indexed.MediaId}; size={indexed.Size}; sha256={job.Sha256}";
             var editorWait = Stopwatch.StartNew();
-            while (editorWait.Elapsed < TimeSpan.FromSeconds(20))
+            var processingSeen = false;
+            while (editorWait.Elapsed < TimeSpan.FromSeconds(180))
             {
                 xml = await Observe();
+                if (IsReelEditorProcessing(xml, job.AppPackage))
+                {
+                    if (!processingSeen)
+                    {
+                        processingSeen = true;
+                        job.CurrentStep =
+                            "Waiting for Facebook Reel editor processing (up to 180 seconds)";
+                        await checkpoint(job);
+                        await PFlowTrace.SessionAsync(
+                            job.DeviceIndex,
+                            "reel.editor.processing",
+                            "Waiting before Share; timeoutSeconds=180",
+                            ct
+                        );
+                    }
+                    await Task.Delay(600, ct);
+                    continue;
+                }
                 if (IsComposer(xml, job.PostType))
                 {
                     await PFlowTrace.SessionAsync(
@@ -290,9 +326,62 @@ public partial class PFlowAutoPostService
                     if (!await _ldPlayer.TapAsync(job.DeviceIndex, next.X, next.Y, path, ct))
                         throw new NativeReelUnavailable("Native Reel Next tap not acknowledged");
                 }
+                if (!processingSeen && editorWait.Elapsed >= TimeSpan.FromSeconds(20))
+                    break;
                 await Task.Delay(600, ct);
             }
+            if (IsReelEditorProcessing(await Observe(), job.AppPackage))
+                throw new NativeReelProcessingTimeout();
             throw new NativeReelUnavailable("Native Reel composer did not open");
+        }
+        catch (NativeReelProcessingTimeout)
+        {
+            await PFlowDiagnostics.CaptureAsync(
+                _ldPlayer,
+                job.DeviceIndex,
+                "reel-editor-processing-timeout",
+                path
+            );
+            if (job.MayHaveSubmitted || processingRetried)
+                throw new InvalidOperationException(
+                    "Facebook Reel editor processing remained stuck after one restart; no post submitted."
+                );
+            await PFlowTrace.SessionAsync(
+                job.DeviceIndex,
+                "reel.editor.processing.restart",
+                "attempt=1; force-stop and reopen Facebook; retry same job before Share",
+                ct
+            );
+            job.MediaSelectionEvidence = "";
+            if (
+                !await _ldPlayer.StopFacebookAppAsync(job.DeviceIndex, path, ct)
+                || !await _ldPlayer.LaunchAppAsync(job.DeviceIndex, job.AppPackage, path, ct)
+            )
+                throw new InvalidOperationException(
+                    "Could not restart Facebook after Reel editor processing timeout."
+                );
+            await Task.Delay(1500, ct);
+            await PFlowJobBindingGuard.RequireAsync(_ldPlayer, job, path, ct);
+            if (
+                !await PFlowOwnProfileNavigation.OpenAsync(
+                    _ldPlayer,
+                    job.DeviceIndex,
+                    job.TargetName,
+                    path,
+                    s => PFlowPostTargetSession.HasOwnProfile(job, s.RawXml ?? ""),
+                    ct
+                )
+            )
+                throw new InvalidOperationException(
+                    "Could not restore target after Facebook processing restart; no post submitted."
+                );
+            return await TryOpenNativeReelComposerAsync(
+                job,
+                checkpoint,
+                path,
+                ct,
+                processingRetried: true
+            );
         }
         catch (NativeReelUnavailable failure)
         {

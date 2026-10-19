@@ -28,7 +28,6 @@ public partial class ViewManager
             MessageBoxViewModel => new MessageBoxView(),
             SettingsViewModel => new SettingsView(),
             BatchInputViewModel => new BatchInputView(),
-            LicenseActivationViewModel => new LicenseActivationView(),
             VideoUpscalerViewModel => new VideoUpscalerView(),
             DubbingViewModel => new DubbingView(),
             AutoPostViewModel => new AutoPostView(),

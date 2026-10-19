@@ -28,6 +28,7 @@ public class App : Application, IDisposable
     private readonly IDisposable _eventSubscription;
 
     private bool _isDisposed;
+    private Avalonia.Threading.DispatcherTimer? _subscriptionTimer;
 
     public App()
     {
@@ -51,7 +52,16 @@ public class App : Application, IDisposable
         services.AddSingleton<LocalBridgeServer>();
         services.AddSingleton<PFlowBrowserLauncher>();
         services.AddSingleton<VideoUpscaleService>();
-        services.AddSingleton<VideoQueueManager>();
+        services.AddSingleton<VideoQueueManager>(sp =>
+        {
+            var license = sp.GetRequiredService<ILicenseService>();
+            var queue = new VideoQueueManager(sp.GetRequiredService<VideoUpscaleService>())
+            {
+                CanStartJob = () => license.IsFeatureAllowed(LicenseFeature.All),
+            };
+            license.LicenseChanged += queue.RefreshSubscriptionAccess;
+            return queue;
+        });
         services.AddSingleton<HardwareMonitorService>();
         services.AddSingleton<AtxAgentClient>();
         services.AddSingleton<ILDPlayerService>(sp => new LDPlayerService(
@@ -187,8 +197,29 @@ public class App : Application, IDisposable
             _settingsService.FirstRunDate,
             _settingsService.LastExecutionDate
         );
-        _settingsService.LastExecutionDate = DateTime.UtcNow;
+        if (
+            !_settingsService.LastExecutionDate.HasValue
+            || DateTime.UtcNow > _settingsService.LastExecutionDate.Value
+        )
+            _settingsService.LastExecutionDate = DateTime.UtcNow;
         _settingsService.Save();
+        _subscriptionTimer = new Avalonia.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(15),
+        };
+        _subscriptionTimer.Tick += (_, _) =>
+        {
+            licenseService.Refresh();
+            if (
+                !_settingsService.LastExecutionDate.HasValue
+                || DateTime.UtcNow > _settingsService.LastExecutionDate.Value.AddMinutes(1)
+            )
+            {
+                _settingsService.LastExecutionDate = DateTime.UtcNow;
+                _settingsService.Save();
+            }
+        };
+        _subscriptionTimer.Start();
 
         // Initialize and configure the main window
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
@@ -237,6 +268,7 @@ public class App : Application, IDisposable
             return;
 
         _isDisposed = true;
+        _subscriptionTimer?.Stop();
 
         ChildProcessTracker.KillAll();
 

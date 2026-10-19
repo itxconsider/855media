@@ -141,6 +141,7 @@ public partial class AutoPostViewModel
         settings.OwnerName = profile.PageName;
         try
         {
+            RequireSubscription();
             var result = await _screenTimeService.RunAsync(
                 worker.Index,
                 settings,

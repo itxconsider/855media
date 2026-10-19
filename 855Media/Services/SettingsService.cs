@@ -151,7 +151,7 @@ public partial class SettingsService()
     public partial int UpscalerMaxConcurrency { get; set; } = 2;
 
     [ObservableProperty]
-    public partial UpscaleModelType UpscalerModelType { get; set; } = UpscaleModelType.RealWorld;
+    public partial UpscaleModelType UpscalerModelType { get; set; } = UpscaleModelType.FastNative;
 
     [ObservableProperty]
     public partial bool UpscalerHasConfiguredModelType { get; set; } = false;
@@ -166,12 +166,6 @@ public partial class SettingsService()
     // Enhance Settings
     [ObservableProperty]
     public partial bool UpscalerEnableFacialClarity { get; set; } = true;
-
-    [ObservableProperty]
-    public partial bool UpscalerEnableFaceRestoration { get; set; } = false;
-
-    [ObservableProperty]
-    public partial double UpscalerFaceRestorationFidelity { get; set; } = 0.7;
 
     [ObservableProperty]
     public partial bool UpscalerEnableDenoise { get; set; } = false;

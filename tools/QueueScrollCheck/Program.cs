@@ -153,6 +153,44 @@ Require(
 Console.WriteLine(
     "PASS: bounded wheel, accelerated input, middle/end reachability, selected last row, status updates, appended rows, sorted updates."
 );
+grid.Columns[1].Width = new DataGridLength(1500);
+foreach (var size in new[] { new Size(500, 360), new Size(1000, 700), new Size(600, 540) })
+{
+    window.Width = size.Width;
+    window.Height = size.Height;
+    Layout();
+    var horizontal = grid.GetVisualDescendants()
+        .OfType<ScrollBar>()
+        .Single(b => b.Name == "PART_HorizontalScrollbar");
+    Require(vertical.IsVisible && vertical.Maximum > 0, "Resize lost the vertical scroll range.");
+    Require(
+        horizontal.IsVisible && horizontal.Maximum > 0,
+        "Wide columns need a horizontal scroll range."
+    );
+    var before = vertical.Value;
+    window.MouseWheel(new Point(200, 150), new Vector(0, -120));
+    Layout();
+    Require(Math.Abs(vertical.Value - before) <= 50.01, "Resized queue jumped vertically.");
+    before = vertical.Value;
+    var beforeHorizontal = horizontal.Value;
+    window.MouseWheel(new Point(200, 150), new Vector(-120, 0));
+    Layout();
+    Require(
+        horizontal.Value > beforeHorizontal && horizontal.Value - beforeHorizontal <= 50.01,
+        "Horizontal wheel must move one bounded step."
+    );
+    Require(
+        Math.Abs(vertical.Value - before) < 0.01,
+        "Horizontal scrolling moved vertical position."
+    );
+    rows[^1].Status = "Resized update " + size.Width;
+    Layout();
+    Require(Math.Abs(vertical.Value - before) < 0.01, "Status update moved resized queue.");
+    Snapshot("resized " + size);
+}
+Console.WriteLine(
+    "PASS: narrow/resized windows, both scrollbars, bounded horizontal input, stable status updates."
+);
 window.Close();
 
 public class ProbeApp : Application

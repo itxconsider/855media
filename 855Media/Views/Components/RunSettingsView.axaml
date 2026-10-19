@@ -332,6 +332,7 @@
                                         <StackPanel Spacing="12">
                                             <TextBlock Classes="settings-heading" Text="Before run"/>
                                             <CheckBox IsChecked="{Binding ClearCacheFBBeforeOpen}" Content="Clear Facebook cache"/>
+                                            <CheckBox IsChecked="{Binding CheckSurfsharkConnection}" Content="Check Surfshark connection" ToolTip.Tip="Wait up to 180 seconds for a validated Surfshark VPN connection inside each LD before running. Does not connect the VPN automatically."/>
                                         </StackPanel>
                                     </Border>
                                     <Border Classes="settings-card">

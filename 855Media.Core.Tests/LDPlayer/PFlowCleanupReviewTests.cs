@@ -9,6 +9,80 @@ namespace _855Media.Core.Tests.LDPlayer;
 public sealed partial class PFlowTests
 {
     [Fact]
+    public async Task UnknownSubmissionKeepsAndroidMediaAndIndexForReview()
+    {
+        var job = await Job();
+        job.State = PFlowState.Unknown;
+        job.SubmittedUtc = System.DateTime.UtcNow;
+        var ld = FakeLd.Create(job);
+        var fake = (FakeLd)(object)ld;
+        await new PFlowRunner(ld, _store).CleanupRemoteAsync(job, null, default);
+        Assert.Equal(0, fake.Deletes);
+        Assert.Empty(fake.CleanupIndexCommands);
+    }
+
+    [Theory]
+    [InlineData("Reel", true)]
+    [InlineData("Story", false)]
+    [InlineData("Photo", false)]
+    public async Task ConfirmedMediaIndexCleanupIsScopedToJobPaths(string type, bool native)
+    {
+        var job = await Job();
+        job.PostType = type;
+        job.NativeReelAlbum = native;
+        Confirm(job);
+        var ld = FakeLd.Create(job);
+        var fake = (FakeLd)(object)ld;
+        fake.CleanupIndexResults.Enqueue("Row: 0 _id=42, _data=" + job.RemotePath);
+        await new PFlowRunner(ld, _store).CleanupRemoteAsync(job, null, default);
+        Assert.Equal("Verified", job.RemoteCleanupState);
+        Assert.Equal(PFlowState.Confirmed, job.State);
+        Assert.True(File.Exists(job.SourcePath));
+        Assert.Equal(3, fake.CleanupIndexCommands.Count);
+        var delete = Assert.Single(fake.CleanupIndexCommands, c => c.Contains("content delete"));
+        Assert.Contains(job.RemotePath, delete);
+        Assert.Contains(job.RemotePath.Replace("/sdcard/", "/storage/emulated/0/"), delete);
+        Assert.DoesNotContain("bucket_display_name", delete);
+        Assert.DoesNotContain(" LIKE ", delete);
+        if (type == "Story" || native)
+            Assert.Contains("/" + (type == "Story" ? "Story_" : "Reel_") + job.JobId + "'", delete);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("Error: provider unavailable")]
+    public async Task UnreadableMediaIndexKeepsCleanupPending(string output)
+    {
+        var job = await Job();
+        Confirm(job);
+        var ld = FakeLd.Create(job);
+        var fake = (FakeLd)(object)ld;
+        fake.CleanupIndexResults.Enqueue(output);
+        await new PFlowRunner(ld, _store).CleanupRemoteAsync(job, null, default);
+        Assert.Equal("Pending", job.RemoteCleanupState);
+        Assert.Equal(PFlowState.Confirmed, job.State);
+        Assert.DoesNotContain(fake.CleanupIndexCommands, c => c.Contains("content delete"));
+    }
+
+    [Fact]
+    public async Task PersistingIndexIsPendingAndCanBeRecoveredIdempotently()
+    {
+        var job = await Job();
+        Confirm(job);
+        var ld = FakeLd.Create(job);
+        var fake = (FakeLd)(object)ld;
+        for (var i = 0; i < 4; i++)
+            fake.CleanupIndexResults.Enqueue("Row: 0 _id=42, _data=" + job.RemotePath);
+        var runner = new PFlowRunner(ld, _store);
+        await runner.CleanupRemoteAsync(job, null, default);
+        Assert.Equal("Pending", job.RemoteCleanupState);
+        Assert.Equal(3, fake.CleanupIndexCommands.Count(c => c.Contains("content delete")));
+        await runner.CleanupRemoteAsync(job, null, default);
+        Assert.Equal("Verified", job.RemoteCleanupState);
+        Assert.DoesNotContain("Emulator cleanup:", job.Error);
+    }
+
+    [Fact]
     public async Task LegacyNotificationConfirmationCannotDeleteSourceOrRemote()
     {
         var job = await Job(delete: true);

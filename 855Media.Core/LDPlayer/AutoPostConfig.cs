@@ -75,6 +75,7 @@ public class AutoPostConfig
 
     // --- Behavior Flags ---
     public bool CloseLDAfterAction { get; set; } = true;
+    public bool CheckSurfsharkConnection { get; set; } = false;
     public bool ClearCacheFBBeforeOpen { get; set; } = false;
     public bool AfterPostCheckCopyRight { get; set; } = true;
     public bool SwitchToProfileAfterPost { get; set; } = false;

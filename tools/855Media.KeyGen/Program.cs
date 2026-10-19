@@ -50,10 +50,11 @@ Usage:
   dotnet run -- gen-keys
       Generates a new RSA 2048-bit Public and Private keypair.
 
-  dotnet run -- create-license <customerName> <customerEmail> [machineId] [daysValid] [privateKeyFile]
+  dotnet run -- create-license <customerName> <customerEmail> [machineId] [plan] [privateKeyFile]
       Creates a cryptographically signed license token.
       - If machineId is 'any' or omitted, license is valid on any machine.
-      - If daysValid is '0' or omitted, license is lifetime (never expires).
+      - plan: monthly/30 = exactly 30 days; annual/365 = exactly 365 days.
+      - lifetime/0 or omitted = lifetime. Dates are counted from issuance, not activation.
 
   dotnet run -- verify <tokenFileOrString> [publicKeyFile]
       Verifies and prints the contents of a license token.
@@ -95,7 +96,7 @@ Usage:
         if (args.Length < 3)
         {
             Console.WriteLine(
-                "Usage: dotnet run -- create-license <customerName> <customerEmail> [machineId] [daysValid] [privateKeyFile]"
+                "Usage: dotnet run -- create-license <customerName> <customerEmail> [machineId] [plan] [privateKeyFile]"
             );
             return;
         }
@@ -103,7 +104,13 @@ Usage:
         var name = args[1];
         var email = args[2];
         var machineId = args.Length > 3 && args[3] != "any" ? args[3] : string.Empty;
-        var days = args.Length > 4 && int.TryParse(args[4], out var d) ? d : 0;
+        if (!LicenseDuration.TryParsePlan(args.Length > 4 ? args[4] : "lifetime", out var type))
+        {
+            Console.WriteLine(
+                "Invalid subscription plan. Use monthly/30, annual/365, or lifetime/0."
+            );
+            return;
+        }
         var privKeyFile = args.Length > 5 ? args[5] : "855media_private.key";
 
         if (!File.Exists(privKeyFile))
@@ -115,15 +122,16 @@ Usage:
 
         var privKey = File.ReadAllText(privKeyFile).Trim();
 
+        var issuedAt = DateTime.UtcNow;
         var payload = new LicensePayload
         {
             LicenseKey = $"855M-{Guid.NewGuid():N}"[..19].ToUpperInvariant(),
             CustomerName = name,
             CustomerEmail = email,
             MachineFingerprint = machineId,
-            Type = days > 0 ? LicenseType.Annual : LicenseType.Lifetime,
-            IssuedAt = DateTime.UtcNow,
-            ExpiresAt = days > 0 ? DateTime.UtcNow.AddDays(days) : null,
+            Type = type,
+            IssuedAt = issuedAt,
+            ExpiresAt = LicenseDuration.ExpiryFromIssue(type, issuedAt),
             AllowedFeatures = ["All"],
         };
 

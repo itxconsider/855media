@@ -26,11 +26,11 @@ public partial class AutoPostViewModel
     public bool CanEditAccountBulkSelection =>
         !IsRunning && !IsBusy && !IsSavingSelectedAccountOptions;
     public int SelectedBulkAccountCount =>
-        MappedAccounts.Count(a => a.IsMappingValid && a.IsSelectedForBulk);
+        DisplayedMappedAccounts.Count(a => a.IsMappingValid && a.IsSelectedForBulk);
     public bool CanApplyAccountBulkSelection =>
         CanEditAccountBulkSelection && SelectedBulkAccountCount > 0;
     public string BulkAccountSelectionSummary =>
-        $"{SelectedBulkAccountCount} / {MappedAccounts.Count(a => a.IsMappingValid)} selected";
+        $"{SelectedBulkAccountCount} / {DisplayedMappedAccounts.Count(a => a.IsMappingValid)} selected";
 
     private void InitializeAccountMultiSelect() =>
         MappedAccounts.CollectionChanged += BulkAccountRowsChanged;
@@ -45,6 +45,7 @@ public partial class AutoPostViewModel
 
     private void BulkAccountRowsChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
+        RefreshLdAccountsSection();
         foreach (var row in _bulkAccountRows.Where(a => !MappedAccounts.Contains(a)).ToArray())
         {
             row.PropertyChanged -= BulkAccountRowChanged;
@@ -78,7 +79,7 @@ public partial class AutoPostViewModel
         if (!CanEditAccountBulkSelection)
             return;
         SetBulkAccountSelection(true);
-        var invalid = MappedAccounts.Count(a => !a.IsMappingValid);
+        var invalid = DisplayedMappedAccounts.Count(a => !a.IsMappingValid);
         BulkAccountSelectionStatus =
             invalid > 0
                 ? $"{invalid} accounts require mapping review and were not selected."
@@ -99,8 +100,9 @@ public partial class AutoPostViewModel
         _changingBulkAccountSelection = true;
         try
         {
+            var visible = DisplayedMappedAccounts.ToHashSet();
             foreach (var row in MappedAccounts)
-                row.IsSelectedForBulk = selected && row.IsMappingValid;
+                row.IsSelectedForBulk = selected && visible.Contains(row) && row.IsMappingValid;
         }
         finally
         {
@@ -128,7 +130,9 @@ public partial class AutoPostViewModel
             return;
         var parts = option.Split(':');
         var enabled = parts[1] == "on";
-        var selected = MappedAccounts.Where(a => a.IsMappingValid && a.IsSelectedForBulk).ToArray();
+        var selected = DisplayedMappedAccounts
+            .Where(a => a.IsMappingValid && a.IsSelectedForBulk)
+            .ToArray();
         foreach (var row in selected)
             switch (parts[0])
             {
@@ -151,7 +155,7 @@ public partial class AutoPostViewModel
     {
         if (!CanApplyAccountBulkSelection)
             return;
-        var bindings = MappedAccounts
+        var bindings = DisplayedMappedAccounts
             .Where(a => a.IsMappingValid && a.IsSelectedForBulk)
             .Select(a => a.Account.Binding)
             .ToArray();

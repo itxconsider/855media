@@ -22,6 +22,53 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Content
+      Include="../tools/atx/bin/atx-agent;../tools/atx/bin/ADBKeyboard.apk;../tools/atx/bin/LICENSE;../tools/atx/bin/README.md"
+      Link="tools/atx/bin/%(Filename)%(Extension)"
+      CopyToOutputDirectory="PreserveNewest"
+      CopyToPublishDirectory="PreserveNewest"
+    />
+  </ItemGroup>
+  <ItemGroup>
+    <Content
+      Include="../tools/ffmpeg/ffprobe.exe;../tools/ffmpeg/LICENSE.txt;../tools/ffmpeg/README.txt"
+      Link="tools/ffmpeg/%(Filename)%(Extension)"
+      CopyToOutputDirectory="PreserveNewest"
+      CopyToPublishDirectory="PreserveNewest"
+    />
+  </ItemGroup>
+  <Target Name="ValidateFFprobeTool" BeforeTargets="Publish">
+    <Error
+      Condition="!Exists('$(ProjectDir)../tools/ffmpeg/ffprobe.exe')"
+      Text="Missing tools/ffmpeg/ffprobe.exe. Restore FFprobe before publishing a fresh-PC package."
+    />
+  </Target>
+  <ItemGroup>
+    <Content
+      Include="../tools/885helper/885Helper.apk;../tools/885helper/README.md"
+      Link="tools/885helper/%(Filename)%(Extension)"
+      CopyToOutputDirectory="PreserveNewest"
+      CopyToPublishDirectory="PreserveNewest"
+    />
+  </ItemGroup>
+  <Target Name="Validate885Helper" BeforeTargets="Publish">
+    <Error
+      Condition="!Exists('$(ProjectDir)../tools/885helper/885Helper.apk')"
+      Text="Build android/885Helper/build.ps1 before publishing; 885Helper.apk is required."
+    />
+  </Target>
+  <Target Name="ValidateAndroidSetupTools" BeforeTargets="Publish">
+    <Error
+      Condition="!Exists('$(ProjectDir)../tools/atx/bin/atx-agent')"
+      Text="Missing atx-agent. Restore tools/atx/bin/atx-agent before publishing; a new-PC package must include Android UI setup tools."
+    />
+    <Error
+      Condition="!Exists('$(ProjectDir)../tools/atx/bin/ADBKeyboard.apk')"
+      Text="Missing ADBKeyboard.apk. Restore tools/atx/bin/ADBKeyboard.apk before publishing."
+    />
+  </Target>
+
+  <ItemGroup>
     <!-- Expose this property in code -->
     <ProjectProperty Include="EncryptionSalt" />
   </ItemGroup>
@@ -38,11 +85,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content
-      Include="../tools/realesrgan/**/*"
-      Link="tools/realesrgan/%(RecursiveDir)%(Filename)%(Extension)"
-      CopyToOutputDirectory="PreserveNewest"
-    />
     <Content
       Include="../tools/whisper/**/*"
       Link="tools/whisper/%(RecursiveDir)%(Filename)%(Extension)"

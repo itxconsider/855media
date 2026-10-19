@@ -100,6 +100,13 @@ public class VideoQueueManager : IDisposable
     public event EventHandler<UpscaleJob>? JobCompleted;
     public event EventHandler<(UpscaleJob Job, Exception Error)>? JobFailed;
     public event EventHandler? BatchCompleted;
+    public Func<bool>? CanStartJob { get; set; }
+
+    public void RefreshSubscriptionAccess()
+    {
+        for (var i = 0; i < _maxConcurrency; i++)
+            SignalWork();
+    }
 
     public VideoQueueManager(VideoUpscaleService upscaleService, int initialConcurrency = 2)
     {
@@ -376,6 +383,7 @@ public class VideoQueueManager : IDisposable
             job.Progress = 0;
             job.CurrentFrame = 0;
             job.ErrorMessage = null;
+            job.RetryCount = 0;
             job.Cts = new CancellationTokenSource();
             RecalculatePriorities();
         }
@@ -481,7 +489,7 @@ public class VideoQueueManager : IDisposable
                 UpscaleJob? job = null;
                 lock (_syncLock)
                 {
-                    if (!_isPaused)
+                    if (!_isPaused && (CanStartJob?.Invoke() ?? true))
                     {
                         job = Jobs.Where(j =>
                                 j.Status == UpscaleJobStatus.Queued && !_activeJobIds.Contains(j.Id)
@@ -506,16 +514,17 @@ public class VideoQueueManager : IDisposable
                     job.Cts?.Token ?? CancellationToken.None
                 );
 
-                JobStarted?.Invoke(this, job);
-
                 try
                 {
+                    JobStarted?.Invoke(this, job);
+                    linkedCts.Token.ThrowIfCancellationRequested();
                     await _upscaleService.ProcessJobAsync(job, linkedCts.Token);
                     JobCompleted?.Invoke(this, job);
                     CheckAndNotifyBatchCompletion();
                     ScheduleSaveQueue();
                 }
-                catch (OperationCanceledException)
+                catch (Exception ex)
+                    when (ex is OperationCanceledException || linkedCts.IsCancellationRequested)
                 {
                     job.Status = UpscaleJobStatus.Canceled;
                     CheckAndNotifyBatchCompletion();
@@ -535,6 +544,8 @@ public class VideoQueueManager : IDisposable
                     }
                     else
                     {
+                        job.Status = UpscaleJobStatus.Failed;
+                        job.ErrorMessage ??= ex.Message;
                         JobFailed?.Invoke(this, (job, ex));
                         CheckAndNotifyBatchCompletion();
                         ScheduleSaveQueue();

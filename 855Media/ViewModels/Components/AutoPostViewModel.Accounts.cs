@@ -13,8 +13,22 @@ namespace _855Media.ViewModels.Components;
 public partial class AutoPostViewModel
 {
     private readonly PFlowAccountStore _accountStore = new();
+    private readonly System.Threading.SemaphoreSlim _accountMappingRefreshGate = new(1, 1);
     private List<PFlowPersonalAccount> _mappedAccounts = [];
     public ObservableCollection<PFlowAccountItemViewModel> MappedAccounts { get; } = [];
+    public IEnumerable<PFlowAccountItemViewModel> DisplayedMappedAccounts => MappedAccounts;
+    public string LdAccountsHeading => "LD-Accounts";
+    public string LdAccountsSummary => AccountMappingStatus;
+
+    private void RefreshLdAccountsSection()
+    {
+        OnPropertyChanged(nameof(DisplayedMappedAccounts));
+        OnPropertyChanged(nameof(LdAccountsHeading));
+        OnPropertyChanged(nameof(LdAccountsSummary));
+        NotifyBulkAccountSelection();
+    }
+
+    partial void OnAccountMappingStatusChanged(string value) => RefreshLdAccountsSection();
 
     [ObservableProperty]
     private string _accountMappingStatus =
@@ -22,6 +36,44 @@ public partial class AutoPostViewModel
 
     private async Task LoadAccountMappingsAsync()
     {
+        await _accountMappingRefreshGate.WaitAsync();
+        try
+        {
+            await LoadAccountMappingsCoreAsync();
+        }
+        finally
+        {
+            _accountMappingRefreshGate.Release();
+        }
+    }
+
+    private async Task RefreshFetchedAccountMappingsAsync(LDInstanceItemViewModel device)
+    {
+        try
+        {
+            await LoadAccountMappingsAsync();
+            await PFlowFetchTrace.WriteAsync(
+                device.Index,
+                "account.mapping.refreshed",
+                "Saved root profile and Page rows reconciled into LD-Accounts; live identity verification remains required before actions."
+            );
+        }
+        catch (Exception ex)
+        {
+            await Dispatcher.UIThread.InvokeAsync(() =>
+                AccountMappingStatus = "Account mapping refresh failed: " + ex.Message
+            );
+            await PFlowFetchTrace.WriteAsync(
+                device.Index,
+                "account.mapping.refresh-failed",
+                ex.Message
+            );
+        }
+    }
+
+    private async Task LoadAccountMappingsCoreAsync()
+    {
+        await ResolveLdInstallationAsync();
         var removedBindings = await _accountStore.RemovedBindingsAsync();
         await Dispatcher.UIThread.InvokeAsync(() =>
         {

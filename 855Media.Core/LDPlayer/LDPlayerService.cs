@@ -397,6 +397,8 @@ public partial class LDPlayerService : ILDPlayerService
     )
     {
         var start = DateTime.UtcNow;
+        var nextBootLog = TimeSpan.Zero;
+        string lastBootObservation = "No ADB response";
         while (DateTime.UtcNow - start < timeout && !cancellationToken.IsCancellationRequested)
         {
             var res = await ExecuteAdbAsync(
@@ -405,6 +407,19 @@ public partial class LDPlayerService : ILDPlayerService
                 customPath,
                 cancellationToken
             );
+            lastBootObservation = res.Trim().Replace("\r", " ").Replace("\n", " ");
+            if (lastBootObservation.Length > 240)
+                lastBootObservation = lastBootObservation[..240];
+            if (DateTime.UtcNow - start >= nextBootLog)
+            {
+                await PFlowTrace.SessionAsync(
+                    index,
+                    "startup.android.boot-probe",
+                    $"elapsedSeconds={(DateTime.UtcNow - start).TotalSeconds:0}; timeoutSeconds={timeout.TotalSeconds:0}; response={lastBootObservation}",
+                    cancellationToken
+                );
+                nextBootLog = DateTime.UtcNow - start + TimeSpan.FromSeconds(10);
+            }
             if (string.Equals(res.Trim(), "1", StringComparison.Ordinal))
             {
                 // Automatically ensure atx-agent daemon is active upon boot for fast automation
@@ -413,6 +428,23 @@ public partial class LDPlayerService : ILDPlayerService
                     {
                         try
                         {
+                            using var helperTimeout =
+                                CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                            helperTimeout.CancelAfter(TimeSpan.FromSeconds(45));
+                            try
+                            {
+                                await Ensure885HelperAsync(index, customPath, helperTimeout.Token);
+                            }
+                            catch (OperationCanceledException)
+                                when (!cancellationToken.IsCancellationRequested)
+                            {
+                                await PFlowTrace.SessionAsync(
+                                    index,
+                                    "helper885.timeout",
+                                    "Helper setup exceeded 45 seconds; Android boot remains confirmed.",
+                                    cancellationToken
+                                );
+                            }
                             await EnsureAtxAgentRunningAsync(index, customPath, cancellationToken);
                         }
                         catch { }
@@ -424,6 +456,12 @@ public partial class LDPlayerService : ILDPlayerService
 
             await Task.Delay(1000, cancellationToken);
         }
+        await PFlowTrace.SessionAsync(
+            index,
+            "startup.android.boot-timeout",
+            $"timeoutSeconds={timeout.TotalSeconds:0}; lastResponse={lastBootObservation}; openWindowIsNotBootProof=true",
+            cancellationToken
+        );
         return false;
     }
 
@@ -438,7 +476,7 @@ public partial class LDPlayerService : ILDPlayerService
             packageName.StartsWith("com.facebook.", StringComparison.OrdinalIgnoreCase)
             && !await WaitForFacebookReadyAsync(
                 index,
-                TimeSpan.FromSeconds(120),
+                PFlowStartupTimeouts.InternetReady,
                 customPath,
                 cancellationToken
             )
@@ -474,7 +512,7 @@ public partial class LDPlayerService : ILDPlayerService
             packageName.StartsWith("com.facebook.", StringComparison.OrdinalIgnoreCase)
             && !await WaitForFacebookReadyAsync(
                 index,
-                TimeSpan.FromSeconds(120),
+                PFlowStartupTimeouts.InternetReady,
                 customPath,
                 cancellationToken
             )
@@ -597,6 +635,12 @@ public partial class LDPlayerService : ILDPlayerService
             }
         }
 
+        await PFlowFetchTrace.WriteAsync(
+            index,
+            "device.ui.helper-missing",
+            "Device UI connection unavailable: atx-agent is not installed on this LD and no host helper was found. Copy tools/atx/bin/atx-agent beside the app, then retry.",
+            cancellationToken
+        );
         return false;
     }
 

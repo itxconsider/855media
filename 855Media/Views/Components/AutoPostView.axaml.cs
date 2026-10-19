@@ -5,6 +5,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 
 namespace _855Media.Views.Components;
@@ -12,10 +13,19 @@ namespace _855Media.Views.Components;
 public partial class AutoPostView : UserControl
 {
     private ContextMenu? _targetPageMenu;
+    private AutoPostViewModel? _accountScrollViewModel;
 
     public AutoPostView()
     {
         InitializeComponent();
+        DataContextChanged += (_, _) =>
+        {
+            if (_accountScrollViewModel != null)
+                _accountScrollViewModel.AccountScrollRequested -= ScrollToDeviceAccounts;
+            _accountScrollViewModel = DataContext as AutoPostViewModel;
+            if (_accountScrollViewModel != null)
+                _accountScrollViewModel.AccountScrollRequested += ScrollToDeviceAccounts;
+        };
 
         AddHandler(PointerPressedEvent, OnTargetPagePointerPressed, RoutingStrategies.Tunnel);
 
@@ -35,6 +45,25 @@ public partial class AutoPostView : UserControl
                 RoutingStrategies.Tunnel | RoutingStrategies.Bubble
             );
         }
+    }
+
+    private void ScrollToDeviceAccounts(int deviceIndex)
+    {
+        // Wait for the tab and refreshed account cards to finish layout.
+        Dispatcher.UIThread.Post(
+            () =>
+            {
+                var list = this.FindControl<ItemsControl>("MappedAccountsList");
+                var account = _accountScrollViewModel?.MappedAccounts.FirstOrDefault(a =>
+                    a.Account.Binding.DeviceIndex == deviceIndex
+                );
+                if (list == null || account == null)
+                    return;
+                var index = _accountScrollViewModel!.MappedAccounts.IndexOf(account);
+                list.ContainerFromIndex(index)?.BringIntoView();
+            },
+            DispatcherPriority.Loaded
+        );
     }
 
     private void OnTargetPagePointerPressed(object? sender, PointerPressedEventArgs e)

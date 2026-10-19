@@ -108,58 +108,6 @@
                         </Border>
                     </StackPanel>
 
-                    <!-- Center: Real-Time Hardware Performance Capsule (Icon-free, clean typography) -->
-                    <Border
-                        Grid.Column="1"
-                        HorizontalAlignment="Center"
-                        VerticalAlignment="Center"
-                        Background="#0DFFFFFF"
-                        BorderBrush="{DynamicResource AntigravityBorderBrush}"
-                        BorderThickness="1"
-                        CornerRadius="6"
-                        Padding="12,5"
-                        Margin="8,0"
-                        ToolTip.Tip="Real-time GPU, VRAM, and CPU telemetry">
-                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                            <!-- GPU Meter -->
-                            <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
-                                <TextBlock Text="GPU" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
-                                <ProgressBar
-                                    Value="{Binding HardwareGpuPercent}"
-                                    Minimum="0"
-                                    Maximum="100"
-                                    Width="36"
-                                    Height="4"
-                                    CornerRadius="2"
-                                    VerticalAlignment="Center" />
-                                <TextBlock Text="{Binding HardwareGpuPercent, StringFormat='{}{0:0}%'}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
-                            </StackPanel>
-
-                            <Separator Width="1" Height="12" Background="{DynamicResource AntigravityBorderBrush}" />
-
-                            <!-- VRAM Meter -->
-                            <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
-                                <TextBlock Text="VRAM" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
-                                <TextBlock Text="{Binding HardwareVramText, FallbackValue='0/0 GB'}" FontSize="11" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
-                            </StackPanel>
-
-                            <Separator Width="1" Height="12" Background="{DynamicResource AntigravityBorderBrush}" />
-
-                            <!-- CPU Meter -->
-                            <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
-                                <TextBlock Text="CPU" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
-                                <TextBlock Text="{Binding HardwareCpuPercent, StringFormat='{}{0:0}%'}" FontSize="11" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
-                            </StackPanel>
-
-                            <!-- Optional GPU Temp -->
-                            <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center" IsVisible="{Binding HasHardwareGpuTemp}">
-                                <Separator Width="1" Height="12" Background="{DynamicResource AntigravityBorderBrush}" Margin="0,0,4,0" />
-                                <TextBlock Text="TEMP" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
-                                <TextBlock Text="{Binding HardwareGpuTemp, StringFormat='{}{0}°C'}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
-                            </StackPanel>
-                        </StackPanel>
-                    </Border>
-
                     <!-- Right: Output Folder & Post-Batch Actions -->
                     <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
                         <!-- Output Folder Capsule -->

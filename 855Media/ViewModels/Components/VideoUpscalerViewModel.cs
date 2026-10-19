@@ -102,9 +102,6 @@ public partial class VideoUpscalerViewModel : ViewModelBase
     private string? _scratchDirectory;
 
     [ObservableProperty]
-    private bool _isFaceRestorationAvailable = VideoUpscaleService.IsFaceRestorationAvailable;
-
-    [ObservableProperty]
     private int _maxConcurrency = 2;
 
     [ObservableProperty]
@@ -194,16 +191,10 @@ public partial class VideoUpscalerViewModel : ViewModelBase
         Enum.GetValues<UpscaleAudioMode>();
 
     [ObservableProperty]
-    private UpscaleModelType _selectedModelType = UpscaleModelType.RealWorld;
+    private UpscaleModelType _selectedModelType = UpscaleModelType.FastNative;
 
     [ObservableProperty]
     private bool _enableFacialClarity = true;
-
-    [ObservableProperty]
-    private bool _enableFaceRestoration;
-
-    [ObservableProperty]
-    private double _faceRestorationFidelity = 0.7;
 
     public IReadOnlyList<UpscaleModelType> AvailableModelTypes { get; } =
         Enum.GetValues<UpscaleModelType>();
@@ -745,15 +736,16 @@ public partial class VideoUpscalerViewModel : ViewModelBase
             }
             else
             {
-                SelectedModelType = _settingsService.UpscalerModelType;
+                SelectedModelType = UpscaleModelOptions.Normalize(
+                    _settingsService.UpscalerModelType
+                );
+                _settingsService.UpscalerModelType = SelectedModelType;
             }
 
             SelectedPresetName = _settingsService.UpscalerPresetName;
             SelectedPostBatchAction = _settingsService.UpscalerPostBatchAction;
 
             EnableFacialClarity = _settingsService.UpscalerEnableFacialClarity;
-            EnableFaceRestoration = _settingsService.UpscalerEnableFaceRestoration;
-            FaceRestorationFidelity = _settingsService.UpscalerFaceRestorationFidelity;
             EnableDenoise = _settingsService.UpscalerEnableDenoise;
             EnableDeinterlace = _settingsService.UpscalerEnableDeinterlace;
             EnableMicroZoom = _settingsService.UpscalerEnableMicroZoom;
@@ -961,6 +953,9 @@ public partial class VideoUpscalerViewModel : ViewModelBase
     [RelayCommand]
     public async Task DeleteCurrentPresetAsync()
     {
+        if (!CanUseSubscription())
+            return;
+        RequireSubscription();
         var preset = ColorPresetManager.GetPreset(SelectedColorPresetName);
         if (preset == null || preset.IsBuiltIn)
         {
@@ -977,6 +972,9 @@ public partial class VideoUpscalerViewModel : ViewModelBase
     [RelayCommand]
     public async Task ExportPresetsAsync()
     {
+        if (!CanUseSubscription())
+            return;
+        RequireSubscription();
         var fileTypes = new[]
         {
             new FilePickerFileType("JSON Files (*.json)") { Patterns = ["*.json"] },
@@ -992,6 +990,9 @@ public partial class VideoUpscalerViewModel : ViewModelBase
     [RelayCommand]
     public async Task ImportPresetsAsync()
     {
+        if (!CanUseSubscription())
+            return;
+        RequireSubscription();
         var fileTypes = new[]
         {
             new FilePickerFileType("JSON Files (*.json)") { Patterns = ["*.json"] },
@@ -1418,6 +1419,12 @@ public partial class VideoUpscalerViewModel : ViewModelBase
 
     partial void OnSelectedModelTypeChanged(UpscaleModelType value)
     {
+        if (value != UpscaleModelOptions.Normalize(value))
+        {
+            SelectedModelType = UpscaleModelOptions.Normalize(value);
+            return;
+        }
+
         if (SelectedJob != null)
         {
             SelectedJob.ModelType = value;
@@ -1451,25 +1458,6 @@ public partial class VideoUpscalerViewModel : ViewModelBase
         {
             _settingsService.UpscalerScratchDirectory = value;
             ScheduleDebouncedSaveSettings();
-        }
-    }
-
-    partial void OnEnableFaceRestorationChanged(bool value)
-    {
-        if (SelectedJob != null)
-        {
-            SelectedJob.EnableFaceRestoration = value;
-        }
-        if (!_isRestoringSettings)
-        {
-            _settingsService.UpscalerEnableFaceRestoration = value;
-            ScheduleDebouncedSaveSettings();
-            if (value && !IsFaceRestorationAvailable)
-            {
-                _snackbarManager.Notify(
-                    "CodeFormer / GFPGAN binary not detected in tools directory. Facial clarity filter will be applied as fallback."
-                );
-            }
         }
     }
 
@@ -1559,19 +1547,6 @@ public partial class VideoUpscalerViewModel : ViewModelBase
         if (!_isRestoringSettings)
         {
             _settingsService.UpscalerCameraInjectTimestamp = value;
-            ScheduleDebouncedSaveSettings();
-        }
-    }
-
-    partial void OnFaceRestorationFidelityChanged(double value)
-    {
-        if (SelectedJob != null)
-        {
-            SelectedJob.FaceRestorationFidelity = value;
-        }
-        if (!_isRestoringSettings)
-        {
-            _settingsService.UpscalerFaceRestorationFidelity = value;
             ScheduleDebouncedSaveSettings();
         }
     }
@@ -1697,8 +1672,6 @@ public partial class VideoUpscalerViewModel : ViewModelBase
             }
             SelectedModelType = value.ModelType;
             EnableFacialClarity = value.EnableFacialClarity;
-            EnableFaceRestoration = value.EnableFaceRestoration;
-            FaceRestorationFidelity = value.FaceRestorationFidelity;
             if (!string.IsNullOrWhiteSpace(value.ActivePresetName))
             {
                 _selectedPresetName = value.ActivePresetName;
@@ -1724,6 +1697,9 @@ public partial class VideoUpscalerViewModel : ViewModelBase
     [RelayCommand]
     public async Task AddFilesAsync()
     {
+        if (!CanUseSubscription())
+            return;
+        RequireSubscription();
         var fileTypes = new[]
         {
             new FilePickerFileType("Video Files")
@@ -1753,6 +1729,9 @@ public partial class VideoUpscalerViewModel : ViewModelBase
     [RelayCommand]
     public async Task AddFolderAsync()
     {
+        if (!CanUseSubscription())
+            return;
+        RequireSubscription();
         var dirPath = await _dialogManager.PromptDirectoryPathAsync(OutputDirectory);
         if (string.IsNullOrWhiteSpace(dirPath) || !Directory.Exists(dirPath))
             return;
@@ -1775,6 +1754,9 @@ public partial class VideoUpscalerViewModel : ViewModelBase
 
     public async Task HandleDroppedFilesAsync(IEnumerable<string> paths)
     {
+        if (!CanUseSubscription())
+            return;
+        RequireSubscription();
         var validFiles = new List<string>();
 
         foreach (var path in paths)
@@ -1832,8 +1814,6 @@ public partial class VideoUpscalerViewModel : ViewModelBase
             ActivePresetName = SelectedPresetName,
             ModelType = SelectedModelType,
             EnableFacialClarity = EnableFacialClarity,
-            EnableFaceRestoration = EnableFaceRestoration,
-            FaceRestorationFidelity = FaceRestorationFidelity,
             EnableSplitAndUpscale = enableSplit,
             MergeAfterUpscale = MergeAfterUpscale,
             SplitOptions = GetCurrentSplitOptions(),
@@ -1881,6 +1861,9 @@ public partial class VideoUpscalerViewModel : ViewModelBase
     [RelayCommand]
     public async Task SplitQueuedJobAsync(UpscaleJob? job)
     {
+        if (!CanUseSubscription())
+            return;
+        RequireSubscription();
         if (job is null || job.Status != UpscaleJobStatus.Queued)
         {
             _snackbarManager.Notify("Only queued jobs can be split into parts.");
@@ -1943,8 +1926,6 @@ public partial class VideoUpscalerViewModel : ViewModelBase
                     ActivePresetName = job.ActivePresetName,
                     ModelType = job.ModelType,
                     EnableFacialClarity = job.EnableFacialClarity,
-                    EnableFaceRestoration = job.EnableFaceRestoration,
-                    FaceRestorationFidelity = job.FaceRestorationFidelity,
                     EnableSplitAndUpscale = false,
                     MergeAfterUpscale = false,
                     PartNumber = part.PartNumber,
@@ -1970,6 +1951,9 @@ public partial class VideoUpscalerViewModel : ViewModelBase
     [RelayCommand]
     public async Task SelectOutputDirectoryAsync()
     {
+        if (!CanUseSubscription())
+            return;
+        RequireSubscription();
         var dir = await _dialogManager.PromptDirectoryPathAsync(OutputDirectory);
         if (!string.IsNullOrWhiteSpace(dir) && Directory.Exists(dir))
         {
@@ -1981,6 +1965,9 @@ public partial class VideoUpscalerViewModel : ViewModelBase
     [RelayCommand]
     public async Task SelectScratchDirectoryAsync()
     {
+        if (!CanUseSubscription())
+            return;
+        RequireSubscription();
         var currentDir =
             !string.IsNullOrWhiteSpace(ScratchDirectory) && Directory.Exists(ScratchDirectory)
                 ? ScratchDirectory
@@ -2004,6 +1991,9 @@ public partial class VideoUpscalerViewModel : ViewModelBase
     [RelayCommand]
     public async Task TogglePauseResumeAsync()
     {
+        if (!CanUseSubscription())
+            return;
+        RequireSubscription();
         if (IsPaused)
         {
             _queueManager.Resume();
@@ -2030,6 +2020,9 @@ public partial class VideoUpscalerViewModel : ViewModelBase
     [RelayCommand]
     public async Task RetryJobAsync(UpscaleJob? job)
     {
+        if (!CanUseSubscription())
+            return;
+        RequireSubscription();
         if (job is null)
             return;
         await _queueManager.RetryJobAsync(job);
@@ -2094,6 +2087,9 @@ public partial class VideoUpscalerViewModel : ViewModelBase
     [RelayCommand]
     public async Task SelectLutFileAsync()
     {
+        if (!CanUseSubscription())
+            return;
+        RequireSubscription();
         var fileTypes = new[]
         {
             new FilePickerFileType("3D LUT Files (*.cube)") { Patterns = ["*.cube"] },

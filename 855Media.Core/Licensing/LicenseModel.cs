@@ -29,6 +29,9 @@ public enum LicenseFeature
     BatchDownloads,
     AudioProcessing,
     HighParallelDownloads,
+    Upscaling,
+    Dubbing,
+    AutoPost,
 }
 
 public class LicensePayload
@@ -47,6 +50,7 @@ public class LicensePayload
 
 public class LicenseActivationResult
 {
+    public string? SignedToken { get; set; }
     public bool Success { get; set; }
     public string Message { get; set; } = string.Empty;
     public LicenseStatus Status { get; set; }

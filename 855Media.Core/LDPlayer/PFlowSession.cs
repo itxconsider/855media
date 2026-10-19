@@ -8,6 +8,47 @@ namespace _855Media.Core.LDPlayer;
 
 public static class PFlowSession
 {
+    public static async Task EnsureFetchFacebookForegroundAsync(
+        ILDPlayerService ld,
+        int index,
+        string? path,
+        CancellationToken ct,
+        Func<string, Task>? progress = null,
+        Func<TimeSpan, CancellationToken, Task>? delay = null
+    )
+    {
+        delay ??= Task.Delay;
+        bool IsFacebook(string? activity) =>
+            Regex.IsMatch(activity ?? "", @"(?<![\w.])com\.facebook\.katana/");
+        ct.ThrowIfCancellationRequested();
+        if (IsFacebook(await ld.GetCurrentFocusedActivityAsync(index, path, ct)))
+            return;
+        for (var attempt = 1; attempt <= 2; attempt++)
+        {
+            if (progress != null)
+                await progress($"Opening Facebook for account lookup ({attempt}/2).");
+            var acknowledged = await ld.LaunchAppAsync(index, "com.facebook.katana", path, ct);
+            for (var poll = 0; poll < 20; poll++)
+            {
+                ct.ThrowIfCancellationRequested();
+                if (IsFacebook(await ld.GetCurrentFocusedActivityAsync(index, path, ct)))
+                {
+                    await PFlowFetchTrace.WriteAsync(
+                        index,
+                        "fetch.facebook.ready",
+                        $"attempt={attempt}; acknowledged={acknowledged}; foregroundVerified=True",
+                        ct
+                    );
+                    return;
+                }
+                await delay(TimeSpan.FromMilliseconds(500), ct);
+            }
+        }
+        throw new InvalidOperationException(
+            "Facebook did not become foreground after two launch attempts. Root account data is saved; UI lookup was not started."
+        );
+    }
+
     public static async Task RestartForUidRecoveryAsync(
         ILDPlayerService ld,
         int index,
@@ -46,22 +87,27 @@ public static class PFlowSession
         ILDPlayerService ld,
         int index,
         string? path,
-        CancellationToken ct
+        CancellationToken ct,
+        Func<TimeSpan, CancellationToken, Task>? delay = null,
+        Func<DateTime>? now = null
     )
     {
-        var until = DateTime.UtcNow.AddSeconds(60);
-        while (DateTime.UtcNow < until)
+        delay ??= Task.Delay;
+        now ??= () => DateTime.UtcNow;
+        var until = now().Add(PFlowStartupTimeouts.InternetReady);
+        while (now() < until)
         {
+            ct.ThrowIfCancellationRequested();
             if (
                 LDPlayerService.IsAndroidInternetConnected(
                     await ld.ExecuteAdbAsync(index, "shell dumpsys connectivity", path, ct)
                 )
             )
                 return;
-            await Task.Delay(2000, ct);
+            await delay(TimeSpan.FromSeconds(2), ct);
         }
         throw new InvalidOperationException(
-            "Internet inside LD was not validated within 60 seconds."
+            "Internet inside LD was not validated within 180 seconds."
         );
     }
 

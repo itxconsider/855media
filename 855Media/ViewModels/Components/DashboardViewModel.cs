@@ -37,6 +37,10 @@ public partial class DashboardViewModel : ViewModelBase
     private readonly SettingsService _settingsService;
 
     private readonly IDisposable _eventSubscription;
+    private readonly DispatcherTimer _subscriptionBadgeTimer = new()
+    {
+        Interval = TimeSpan.FromMinutes(1),
+    };
     private readonly ResizableSemaphore _downloadSemaphore = new();
     private readonly AutoResetProgressMuxer _progressMuxer;
 
@@ -96,6 +100,7 @@ public partial class DashboardViewModel : ViewModelBase
         _settingsService = settingsService;
         _historyService = historyService;
         _licenseService = licenseService;
+        _subscriptionModulesInitialized = _licenseService.IsFeatureAllowed(LicenseFeature.All);
         _hardwareMonitor = hardwareMonitor;
 
         GlobalHardware = ModuleHardwareCheck.GetGlobalCheck(_hardwareMonitor?.CurrentMetrics);
@@ -111,10 +116,16 @@ public partial class DashboardViewModel : ViewModelBase
 
         _licenseService.LicenseChanged += () =>
         {
+            OnPropertyChanged(nameof(HasSubscriptionAccess));
             OnPropertyChanged(nameof(IsProActive));
             OnPropertyChanged(nameof(IsTrialActive));
             OnPropertyChanged(nameof(LicenseBadgeText));
+            if (HasSubscriptionAccess && AutoPost != null)
+                Dispatcher.UIThread.Post(() => _ = InitializeActivatedModulesAsync());
         };
+
+        _subscriptionBadgeTimer.Tick += (_, _) => OnPropertyChanged(nameof(LicenseBadgeText));
+        _subscriptionBadgeTimer.Start();
 
         _progressMuxer = Progress.CreateMuxer().WithAutoReset();
 
@@ -365,6 +376,19 @@ public partial class DashboardViewModel : ViewModelBase
 
     private async Task EnsureFFmpegAsync()
     {
+        await EnsureFFmpegOnlyAsync();
+        try
+        {
+            await FFprobe.EnsureAsync(_settingsService.FFmpegFilePath);
+        }
+        catch (Exception ex)
+        {
+            _snackbarManager.Notify("FFprobe setup failed: " + ex.Message);
+        }
+    }
+
+    private async Task EnsureFFmpegOnlyAsync()
+    {
         // If a custom path is set, trust that the user knows what they're doing
         if (_settingsService.FFmpegFilePath is not null)
             return;
@@ -415,7 +439,11 @@ public partial class DashboardViewModel : ViewModelBase
         }
     }
 
-    public override async Task InitializeAsync() => await EnsureFFmpegAsync();
+    public override async Task InitializeAsync()
+    {
+        if (HasSubscriptionAccess)
+            await EnsureFFmpegAsync();
+    }
 
     private bool CanShowAuthSetup() => !IsBusy;
 
@@ -424,14 +452,48 @@ public partial class DashboardViewModel : ViewModelBase
         await _dialogManager.ShowDialogAsync(_viewModelManager.GetAuthSetupViewModel());
 
     public bool IsProActive => _licenseService.IsProActive;
-    public bool IsTrialActive => _licenseService.IsTrialActive;
-    public string LicenseBadgeText =>
-        _licenseService.Status switch
+    public bool HasSubscriptionAccess => _licenseService.IsFeatureAllowed(LicenseFeature.All);
+    private bool _subscriptionModulesInitialized;
+
+    private async Task InitializeActivatedModulesAsync()
+    {
+        if (_subscriptionModulesInitialized)
+            return;
+        _subscriptionModulesInitialized = true;
+        try
         {
-            LicenseStatus.Active => "PRO",
-            LicenseStatus.Trial => $"TRIAL ({_licenseService.TrialDaysRemaining}d)",
-            _ => "ACTIVATE",
-        };
+            await AutoPost.InitializeAsync();
+            await EnsureFFmpegAsync();
+        }
+        catch (Exception ex)
+        {
+            _subscriptionModulesInitialized = false;
+            _snackbarManager.Notify(
+                "Subscription activated; module initialization needs attention: " + ex.Message
+            );
+        }
+    }
+
+    private async Task ShowSubscriptionSettingsAsync()
+    {
+        var settings = _viewModelManager.GetSettingsViewModel();
+        settings.SelectedCategory = 2;
+        await _dialogManager.ShowDialogAsync(settings);
+    }
+
+    public bool IsTrialActive => _licenseService.IsTrialActive;
+    public string LicenseBadgeText
+    {
+        get
+        {
+            var status = _licenseService.Status;
+            if (status != LicenseStatus.Active)
+                return status == LicenseStatus.Expired ? "[Expired]" : "[Inactive]";
+            return _licenseService.CurrentLicense?.ExpiresAt is { } expiry
+                ? $"[{Math.Max(0, (int)Math.Ceiling((expiry.ToUniversalTime() - DateTime.UtcNow).TotalDays))}D]"
+                : "[Lifetime]";
+        }
+    }
 
     private bool CanShowSettings() => !IsBusy;
 
@@ -442,8 +504,7 @@ public partial class DashboardViewModel : ViewModelBase
     private bool CanShowLicenseActivation() => !IsBusy;
 
     [RelayCommand(CanExecute = nameof(CanShowLicenseActivation))]
-    private async Task ShowLicenseActivationAsync() =>
-        await _dialogManager.ShowDialogAsync(_viewModelManager.GetLicenseActivationViewModel());
+    private async Task ShowLicenseActivationAsync() => await ShowSubscriptionSettingsAsync();
 
     private bool CanShowBatchInput() => !IsBusy;
 
@@ -453,7 +514,7 @@ public partial class DashboardViewModel : ViewModelBase
         if (!_licenseService.IsProActive)
         {
             _snackbarManager.Notify("Batch URL downloading requires an 855Media Pro license.");
-            await _dialogManager.ShowDialogAsync(_viewModelManager.GetLicenseActivationViewModel());
+            await ShowSubscriptionSettingsAsync();
             return;
         }
 
@@ -511,6 +572,7 @@ public partial class DashboardViewModel : ViewModelBase
             var tagInjector = new MediaTagInjector();
 
             using var access = await _downloadSemaphore.AcquireAsync(download.CancellationToken);
+            RequireSubscription();
 
             if (!string.IsNullOrWhiteSpace(download.FilePath))
             {
@@ -857,6 +919,8 @@ public partial class DashboardViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanProcessQuery))]
     private async Task ProcessQueryAsync()
     {
+        if (!CanUseSubscription())
+            return;
         if (string.IsNullOrWhiteSpace(Query))
             return;
 
@@ -929,9 +993,7 @@ public partial class DashboardViewModel : ViewModelBase
                     _snackbarManager.Notify(
                         "Bulk & playlist downloading requires an 855Media Pro license."
                     );
-                    await _dialogManager.ShowDialogAsync(
-                        _viewModelManager.GetLicenseActivationViewModel()
-                    );
+                    await ShowSubscriptionSettingsAsync();
                     return;
                 }
 
@@ -1013,10 +1075,12 @@ public partial class DashboardViewModel : ViewModelBase
 
     public async Task QueueFacebookPhotosAsync(QueryResult queryResult)
     {
+        if (!CanUseSubscription())
+            return;
         if (!_licenseService.IsProActive)
         {
             _snackbarManager.Notify("Bulk photo downloading requires an 855Media Pro license.");
-            await _dialogManager.ShowDialogAsync(_viewModelManager.GetLicenseActivationViewModel());
+            await ShowSubscriptionSettingsAsync();
             return;
         }
 
@@ -1170,6 +1234,16 @@ public partial class DashboardViewModel : ViewModelBase
             download.CancelCommand.ExecuteIfCan(null);
     }
 
+    [RelayCommand]
+    private void StopSubscriptionWork()
+    {
+        CancelAllDownloads();
+        VideoUpscaler.CancelAll();
+        Dubbing.CancelDubbing();
+        Dubbing.CancelBatchDubbing();
+        _ = AutoPost.StopAutomationAsync();
+    }
+
     private void UpdateHardwareMetrics(HardwareMetrics metrics)
     {
         CpuUsagePercent = metrics.CpuUsagePercent;
@@ -1226,6 +1300,7 @@ public partial class DashboardViewModel : ViewModelBase
         {
             CancelAllDownloads();
 
+            _subscriptionBadgeTimer.Stop();
             _eventSubscription.Dispose();
             _downloadSemaphore.Dispose();
         }

@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 namespace _855Media.Core.Utils;
 
 /// <summary>
-/// Tracks child processes spawned by 855Media (e.g. Real-ESRGAN, FFmpeg, yt-dlp) and ensures
+/// Tracks child processes spawned by 855Media (e.g. FFmpeg, yt-dlp) and ensures
 /// they are strictly terminated when the application closes, crashes, or is stopped.
 /// On Windows, this binds child processes to a kernel Job Object configured with
 /// JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, guaranteeing that the OS kernel kills them even on hard crash or kill.

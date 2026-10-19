@@ -27,6 +27,7 @@ public partial class SettingsViewModel : DialogViewModelBase
     private readonly ViewModelManager _viewModelManager;
 
     private readonly IDisposable _eventSubscription;
+    private readonly Action _licenseChanged;
 
     public SettingsViewModel(
         DialogManager dialogManager,
@@ -42,13 +43,15 @@ public partial class SettingsViewModel : DialogViewModelBase
         _licenseService = licenseService;
         _viewModelManager = viewModelManager;
 
-        _licenseService.LicenseChanged += () =>
+        _licenseChanged = () =>
         {
+            OnPropertyChanged(nameof(SubscriptionTimeRemaining));
             OnPropertyChanged(nameof(LicenseStatusText));
             OnPropertyChanged(nameof(LicenseOwnerText));
             OnPropertyChanged(nameof(IsProActive));
             OnPropertyChanged(nameof(IsTrialActive));
         };
+        _licenseService.LicenseChanged += _licenseChanged;
 
         _eventSubscription = _settingsService.WatchAllProperties(OnAllPropertiesChanged);
     }
@@ -119,11 +122,11 @@ public partial class SettingsViewModel : DialogViewModelBase
     public string CurrentCategoryTitle =>
         SelectedCategory switch
         {
-            0 => LocalizationManager.SettingsTitle ?? "General",
-            1 => "AI & Connectors",
-            2 => "License & Subscription",
-            3 => "Data controls",
-            4 => "Messaging & Audio",
+            0 => "General",
+            1 => "AI & translation",
+            2 => "Subscription",
+            3 => "Downloads",
+            4 => "Audio & output",
             5 => "Devices & System",
             6 => "Legal info",
             7 => "Help & support",
@@ -174,28 +177,36 @@ public partial class SettingsViewModel : DialogViewModelBase
     public string LicenseStatusText =>
         _licenseService.Status switch
         {
-            Core.Licensing.LicenseStatus.Active => "PRO ACTIVATED",
+            Core.Licensing.LicenseStatus.Active => "ACTIVE SUBSCRIPTION",
             Core.Licensing.LicenseStatus.Trial =>
                 $"Free Trial ({_licenseService.TrialDaysRemaining} days remaining)",
-            Core.Licensing.LicenseStatus.Expired => "Trial Expired",
+            Core.Licensing.LicenseStatus.Expired => "SUBSCRIPTION EXPIRED",
             Core.Licensing.LicenseStatus.HardwareMismatch => "Device ID Mismatch",
             _ => "Unlicensed",
         };
 
     public string LicenseOwnerText =>
         _licenseService.CurrentLicense is { } lic
-            ? $"{lic.CustomerName} ({lic.CustomerEmail}) - {lic.Type}"
+            ? $"{lic.CustomerName}{(string.IsNullOrWhiteSpace(lic.CustomerEmail) ? "" : " (" + lic.CustomerEmail + ")")} · {lic.Type}"
             : (_licenseService.IsTrialActive ? "Evaluation License" : "No License");
 
     public bool IsProActive => _licenseService.IsProActive;
     public bool IsTrialActive => _licenseService.IsTrialActive;
     public string MachineFingerprint => _licenseService.MachineFingerprint;
+    private LicenseActivationViewModel? _activation;
+    public LicenseActivationViewModel Activation =>
+        _activation ??= _viewModelManager.GetLicenseActivationViewModel();
+    public string SubscriptionTimeRemaining =>
+        !_licenseService.IsProActive ? "Activation required"
+        : _licenseService.CurrentLicense?.ExpiresAt is { } expiry
+            ? $"{Math.Max(0, (int)Math.Ceiling((expiry.ToUniversalTime() - DateTime.UtcNow).TotalDays))} days remaining"
+        : "Lifetime";
 
     [RelayCommand]
     private async Task OpenLicenseActivationAsync()
     {
-        var dialog = _viewModelManager.GetLicenseActivationViewModel();
-        await _dialogManager.ShowDialogAsync(dialog);
+        SelectedCategory = 2;
+        await Task.CompletedTask;
     }
 
     public LocalizationManager LocalizationManager { get; }
@@ -428,6 +439,8 @@ public partial class SettingsViewModel : DialogViewModelBase
     {
         if (disposing)
         {
+            _licenseService.LicenseChanged -= _licenseChanged;
+            _activation?.Dispose();
             _eventSubscription.Dispose();
         }
 

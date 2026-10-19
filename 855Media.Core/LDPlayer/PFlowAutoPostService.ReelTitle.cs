@@ -99,8 +99,7 @@ public partial class PFlowAutoPostService
         var xml = await _ldPlayer.DumpUiHierarchyAsync(job.DeviceIndex, path, ct) ?? "";
         if (FindReelTitleField(xml) == null)
             return;
-        if (!await _ldPlayer.EnableAdbKeyboardAsync(job.DeviceIndex, path, ct))
-            throw new InvalidOperationException("ADB keyboard unavailable for Reel title.");
+        await PFlowAndroidTextInput.EnsureAsync(_ldPlayer, job.DeviceIndex, path, ct);
         xml = await _ldPlayer.DumpUiHierarchyAsync(job.DeviceIndex, path, ct) ?? "";
         var field = FindReelTitleField(xml);
         var point = field == null ? null : TitleCenter(field);

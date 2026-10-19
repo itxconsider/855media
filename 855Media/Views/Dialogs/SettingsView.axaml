@@ -5,8 +5,8 @@
     xmlns:converters="clr-namespace:_855Media.Converters"
     xmlns:dialogs="clr-namespace:_855Media.ViewModels.Dialogs"
     xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
-    Width="760"
-    Height="520"
+    Width="860"
+    Height="620"
     x:DataType="dialogs:SettingsViewModel">
 
     <UserControl.Styles>
@@ -94,7 +94,7 @@
         BorderThickness="1"
         CornerRadius="8"
         ClipToBounds="True">
-        <Grid ColumnDefinitions="220,*">
+        <Grid ColumnDefinitions="190,*">
             <!-- Left Sidebar Navigation -->
             <Border
                 Grid.Column="0"
@@ -116,8 +116,7 @@
                         Grid.Row="1"
                         HorizontalScrollBarVisibility="Disabled"
                         VerticalScrollBarVisibility="Auto">
-                        <StackPanel Margin="10,0,10,12" Spacing="2">
-                            <!-- 0: General -->
+                        <StackPanel Margin="10,0,10,12" Spacing="4">
                             <Button
                                 Classes="navPill"
                                 Classes.active="{Binding IsGeneralSelected}"
@@ -128,20 +127,6 @@
                                     <TextBlock FontSize="13" FontWeight="Medium" Text="General" VerticalAlignment="Center" />
                                 </StackPanel>
                             </Button>
-
-                            <!-- 1: Connectors (AI) -->
-                            <Button
-                                Classes="navPill"
-                                Classes.active="{Binding IsConnectorsSelected}"
-                                Command="{Binding SelectCategoryCommand}"
-                                CommandParameter="1">
-                                <StackPanel Orientation="Horizontal" Spacing="10">
-                                    <materialIcons:MaterialIcon Width="18" Height="18" Kind="ViewGridOutline" VerticalAlignment="Center" />
-                                    <TextBlock FontSize="13" FontWeight="Medium" Text="Connectors" VerticalAlignment="Center" />
-                                </StackPanel>
-                            </Button>
-
-                            <!-- 2: Wallet / License -->
                             <Button
                                 Classes="navPill"
                                 Classes.active="{Binding IsLicenseSelected}"
@@ -149,33 +134,19 @@
                                 CommandParameter="2">
                                 <StackPanel Orientation="Horizontal" Spacing="10">
                                     <materialIcons:MaterialIcon Width="18" Height="18" Kind="WalletOutline" VerticalAlignment="Center" />
-                                    <TextBlock FontSize="13" FontWeight="Medium" Text="Wallet" VerticalAlignment="Center" />
+                                    <TextBlock FontSize="13" FontWeight="Medium" Text="Subscription" VerticalAlignment="Center" />
                                 </StackPanel>
                             </Button>
-
-                            <!-- 3: Secure store -->
                             <Button
                                 Classes="navPill"
+                                Classes.active="{Binding IsDownloadsSelected}"
                                 Command="{Binding SelectCategoryCommand}"
-                                CommandParameter="2">
+                                CommandParameter="3">
                                 <StackPanel Orientation="Horizontal" Spacing="10">
-                                    <materialIcons:MaterialIcon Width="18" Height="18" Kind="ShieldKeyOutline" VerticalAlignment="Center" />
-                                    <TextBlock FontSize="13" FontWeight="Medium" Text="Secure store" VerticalAlignment="Center" />
+                                    <materialIcons:MaterialIcon Width="18" Height="18" Kind="LockOutline" VerticalAlignment="Center" />
+                                    <TextBlock FontSize="13" FontWeight="Medium" Text="Downloads" VerticalAlignment="Center" />
                                 </StackPanel>
                             </Button>
-
-                            <!-- 4: Permissions -->
-                            <Button
-                                Classes="navPill"
-                                Command="{Binding SelectCategoryCommand}"
-                                CommandParameter="5">
-                                <StackPanel Orientation="Horizontal" Spacing="10">
-                                    <materialIcons:MaterialIcon Width="18" Height="18" Kind="HandBackRightOutline" VerticalAlignment="Center" />
-                                    <TextBlock FontSize="13" FontWeight="Medium" Text="Permissions" VerticalAlignment="Center" />
-                                </StackPanel>
-                            </Button>
-
-                            <!-- 5: Messaging channels / Audio -->
                             <Button
                                 Classes="navPill"
                                 Classes.active="{Binding IsAudioSelected}"
@@ -183,11 +154,19 @@
                                 CommandParameter="4">
                                 <StackPanel Orientation="Horizontal" Spacing="10">
                                     <materialIcons:MaterialIcon Width="18" Height="18" Kind="ChatOutline" VerticalAlignment="Center" />
-                                    <TextBlock FontSize="13" FontWeight="Medium" Text="Messaging channels" VerticalAlignment="Center" />
+                                    <TextBlock FontSize="13" FontWeight="Medium" Text="Audio &amp; output" VerticalAlignment="Center" />
                                 </StackPanel>
                             </Button>
-
-                            <!-- 6: Devices -->
+                            <Button
+                                Classes="navPill"
+                                Classes.active="{Binding IsConnectorsSelected}"
+                                Command="{Binding SelectCategoryCommand}"
+                                CommandParameter="1">
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <materialIcons:MaterialIcon Width="18" Height="18" Kind="ViewGridOutline" VerticalAlignment="Center" />
+                                    <TextBlock FontSize="13" FontWeight="Medium" Text="AI &amp; translation" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
                             <Button
                                 Classes="navPill"
                                 Classes.active="{Binding IsDevicesSelected}"
@@ -198,20 +177,6 @@
                                     <TextBlock FontSize="13" FontWeight="Medium" Text="Devices" VerticalAlignment="Center" />
                                 </StackPanel>
                             </Button>
-
-                            <!-- 7: Data controls -->
-                            <Button
-                                Classes="navPill"
-                                Classes.active="{Binding IsDownloadsSelected}"
-                                Command="{Binding SelectCategoryCommand}"
-                                CommandParameter="3">
-                                <StackPanel Orientation="Horizontal" Spacing="10">
-                                    <materialIcons:MaterialIcon Width="18" Height="18" Kind="LockOutline" VerticalAlignment="Center" />
-                                    <TextBlock FontSize="13" FontWeight="Medium" Text="Data controls" VerticalAlignment="Center" />
-                                </StackPanel>
-                            </Button>
-
-                            <!-- 8: Help & support -->
                             <Button
                                 Classes="navPill"
                                 Classes.active="{Binding IsHelpSelected}"
@@ -220,18 +185,6 @@
                                 <StackPanel Orientation="Horizontal" Spacing="10">
                                     <materialIcons:MaterialIcon Width="18" Height="18" Kind="HelpCircleOutline" VerticalAlignment="Center" />
                                     <TextBlock FontSize="13" FontWeight="Medium" Text="Help &amp; support" VerticalAlignment="Center" />
-                                </StackPanel>
-                            </Button>
-
-                            <!-- 9: Legal info -->
-                            <Button
-                                Classes="navPill"
-                                Classes.active="{Binding IsLegalSelected}"
-                                Command="{Binding SelectCategoryCommand}"
-                                CommandParameter="6">
-                                <StackPanel Orientation="Horizontal" Spacing="10">
-                                    <materialIcons:MaterialIcon Width="18" Height="18" Kind="ShieldCheckOutline" VerticalAlignment="Center" />
-                                    <TextBlock FontSize="13" FontWeight="Medium" Text="Legal info" VerticalAlignment="Center" />
                                 </StackPanel>
                             </Button>
                         </StackPanel>
@@ -248,8 +201,8 @@
                             Command="{Binding CloseCommand}"
                             ToolTip.Tip="Close Settings">
                             <StackPanel Orientation="Horizontal" Spacing="10">
-                                <materialIcons:MaterialIcon Width="18" Height="18" Kind="LogoutVariant" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
-                                <TextBlock FontSize="13" FontWeight="Medium" Foreground="{DynamicResource AntigravityMutedBrush}" Text="Log out" VerticalAlignment="Center" />
+                                <materialIcons:MaterialIcon Width="18" Height="18" Kind="Close" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
+                                <TextBlock FontSize="13" FontWeight="Medium" Foreground="{DynamicResource AntigravityMutedBrush}" Text="Close settings" VerticalAlignment="Center" />
                             </StackPanel>
                         </Button>
                     </Border>
@@ -282,71 +235,6 @@
                     HorizontalScrollBarVisibility="Disabled"
                     VerticalScrollBarVisibility="Auto">
                     <Panel>
-                        <!-- ==================== TAB 6: LEGAL INFO (Matches Screenshot Exactly) ==================== -->
-                        <StackPanel IsVisible="{Binding IsLegalSelected}" Spacing="14">
-                            <!-- Notice Subtitle with Blue Link -->
-                            <TextBlock FontSize="13" TextWrapping="Wrap" LineHeight="20">
-                                <Run Foreground="{DynamicResource AntigravityMutedBrush}" Text="Responses are generated by AI. Some may be inaccurate or inappropriate. " />
-                                <Run Foreground="{DynamicResource AntigravityTextBrush}" Text="Learn more" TextDecorations="Underline" />
-                            </TextBlock>
-
-                            <!-- Muse Rounded Card Container -->
-                            <Border
-                                CornerRadius="8"
-                                Background="{DynamicResource AntigravityCardBrush}"
-                                BorderBrush="{DynamicResource AntigravityBorderBrush}"
-                                BorderThickness="1"
-                                ClipToBounds="True">
-                                <StackPanel>
-                                    <Button Classes="cardRow" Command="{Binding OpenUrlCommand}" CommandParameter="https://muse.ai/privacy">
-                                        <DockPanel>
-                                            <materialIcons:MaterialIcon DockPanel.Dock="Right" Width="16" Height="16" Kind="ArrowTopRight" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
-                                            <TextBlock Text="Muse Privacy Policy" FontSize="14" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
-                                        </DockPanel>
-                                    </Button>
-                                    <Border Height="1" Background="{DynamicResource MuseDividerBrush}" />
-
-                                    <Button Classes="cardRow" Command="{Binding OpenUrlCommand}" CommandParameter="https://muse.ai/terms">
-                                        <DockPanel>
-                                            <materialIcons:MaterialIcon DockPanel.Dock="Right" Width="16" Height="16" Kind="ArrowTopRight" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
-                                            <TextBlock Text="Muse Supplemental Terms" FontSize="14" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
-                                        </DockPanel>
-                                    </Button>
-                                    <Border Height="1" Background="{DynamicResource MuseDividerBrush}" />
-
-                                    <Button Classes="cardRow" Command="{Binding OpenUrlCommand}" CommandParameter="https://www.facebook.com/legal/terms">
-                                        <DockPanel>
-                                            <materialIcons:MaterialIcon DockPanel.Dock="Right" Width="16" Height="16" Kind="ArrowTopRight" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
-                                            <TextBlock Text="Meta Terms of Service" FontSize="14" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
-                                        </DockPanel>
-                                    </Button>
-                                    <Border Height="1" Background="{DynamicResource MuseDividerBrush}" />
-
-                                    <Button Classes="cardRow" Command="{Binding OpenUrlCommand}" CommandParameter="https://www.facebook.com/privacy/policy">
-                                        <DockPanel>
-                                            <materialIcons:MaterialIcon DockPanel.Dock="Right" Width="16" Height="16" Kind="ArrowTopRight" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
-                                            <TextBlock Text="Meta Privacy Policy" FontSize="14" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
-                                        </DockPanel>
-                                    </Button>
-                                    <Border Height="1" Background="{DynamicResource MuseDividerBrush}" />
-
-                                    <Button Classes="cardRow" Command="{Binding OpenUrlCommand}" CommandParameter="https://www.facebook.com/policies/other-policies/meta-ai-terms">
-                                        <DockPanel>
-                                            <materialIcons:MaterialIcon DockPanel.Dock="Right" Width="16" Height="16" Kind="ArrowTopRight" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
-                                            <TextBlock Text="Meta AI Terms of Service" FontSize="14" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
-                                        </DockPanel>
-                                    </Button>
-                                    <Border Height="1" Background="{DynamicResource MuseDividerBrush}" />
-
-                                    <Button Classes="cardRow" Command="{Binding OpenUrlCommand}" CommandParameter="https://github.com/itxconsider/855media">
-                                        <DockPanel>
-                                            <materialIcons:MaterialIcon DockPanel.Dock="Right" Width="16" Height="16" Kind="ArrowTopRight" Foreground="{DynamicResource AntigravityMutedBrush}" VerticalAlignment="Center" />
-                                            <TextBlock Text="855Media Open Source &amp; License" FontSize="14" Foreground="{DynamicResource AntigravityTextBrush}" VerticalAlignment="Center" />
-                                        </DockPanel>
-                                    </Button>
-                                </StackPanel>
-                            </Border>
-                        </StackPanel>
 
                         <!-- ==================== TAB 0: GENERAL ==================== -->
                         <StackPanel IsVisible="{Binding IsGeneralSelected}" Spacing="14">
@@ -508,58 +396,33 @@
                             </Border>
                         </StackPanel>
 
-                        <!-- ==================== TAB 2: WALLET / LICENSE ==================== -->
-                        <StackPanel IsVisible="{Binding IsLicenseSelected}" Spacing="14">
-                            <TextBlock FontSize="13" Foreground="{DynamicResource AntigravityMutedBrush}" Text="Manage your software license status, machine activation, and entitlements." />
-
-                            <Border
-                                CornerRadius="8"
-                                Background="{DynamicResource AntigravityCardBrush}"
-                                BorderBrush="{DynamicResource AntigravityBorderBrush}"
-                                BorderThickness="1"
-                                Padding="16"
-                                ClipToBounds="True">
+                        <StackPanel IsVisible="{Binding IsLicenseSelected}" Spacing="16">
+                            <Border Padding="20" CornerRadius="10" Background="{DynamicResource AntigravityCardBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1">
+                                <StackPanel Spacing="8">
+                                    <TextBlock Text="{Binding LicenseStatusText}" FontSize="14" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding SubscriptionTimeRemaining}" FontSize="28" FontWeight="Bold" />
+                                    <TextBlock Text="{Binding LicenseOwnerText}" TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                    <TextBlock Text="One active subscription gives access to all modules on this computer." TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                </StackPanel>
+                            </Border>
+                            <Border Padding="20" CornerRadius="10" Background="{DynamicResource AntigravityCardBrush}" BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="1">
                                 <StackPanel Spacing="12">
-                                    <DockPanel>
-                                        <StackPanel VerticalAlignment="Center" Spacing="4">
-                                            <TextBlock Text="Subscription Status" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource AntigravityTextBrush}" />
-                                            <TextBlock Text="{Binding LicenseOwnerText}" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                        </StackPanel>
-                                        <Border
-                                            DockPanel.Dock="Right"
-                                            HorizontalAlignment="Right"
-                                            VerticalAlignment="Center"
-                                            Padding="10,4"
-                                            Background="{DynamicResource AntigravityAccentBrush}"
-                                            CornerRadius="6">
-                                            <TextBlock
-                                                FontSize="11"
-                                                FontWeight="Bold"
-                                                Foreground="{DynamicResource AntigravityAccentForegroundBrush}"
-                                                Text="{Binding LicenseStatusText}" />
-                                        </Border>
-                                    </DockPanel>
-
-                                    <Border Height="1" Background="{DynamicResource MuseDividerBrush}" />
-
-                                    <DockPanel LastChildFill="False">
-                                        <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center" Spacing="2">
-                                            <TextBlock Text="Unique Device ID" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource AntigravityTextBrush}" />
-                                            <TextBlock Text="{Binding MachineFingerprint}" FontFamily="Consolas, monospace" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                        </StackPanel>
-                                    </DockPanel>
-
-                                    <Border Height="1" Background="{DynamicResource MuseDividerBrush}" />
-
-                                    <Button
-                                        HorizontalAlignment="Left"
-                                        Command="{Binding OpenLicenseActivationCommand}"
-                                        Theme="{DynamicResource MaterialOutlineButton}">
-                                        <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <materialIcons:MaterialIcon Width="16" Height="16" Kind="ShieldKeyOutline" />
-                                            <TextBlock Text="Manage License / Activate" />
-                                        </StackPanel>
-                                    </Button>
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Text="Activate or renew" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                        <Button Grid.Column="1" Content="Load .lic file" Command="{Binding Activation.BrowseLicenseFileCommand}" IsEnabled="{Binding !Activation.IsBusy}" />
+                                    </Grid>
+                                    <TextBox Text="{Binding Activation.LicenseKeyInput}" Watermark="Paste your signed license token or activation key" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="90" MaxHeight="140" IsEnabled="{Binding !Activation.IsBusy}" />
+                                    <TextBlock Text="{Binding Activation.StatusMessage}" TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                    <StackPanel Orientation="Horizontal" Spacing="10">
+                                        <Button Content="Activate" Command="{Binding Activation.ActivateCommand}" IsEnabled="{Binding !Activation.IsBusy}" />
+                                        <Button Content="Remove activation" Command="{Binding Activation.DeactivateCommand}" IsVisible="{Binding IsProActive}" IsEnabled="{Binding !Activation.IsBusy}" />
+                                    </StackPanel>
+                                    <Border Height="1" Background="{DynamicResource AntigravityBorderBrush}" />
+                                    <TextBlock Text="Device ID" FontWeight="SemiBold" />
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Text="{Binding MachineFingerprint}" FontFamily="Consolas" VerticalAlignment="Center" />
+                                        <Button Grid.Column="1" Content="Copy" Command="{Binding Activation.CopyMachineFingerprintCommand}" />
+                                    </Grid>
                                 </StackPanel>
                             </Border>
                         </StackPanel>
@@ -727,7 +590,7 @@
 
                         <!-- ==================== TAB 5: DEVICES & SYSTEM ==================== -->
                         <StackPanel IsVisible="{Binding IsDevicesSelected}" Spacing="14">
-                            <TextBlock FontSize="13" Foreground="{DynamicResource AntigravityMutedBrush}" Text="External encoders, FFmpeg binaries, and device hardware settings." />
+                            <TextBlock FontSize="13" Foreground="{DynamicResource AntigravityMutedBrush}" Text="Choose the FFmpeg executable used by downloads and media processing." />
 
                             <Border
                                 CornerRadius="8"

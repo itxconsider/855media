@@ -363,6 +363,7 @@ public partial class AutoPostViewModel
         )
         {
             ct.ThrowIfCancellationRequested();
+            RequireSubscription();
             if (job.State != PFlowState.Queued)
                 continue;
             _pFlowTasks.TryGetValue(job.JobId, out var task);

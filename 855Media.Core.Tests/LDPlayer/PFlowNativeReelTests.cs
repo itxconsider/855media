@@ -6,6 +6,26 @@ namespace _855Media.Core.Tests.LDPlayer;
 
 public class PFlowNativeReelTests
 {
+    [Fact]
+    public void CapturedEditorProcessingIsRecognizedWithoutEditorControls()
+    {
+        var xml = FacebookLayoutRegistryTests.Fixture("ld57-reel-editor-processing");
+        Assert.True(PFlowAutoPostService.IsReelEditorProcessing(xml, "com.facebook.katana"));
+        Assert.False(PFlowAutoPostService.IsReelEditorProcessing(xml, "another.package"));
+        Assert.False(
+            PFlowAutoPostService.IsReelEditorProcessing(
+                xml.Replace("visible-to-user=\"true\"", "visible-to-user=\"false\""),
+                "com.facebook.katana"
+            )
+        );
+        Assert.False(
+            PFlowAutoPostService.IsReelEditorProcessing(
+                xml.Replace("text=\"Processing\"", "text=\"Processing complete\""),
+                "com.facebook.katana"
+            )
+        );
+    }
+
     [Theory]
     [InlineData("ld2-feed-after-john-ward-confirmed")]
     [InlineData("ld2-feed-after-kc-waterheaters-confirmed")]
@@ -285,6 +305,7 @@ public class PFlowNativeReelTests
                             _ => Head
                                 + Node("Target", "[0,0][100,40]")
                                 + Node("Reel Settings", "[100,0][300,50]")
+                                + Node("See more settings", "[20,1050][500,1120]")
                                 + Node("Share now", "[200,1160][500,1260]")
                                 + Tail,
                         }

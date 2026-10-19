@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -9,6 +9,36 @@ namespace _855Media.ViewModels.Components;
 
 public partial class AutoPostViewModel
 {
+    private async Task DiscoverUncachedPagesAsync(
+        LDInstanceItemViewModel worker,
+        FacebookAccountDetails details,
+        CancellationToken ct
+    )
+    {
+        await new PFlowPersonaSwitcherService(_ldPlayerService).WarmPageDiscoveryAsync(
+            worker.Index,
+            details.Name,
+            details.Uid,
+            LdFolder,
+            step => ReportFetchProgressAsync(worker, "Page discovery", step),
+            ct
+        );
+        var root = await _ldPlayerService.ExtractFacebookAccountsFromRootShellAsync(
+            worker.Index,
+            "com.facebook.katana",
+            LdFolder,
+            ct
+        );
+        var added = root.Where(a => a.Type == "Page" && a.UserUid == details.Uid)
+            .Select(a => a.ToFacebookPageInfo());
+        foreach (var page in added)
+            if (!details.Pages.Any(p => p.PageId == page.PageId))
+                details.Pages.Add(page);
+        await ReplaceDevicePagesInTableAsync(worker, details);
+        await PersistPagesSnapshotAsync();
+        await RefreshFetchedAccountMappingsAsync(worker);
+    }
+
     private async Task FetchDelayAsync(
         LDInstanceItemViewModel worker,
         int seconds,
@@ -46,12 +76,12 @@ public partial class AutoPostViewModel
             if (
                 !await _ldPlayerService.WaitForBootCompletedAsync(
                     worker.Index,
-                    TimeSpan.FromSeconds(90),
+                    PFlowStartupTimeouts.AndroidBoot,
                     LdFolder,
                     ct
                 )
             )
-                throw new InvalidOperationException("Android boot timed out.");
+                throw new InvalidOperationException("Android boot timed out after 180 seconds.");
             await FetchDelayAsync(worker, DelayAfterOpenLD, "After LD opens", ct);
         }
         await PrepareFetchFacebookAsync(worker, ct);
@@ -63,6 +93,21 @@ public partial class AutoPostViewModel
     )
     {
         await ArrangeFetchWindowsAsync(ct);
+        if (CheckSurfsharkConnection)
+        {
+            await ReportFetchProgressAsync(
+                worker,
+                "Waiting for Surfshark connection",
+                "Checking Surfshark VPN inside LD (up to 180 seconds)."
+            );
+            await PFlowConnectionChecks.WaitForSurfsharkAsync(
+                _ldPlayerService,
+                worker.Index,
+                LdFolder,
+                ct
+            );
+        }
+
         await RequireAccountTransitionIdleAsync(worker.Index, ct);
         if (
             ClearCacheFBBeforeOpen
@@ -188,6 +233,7 @@ public partial class AutoPostViewModel
                 details.Work = personal.Work;
                 details.Education = personal.Education;
                 details.RelationshipStatus = personal.RelationshipStatus;
+                await DiscoverUncachedPagesAsync(worker, details, ct);
                 var pageResults = await RunPageUiLookupsAsync(worker, details, ct);
                 verifiedPages += pageResults.Succeeded;
                 attemptedPages += pageResults.Attempted;

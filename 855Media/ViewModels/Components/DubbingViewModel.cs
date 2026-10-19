@@ -1563,6 +1563,8 @@ public partial class DubbingViewModel : ViewModelBase
     [RelayCommand]
     public async Task AutoFitSelectedAudioAsync()
     {
+        if (!CanUseSubscription())
+            return;
         var targets = GetSelectedSegments()
             .Where(s => !string.IsNullOrWhiteSpace(s.AudioClipPath) && File.Exists(s.AudioClipPath))
             .ToList();
@@ -1614,6 +1616,8 @@ public partial class DubbingViewModel : ViewModelBase
     [RelayCommand]
     public async Task AutoDetectEmotionsAsync()
     {
+        if (!CanUseSubscription())
+            return;
         if (Segments.Count == 0)
         {
             _snackbarManager.Notify("No dialogue lines loaded to detect emotions.");
@@ -1736,6 +1740,8 @@ public partial class DubbingViewModel : ViewModelBase
     [RelayCommand]
     public async Task AutoFitSegmentAudioAsync(SubtitleSegment? seg)
     {
+        if (!CanUseSubscription())
+            return;
         var target = seg ?? SelectedSegment;
         if (
             target == null
@@ -1806,6 +1812,8 @@ public partial class DubbingViewModel : ViewModelBase
     [RelayCommand]
     public async Task AutoFitAllSegmentsAudioAsync()
     {
+        if (!CanUseSubscription())
+            return;
         var eligible = Segments
             .Where(s => !string.IsNullOrWhiteSpace(s.AudioClipPath) && File.Exists(s.AudioClipPath))
             .ToList();
@@ -1910,6 +1918,8 @@ public partial class DubbingViewModel : ViewModelBase
     [RelayCommand]
     public async Task SplitSegmentInHalfAsync(SubtitleSegment? seg)
     {
+        if (!CanUseSubscription())
+            return;
         var target = seg ?? SelectedSegment;
         if (target == null)
             return;
@@ -1997,6 +2007,8 @@ public partial class DubbingViewModel : ViewModelBase
     [RelayCommand]
     public async Task ExportKhmerSubtitlesAsync()
     {
+        if (!CanUseSubscription())
+            return;
         if (Segments.Count == 0)
         {
             _snackbarManager.Notify("No subtitle segments to export.");
@@ -2029,6 +2041,8 @@ public partial class DubbingViewModel : ViewModelBase
     [RelayCommand]
     public async Task ExportBilingualSubtitlesAsync()
     {
+        if (!CanUseSubscription())
+            return;
         if (Segments.Count == 0)
         {
             _snackbarManager.Notify("No subtitle segments to export.");
@@ -2061,6 +2075,8 @@ public partial class DubbingViewModel : ViewModelBase
     [RelayCommand]
     public async Task ExportDubbedVocalTrackAsync()
     {
+        if (!CanUseSubscription())
+            return;
         var clipsWithAudio = Segments
             .Where(s => !string.IsNullOrWhiteSpace(s.AudioClipPath) && File.Exists(s.AudioClipPath))
             .ToList();
@@ -2231,6 +2247,8 @@ public partial class DubbingViewModel : ViewModelBase
     [RelayCommand]
     public async Task AutoDetectGenderAsync()
     {
+        if (!CanUseSubscription())
+            return;
         if (Segments.Count == 0)
         {
             _snackbarManager.Notify("No dialogue lines loaded to detect voice gender.");
@@ -2414,6 +2432,8 @@ public partial class DubbingViewModel : ViewModelBase
     [RelayCommand]
     public async Task AutoDetectSpeakersAsync()
     {
+        if (!CanUseSubscription())
+            return;
         if (Segments.Count == 0)
         {
             _snackbarManager.Notify("No dialogue lines loaded to detect speakers.");
@@ -2889,6 +2909,8 @@ public partial class DubbingViewModel : ViewModelBase
     [RelayCommand]
     public async Task ImportRvcModelAsync()
     {
+        if (!CanUseSubscription())
+            return;
         var filePath = await _dialogManager.PromptOpenFilePathAsync([
             new FilePickerFileType("RVC Voice Model (*.pth)") { Patterns = ["*.pth"] },
         ]);
@@ -2946,6 +2968,8 @@ public partial class DubbingViewModel : ViewModelBase
     [RelayCommand]
     public async Task BrowseVideoFileAsync()
     {
+        if (!CanUseSubscription())
+            return;
         var filePath = await _dialogManager.PromptOpenFilePathAsync([
             new FilePickerFileType("Video Files")
             {
@@ -2961,6 +2985,8 @@ public partial class DubbingViewModel : ViewModelBase
 
     public async Task LoadVideoAsync(string filePath)
     {
+        if (!CanUseSubscription())
+            return;
         if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
             return;
 
@@ -3018,6 +3044,8 @@ public partial class DubbingViewModel : ViewModelBase
     [RelayCommand]
     public async Task ExtendCurrentVideoAsync()
     {
+        if (!CanUseSubscription())
+            return;
         if (string.IsNullOrWhiteSpace(VideoFilePath) || !File.Exists(VideoFilePath))
         {
             await BrowseVideoFileAsync();
@@ -3039,6 +3067,8 @@ public partial class DubbingViewModel : ViewModelBase
 
     public async Task ExtendVideoWithFilesAsync(IReadOnlyList<string> additionalVideoPaths)
     {
+        if (!CanUseSubscription())
+            return;
         if (string.IsNullOrWhiteSpace(VideoFilePath) || !File.Exists(VideoFilePath))
         {
             if (additionalVideoPaths.Count > 0)
@@ -3206,6 +3236,8 @@ public partial class DubbingViewModel : ViewModelBase
 
     public async Task HandleDroppedFilesAsync(IReadOnlyList<string> paths)
     {
+        if (!CanUseSubscription())
+            return;
         if (paths == null || paths.Count == 0)
             return;
 
@@ -3264,6 +3296,8 @@ public partial class DubbingViewModel : ViewModelBase
     [RelayCommand]
     public async Task ExtractSceneThumbnailsAsync()
     {
+        if (!CanUseSubscription())
+            return;
         if (
             string.IsNullOrWhiteSpace(VideoFilePath)
             || !File.Exists(VideoFilePath)
@@ -3370,6 +3404,8 @@ public partial class DubbingViewModel : ViewModelBase
     [RelayCommand]
     public async Task PlayScene(SubtitleSegment? seg)
     {
+        if (!CanUseSubscription())
+            return;
         var target = seg ?? SelectedSegment;
         if (target == null)
             return;
@@ -3452,6 +3488,8 @@ public partial class DubbingViewModel : ViewModelBase
     [RelayCommand]
     public async Task PlayDubbedClip(SubtitleSegment? seg)
     {
+        if (!CanUseSubscription())
+            return;
         var target = seg ?? SelectedSegment;
         if (target == null)
             return;
@@ -3689,6 +3727,8 @@ public partial class DubbingViewModel : ViewModelBase
     [RelayCommand]
     public async Task AutoAlignSpeechStart(SubtitleSegment? seg = null)
     {
+        if (!CanUseSubscription())
+            return;
         var target = seg ?? SelectedSegment;
         if (target == null)
         {
@@ -3737,6 +3777,8 @@ public partial class DubbingViewModel : ViewModelBase
     [RelayCommand]
     public async Task TestCharacterVoiceAsync(MovieCharacter? character)
     {
+        if (!CanUseSubscription())
+            return;
         var target = character ?? SelectedCharacter ?? Characters.FirstOrDefault();
         if (target == null)
             return;
@@ -3894,6 +3936,8 @@ public partial class DubbingViewModel : ViewModelBase
     [RelayCommand]
     public async Task SynthesizeAllLinesAsync()
     {
+        if (!CanUseSubscription())
+            return;
         if (Segments.Count == 0)
         {
             _snackbarManager.Notify("No dialogue segments to synthesize.");
@@ -4001,6 +4045,8 @@ public partial class DubbingViewModel : ViewModelBase
     [RelayCommand]
     public async Task ScanAudioToTextAsync()
     {
+        if (!CanUseSubscription())
+            return;
         if (string.IsNullOrWhiteSpace(VideoFilePath) || !File.Exists(VideoFilePath))
         {
             _snackbarManager.Notify("Please select a video file first to scan speech.");
@@ -4144,6 +4190,8 @@ public partial class DubbingViewModel : ViewModelBase
     [RelayCommand]
     public async Task DownloadWhisperAiAsync()
     {
+        if (!CanUseSubscription())
+            return;
         if (IsDownloadingWhisper)
             return;
 
@@ -4257,6 +4305,8 @@ public partial class DubbingViewModel : ViewModelBase
     [RelayCommand]
     public async Task OpenProjectAsync()
     {
+        if (!CanUseSubscription())
+            return;
         var filePath = await _dialogManager.PromptOpenFilePathAsync([
             new FilePickerFileType("855Media Dubbing Project (*.855dub, *.json)")
             {
@@ -4462,6 +4512,8 @@ public partial class DubbingViewModel : ViewModelBase
     [RelayCommand]
     public async Task ImportSubtitlesAsync()
     {
+        if (!CanUseSubscription())
+            return;
         var filePath = await _dialogManager.PromptOpenFilePathAsync([
             new FilePickerFileType("Subtitle Files") { Patterns = ["*.srt", "*.vtt"] },
         ]);
@@ -4474,6 +4526,8 @@ public partial class DubbingViewModel : ViewModelBase
 
     public async Task ImportSubtitlesFromFileAsync(string filePath)
     {
+        if (!CanUseSubscription())
+            return;
         if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
             return;
 
@@ -4644,6 +4698,8 @@ public partial class DubbingViewModel : ViewModelBase
     [RelayCommand]
     public async Task AutoPrepareAllAsync()
     {
+        if (!CanUseSubscription())
+            return;
         if (IsAutoPreparing || IsProcessing)
             return;
 
@@ -4756,6 +4812,8 @@ public partial class DubbingViewModel : ViewModelBase
     [RelayCommand]
     public async Task AutoTranslateAllAsync()
     {
+        if (!CanUseSubscription())
+            return;
         if (Segments.Count == 0)
         {
             _snackbarManager.Notify("No dialogue lines to translate. Add or import lines first.");
@@ -4852,6 +4910,8 @@ public partial class DubbingViewModel : ViewModelBase
     [RelayCommand]
     public async Task TranslateSelectedLineAsync()
     {
+        if (!CanUseSubscription())
+            return;
         if (SelectedSegment == null || string.IsNullOrWhiteSpace(SelectedSegment.OriginalText))
             return;
 
@@ -4880,6 +4940,8 @@ public partial class DubbingViewModel : ViewModelBase
     [RelayCommand]
     public async Task StartDubbingAsync()
     {
+        if (!CanUseSubscription())
+            return;
         if (string.IsNullOrWhiteSpace(VideoFilePath) || !File.Exists(VideoFilePath))
         {
             _snackbarManager.Notify("Please select an input video file first.");
@@ -5011,6 +5073,8 @@ public partial class DubbingViewModel : ViewModelBase
     [RelayCommand]
     public async Task AddVideosToBatchAsync()
     {
+        if (!CanUseSubscription())
+            return;
         var files = await _dialogManager.PromptOpenFilePathsAsync([
             new FilePickerFileType("Video Files")
             {
@@ -5177,6 +5241,8 @@ public partial class DubbingViewModel : ViewModelBase
     [RelayCommand]
     public async Task StartBatchDubbingAsync()
     {
+        if (!CanUseSubscription())
+            return;
         if (IsBatchProcessing)
             return;
 
@@ -5229,6 +5295,7 @@ public partial class DubbingViewModel : ViewModelBase
                             }
                         }
 
+                        RequireSubscription();
                         await _pipeline.ExecuteAsync(job, null, ct);
                     }
                     catch (OperationCanceledException)

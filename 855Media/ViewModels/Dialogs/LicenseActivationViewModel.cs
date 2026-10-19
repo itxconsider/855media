@@ -13,7 +13,7 @@ using CommunityToolkit.Mvvm.Input;
 
 namespace _855Media.ViewModels.Dialogs;
 
-public partial class LicenseActivationViewModel : DialogViewModelBase
+public partial class LicenseActivationViewModel : ViewModelBase
 {
     private readonly ILicenseService _licenseService;
     private readonly SettingsService _settingsService;
@@ -106,14 +106,14 @@ public partial class LicenseActivationViewModel : DialogViewModelBase
 
             if (result.Success && result.Payload is not null)
             {
-                _settingsService.LicenseToken = trimmedInput;
+                _settingsService.LicenseToken = result.SignedToken;
                 _settingsService.Save();
 
                 StatusMessage =
                     "License activated successfully! Thank you for supporting 855Media.";
                 _snackbarManager.Notify("855Media Pro successfully activated!");
                 UpdateStatusProperties();
-                Close(true);
+                LicenseKeyInput = "";
             }
             else
             {
@@ -186,7 +186,4 @@ public partial class LicenseActivationViewModel : DialogViewModelBase
             await ActivateAsync();
         }
     }
-
-    [RelayCommand]
-    private void CloseDialog() => Close(false);
 }
