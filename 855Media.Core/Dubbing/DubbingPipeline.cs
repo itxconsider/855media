@@ -71,9 +71,10 @@ public class DubbingPipeline
             );
 
             Log(
-                job.EnableAiStemSeparation
+                job.Meta?.EnableSamAudio == true ? "Separating dialogue with SAM Audio..."
+                : job.EnableAiStemSeparation
                     ? "Separating dialogue from action sounds & music with GPU AI Demucs..."
-                    : "Separating vocal and background instrumental stems..."
+                : "Separating vocal and background instrumental stems..."
             );
             job.Status = DubbingJobStatus.SeparatingStems;
             await _stemService.SeparateStemsAsync(
@@ -83,7 +84,8 @@ public class DubbingPipeline
                 bgmPath,
                 useAiDemucs: job.EnableAiStemSeparation,
                 progressLogger: Log,
-                cancellationToken: cancellationToken
+                cancellationToken: cancellationToken,
+                metaOptions: job.Meta
             );
             job.ExtractedDialoguePath = vocalPath;
             job.ExtractedBgmPath = bgmPath;
@@ -114,10 +116,11 @@ public class DubbingPipeline
                 Log("No embedded subtitles found. Scanning video audio speech to text...");
                 var transcribed = await _transcriptionService.TranscribeAudioAsync(
                     ffmpeg,
-                    job.VideoFilePath,
+                    vocalPath,
                     job.SourceLanguage,
                     new Progress<string>(Log),
-                    cancellationToken
+                    cancellationToken,
+                    metaOptions: job.Meta
                 );
 
                 foreach (var seg in transcribed)
@@ -270,9 +273,9 @@ public class DubbingPipeline
                                 : (character?.EmotionPreset ?? ActorEmotionEngine.EmotionNormal);
 
                         var emotionCfg = ActorEmotionEngine.GetConfig(emotionName);
-                        var effectiveRate = ActorEmotionEngine.ComputeEffectiveRate(
-                            character?.SpeechRate,
-                            emotionCfg.TtsRateOffset
+                        var effectiveRate = ActorEmotionEngine.ComputeCharacterSpeechRate(
+                            character,
+                            emotionCfg
                         );
 
                         // Unified pitch: Combines character's pitch shift (or Child default) + emotion pitch offset
@@ -551,6 +554,9 @@ public class DubbingPipeline
                 catch { }
             }
 
+            job.DubbedAudioPath = finalVocalTrack;
+            PreserveAudioAssets(job);
+
             job.Progress = 100;
             job.Status = DubbingJobStatus.Completed;
             job.StatusMessage = "Dubbing completed successfully!";
@@ -583,6 +589,40 @@ public class DubbingPipeline
                 catch { }
             }
         }
+    }
+
+    internal static void PreserveAudioAssets(DubbingJob job)
+    {
+        var outputPath = Path.GetFullPath(job.OutputFilePath);
+        var assetDirectory = Path.Combine(
+            Path.GetDirectoryName(outputPath)!,
+            Path.GetFileNameWithoutExtension(outputPath) + "_dubbing",
+            job.Id.ToString("N")
+        );
+        var copiedPaths = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        string? Preserve(string? source)
+        {
+            if (string.IsNullOrWhiteSpace(source) || !File.Exists(source))
+                return source;
+            if (copiedPaths.TryGetValue(source, out var existing))
+                return existing;
+
+            Directory.CreateDirectory(assetDirectory);
+            var destination = Path.Combine(
+                assetDirectory,
+                $"{copiedPaths.Count:D4}_{Path.GetFileName(source)}"
+            );
+            File.Copy(source, destination);
+            copiedPaths.Add(source, destination);
+            return destination;
+        }
+
+        foreach (var segment in job.Segments)
+            segment.AudioClipPath = Preserve(segment.AudioClipPath);
+        job.ExtractedDialoguePath = Preserve(job.ExtractedDialoguePath);
+        job.ExtractedBgmPath = Preserve(job.ExtractedBgmPath);
+        job.DubbedAudioPath = Preserve(job.DubbedAudioPath);
     }
 
     /// <summary>
@@ -868,24 +908,10 @@ public class DubbingPipeline
                 proc.StartInfo.ArgumentList.Add("-i");
                 proc.StartInfo.ArgumentList.Add(clipPath);
 
-                // If speech exceeds slot duration by more than 5%, adjust tempo so it matches scene lip action
-                if (clipDuration > slotDuration * 1.05 && slotDuration.TotalSeconds > 0.3)
-                {
-                    var ratio = clipDuration.TotalSeconds / slotDuration.TotalSeconds;
-                    var speed = Math.Clamp(ratio, 1.0, 1.85);
-                    var speedStr = speed.ToString("0.00", CultureInfo.InvariantCulture);
-                    proc.StartInfo.ArgumentList.Add("-filter:a");
-                    proc.StartInfo.ArgumentList.Add(
-                        $"atempo={speedStr},aformat=sample_rates=44100:channel_layouts=stereo"
-                    );
-                }
-                else
-                {
-                    proc.StartInfo.ArgumentList.Add("-filter:a");
-                    proc.StartInfo.ArgumentList.Add(
-                        "aformat=sample_rates=44100:channel_layouts=stereo"
-                    );
-                }
+                proc.StartInfo.ArgumentList.Add("-filter:a");
+                proc.StartInfo.ArgumentList.Add(
+                    BuildTimelineAudioFilter(job.EnableSmartTimeStretch, clipDuration, slotDuration)
+                );
 
                 proc.StartInfo.ArgumentList.Add("-ar");
                 proc.StartInfo.ArgumentList.Add("44100");
@@ -930,6 +956,24 @@ public class DubbingPipeline
 
         // 2. Direct C# PCM Timeline Mixer - Assembles all clips without hitting Windows CLI argument limits
         MixTimelineToWav(processedClips, totalVideoDuration, outputPath);
+    }
+
+    internal static string BuildTimelineAudioFilter(
+        bool enableSmartTimeStretch,
+        TimeSpan clipDuration,
+        TimeSpan slotDuration
+    )
+    {
+        const string format = "aformat=sample_rates=44100:channel_layouts=stereo";
+        if (
+            !enableSmartTimeStretch
+            || clipDuration <= slotDuration * 1.05
+            || slotDuration.TotalSeconds <= 0.3
+        )
+            return format;
+
+        var speed = Math.Clamp(clipDuration.TotalSeconds / slotDuration.TotalSeconds, 1.0, 1.85);
+        return $"atempo={speed.ToString("0.00", CultureInfo.InvariantCulture)},{format}";
     }
 
     private static byte[]? ExtractPcmDataFromWav(string wavPath)
@@ -1450,13 +1494,19 @@ public class DubbingPipeline
             );
         }
 
-        // 2. Check if characters already exist and at least one segment is assigned
-        bool hasAssigned =
-            job.Characters.Count > 0
-            && job.Segments.Any(s =>
-                s.CharacterId.HasValue || !string.IsNullOrWhiteSpace(s.SpeakerName)
-            );
-        if (hasAssigned)
+        // Preserve valid assignments, but the default speaker label is not an assignment.
+        bool HasAssignment(SubtitleSegment segment) =>
+            segment.CharacterId.HasValue
+                ? job.Characters.Any(c => c.Id == segment.CharacterId.Value)
+                : !string.Equals(
+                    segment.SpeakerName,
+                    "Hero (Male)",
+                    StringComparison.OrdinalIgnoreCase
+                )
+                    && ResolveCharacter(segment, job) != null;
+
+        var unassignedSegments = job.Segments.Where(s => !HasAssignment(s)).ToList();
+        if (unassignedSegments.Count == 0)
             return;
 
         // 3. Try speaker prefix extraction from text
@@ -1473,7 +1523,7 @@ public class DubbingPipeline
             "#14B8A6",
         };
         int prefixCount = 0;
-        foreach (var seg in job.Segments)
+        foreach (var seg in unassignedSegments)
         {
             string? speaker = null;
             if (
@@ -1548,8 +1598,11 @@ public class DubbingPipeline
             log?.Invoke(
                 $"Auto-assigned {prefixCount} dialogue scenes to {job.Characters.Count} distinct voice characters from speaker prefixes."
             );
-            return;
         }
+
+        unassignedSegments = unassignedSegments.Where(s => !HasAssignment(s)).ToList();
+        if (unassignedSegments.Count == 0)
+            return;
 
         // 4. Acoustic & conversational turn diarization with standard cast
         log?.Invoke("Auto-detecting cast voices (Male Hero, Female Lead, Child)...");
@@ -1597,10 +1650,20 @@ public class DubbingPipeline
         };
         villain.ApplyToneArchetype("Villain");
 
-        job.Characters.Add(hero);
-        job.Characters.Add(heroine);
-        job.Characters.Add(child);
-        job.Characters.Add(villain);
+        MovieCharacter AddFallbackCharacter(MovieCharacter candidate)
+        {
+            var existing = job.Characters.FirstOrDefault(c =>
+                string.Equals(c.Name, candidate.Name, StringComparison.OrdinalIgnoreCase)
+            );
+            if (existing != null)
+                return existing;
+            job.Characters.Add(candidate);
+            return candidate;
+        }
+        hero = AddFallbackCharacter(hero);
+        heroine = AddFallbackCharacter(heroine);
+        child = AddFallbackCharacter(child);
+        villain = AddFallbackCharacter(villain);
 
         Dictionary<int, GenderDetectionResult>? detectionResults = null;
         try
@@ -1608,7 +1671,7 @@ public class DubbingPipeline
             detectionResults = await VoiceGenderDetector.DetectGendersForSegmentsAsync(
                 ffmpeg,
                 job.VideoFilePath,
-                job.Segments.ToList(),
+                unassignedSegments,
                 progressCallback: null,
                 cancellationToken: ct
             );
@@ -1618,9 +1681,9 @@ public class DubbingPipeline
             // Non-fatal
         }
 
-        for (int i = 0; i < job.Segments.Count; i++)
+        for (int i = 0; i < unassignedSegments.Count; i++)
         {
-            var seg = job.Segments[i];
+            var seg = unassignedSegments[i];
             string gender = VoiceGenderDetector.GenderMale;
             if (
                 detectionResults != null

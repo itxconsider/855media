@@ -167,11 +167,7 @@ public partial class PFlowAutoPostService
             if (
                 !PFlowPostTargetSession.HasOwnProfile(job, xml)
                 && !(
-                    continuedSession
-                    && (
-                        FacebookLayoutRegistry.Match(xml, FacebookScreenKind.NewsFeed).IsMatch
-                        || FacebookLayoutRegistry.Match(xml, FacebookScreenKind.ReelsFeed).IsMatch
-                    )
+                    continuedSession && PFlowPostTargetSession.CanContinueFrom(xml, job.AppPackage)
                 )
             )
                 throw new InvalidOperationException(
@@ -322,11 +318,7 @@ public partial class PFlowAutoPostService
             bool ContinuedFeed(string xml) =>
                 continuedSession
                 && !navigated
-                && !PFlowUiPrivacy.ContainsInput(xml)
-                && (
-                    FacebookLayoutRegistry.Match(xml, FacebookScreenKind.NewsFeed).IsMatch
-                    || FacebookLayoutRegistry.Match(xml, FacebookScreenKind.ReelsFeed).IsMatch
-                );
+                && PFlowPostTargetSession.CanContinueFrom(xml, job.AppPackage);
             var fallbackStart = await Observe();
             if (
                 navigated

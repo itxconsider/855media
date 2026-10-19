@@ -505,6 +505,11 @@ public static class ActorEmotionEngine
         return Archetypes["Hero"];
     }
 
+    public static string ComputeCharacterSpeechRate(
+        MovieCharacter? character,
+        ActorEmotionConfig emotion
+    ) => ComputeEffectiveRate(character?.BaseSpeechRate, emotion.TtsRateOffset);
+
     public static string ComputeEffectiveRate(string? baseRate, string emotionRateOffset)
     {
         int baseVal = 15;

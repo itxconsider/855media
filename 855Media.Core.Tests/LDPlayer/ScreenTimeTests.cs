@@ -114,16 +114,53 @@ public class ScreenTimeTests
     {
         var h = Harness();
         h.Fake.Unrecognized = true;
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            h.Service.RunAsync(
-                813,
-                new() { LikePost = true },
-                _ => Task.FromResult(true),
-                _ => Task.CompletedTask
-            )
+        var result = await h.Service.RunAsync(
+            813,
+            new() { LikePost = true },
+            _ => Task.FromResult(true),
+            _ => Task.CompletedTask
         );
+        Assert.Equal(1, result.Skipped);
+        Assert.Equal(0, result.CompletedSteps);
         Assert.Equal(0, h.Fake.Likes);
         Assert.Equal(0, h.Fake.Scrolls);
+    }
+
+    [Theory]
+    [InlineData("Feed")]
+    [InlineData("Reels")]
+    public async Task BrowseFailureOnlySkipsItsOwnActivityAndRemainingActivitiesRun(string failed)
+    {
+        var h = Harness();
+        h.Fake.UnrecognizedFor = failed;
+        var messages = new List<ScreenTimeProgress>();
+        var result = await h.Service.RunAsync(
+            819,
+            new()
+            {
+                NewsFeed = true,
+                NewsFeedMin = 1,
+                NewsFeedMax = 1,
+                WatchVideo = true,
+                WatchVideoMin = 1,
+                WatchVideoMax = 1,
+                Marketplace = true,
+                MarketplaceMin = 1,
+                MarketplaceMax = 1,
+                Options = new() { ReelDwellSeconds = 1 },
+            },
+            _ => Task.FromResult(true),
+            p =>
+            {
+                messages.Add(p);
+                return Task.CompletedTask;
+            }
+        );
+        Assert.Equal(new[] { "Feed", "Reels", "Marketplace" }, h.Fake.Visited);
+        Assert.Equal(1, result.Skipped);
+        Assert.Equal(2, result.CompletedSteps);
+        Assert.Contains(messages, p => p.Step.StartsWith(failed + " skipped:"));
+        Assert.Equal("Completed with skips", messages.Last().Step);
     }
 
     [Fact]
@@ -149,6 +186,7 @@ public class ScreenTimeTests
                 LikePost = true,
                 LikePostMin = 1,
                 LikePostMax = 1,
+                Options = new() { ReelDwellSeconds = 1 },
             },
             _ => Task.FromResult(true),
             p =>
@@ -278,6 +316,8 @@ public class ScreenTimeTests
             Scrolls;
         public bool Unrecognized,
             NativeVideoTab;
+        public string? UnrecognizedFor;
+        public List<string> Visited = [];
         private string _screen = "Home";
 
         protected override object? Invoke(MethodInfo? method, object?[]? args)
@@ -300,11 +340,16 @@ public class ScreenTimeTests
                         : ((string)args[1]!).Contains("feed") ? "Feed"
                         : ((string)args[1]!).Contains("marketplace") ? "Marketplace"
                         : "Notifications";
+                    Visited.Add(_screen);
                     return Task.FromResult(true);
                 case "DumpUiHierarchyAsync":
                     return Task.FromResult<string?>(
                         "<hierarchy><node text='"
-                            + (Unrecognized ? "Public profile" : _screen)
+                            + (
+                                Unrecognized || UnrecognizedFor == _screen
+                                    ? "Public profile"
+                                    : _screen
+                            )
                             + "'/><node text='Post ID: 123'/><node text='"
                             + (Likes > 0 ? "Remove Like reaction" : "Like")
                             + "' clickable='true' bounds='[0,0][10,10]'/></hierarchy>"

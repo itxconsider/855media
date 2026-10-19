@@ -9,6 +9,201 @@ namespace _855Media.Core.Tests.LDPlayer;
 
 public class PFlowAccountRemapTests
 {
+    private static PFlowAccountBinding Destination(Fixture f)
+    {
+        Directory.CreateDirectory(Path.Combine(f.Root, "vms/leidian9"));
+        File.WriteAllText(
+            Path.Combine(f.Root, "vms/config/leidian9.config"),
+            "{\"propertySettings.phoneAndroidId\":\"destination\"}"
+        );
+        File.WriteAllText(Path.Combine(f.Root, "vms/leidian9/data.vmdk"), "fixture");
+        return f.Old with
+        {
+            DeviceIndex = 9,
+            DeviceName = "LD-9",
+            InstanceIdentity = PFlowDeviceRouting.ReadIdentity(f.Root, 9),
+        };
+    }
+
+    [Fact]
+    public async Task ExplicitTransferRetainsAccountCredentialsAndInvalidatesRunProofs()
+    {
+        using var f = new Fixture();
+        await f.Seed();
+        var next = Destination(f);
+        Assert.Equal("old-protected-ref", await f.Store.TransferAsync(f.Old, next));
+        var saved = (await f.Store.LoadAsync()).Single();
+        Assert.Equal(next, saved.Binding);
+        Assert.Equal(new[] { f.Old }, saved.TransferredFromBindings);
+        Assert.Empty(saved.PreviousBindings);
+        Assert.Equal(f.Credentials.LastReference, saved.CredentialReference);
+        Assert.False(saved.SelectedForDiscovery);
+        Assert.False(saved.SelectedForScreenTime);
+        Assert.False(saved.SelectedForPosting);
+        Assert.Equal("456", saved.Pages.Single().PageId);
+        Assert.Equal(PFlowPageAccessState.Cached, saved.Pages.Single().State);
+        Assert.Null(saved.LastVerifiedUtc);
+    }
+
+    [Fact]
+    public async Task TransferJournalRecoversBoundAndLegacyTargetsAfterRestart()
+    {
+        using var f = new Fixture();
+        await f.Seed();
+        var next = Destination(f);
+        await f.Store.TransferAsync(f.Old, next);
+        var rows = new[]
+        {
+            new FacebookPageTarget
+            {
+                DeviceName = f.Old.DeviceName,
+                UserUid = f.Old.OwnerUid,
+                PageId = "456",
+                AppClone = "FB-01",
+                AccountBinding = f.Old,
+                VideoReelPath = "D:/media",
+                IsSelected = true,
+                LivePageAccessVerified = true,
+            },
+            new FacebookPageTarget
+            {
+                DeviceName = f.Old.DeviceName,
+                UserUid = f.Old.OwnerUid,
+                PageId = f.Old.OwnerUid,
+                AppClone = "FB-01",
+                Type = "Profile",
+            },
+        };
+        var reopened = new PFlowAccountStore(f.Store.FilePath, f.Credentials);
+        Assert.Equal(
+            2,
+            PFlowAccountRemap.ReplayRows(
+                await reopened.LoadAsync(),
+                rows,
+                f.Instances.Append(new LDInstanceInfo { Index = 9, Name = "LD-9" }).ToArray(),
+                f.Root
+            )
+        );
+        Assert.All(
+            rows,
+            r =>
+            {
+                Assert.Equal(next, r.AccountBinding);
+                Assert.Equal("LD-9", r.DeviceName);
+                Assert.False(r.IsSelected);
+                Assert.False(r.LivePageAccessVerified);
+            }
+        );
+        Assert.Equal("D:/media", rows[0].VideoReelPath);
+        Assert.Equal(
+            0,
+            PFlowAccountRemap.ReplayRows(
+                await reopened.LoadAsync(),
+                rows,
+                f.Instances.Append(new LDInstanceInfo { Index = 9, Name = "LD-9" }).ToArray(),
+                f.Root
+            )
+        );
+    }
+
+    [Fact]
+    public async Task TransferToExistingDestinationDoesNotOverwriteEitherAccount()
+    {
+        using var f = new Fixture();
+        await f.Seed();
+        var next = Destination(f);
+        await f.Store.UpdateAsync(a => a.Add(new() { Binding = next, Name = "Existing" }));
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            f.Store.TransferAsync(f.Old, next)
+        );
+        Assert.Equal(2, (await f.Store.LoadAsync()).Count);
+        Assert.Equal(
+            "old-protected-ref",
+            (await f.Store.LoadAsync()).Single(a => a.Binding == f.Old).CredentialReference
+        );
+        Assert.Contains(f.Credentials.LastReference, f.Credentials.Deleted);
+    }
+
+    [Fact]
+    public async Task RemovalPersistsExclusionsAndExplicitReaddCanRestoreMapping()
+    {
+        using var f = new Fixture();
+        await f.Seed();
+        var next = Destination(f);
+        await f.Store.TransferAsync(f.Old, next);
+        Assert.Equal(f.Credentials.LastReference, await f.Store.RemoveAsync(next));
+        var reopened = new PFlowAccountStore(f.Store.FilePath, f.Credentials);
+        Assert.Empty(await reopened.LoadAsync());
+        Assert.Contains(f.Old, await reopened.RemovedBindingsAsync());
+        Assert.Contains(next, await reopened.RemovedBindingsAsync());
+        await reopened.UpdateAsync(a => a.Add(new() { Binding = next }));
+        Assert.DoesNotContain(next, await reopened.RemovedBindingsAsync());
+        Assert.Single(await reopened.LoadAsync());
+    }
+
+    [Fact]
+    public async Task TransferCannotChangeUidOrAppAndStaleRemovalCannotDeleteReplacement()
+    {
+        using var f = new Fixture();
+        await f.Seed();
+        var next = Destination(f);
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            f.Store.TransferAsync(f.Old, next with { OwnerUid = "999" })
+        );
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            f.Store.TransferAsync(f.Old, next with { AppPackage = "other.app" })
+        );
+        await f.Store.TransferAsync(f.Old, next);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => f.Store.RemoveAsync(f.Old));
+        Assert.Equal(next, (await f.Store.LoadAsync()).Single().Binding);
+    }
+
+    [Fact]
+    public async Task RestartReroutesOnlyPendingQueueRowsAndRemovalKeepsHistoricalRows()
+    {
+        using var f = new Fixture();
+        await f.Seed();
+        var next = Destination(f);
+        var pending = new AutoPostTaskItem
+        {
+            AccountBinding = f.Old,
+            DeviceName = f.Old.DeviceName,
+            OwnerUid = f.Old.OwnerUid,
+            PFlowJobId = "old-reservation",
+            Status = "Queued",
+            FilePath = "D:/media/reel.mp4",
+        };
+        var finished = new AutoPostTaskItem
+        {
+            AccountBinding = f.Old,
+            DeviceName = f.Old.DeviceName,
+            Status = "Confirmed",
+        };
+        var other = new AutoPostTaskItem
+        {
+            DeviceName = f.Old.DeviceName,
+            OwnerUid = "999",
+            Status = "Queued",
+        };
+        var rows = new List<AutoPostTaskItem> { pending, finished, other };
+        await f.Store.TransferAsync(f.Old, next);
+        Assert.Equal(1, PFlowAccountRemap.ReplayQueuedTasks(await f.Store.LoadAsync(), [], rows));
+        Assert.Equal(next, pending.AccountBinding);
+        Assert.Equal(next.DeviceName, pending.DeviceName);
+        Assert.Equal("", pending.PFlowJobId);
+        Assert.Equal("D:/media/reel.mp4", pending.FilePath);
+        Assert.Equal(f.Old, finished.AccountBinding);
+        Assert.Equal(0, PFlowAccountRemap.ReplayQueuedTasks(await f.Store.LoadAsync(), [], rows));
+        await f.Store.RemoveAsync(next);
+        Assert.Equal(
+            1,
+            PFlowAccountRemap.ReplayQueuedTasks([], await f.Store.RemovedBindingsAsync(), rows)
+        );
+        Assert.DoesNotContain(pending, rows);
+        Assert.Contains(finished, rows);
+        Assert.Contains(other, rows);
+    }
+
     [Theory]
     [InlineData("index")]
     [InlineData("package")]

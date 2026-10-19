@@ -26,7 +26,7 @@ public class PFlowNavigationRegressionTests
         Assert.Equal(1, result.CompletedSteps);
         Assert.Equal(1, fake.Swipes);
         Assert.Empty(fake.HoldSwipes);
-        Assert.Equal(new[] { 350 }, fake.ContinuousSwipes);
+        Assert.Equal(new[] { 450 }, fake.ContinuousSwipes);
         Assert.Equal(0, fake.Taps);
     }
 
@@ -41,13 +41,11 @@ public class PFlowNavigationRegressionTests
         settings.WatchVideo = true;
         settings.WatchVideoMin = settings.WatchVideoMax = 90;
         settings.Options.ReelDwellSeconds = 1;
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.RunAsync(957, settings, _ => Task.FromResult(true), _ => Task.CompletedTask)
-        );
+        await RunAndReadSkipReasonAsync(service, 957, settings);
         Assert.Equal(8, fake.Swipes);
         Assert.Equal(1, fake.PullRefreshes);
         Assert.Equal(0, fake.Backs);
-        Assert.Equal(new[] { 350, 350 }, fake.ContinuousSwipes);
+        Assert.Equal(new[] { 450, 450 }, fake.ContinuousSwipes);
         Assert.Equal(
             new[] { (300, 100), (200, 50), (100, 75), (300, 100), (200, 50), (100, 75) },
             fake.HoldSwipes.Select(v => (v.Hold, v.Movement)).ToArray()
@@ -241,11 +239,9 @@ public class PFlowNavigationRegressionTests
         settings.Options.ReelDwellSeconds = 1;
         if (stuck)
         {
-            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                service.RunAsync(937, settings, _ => Task.FromResult(true), _ => Task.CompletedTask)
-            );
-            Assert.Contains("all three gesture profiles and refresh recovery", ex.Message);
-            Assert.Equal(6, fake.Swipes);
+            var reason = await RunAndReadSkipReasonAsync(service, 937, settings);
+            Assert.Contains("all three gesture profiles and refresh recovery", reason);
+            Assert.Equal(8, fake.Swipes);
             Assert.Equal(1, fake.PullRefreshes);
             Assert.Equal(0, fake.Backs);
             Assert.Equal(
@@ -562,10 +558,8 @@ public class PFlowNavigationRegressionTests
         }
         else
         {
-            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                service.RunAsync(933, settings, _ => Task.FromResult(true), _ => Task.CompletedTask)
-            );
-            Assert.Contains("left Reels", ex.Message);
+            var reason = await RunAndReadSkipReasonAsync(service, 933, settings);
+            Assert.Contains("could not confirm Reels", reason);
             Assert.Equal(1, fake.Swipes);
         }
         Assert.Equal(1, fake.ChapterBacks);
@@ -707,10 +701,8 @@ public class PFlowNavigationRegressionTests
     {
         var (service, fake, _) = Harness();
         fake.StartFixture = "ld1-feed-reel-no-comment";
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.RunAsync(929, Settings(), _ => Task.FromResult(true), _ => Task.CompletedTask)
-        );
-        Assert.Contains("Feed screen not recognized", ex.Message);
+        var reason = await RunAndReadSkipReasonAsync(service, 929, Settings());
+        Assert.Contains("Feed screen not recognized", reason);
         Assert.Equal(0, fake.Swipes);
         Assert.Equal(0, fake.Taps);
     }
@@ -890,10 +882,8 @@ public class PFlowNavigationRegressionTests
         fake.LoseSemanticScreenAfterInteraction = true;
         var settings = Settings();
         settings.Options.Reactions = true;
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.RunAsync(931, settings, _ => Task.FromResult(true), _ => Task.CompletedTask)
-        );
-        Assert.Contains("left Feed", ex.Message);
+        var reason = await RunAndReadSkipReasonAsync(service, 931, settings);
+        Assert.Contains("could not confirm Feed", reason);
         Assert.Equal(0, fake.Swipes);
         Assert.Equal(0, fake.Taps);
     }
@@ -1246,10 +1236,8 @@ public class PFlowNavigationRegressionTests
         var folder = Path.Combine(Path.GetDirectoryName(history)!, "screentime-diagnostics");
         Directory.CreateDirectory(Path.GetDirectoryName(folder)!);
         File.WriteAllText(folder, "block diagnostic directory creation");
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.RunAsync(926, Settings(), _ => Task.FromResult(true), _ => Task.CompletedTask)
-        );
-        Assert.Contains("left Feed", ex.Message);
+        var reason = await RunAndReadSkipReasonAsync(service, 926, Settings());
+        Assert.Contains("could not confirm Feed", reason);
         Assert.Equal(1, fake.Swipes);
         Assert.Equal(0, fake.Taps);
     }
@@ -1274,15 +1262,8 @@ public class PFlowNavigationRegressionTests
         }
         else
         {
-            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                service.RunAsync(
-                    923,
-                    Settings(),
-                    _ => Task.FromResult(true),
-                    _ => Task.CompletedTask
-                )
-            );
-            Assert.Contains("left Feed", ex.Message);
+            var reason = await RunAndReadSkipReasonAsync(service, 923, Settings());
+            Assert.Contains("could not confirm Feed", reason);
             Assert.Equal(1, fake.Swipes);
             var file = Assert.Single(
                 Directory.GetFiles(
@@ -1334,8 +1315,9 @@ public class PFlowNavigationRegressionTests
         settings.WatchVideoMin = settings.WatchVideoMax = 3;
         settings.Options.ReelDwellSeconds = 1;
         await service.RunAsync(910, settings, _ => Task.FromResult(true), _ => Task.CompletedTask);
-        Assert.NotEmpty(fake.HoldSwipes);
-        Assert.All(fake.HoldSwipes, v => Assert.Equal((360, 960, 360, 213, 300, 100), v));
+        Assert.Empty(fake.HoldSwipes);
+        Assert.NotEmpty(fake.ContinuousPaths);
+        Assert.All(fake.ContinuousPaths, v => Assert.Equal((360, 1024, 360, 426, 450), v));
     }
 
     [Fact]
@@ -1363,27 +1345,48 @@ public class PFlowNavigationRegressionTests
         var (service, fake, _) = Harness();
         var settings = Settings();
         fake.HoldSwipeAcknowledged = false;
+        fake.SwipeAcknowledged = false;
         if (reels)
         {
             fake.StartFixture = "ld1-reels-interest";
             settings.NewsFeed = false;
             settings.WatchVideo = true;
-            settings.WatchVideoMin = settings.WatchVideoMax = 3;
+            settings.WatchVideoMin = settings.WatchVideoMax = 40;
             settings.Options.ReelDwellSeconds = 1;
         }
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.RunAsync(912, settings, _ => Task.FromResult(true), _ => Task.CompletedTask)
-        );
+        var reason = await RunAndReadSkipReasonAsync(service, 912, settings);
         if (reels)
         {
-            Assert.Contains("all three gesture profiles and refresh recovery", error.Message);
+            Assert.Contains("all three gesture profiles and refresh recovery", reason);
             Assert.Equal(6, fake.HoldSwipes.Count);
         }
         else
         {
-            Assert.Contains("hold/swipe was not acknowledged", error.Message);
+            Assert.Contains("hold/swipe was not acknowledged", reason);
             Assert.Single(fake.HoldSwipes);
         }
+    }
+
+    private static async Task<string> RunAndReadSkipReasonAsync(
+        ScreenTimeService service,
+        int index,
+        ScreenTimeSetting settings
+    )
+    {
+        var progress = new List<ScreenTimeProgress>();
+        var result = await service.RunAsync(
+            index,
+            settings,
+            _ => Task.FromResult(true),
+            p =>
+            {
+                progress.Add(p);
+                return Task.CompletedTask;
+            }
+        );
+        Assert.True(result.Skipped > 0);
+        Assert.Equal(0, result.CompletedSteps);
+        return progress.Last(p => p.Step.Contains(" skipped:", StringComparison.Ordinal)).Step;
     }
 
     private static (ScreenTimeService Service, NavigationDevice Device, string History) Harness(
@@ -1441,6 +1444,8 @@ public class PFlowNavigationRegressionTests
             PageActor;
         public bool TapAcknowledged = true;
         public bool HoldSwipeAcknowledged = true;
+        public bool SwipeAcknowledged = true;
+        public List<(int, int, int, int, int)> ContinuousPaths = new();
         public List<int> ContinuousSwipes = new();
         public bool CapturedMedia;
         public string? StartFixture,
@@ -1600,9 +1605,17 @@ public class PFlowNavigationRegressionTests
                             StuckReels = false;
                         return Task.FromResult(true);
                     }
+                    if (PullRefreshes > 0)
+                    {
+                        BackKeysAtResumedSwipe = BackKeys;
+                        DeepLinksAtResumedSwipe = DeepLinks;
+                    }
+                    ContinuousPaths.Add(
+                        ((int)args![1]!, (int)args[2]!, (int)args[3]!, (int)args[4]!, (int)args[5]!)
+                    );
                     ContinuousSwipes.Add((int)args![5]!);
                     Swipes++;
-                    return Task.FromResult(true);
+                    return Task.FromResult(SwipeAcknowledged);
                 case "OpenDeepLinkAsync":
                     DeepLinks++;
                     return Task.FromResult(true);

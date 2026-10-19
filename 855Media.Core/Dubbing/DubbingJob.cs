@@ -660,6 +660,8 @@ public class DubbingJob : INotifyPropertyChanged
 
     public bool EnableAiStemSeparation { get; set; } // GPU Demucs / MDX-Net stem isolation
 
+    public MetaDubbingOptions Meta { get; set; } = new();
+
     public bool EnableLoudnessNormalization { get; set; } = true; // EBU R128 (-16 LUFS) broadcast loudness mastering
 
     public bool EnableSmartTimeStretch { get; set; } = true; // Auto-fit translated speech to visual scene duration

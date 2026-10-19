@@ -229,7 +229,24 @@ public partial class AutoPostViewModel
             },
             c => RequireAccountTransitionIdleAsync(worker.Index, c),
             ct,
-            returnLastPersonal: config.ReturnToProfile
+            returnLastPersonal: config.ReturnToProfile,
+            screenTimeFailed: async (account, error, c) =>
+            {
+                InvalidatePostTargetSession(worker.Index);
+                await PFlowTrace.SessionAsync(
+                    worker.Index,
+                    "ScreenTime.failed.continue-posting",
+                    error.Message,
+                    c
+                );
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    var message =
+                        $"ScreenTime stopped for {account.Name}: {error.Message}. Continuing remaining tasks with normal identity checks.";
+                    ScreenTimeStatus = worker.Name + ": " + message;
+                    worker.Status = message;
+                });
+            }
         );
     }
 }

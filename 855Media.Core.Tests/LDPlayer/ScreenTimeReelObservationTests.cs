@@ -6,6 +6,253 @@ namespace _855Media.Core.Tests.LDPlayer;
 
 public class ScreenTimeReelObservationTests
 {
+    [Fact]
+    public void CapturedLd14PreferenceCardAllowsBrowsingButNotInteractions()
+    {
+        var xml = Fixture("ld14-reels-interest-card");
+        Assert.True(ScreenTimeNavigation.HasInlineCardDismissal(xml, "Reels"));
+        Assert.False(ScreenTimeNavigation.IsBlockingScreen(xml, "Reels"));
+        Assert.True(ScreenTimeNavigation.IsBrowseOnlyCard(xml, "Reels"));
+        var match = FacebookLayoutRegistry.Match(xml, FacebookScreenKind.ReelsFeed);
+        Assert.True(match.IsMatch, match.Diagnostic);
+        Assert.Equal("reels.tabbed.v1", match.VariantId);
+        Assert.False(match.Browse!.InteractionReady);
+        Assert.NotNull(ScreenTimeNavigation.ReelObservationKey(xml));
+    }
+
+    [Theory]
+    [InlineData("outside")]
+    [InlineData("title")]
+    [InlineData("choice")]
+    [InlineData("input")]
+    public void PreferenceCardExceptionCannotHideAnUnrelatedOverlay(string change)
+    {
+        var doc = XDocument.Parse(Fixture("ld14-reels-interest-card"));
+        var close = doc.Descendants("node")
+            .Single(n => (string?)n.Attribute("content-desc") == "Close");
+        switch (change)
+        {
+            case "outside":
+                close.Remove();
+                doc.Root!.Add(close);
+                break;
+            case "title":
+                foreach (
+                    var n in doc.Descendants("node")
+                        .Where(n =>
+                            ((string?)n.Attribute("text"))?.StartsWith("Do you want") == true
+                            || ((string?)n.Attribute("content-desc"))?.StartsWith("Do you want")
+                                == true
+                        )
+                )
+                {
+                    n.SetAttributeValue("text", "Different dialog");
+                    n.SetAttributeValue("content-desc", "Different dialog");
+                }
+                break;
+            case "choice":
+                foreach (
+                    var n in doc.Descendants("node")
+                        .Where(n => (string?)n.Attribute("content-desc") == "Not Interested")
+                        .ToArray()
+                )
+                    n.Remove();
+                break;
+            case "input":
+                doc.Root!.Add(
+                    new XElement("node", new XAttribute("class", "android.widget.EditText"))
+                );
+                break;
+        }
+        Assert.True(ScreenTimeNavigation.IsBlockingScreen(doc.ToString(), "Reels"));
+        Assert.False(
+            FacebookLayoutRegistry.Match(doc.ToString(), FacebookScreenKind.ReelsFeed).IsMatch
+        );
+    }
+
+    [Theory]
+    [InlineData("\r\n")]
+    [InlineData("\u00a0")]
+    [InlineData("\u202f\u200b")]
+    public void FullscreenReelLabelsTolerateWhitespaceCaseAndUnicodePunctuation(string separator)
+    {
+        var doc = XDocument.Parse(Fixture("ld9-reels-fullscreen-multiline-creator"));
+        foreach (var n in doc.Descendants("node"))
+        foreach (
+            var attribute in n.Attributes()
+                .Where(a => a.Name is { LocalName: "text" or "content-desc" })
+        )
+            attribute.Value = attribute
+                .Value.Replace(" ", separator)
+                .Replace("'", "’")
+                .ToUpperInvariant();
+        var xml = doc.ToString();
+        Assert.True(ScreenTimeNavigation.IsFullscreenReels(xml));
+        Assert.True(FacebookLayoutRegistry.Match(xml, FacebookScreenKind.ReelsFeed).IsMatch);
+        Assert.NotNull(ScreenTimeNavigation.ReelObservationKey(xml));
+    }
+
+    [Fact]
+    public void ChangedCreatorWordingCanUseIndependentFullscreenActionRail()
+    {
+        var doc = ChangedCreator();
+        Assert.True(ScreenTimeNavigation.IsFullscreenReels(doc.ToString()));
+        Assert.True(
+            FacebookLayoutRegistry.Match(doc.ToString(), FacebookScreenKind.ReelsFeed).IsMatch
+        );
+        Assert.NotNull(ScreenTimeNavigation.ReelContentKey(doc.ToString()));
+        Assert.True(
+            ScreenTimeNavigation.ReelContentChanged(
+                doc.ToString(),
+                doc.ToString().Replace("Working through", "Different caption for")
+            )
+        );
+    }
+
+    [Theory]
+    [InlineData("missing")]
+    [InlineData("hidden")]
+    [InlineData("disabled")]
+    [InlineData("outside")]
+    [InlineData("duplicate")]
+    [InlineData("wrong-order")]
+    public void StructuralFallbackRequiresUsableUnambiguousOrderedActionRail(string change)
+    {
+        var doc = ChangedCreator();
+        var save = doc.Descendants("node")
+            .Single(n => (string?)n.Attribute("content-desc") == "Save");
+        switch (change)
+        {
+            case "missing":
+                save.Remove();
+                break;
+            case "hidden":
+                save.SetAttributeValue("visible-to-user", "false");
+                break;
+            case "disabled":
+                save.SetAttributeValue("enabled", "false");
+                break;
+            case "outside":
+                save.SetAttributeValue("bounds", "[0,959][90,1082]");
+                break;
+            case "wrong-order":
+                save.SetAttributeValue("bounds", "[624,100][720,180]");
+                break;
+            case "duplicate":
+                var duplicate = new XElement(save);
+                duplicate.SetAttributeValue("bounds", "[624,100][720,180]");
+                save.Parent!.Add(duplicate);
+                break;
+        }
+        Assert.False(ScreenTimeNavigation.IsFullscreenReels(doc.ToString()));
+        Assert.False(
+            FacebookLayoutRegistry.Match(doc.ToString(), FacebookScreenKind.ReelsFeed).IsMatch
+        );
+    }
+
+    [Fact]
+    public void StructuralFallbackStillRejectsEditableOrForeignScreens()
+    {
+        var xml = ChangedCreator().ToString();
+        Assert.False(
+            FacebookLayoutRegistry
+                .Match(
+                    xml.Replace("com.facebook.katana", "com.other.app"),
+                    FacebookScreenKind.ReelsFeed
+                )
+                .IsMatch
+        );
+        var doc = XDocument.Parse(xml);
+        doc.Descendants("node")
+            .First(n => (string?)n.Attribute("content-desc") == "Add a comment")
+            .SetAttributeValue("class", "android.widget.EditText");
+        Assert.False(
+            FacebookLayoutRegistry.Match(doc.ToString(), FacebookScreenKind.ReelsFeed).IsMatch
+        );
+    }
+
+    [Fact]
+    public void BrowseFailuresDescribeEvidenceInsteadOfClaimingDestinationWasLeft()
+    {
+        Assert.Contains(
+            "screen data unavailable",
+            ScreenTimeNavigation.BrowseFailureMessage("<hierarchy/>", "Reels")
+        );
+        const string unknown =
+            "<hierarchy><node package='com.facebook.katana' text='Unrecognized screen'/></hierarchy>";
+        Assert.Contains(
+            "layout not recognized",
+            ScreenTimeNavigation.BrowseFailureMessage(unknown, "Reels")
+        );
+        Assert.DoesNotContain(
+            "left Reels",
+            ScreenTimeNavigation.BrowseFailureMessage(unknown, "Reels")
+        );
+        Assert.Contains(
+            "blocked",
+            ScreenTimeNavigation.BrowseFailureMessage(
+                unknown.Replace("text='Unrecognized screen'", "class='android.widget.EditText'"),
+                "Reels"
+            )
+        );
+        Assert.Contains(
+            "different navigation tab",
+            ScreenTimeNavigation.BrowseFailureMessage(
+                unknown.Replace(
+                    "text='Unrecognized screen'",
+                    "content-desc='Home, tab 1 of 6' selected='true'"
+                ),
+                "Reels"
+            )
+        );
+    }
+
+    private static XDocument ChangedCreator()
+    {
+        var doc = XDocument.Parse(Fixture("ld9-reels-fullscreen-multiline-creator"));
+        foreach (
+            var n in doc.Descendants("node")
+                .Where(n => ((string?)n.Attribute("content-desc"))?.StartsWith("View ") == true)
+        )
+            n.SetAttributeValue("content-desc", "Open creator profile");
+        return doc;
+    }
+
+    [Fact]
+    public void CapturedFullscreenReelWithMultilineCreatorMatchesRegisteredLayout()
+    {
+        var xml = Fixture("ld9-reels-fullscreen-multiline-creator");
+        Assert.True(ScreenTimeNavigation.IsFullscreenReels(xml));
+        Assert.True(ScreenTimeService.IsScreen(xml, "Reels"));
+        Assert.False(ScreenTimeNavigation.IsBlockingScreen(xml, "Reels"));
+        var match = FacebookLayoutRegistry.Match(xml, FacebookScreenKind.ReelsFeed);
+        Assert.True(match.IsMatch, match.Diagnostic);
+        Assert.Equal("reels.fullscreen.v1", match.VariantId);
+        Assert.NotNull(ScreenTimeNavigation.ReelContentKey(xml));
+        Assert.False(ScreenTimeNavigation.ReelContentChanged(xml, xml));
+    }
+
+    [Theory]
+    [InlineData("Comment")]
+    [InlineData("Share")]
+    [InlineData("Reel details")]
+    [InlineData("Tap to show video controls")]
+    [InlineData("Navigate to your Reels profile")]
+    public void MultilineCreatorDoesNotBypassRequiredReelEvidence(string missing)
+    {
+        var doc = XDocument.Parse(Fixture("ld9-reels-fullscreen-multiline-creator"));
+        foreach (
+            var node in doc.Descendants("node")
+                .Where(n => (string?)n.Attribute("content-desc") == missing)
+                .ToArray()
+        )
+            node.Remove();
+        Assert.False(ScreenTimeNavigation.IsFullscreenReels(doc.ToString()));
+        Assert.False(
+            FacebookLayoutRegistry.Match(doc.ToString(), FacebookScreenKind.ReelsFeed).IsMatch
+        );
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -18,7 +265,7 @@ public class ScreenTimeReelObservationTests
                 .Remove();
         Assert.True(ScreenTimeNavigation.ReelsHasTopNavigation(doc.ToString(), 1280));
         Assert.Equal(
-            new ScreenTimeGesture(0, 350, true),
+            new ScreenTimeGesture(0, 450, true),
             ScreenTimeGesture.ReelsScrollAttempt(0, true)
         );
         for (var attempt = 0; attempt < 3; attempt++)

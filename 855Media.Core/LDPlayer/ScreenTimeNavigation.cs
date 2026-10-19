@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
@@ -94,11 +95,22 @@ internal static partial class ScreenTimeNavigation
 
     private static string[] Labels(XElement node) =>
         new[] { node.Attribute("text")?.Value ?? "", node.Attribute("content-desc")?.Value ?? "" }
-            .Select(v => v.Trim())
+            .Select(NormalizeReelLabel)
             .Where(v => v.Length > 0)
             .ToArray();
 
     // Full-screen viewer on LD-9 has no Reels heading or selected navigation tab.
+    internal static string NormalizeReelLabel(string label) =>
+        Regex
+            .Replace(
+                Regex.Replace(label.Normalize(NormalizationForm.FormKC), @"\p{Cf}", ""),
+                @"\s+",
+                " "
+            )
+            .Replace('’', '\'')
+            .Replace('‘', '\'')
+            .Trim();
+
     internal static bool IsFullscreenReels(string? xml) =>
         FacebookHierarchyCache.Memo(xml, "fullscreen-reels", () => IsFullscreenReelsCore(xml));
 
@@ -108,11 +120,18 @@ internal static partial class ScreenTimeNavigation
             .Nodes(xml)
             .Where(n =>
                 n.Attribute("package")?.Value == "com.facebook.katana"
-                && n.Attribute("visible-to-user")?.Value != "false"
+                && !n.AncestorsAndSelf("node")
+                    .Any(a => a.Attribute("visible-to-user")?.Value == "false")
             )
             .ToArray();
         var details = nodes
-            .Where(n => n.Attribute("content-desc")?.Value == "Reel details")
+            .Where(n =>
+                Labels(n)
+                    .Any(v =>
+                        NormalizeReelLabel(v)
+                            .Equals("Reel details", StringComparison.OrdinalIgnoreCase)
+                    )
+            )
             .ToArray();
         if (
             details.Length != 1
@@ -120,14 +139,88 @@ internal static partial class ScreenTimeNavigation
             || area.Bottom - area.Top <= area.Right - area.Left
         )
             return false;
-        var labels = nodes.SelectMany(Labels).ToArray();
-        return labels.Any(v => Regex.IsMatch(v, @"^View .+['’]s reels$", RegexOptions.IgnoreCase))
-            && labels.Contains("Tap to show video controls")
-            && labels.Any(v => v == "Comment" || Regex.IsMatch(v, @"^\d[\d.,KMBkmb ]* comments?$"))
-            && labels.Any(v =>
-                v == "Share" || Regex.IsMatch(v, @"^Share, \d[\d.,KMBkmb ]* shares?$")
+        var labels = nodes.SelectMany(Labels).Select(NormalizeReelLabel).ToArray();
+        return (
+                labels.Any(v => Regex.IsMatch(v, @"^View .+['’]s reels$", RegexOptions.IgnoreCase))
+                || HasFullscreenReelActionRail(nodes, area)
             )
-            && labels.Contains("Navigate to your Reels profile");
+            && labels.Contains("Tap to show video controls", StringComparer.OrdinalIgnoreCase)
+            && labels.Any(v =>
+                v.Equals("Comment", StringComparison.OrdinalIgnoreCase)
+                || Regex.IsMatch(v, @"^\d[\d.,KMB ]* comments?$", RegexOptions.IgnoreCase)
+            )
+            && labels.Any(v =>
+                v.Equals("Share", StringComparison.OrdinalIgnoreCase)
+                || Regex.IsMatch(v, @"^Share, \d[\d.,KMB ]* shares?$", RegexOptions.IgnoreCase)
+            )
+            && labels.Contains("Navigate to your Reels profile", StringComparer.OrdinalIgnoreCase);
+    }
+
+    // A changed creator label may still be browsed when independent controls form
+    // the captured right-hand action rail. This does not choose a reaction target.
+    private static bool HasFullscreenReelActionRail(
+        XElement[] nodes,
+        (int Left, int Top, int Right, int Bottom) area
+    )
+    {
+        var rail = nodes
+            .Where(n =>
+                n.Attribute("class")?.Value == "android.widget.Button"
+                && n.Attribute("clickable")?.Value == "true"
+                && !n.AncestorsAndSelf("node").Any(a => a.Attribute("enabled")?.Value == "false")
+                && Bounds(n) is { } b
+                && b.Left >= area.Left + (area.Right - area.Left) * 3 / 4
+                && b.Right <= area.Right
+                && b.Top >= area.Top
+                && b.Bottom <= area.Bottom
+                && b.Bottom > b.Top
+                && b.Right > b.Left
+            )
+            .ToArray();
+        int? Top(string label)
+        {
+            var values = rail.Where(n =>
+                    Labels(n)
+                        .Any(v =>
+                            NormalizeReelLabel(v).Equals(label, StringComparison.OrdinalIgnoreCase)
+                        )
+                )
+                .Select(n => Bounds(n)!.Value.Top)
+                .Distinct()
+                .Take(2)
+                .ToArray();
+            return values.Length == 1 ? values[0] : null;
+        }
+        var comment = Top("Comment");
+        var share = Top("Share");
+        var save = Top("Save");
+        var more = Top("More");
+        return comment.HasValue
+            && share > comment
+            && save > share
+            && more > save
+            && rail.Any(n =>
+                Bounds(n)!.Value.Top < comment
+                && Labels(n)
+                    .Any(v =>
+                        Regex.IsMatch(
+                            NormalizeReelLabel(v),
+                            @"^\d[\d.,KMB ]* reactions?$",
+                            RegexOptions.IgnoreCase
+                        )
+                    )
+            );
+    }
+
+    internal static string BrowseFailureMessage(string? xml, string name)
+    {
+        var nodes = ScreenTimeHierarchy.Nodes(xml);
+        var reason =
+            nodes.Length == 0 ? "screen data unavailable"
+            : IsBlockingScreen(xml, name, name == "Feed") ? "blocked by another screen or overlay"
+            : HasConflictingTab(xml, name) ? "a different navigation tab is selected"
+            : "layout not recognized after repeated observations";
+        return $"ScreenTime could not confirm {name}: {reason}; session stopped before another action.";
     }
 
     internal static string? ReelContentKey(string? xml)
@@ -137,7 +230,13 @@ internal static partial class ScreenTimeNavigation
             .Nodes(xml)
             .Where(n =>
                 n.Attribute("content-desc")?.Value == "Reels tab details"
-                || (n.Attribute("content-desc")?.Value == "Reel details" && fullscreen)
+                || (
+                    Labels(n)
+                        .Any(v =>
+                            NormalizeReelLabel(v)
+                                .Equals("Reel details", StringComparison.OrdinalIgnoreCase)
+                        ) && fullscreen
+                )
             )
             .ToArray();
         if (details.Length == 0)
@@ -182,7 +281,7 @@ internal static partial class ScreenTimeNavigation
         var creators = details[0]
             .Descendants("node")
             .SelectMany(Labels)
-            .Select(v => Regex.Replace(v, @"\s+", " ").Trim())
+            .Select(NormalizeReelLabel)
             .Where(v => Regex.IsMatch(v, @"^View .+['’]s reels$", RegexOptions.IgnoreCase))
             .Distinct()
             .OrderBy(v => v);
@@ -258,7 +357,11 @@ internal static partial class ScreenTimeNavigation
         );
 
     private static bool IsPostOptionsLabel(string label) =>
-        Regex.IsMatch(label, @"^More options for .+[’']s post$", RegexOptions.IgnoreCase);
+        Regex.IsMatch(
+            NormalizeReelLabel(label),
+            @"^More options for .+[’']s post$",
+            RegexOptions.IgnoreCase
+        );
 
     private static (int Left, int Top, int Right, int Bottom)? Bounds(XElement node)
     {
@@ -416,6 +519,21 @@ internal static partial class ScreenTimeNavigation
                             RegexOptions.IgnoreCase
                         )
                         || (
+                            Regex.IsMatch(
+                                label,
+                                @"^Do you want to see more or (?:less|fewer) (?:posts|reels) like this\?$",
+                                RegexOptions.IgnoreCase
+                            )
+                            && parent
+                                .Descendants("node")
+                                .SelectMany(Labels)
+                                .Contains("Interested", StringComparer.OrdinalIgnoreCase)
+                            && parent
+                                .Descendants("node")
+                                .SelectMany(Labels)
+                                .Contains("Not Interested", StringComparer.OrdinalIgnoreCase)
+                        )
+                        || (
                             name == "Feed"
                             && (
                                 IsFeedBrowseOnlyLabel(label)
@@ -501,6 +619,11 @@ internal static partial class ScreenTimeNavigation
         && list.Attribute("scrollable")?.Value == "true"
         && list.Attribute("enabled")?.Value != "false"
         && list.Attribute("visible-to-user")?.Value != "false"
+        && !list.Ancestors("node")
+            .Any(a =>
+                a.Attribute("visible-to-user")?.Value == "false"
+                || a.Attribute("enabled")?.Value == "false"
+            )
         && list.Ancestors("node")
             .Any(a =>
                 a.Attribute("class")?.Value == "androidx.viewpager.widget.ViewPager"
@@ -699,6 +822,11 @@ internal static partial class ScreenTimeNavigation
         && node.Attribute("enabled")?.Value != "false"
         && node.Attribute("visible-to-user")?.Value != "false"
         && node.Attribute("clickable")?.Value == "true"
+        && !node.Ancestors("node")
+            .Any(a =>
+                a.Attribute("visible-to-user")?.Value == "false"
+                || a.Attribute("enabled")?.Value == "false"
+            )
         && ScreenTimeHierarchy.Center(node).HasValue;
 
     // A tall media post scrolls its author out of view before its action row appears.
@@ -710,16 +838,33 @@ internal static partial class ScreenTimeNavigation
                 && row.Elements("node")
                     .Any(n =>
                         IsVisibleButton(n)
-                        && n.Attribute("content-desc")?.Value
-                            == "Like button. Double tap and hold to react to the comment."
+                        && Labels(n)
+                            .Any(v =>
+                                new[]
+                                {
+                                    "Like",
+                                    "Liked",
+                                    "Remove Like reaction",
+                                    "Like button. Double tap and hold to react to the comment.",
+                                }.Contains(v, StringComparer.OrdinalIgnoreCase)
+                            )
                     )
-                && row.Elements("node")
-                    .Any(n => IsVisibleButton(n) && n.Attribute("content-desc")?.Value == "Comment")
                 && row.Elements("node")
                     .Any(n =>
                         IsVisibleButton(n)
-                        && n.Attribute("content-desc")?.Value
-                            == "Share button. Double tap to share the post."
+                        && Labels(n).Contains("Comment", StringComparer.OrdinalIgnoreCase)
+                    )
+                && row.Elements("node")
+                    .Any(n =>
+                        IsVisibleButton(n)
+                        && Labels(n)
+                            .Any(v =>
+                                new[]
+                                {
+                                    "Share",
+                                    "Share button. Double tap to share the post.",
+                                }.Contains(v, StringComparer.OrdinalIgnoreCase)
+                            )
                     )
             );
 

@@ -191,7 +191,8 @@ public class AudioTranscriptionService
         string mediaFilePath,
         string language = "auto",
         IProgress<string>? logProgress = null,
-        CancellationToken cancellationToken = default
+        CancellationToken cancellationToken = default,
+        MetaDubbingOptions? metaOptions = null
     )
     {
         if (!File.Exists(mediaFilePath))
@@ -239,6 +240,33 @@ public class AudioTranscriptionService
                 }
             }
 
+            if (metaOptions?.EnableOmnilingualAsr == true)
+            {
+                try
+                {
+                    var segments = await new MetaDubbingService().TranscribeAsync(
+                        metaOptions,
+                        audioWavPath,
+                        language,
+                        message => logProgress?.Report(message),
+                        cancellationToken
+                    );
+                    if (segments.Count > 0)
+                        return segments;
+                    logProgress?.Report("Omnilingual ASR returned no dialogue. Trying Whisper...");
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    logProgress?.Report(
+                        $"Omnilingual ASR unavailable ({ex.Message}). Trying Whisper..."
+                    );
+                }
+            }
+
             var whisperCli = TryGetWhisperCliPath();
             var whisperModel = TryGetWhisperModelPath();
 
@@ -260,6 +288,11 @@ public class AudioTranscriptionService
                 if (segments.Count > 0)
                     return segments;
             }
+
+            if (metaOptions?.EnableOmnilingualAsr == true)
+                throw new InvalidOperationException(
+                    "No dialogue was transcribed. Check the Meta runtime or install Whisper; speech timing alone cannot supply dialogue text."
+                );
 
             // Fallback: Voice Activity Detection (VAD) audio silence scan
             logProgress?.Report(

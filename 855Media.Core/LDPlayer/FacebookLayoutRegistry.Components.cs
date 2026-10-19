@@ -26,6 +26,20 @@ public static partial class FacebookLayoutRegistry
 
     private static IEnumerable<FacebookLayoutDefinition> ComponentDefinitions()
     {
+        yield return new(
+            "dashboard.creator-welcome.v1",
+            FacebookScreenKind.CreatorDashboardWelcome,
+            [],
+            [
+                Rule(
+                    "creator-welcome-sheet",
+                    "Creator Dashboard welcome sheet with both onboarding choices",
+                    o => PFlowCreatorDashboardWelcome.Sheet(o.Xml) != null
+                ),
+            ],
+            [Authentication, SwitcherOverlay, ComposerOverlay],
+            [FacebookControlRole.Dismiss]
+        );
         foreach (var promotion in new[] { false, true })
         {
             var withPromotion = promotion;

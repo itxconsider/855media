@@ -58,7 +58,8 @@ public class AudioStemSeparationService
         string bgmOutputPath,
         bool useAiDemucs = true,
         Action<string>? progressLogger = null,
-        CancellationToken cancellationToken = default
+        CancellationToken cancellationToken = default,
+        MetaDubbingOptions? metaOptions = null
     )
     {
         if (!File.Exists(inputAudioPath))
@@ -71,6 +72,36 @@ public class AudioStemSeparationService
         var bgmDir = Path.GetDirectoryName(bgmOutputPath);
         if (!string.IsNullOrWhiteSpace(bgmDir))
             Directory.CreateDirectory(bgmDir);
+
+        if (metaOptions?.EnableSamAudio == true)
+        {
+            try
+            {
+                await new MetaDubbingService().SeparateAsync(
+                    metaOptions,
+                    inputAudioPath,
+                    vocalOutputPath,
+                    bgmOutputPath,
+                    progressLogger,
+                    cancellationToken
+                );
+                progressLogger?.Invoke("SAM Audio dialogue isolation completed.");
+                return;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                progressLogger?.Invoke(
+                    $"SAM Audio unavailable ({ex.Message}). Trying the existing separation provider..."
+                );
+                // A failed worker may have left partial stems. Do not accept those as fallback output.
+                File.Delete(vocalOutputPath);
+                File.Delete(bgmOutputPath);
+            }
+        }
 
         // 1. Try AI Demucs Neural Stem Separation if enabled
         if (useAiDemucs)
@@ -98,6 +129,10 @@ public class AudioStemSeparationService
                     );
                     return;
                 }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
             }
             catch (Exception ex)
             {

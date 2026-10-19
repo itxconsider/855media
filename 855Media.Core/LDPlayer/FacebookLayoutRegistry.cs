@@ -37,6 +37,7 @@ public enum FacebookScreenKind
     IdentitySwitching,
     EmailUpdatePrompt,
     ProfileDetails,
+    CreatorDashboardWelcome,
 }
 
 public enum FacebookLayoutStatus
@@ -647,6 +648,12 @@ public static partial class FacebookLayoutRegistry
                 )
                     .Concat(d.Exclusions.Where(o.Test).Select(r => r.Id))
                     .Concat(
+                        d.Screen is FacebookScreenKind.Dashboard or FacebookScreenKind.Analytics
+                        && PFlowCreatorDashboardWelcome.Sheet(o.Xml) != null
+                            ? new[] { "creator-dashboard-welcome-overlay" }
+                            : Array.Empty<string>()
+                    )
+                    .Concat(
                         switching && d.Screen != FacebookScreenKind.IdentitySwitching
                             ? new[] { "identity-switch-in-progress" }
                             : Array.Empty<string>()
@@ -727,6 +734,15 @@ public static partial class FacebookLayoutRegistry
         FacebookScreenKind screen
     )
     {
+        if (screen == FacebookScreenKind.CreatorDashboardWelcome)
+        {
+            if (
+                role == FacebookControlRole.Dismiss
+                && PFlowCreatorDashboardWelcome.DismissControl(o.Xml) is { } point
+            )
+                yield return point;
+            yield break;
+        }
         if (screen == FacebookScreenKind.EmailUpdatePrompt)
         {
             if (
@@ -801,6 +817,7 @@ public static partial class FacebookLayoutRegistry
             FacebookControlRole.Story when screen == FacebookScreenKind.NewsFeed => new[]
             {
                 "Create story",
+                "Create a story",
             },
             FacebookControlRole.Story => new[] { "Story" },
             FacebookControlRole.Publish when screen == FacebookScreenKind.StoryEditor => new[]
@@ -852,7 +869,11 @@ public static partial class FacebookLayoutRegistry
                 || owner.Attribute("visible-to-user")?.Value == "false"
             )
                 continue;
-            if (UsableCenter(node) is { } point)
+            var center =
+                screen == FacebookScreenKind.NewsFeed && role == FacebookControlRole.Story
+                    ? PFlowStoryLayout.ControlCenter(owner)
+                    : UsableCenter(node);
+            if (center is { } point)
                 yield return point;
         }
     }

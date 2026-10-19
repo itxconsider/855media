@@ -6,6 +6,42 @@ namespace _855Media.Core.Tests.LDPlayer;
 
 public class PFlowNativeReelTests
 {
+    [Theory]
+    [InlineData("ld2-feed-after-john-ward-confirmed")]
+    [InlineData("ld2-feed-after-kc-waterheaters-confirmed")]
+    public async Task VerifiedContinuationOpensNextNativeReelFromCapturedHome(string fixture)
+    {
+        var ld = DispatchProxy.Create<ILDPlayerService, ReelDevice>();
+        var device = (ReelDevice)(object)ld;
+        device.InitialOwnXml = FacebookLayoutRegistryTests.Fixture(fixture);
+        var job = new PFlowJob
+        {
+            TargetName = "Target",
+            TargetId = "123",
+            SourcePath = "test.mp4",
+            State = PFlowState.IdentityVerified,
+            Size = 1,
+            Sha256 = new string('A', 64),
+            NativeReelAlbum = true,
+        };
+        job.TargetContinuation = new(
+            job.JobId,
+            PFlowPostTargetSession.Target.Read(job),
+            DateTime.UtcNow
+        );
+        device.Job = job;
+        await new PFlowAutoPostService(ld).PublishAsync(
+            job,
+            _ => Task.CompletedTask,
+            null,
+            default,
+            dryRun: true
+        );
+        Assert.Equal(PFlowState.CancelledBeforeSubmission, job.State);
+        Assert.Equal(0, device.AndroidShares + device.PublishTaps);
+        Assert.StartsWith("Bloks Reel picker", job.MediaSelectionEvidence);
+    }
+
     [Fact]
     public async Task DelayedMediaIndexRecoversOnBloksInsteadOfFallingBack()
     {
@@ -180,6 +216,7 @@ public class PFlowNativeReelTests
     public class ReelDevice : DispatchProxy
     {
         public PFlowJob Job = null!;
+        public string? InitialOwnXml;
         public bool Unavailable,
             Authentication,
             ChangedBytes;
@@ -222,11 +259,12 @@ public class PFlowNativeReelTests
                     return Task.FromResult<string?>(
                         State switch
                         {
-                            "Own" => Head
-                                + Node("Target", "[0,0][200,40]")
-                                + Node("Professional dashboard", "[0,50][200,90]")
-                                + Node("Create reel", "[0,100][200,140]")
-                                + Tail,
+                            "Own" => InitialOwnXml
+                                ?? Head
+                                    + Node("Target", "[0,0][200,40]")
+                                    + Node("Professional dashboard", "[0,50][200,90]")
+                                    + Node("Create reel", "[0,100][200,140]")
+                                    + Tail,
                             "Picker" => Picker("Gallery", false),
                             "Albums" => Head
                                 + "<node package='com.facebook.katana' class='android.widget.ListView'>"

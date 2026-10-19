@@ -53,6 +53,12 @@
       Link="tools/voxcpm_tts.py"
       CopyToOutputDirectory="PreserveNewest"
     />
+    <Content
+      Include="../tools/meta_dubbing/worker.py;../tools/meta_dubbing/README.md"
+      Link="tools/meta_dubbing/%(Filename)%(Extension)"
+      CopyToOutputDirectory="PreserveNewest"
+      CopyToPublishDirectory="PreserveNewest"
+    />
   </ItemGroup>
 
   <ItemGroup>

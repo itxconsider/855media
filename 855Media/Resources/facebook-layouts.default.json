@@ -238,6 +238,15 @@
       "controlAliases": {}
     },
     {
+      "id": "dashboard.creator-welcome.v1",
+      "baseId": "dashboard.creator-welcome.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
       "id": "profile.details-sheet.v1",
       "baseId": "profile.details-sheet.v1",
       "version": 1,

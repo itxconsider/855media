@@ -9,14 +9,21 @@ internal static class PFlowReelLayout
 {
     internal static bool HasStackedCreateCards(FacebookLayoutObservation o)
     {
-        (int X, int Y)? Card(string label)
+        (int X, int Y)? Card(params string[] labels)
         {
             var points = o
                 .Nodes.Where(n =>
-                    n.Attribute("clickable")?.Value == "true"
+                    n.Attribute("package")?.Value == "com.facebook.katana"
+                    && n.Attribute("clickable")?.Value == "true"
                     && (
-                        n.Attribute("text")?.Value == label
-                        || n.Attribute("content-desc")?.Value == label
+                        labels.Contains(
+                            n.Attribute("text")?.Value,
+                            StringComparer.OrdinalIgnoreCase
+                        )
+                        || labels.Contains(
+                            n.Attribute("content-desc")?.Value,
+                            StringComparer.OrdinalIgnoreCase
+                        )
                     )
                 )
                 .Select(PFlowStoryLayout.ControlCenter)
@@ -24,7 +31,7 @@ internal static class PFlowReelLayout
                 .ToArray();
             return points.Length == 1 ? points[0] : null;
         }
-        var story = Card("Create story");
+        var story = Card("Create story", "Create a story");
         var reel = Card("Create reel");
         return story.HasValue
             && reel.HasValue

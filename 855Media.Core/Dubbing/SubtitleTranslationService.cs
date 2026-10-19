@@ -15,8 +15,21 @@ namespace _855Media.Core.Dubbing;
 
 public class SubtitleTranslationService
 {
-    private static readonly HttpClient HttpClient = new();
-    private readonly GeminiTranslationService _geminiService = new();
+    private static readonly HttpClient SharedHttpClient = new();
+    private readonly HttpClient HttpClient;
+    private readonly GeminiTranslationService _geminiService;
+
+    public SubtitleTranslationService()
+    {
+        HttpClient = SharedHttpClient;
+        _geminiService = new();
+    }
+
+    internal SubtitleTranslationService(HttpClient httpClient)
+    {
+        HttpClient = httpClient;
+        _geminiService = new(httpClient);
+    }
 
     public async Task<List<SubtitleSegment>> ExtractOrGenerateSubtitlesAsync(
         string ffmpegPath,
@@ -117,8 +130,8 @@ public class SubtitleTranslationService
         if (sl == tl && sl != "auto")
             return text;
 
-        // Tier 0: Google Gemini AI (Context-aware cinema dialogue translation)
-        if (!string.IsNullOrWhiteSpace(geminiApiKey))
+        // The cinema Gemini translator only supports Khmer output.
+        if (tl == "km" && !string.IsNullOrWhiteSpace(geminiApiKey))
         {
             try
             {
@@ -369,13 +382,16 @@ public class SubtitleTranslationService
             return;
 
         int total = segments.Count;
-        int completed = 0;
         const int batchSize = 40;
 
-        var batches = segments
-            .Where(s => !string.IsNullOrWhiteSpace(s.OriginalText))
-            .Chunk(batchSize)
+        var pending = segments
+            .Where(s =>
+                !string.IsNullOrWhiteSpace(s.OriginalText) && string.IsNullOrWhiteSpace(s.KhmerText)
+            )
             .ToList();
+        int completed = total - pending.Count;
+        progressCallback?.Invoke(completed, total);
+        var batches = pending.Chunk(batchSize).ToList();
 
         await Parallel.ForEachAsync(
             batches,
@@ -404,6 +420,12 @@ public class SubtitleTranslationService
 
                 foreach (var seg in batch)
                 {
+                    // A line may have been edited while the remote request was running.
+                    if (!string.IsNullOrWhiteSpace(seg.KhmerText))
+                    {
+                        progressCallback?.Invoke(Interlocked.Increment(ref completed), total);
+                        continue;
+                    }
                     if (
                         geminiMap != null
                         && geminiMap.TryGetValue(seg.Index, out var translated)

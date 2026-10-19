@@ -83,7 +83,13 @@ public class ScreenTimeSetting
         Range(Options.Stories, 1, Options.StoryLimit, 20, "Story count");
         Range(Options.Stories, 3, Options.StoryDwellSeconds, 30, "Story dwell seconds");
         Range(NewsFeed, 1, Options.FeedDwellSeconds, 30, "Feed dwell seconds");
-        Range(WatchVideo, 1, Options.ReelDwellSeconds, 60, "Reel dwell seconds");
+        Range(
+            WatchVideo,
+            Options.ReelDwellMinSeconds,
+            Options.ReelDwellMaxSeconds,
+            60,
+            "Reel dwell seconds"
+        );
         Range(Options.Reactions, 1, Options.ReactionLimit, 20, "Reaction limit");
         if (Options.Reactions && (!NewsFeed && !WatchVideo))
             errors.Add("Reactions require Feed or Reels.");

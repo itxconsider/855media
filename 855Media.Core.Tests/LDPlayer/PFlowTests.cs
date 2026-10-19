@@ -657,6 +657,7 @@ public sealed partial class PFlowTests : IDisposable
         public int ShareTaps,
             Transfers,
             Deletes;
+        public int HomeNavigations;
         public bool TransferOk = true,
             DeleteOk = true,
             AlbumDeleteOk = true,
@@ -668,6 +669,7 @@ public sealed partial class PFlowTests : IDisposable
         public CancellationTokenSource? CancelOnShare;
         public string PublicationError = "";
         public string? PostShareXml;
+        public string? PostHomeXml;
         public System.Collections.Generic.Queue<string> PostShareSequence = new();
         public int MissingInstanceScans;
         public int InstanceScans;
@@ -695,6 +697,10 @@ public sealed partial class PFlowTests : IDisposable
         {
             switch (method!.Name)
             {
+                case "OpenDeepLinkAsync":
+                    if ((string)args![1]! == "fb://feed")
+                        HomeNavigations++;
+                    return Task.FromResult(true);
                 case "GetInstancesAsync":
                     InstanceScans++;
                     if (InstanceScans <= MissingInstanceScans)
@@ -734,6 +740,8 @@ public sealed partial class PFlowTests : IDisposable
                     Transfers++;
                     return Task.FromResult(TransferOk);
                 case "DumpUiHierarchyAsync":
+                    if (ShareTaps > 0 && HomeNavigations > 0 && PostHomeXml != null)
+                        return Task.FromResult<string?>(PostHomeXml);
                     if (ShareTaps > 0 && PostShareSequence.Count > 0)
                         return Task.FromResult<string?>(PostShareSequence.Dequeue());
                     if (ShareTaps > 0 && PostShareXml != null)

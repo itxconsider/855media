@@ -627,6 +627,8 @@ public partial class PFlowAutoPostService
         var uploadOngoing = false;
         var feedRefreshedAfterProcessing = false;
         var nextPendingHomeRefresh = TimeSpan.FromSeconds(30);
+        var postShareHome = new PFlowPostShareHomeNavigation();
+        string? evidenceBeforeHome = null;
         async Task<bool> RefreshWaitingHome(string observed)
         {
             if (wait.Elapsed < nextPendingHomeRefresh)
@@ -692,6 +694,22 @@ public partial class PFlowAutoPostService
                 return;
             }
             var pendingState = PFlowPublicationTracking.Pending(xml);
+            if (postShareHome.CanNavigate(job, xml))
+            {
+                // Record transient evidence before navigation can hide a status/banner.
+                evidenceBeforeHome ??=
+                    NewPublicationEvidence(xml, before, job.PostType) ?? freshToast;
+                if (pendingState != null)
+                {
+                    await Publication(pendingState.Stage, pendingState.Evidence);
+                    processingSeen = processingActive = true;
+                }
+                if (await postShareHome.TryAsync(_ldPlayer, job, xml, customPath, ct))
+                {
+                    settleGate.Reset();
+                    continue;
+                }
+            }
             if (pendingState != null)
             {
                 await Publication(pendingState.Stage, pendingState.Evidence);
@@ -714,7 +732,7 @@ public partial class PFlowAutoPostService
                 processingActive = false;
             }
             // Prefer direct publication evidence from each fresh post-submit observation.
-            var evidence = NewPublicationEvidence(xml, before, job.PostType);
+            var evidence = NewPublicationEvidence(xml, before, job.PostType) ?? evidenceBeforeHome;
             if (evidence == null && xml.Contains(job.AppPackage, StringComparison.Ordinal))
                 evidence = freshToast ?? await ReadSuccessToast();
             if (

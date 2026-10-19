@@ -32,7 +32,7 @@ internal static partial class ScreenTimeNavigation
         var nodes = ScreenTimeHierarchy.Nodes(xml).ToArray();
         var creators = nodes
             .SelectMany(Labels)
-            .Select(v => Regex.Replace(v, @"\s+", " ").Trim())
+            .Select(NormalizeReelLabel)
             .Where(v => Regex.IsMatch(v, @"^View .+['’]s reels$", RegexOptions.IgnoreCase))
             .Distinct()
             .ToArray();

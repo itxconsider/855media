@@ -6,6 +6,49 @@ namespace _855Media.Core.Tests.LDPlayer;
 
 public class FacebookStackedCreateLayoutTests
 {
+    [Theory]
+    [InlineData("ld2-feed-after-john-ward-confirmed")]
+    [InlineData("ld2-feed-after-kc-waterheaters-confirmed")]
+    public void CapturedPostShareHomeWithoutNavigationTabsIsRegistered(string fixture)
+    {
+        var xml = FacebookLayoutRegistryTests.Fixture(fixture);
+        var match = FacebookLayoutRegistry.Match(xml, FacebookScreenKind.NewsFeed);
+        Assert.True(match.IsMatch, match.Diagnostic);
+        Assert.Equal("feed.stacked-create.v1", match.VariantId);
+        Assert.NotNull(match.Control(FacebookControlRole.Reel));
+        Assert.NotNull(match.Control(FacebookControlRole.Story));
+        Assert.NotNull(PFlowReelLayout.CreateEntry(xml));
+        Assert.True(PFlowPostTargetSession.CanContinueFrom(xml, "com.facebook.katana"));
+    }
+
+    [Theory]
+    [InlineData("hidden")]
+    [InlineData("disabled")]
+    [InlineData("foreign")]
+    [InlineData("duplicate")]
+    public void StackedCardsRequireOneVisibleUsableFacebookCard(string mutation)
+    {
+        var doc = XDocument.Parse(
+            FacebookLayoutRegistryTests.Fixture("ld2-feed-after-john-ward-confirmed")
+        );
+        var reel = doc.Descendants("node")
+            .Single(n =>
+                (string?)n.Attribute("content-desc") == "Create reel"
+                && (string?)n.Attribute("clickable") == "true"
+            );
+        if (mutation == "hidden")
+            reel.SetAttributeValue("visible-to-user", "false");
+        if (mutation == "disabled")
+            reel.SetAttributeValue("enabled", "false");
+        if (mutation == "foreign")
+            reel.SetAttributeValue("package", "com.other.app");
+        if (mutation == "duplicate")
+            reel.Parent!.Add(new XElement(reel));
+        Assert.False(
+            PFlowReelLayout.HasStackedCreateCards(new FacebookLayoutObservation(doc.ToString()))
+        );
+    }
+
     [Fact]
     public void StackedCreateCardsExposeSeparateStoryAndReelControls()
     {

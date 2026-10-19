@@ -22,6 +22,16 @@ public partial class AutoPostViewModel
 
     private async Task LoadAccountMappingsAsync()
     {
+        var removedBindings = await _accountStore.RemovedBindingsAsync();
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            foreach (
+                var row in Pages
+                    .Where(p => removedBindings.Any(b => PFlowAccountRemap.OwnsRow(b, p.Model)))
+                    .ToArray()
+            )
+                Pages.Remove(row);
+        });
         var profiles = await Dispatcher.UIThread.InvokeAsync(() =>
             Pages.Select(p => p.Model!.CreateSnapshot()).ToArray()
         );
@@ -29,6 +39,39 @@ public partial class AutoPostViewModel
             Instances.Select(i => i.Model).ToArray()
         );
         var savedMappings = await _accountStore.LoadAsync();
+        var obsoleteBindings = removedBindings
+            .Concat(savedMappings.SelectMany(a => a.TransferredFromBindings))
+            .ToArray();
+        var oldJobs = await _pFlowHistory.ReadAsync();
+        foreach (
+            var job in oldJobs.Where(j =>
+                j.State == PFlowState.Queued && obsoleteBindings.Contains(j.AccountBinding)
+            )
+        )
+        {
+            job.State = PFlowState.CancelledBeforeSubmission;
+            job.Error = removedBindings.Contains(job.AccountBinding)
+                ? "Account mapping removed before submission."
+                : "Account transferred before submission; queue will be rebuilt on destination.";
+            await _pFlowHistory.SaveAsync(job);
+        }
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            foreach (
+                var task in Tasks.Where(t =>
+                    oldJobs.Any(j =>
+                        j.JobId == t.PFlowJobId
+                        && j.State == PFlowState.CancelledBeforeSubmission
+                        && j.Error.StartsWith(
+                            "Account transferred before submission",
+                            StringComparison.Ordinal
+                        )
+                    )
+                )
+            )
+                task.Status = "Queued";
+            PFlowAccountRemap.ReplayQueuedTasks(savedMappings, removedBindings, Tasks);
+        });
         var replayIssues = new List<PFlowMappingIssue>();
         PFlowAccountRemap.ReplayRows(
             savedMappings,
@@ -44,6 +87,16 @@ public partial class AutoPostViewModel
             var initialMigration = saved.Count == 0;
             foreach (var candidate in migration.Accounts)
             {
+                if (
+                    saved.Any(a =>
+                        a.TransferredFromBindings.Any(b =>
+                            b.OwnerUid == candidate.Binding.OwnerUid
+                            && b.DeviceIndex == candidate.Binding.DeviceIndex
+                            && b.AppPackage == candidate.Binding.AppPackage
+                        )
+                    )
+                )
+                    continue; // Cached source-instance rows cannot undo an explicit transfer.
                 var previous = saved.SingleOrDefault(a =>
                     a.Binding.OwnerUid == candidate.Binding.OwnerUid
                     && a.Binding.DeviceIndex == candidate.Binding.DeviceIndex
@@ -162,6 +215,7 @@ public partial class AutoPostViewModel
                 )
                 .Distinct()
                 .ToArray();
+            RefreshDisplayedManagePages();
             AccountMappingStatus =
                 $"{MappedAccounts.Count} personal account bindings. Selected accounts run sequentially on each LD."
                 + (

@@ -161,9 +161,44 @@ await Parallel.ForEachAsync(
             var xml = await Read();
             if (PFlowLoginScreen.RequiresAuthentication(PFlowLoginScreen.Classify(xml)))
                 throw new InvalidOperationException("Authentication required; device not tested.");
-            if (refresh && !await ld.SendKeyAsync(device.Index, 4, folder, token))
-                throw new InvalidOperationException("Refresh Back was not acknowledged.");
-            if (
+            if (refresh)
+            {
+                if (!IsReels(xml))
+                    throw new InvalidOperationException(
+                        "Pull-to-refresh requires a recognized current Reels screen."
+                    );
+                var (width, height) = PFlowPersonaSwitcherService.ParseScreenDimensions(xml);
+                if (
+                    width <= 0
+                    || height <= 0
+                    || !await ld.SwipeAsync(
+                        device.Index,
+                        width / 2,
+                        height / 3,
+                        width / 2,
+                        height * 4 / 5,
+                        450,
+                        folder,
+                        token
+                    )
+                )
+                    throw new InvalidOperationException(
+                        "Reels pull-to-refresh was not acknowledged."
+                    );
+                await events.WriteLineAsync(
+                    JsonSerializer.Serialize(
+                        new
+                        {
+                            Recovery = "Reels pull-to-refresh",
+                            Direction = "down",
+                            DurationMs = 450,
+                            Utc = DateTimeOffset.UtcNow,
+                        }
+                    )
+                );
+                await events.FlushAsync(token);
+            }
+            else if (
                 !await ld.OpenDeepLinkAsync(
                     device.Index,
                     "fb://watch",
@@ -274,6 +309,8 @@ await Parallel.ForEachAsync(
             await Save("initial", xml);
             Console.WriteLine($"LD-{device.Index} started: target={target}");
             var consecutiveRefresh = false;
+            var seenContent = new HashSet<string>(StringComparer.Ordinal);
+            var repeatedContent = 0;
             while (result.Completed < target)
             {
                 xml = await RequireReels();
@@ -364,6 +401,15 @@ await Parallel.ForEachAsync(
                     {
                         result.Confirmed++;
                         consecutiveRefresh = false;
+                        var observedKey = Key(latest);
+                        if (observedKey != null && !seenContent.Add(observedKey))
+                            repeatedContent++;
+                        else
+                            repeatedContent = 0;
+                        if (repeatedContent >= 3)
+                            throw new InvalidOperationException(
+                                "Repeated Reel identities after recovery; stopped to avoid a content loop."
+                            );
                     }
                     else
                         result.Unverified++;

@@ -8,12 +8,13 @@ internal readonly record struct ScreenTimeGesture(
     bool ContinuousSwipe = false
 )
 {
-    // The top-tab viewer ignores the separate ATX touch events on tested LDs.
-    // A single Android swipe advances it; keep the hold/move profiles as fallbacks.
+    // Prefer the single upward ADB drag validated across current LD layouts.
+    // Keep the separate ATX hold/move profiles as bounded fallbacks.
     internal static ScreenTimeGesture ReelsScrollAttempt(int attempt, bool topNavigation) =>
-        topNavigation && attempt == 0
-            ? new(0, 350, true)
-            : ReelsAttempt(attempt - (topNavigation ? 1 : 0));
+        attempt == 0 ? new(0, 450, true) : ReelsAttempt(attempt - 1);
+
+    internal static int ReelWatchSeconds(ScreenTimeOptions options) =>
+        Random.Shared.Next(options.ReelDwellMinSeconds, options.ReelDwellMaxSeconds + 1);
 
     internal static ScreenTimeGesture Reels => new(300, 100);
 

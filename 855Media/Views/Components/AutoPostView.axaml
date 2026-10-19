@@ -834,6 +834,10 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
                                                                 <TextBlock Text="{Binding BindingStatus}" TextWrapping="Wrap" />
                                                                 <Button Content="{Binding CredentialButtonLabel}" IsEnabled="{Binding CanOpenCredentials}" Classes="action-btn" HorizontalAlignment="Left" Command="{Binding $parent[UserControl].((components:AutoPostViewModel)DataContext).OpenCredentialImportCommand}" CommandParameter="{Binding}" />
                                                                 <Button Content="Review assigned instance" IsVisible="{Binding !IsMappingValid}" Classes="action-btn" HorizontalAlignment="Left" Command="{Binding $parent[UserControl].((components:AutoPostViewModel)DataContext).OpenAccountRemapCommand}" CommandParameter="{Binding}" />
+                                                                <WrapPanel>
+                                                                    <Button Content="Transfer to LD…" Classes="action-btn" Margin="0,0,8,0" Command="{Binding $parent[UserControl].((components:AutoPostViewModel)DataContext).OpenAccountTransferCommand}" CommandParameter="{Binding}" />
+                                                                    <Button Content="Remove account…" Classes="action-btn" Command="{Binding $parent[UserControl].((components:AutoPostViewModel)DataContext).OpenAccountRemovalCommand}" CommandParameter="{Binding}" />
+                                                                </WrapPanel>
                                                                 <TextBlock Text="{Binding AccessSummary}" TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                                                 <StackPanel Orientation="Horizontal" Spacing="16">
                                                                     <CheckBox Content="Fetch" IsChecked="{Binding SelectedForDiscovery}" ToolTip.Tip="Select this account for account discovery." />
@@ -1182,6 +1186,25 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
         </Border>
 
         <views:RunSettingsView IsVisible="{Binding IsConfigOpen}" />
+        <Border IsVisible="{Binding IsAccountManagementOpen}" Background="#D0000000" ZIndex="430">
+            <Border Classes="modal-window" MaxWidth="720" VerticalAlignment="Center" Margin="24">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="{Binding AccountManagementTitle}" FontSize="20" FontWeight="Bold" />
+                    <TextBlock Text="{Binding AccountManagementSummary}" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding AccountManagementStatus}" TextWrapping="Wrap" />
+                    <StackPanel Spacing="6" IsVisible="{Binding !IsAccountRemoval}" IsEnabled="{Binding !IsBusy}">
+                        <TextBlock Text="Destination LD" />
+                        <ComboBox ItemsSource="{Binding Instances}" SelectedItem="{Binding AccountTransferDestination}" HorizontalAlignment="Stretch">
+                            <ComboBox.ItemTemplate><DataTemplate DataType="components:LDInstanceItemViewModel"><TextBlock Text="{Binding Name}" /></DataTemplate></ComboBox.ItemTemplate>
+                        </ComboBox>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" IsEnabled="{Binding !IsBusy}">
+                        <Button Content="Close" Classes="action-btn" Command="{Binding CloseAccountManagementCommand}" />
+                        <Button Content="{Binding AccountManagementActionLabel}" Classes="action-btn btn-primary" Command="{Binding ApplyAccountManagementCommand}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Border>
         <Border IsVisible="{Binding IsAccountRemapOpen}" Background="#D0000000" ZIndex="410">
             <Border Classes="modal-window" MaxWidth="720" VerticalAlignment="Center" Margin="24">
                 <StackPanel Spacing="12">

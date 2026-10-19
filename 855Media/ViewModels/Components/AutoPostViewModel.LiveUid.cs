@@ -167,7 +167,19 @@ public partial class AutoPostViewModel
                 async c =>
                     await _ldPlayerService.DumpUiHierarchyAsync(worker.Index, LdFolder, c) ?? "",
                 ct,
-                initialXml
+                initialXml,
+                allowFeedAfterLiveUid: _pFlowJobs.Any(previous =>
+                    previous.JobId != postingJob.JobId
+                    && previous.State == PFlowState.Confirmed
+                    && previous.ConfirmedUtc.HasValue
+                    && previous.BatchId == postingJob.BatchId
+                    && previous.AccountBinding == postingJob.AccountBinding
+                    && previous.TargetId == postingJob.TargetId
+                    && previous.TargetName == postingJob.TargetName
+                    && previous.OwnerUid == postingJob.OwnerUid
+                    && previous.PersonaUid == postingJob.PersonaUid
+                    && previous.IsProfile == postingJob.IsProfile
+                )
             );
         }
         await VerifyUid(ct);

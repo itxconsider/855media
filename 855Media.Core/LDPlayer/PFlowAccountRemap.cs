@@ -8,6 +8,61 @@ namespace _855Media.Core.LDPlayer;
 
 public static class PFlowAccountRemap
 {
+    public static int ReplayQueuedTasks(
+        IEnumerable<PFlowPersonalAccount> accounts,
+        IReadOnlyList<PFlowAccountBinding> removed,
+        IList<AutoPostTaskItem> tasks
+    )
+    {
+        static bool Matches(PFlowAccountBinding b, AutoPostTaskItem t) =>
+            t.App == "FB-01"
+            && (
+                t.AccountBinding == b
+                || t.AccountBinding == null
+                    && t.OwnerUid == b.OwnerUid
+                    && t.DeviceName == b.DeviceName
+            );
+        var changed = 0;
+        foreach (var task in tasks.Where(t => t.Status == "Queued").ToArray())
+        {
+            if (removed.Any(b => Matches(b, task)))
+            {
+                tasks.Remove(task);
+                changed++;
+                continue;
+            }
+            var owners = accounts
+                .Where(a => a.TransferredFromBindings.Any(b => Matches(b, task)))
+                .ToArray();
+            if (owners.Length != 1)
+                continue;
+            var next = owners[0].Binding;
+            task.DeviceName = next.DeviceName;
+            task.AccountBinding = next;
+            task.OwnerUid = next.OwnerUid;
+            task.PFlowJobId = "";
+            tasks[tasks.IndexOf(task)] = task;
+            changed++;
+        }
+        return changed;
+    }
+
+    public static void RequireSameAccount(PFlowAccountBinding before, PFlowAccountBinding after)
+    {
+        before.Validate();
+        after.Validate();
+        if (before.OwnerUid != after.OwnerUid || before.AppPackage != after.AppPackage)
+            throw new InvalidOperationException("Transfer must retain the personal UID and app.");
+    }
+
+    public static bool OwnsRow(PFlowAccountBinding binding, FacebookPageTarget row) =>
+        row.UserUid == binding.OwnerUid
+        && row.AppClone == "FB-01"
+        && (
+            row.AccountBinding == binding
+            || row.AccountBinding == null && row.DeviceName == binding.DeviceName
+        );
+
     public static void RequireSameAssignment(PFlowAccountBinding before, PFlowAccountBinding after)
     {
         before.Validate();
@@ -33,7 +88,11 @@ public static class PFlowAccountRemap
     {
         var changes = new List<(FacebookPageTarget Row, PFlowAccountBinding Binding)>();
         var all = rows.ToArray();
-        foreach (var account in accounts.Where(a => a.PreviousBindings.Count > 0))
+        foreach (
+            var account in accounts.Where(a =>
+                a.PreviousBindings.Count > 0 || a.TransferredFromBindings.Count > 0
+            )
+        )
         {
             try
             {
@@ -59,16 +118,22 @@ public static class PFlowAccountRemap
                 )
                 {
                     if (
-                        !account.PreviousBindings.Any(b =>
-                            row.AccountBinding == b
-                            || row.AccountBinding == null && row.DeviceName == b.DeviceName
-                        )
+                        !account
+                            .PreviousBindings.Concat(account.TransferredFromBindings)
+                            .Any(b =>
+                                row.AccountBinding == b
+                                || row.AccountBinding == null && row.DeviceName == b.DeviceName
+                            )
                     )
                         continue;
                     if (row.AccountBinding == null)
                     {
                         var index = PFlowDeviceRouting.Resolve(row.DeviceName, instances);
-                        if (index >= 0 && index != account.Binding.DeviceIndex)
+                        if (
+                            index >= 0
+                            && index != account.Binding.DeviceIndex
+                            && !account.TransferredFromBindings.Any(b => OwnsRow(b, row))
+                        )
                             throw new InvalidOperationException(
                                 "Legacy remap row now belongs to another LD; assign its binding explicitly."
                             );
@@ -108,6 +173,8 @@ public static class PFlowAccountRemap
         {
             change.Row.AccountBinding = change.Binding;
             change.Row.DeviceName = change.Binding.DeviceName;
+            change.Row.IsSelected = false;
+            change.Row.LivePageAccessVerified = false;
         }
         return changes.Select(c => c.Row).Distinct().Count();
     }
@@ -115,13 +182,35 @@ public static class PFlowAccountRemap
 
 public sealed partial class PFlowAccountStore
 {
-    public async Task<string> RemapAsync(
+    public Task<string> RemapAsync(
         PFlowAccountBinding expected,
         PFlowAccountBinding replacement,
         CancellationToken ct = default
     )
     {
         PFlowAccountRemap.RequireSameAssignment(expected, replacement);
+        return ChangeBindingAsync(expected, replacement, false, ct);
+    }
+
+    public Task<string> TransferAsync(
+        PFlowAccountBinding expected,
+        PFlowAccountBinding replacement,
+        CancellationToken ct = default
+    )
+    {
+        PFlowAccountRemap.RequireSameAccount(expected, replacement);
+        if (expected.DeviceIndex == replacement.DeviceIndex)
+            throw new InvalidOperationException("Choose a different destination LD.");
+        return ChangeBindingAsync(expected, replacement, true, ct);
+    }
+
+    private async Task<string> ChangeBindingAsync(
+        PFlowAccountBinding expected,
+        PFlowAccountBinding replacement,
+        bool transfer,
+        CancellationToken ct
+    )
+    {
         if (expected == replacement)
             throw new InvalidOperationException("The assigned mapping has not changed.");
         var snapshot =
@@ -147,7 +236,14 @@ public sealed partial class PFlowAccountStore
                         ?? throw new InvalidOperationException(
                             "Saved mapping changed. Refresh and review again."
                         );
-                    if (accounts.Any(a => a != account && a.Binding == replacement))
+                    if (
+                        accounts.Any(a =>
+                            a != account
+                            && a.Binding.OwnerUid == replacement.OwnerUid
+                            && a.Binding.AppPackage == replacement.AppPackage
+                            && a.Binding.DeviceIndex == replacement.DeviceIndex
+                        )
+                    )
                         throw new InvalidOperationException("Replacement mapping already exists.");
                     if (account.CredentialReference != oldCredential)
                         throw new InvalidOperationException(
@@ -156,6 +252,20 @@ public sealed partial class PFlowAccountStore
                     account.PreviousBindings.Remove(replacement);
                     if (!account.PreviousBindings.Contains(expected))
                         account.PreviousBindings.Add(expected);
+                    if (transfer)
+                    {
+                        var origins = account
+                            .PreviousBindings.Concat(account.TransferredFromBindings)
+                            .Distinct()
+                            .Where(b => b != replacement)
+                            .ToArray();
+                        account.PreviousBindings = origins
+                            .Where(b => b.DeviceIndex == replacement.DeviceIndex)
+                            .ToList();
+                        account.TransferredFromBindings = origins
+                            .Where(b => b.DeviceIndex != replacement.DeviceIndex)
+                            .ToList();
+                    }
                     account.Binding = replacement;
                     account.CredentialReference = replacementCredential;
                     if (replacementCredential.Length == 0)

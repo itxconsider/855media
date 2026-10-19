@@ -17,7 +17,19 @@ namespace _855Media.Core.Dubbing;
 /// </summary>
 public class GeminiTranslationService
 {
-    private static readonly HttpClient HttpClient = new() { Timeout = TimeSpan.FromSeconds(45) };
+    private static readonly HttpClient SharedHttpClient = new()
+    {
+        Timeout = TimeSpan.FromSeconds(45),
+    };
+    private readonly HttpClient HttpClient;
+
+    public GeminiTranslationService()
+        : this(SharedHttpClient) { }
+
+    internal GeminiTranslationService(HttpClient httpClient)
+    {
+        HttpClient = httpClient;
+    }
 
     public const string DefaultModel = "gemini-2.0-flash";
 

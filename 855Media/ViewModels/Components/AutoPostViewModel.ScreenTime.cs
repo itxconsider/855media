@@ -180,7 +180,7 @@ public partial class AutoPostViewModel
             await PFlowTrace.SessionAsync(
                 worker.Index,
                 "ScreenTime.completed",
-                $"steps={result.CompletedSteps}; likes={result.Likes}; limit={result.LikeLimit}",
+                $"steps={result.CompletedSteps}; likes={result.Likes}; limit={result.LikeLimit}; skipped={result.Skipped}",
                 ct
             );
         }

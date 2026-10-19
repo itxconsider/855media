@@ -1,14 +1,17 @@
 using System;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Net;
 using System.Reflection;
 using _855Media.Core.Dubbing;
 using _855Media.ViewModels.Components;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Avalonia.WebView.Windows.Core;
 using Microsoft.Web.WebView2.Core;
 using WebViewCore.Events;
@@ -20,13 +23,23 @@ public partial class DubbingView : UserControl
     private CoreWebView2? _coreWebView2;
     private CoreWebView2Controller? _coreWebView2Controller;
     private DubbingViewModel? _boundViewModel;
+    private bool _isViewAttached;
 
     public DubbingView()
     {
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
-        DetachedFromVisualTree += (_, _) => UpdatePlayerVisibility(false);
-        AttachedToVisualTree += (_, _) => UpdatePlayerVisibility(true);
+        DetachedFromVisualTree += (_, _) =>
+        {
+            _isViewAttached = false;
+            UpdatePlayerVisibility(false);
+        };
+        AttachedToVisualTree += (_, _) =>
+        {
+            _isViewAttached = true;
+            UpdatePlayerVisibility(true);
+        };
+        KeyDown += OnEditorKeyDown;
         AddHandler(DragDrop.DragOverEvent, DragOver);
         AddHandler(DragDrop.DropEvent, Drop);
     }
@@ -147,13 +160,14 @@ public partial class DubbingView : UserControl
 
     private void UpdatePlayerVisibility(bool isVisible)
     {
-        StudioMediaPlayer.IsVisible = isVisible;
+        bool showPlayer = isVisible && _boundViewModel?.HasActiveMedia == true;
+        StudioMediaPlayer.SetCurrentValue(IsVisibleProperty, showPlayer);
         try
         {
             _coreWebView2Controller ??= GetCoreWebView2Controller();
             if (_coreWebView2Controller is not null)
             {
-                _coreWebView2Controller.IsVisible = isVisible;
+                _coreWebView2Controller.IsVisible = showPlayer;
             }
         }
         catch { }
@@ -169,6 +183,7 @@ public partial class DubbingView : UserControl
             _boundViewModel.SeekRequested -= OnSeekRequested;
             _boundViewModel.PlaybackToggleRequested -= OnPlaybackToggleRequested;
             _boundViewModel.AudioMixRequested -= OnAudioMixRequested;
+            _boundViewModel.PropertyChanged -= OnEditorPropertyChanged;
             _boundViewModel = null;
         }
 
@@ -181,7 +196,34 @@ public partial class DubbingView : UserControl
             vm.SeekRequested += OnSeekRequested;
             vm.PlaybackToggleRequested += OnPlaybackToggleRequested;
             vm.AudioMixRequested += OnAudioMixRequested;
+            vm.PropertyChanged += OnEditorPropertyChanged;
         }
+        UpdatePlayerVisibility(_isViewAttached);
+    }
+
+    private void OnEditorPropertyChanged(object? sender, PropertyChangedEventArgs args)
+    {
+        if (args.PropertyName == nameof(DubbingViewModel.HasActiveMedia))
+            Dispatcher.UIThread.Post(() => UpdatePlayerVisibility(_isViewAttached));
+    }
+
+    private void OnEditorKeyDown(object? sender, KeyEventArgs args)
+    {
+        // Let text fields keep ordinary spaces and arrow-key editing.
+        if (
+            args.Handled
+            || args.Key != Key.Space
+            || args.KeyModifiers != KeyModifiers.None
+            || _boundViewModel == null
+        )
+            return;
+        if (
+            args.Source is Visual visual
+            && (visual is TextBox || visual.GetVisualAncestors().Any(parent => parent is TextBox))
+        )
+            return;
+        _boundViewModel.ToggleReviewPlayPause();
+        args.Handled = true;
     }
 
     private void OnSeekRequested(double targetSeconds)

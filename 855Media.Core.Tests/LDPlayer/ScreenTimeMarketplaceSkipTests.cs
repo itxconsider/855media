@@ -70,7 +70,7 @@ public class ScreenTimeMarketplaceSkipTests
             h.Progress,
             p => p.Step == "Marketplace skipped: age confirmation needed" && p.Skipped == 1
         );
-        Assert.Equal("Completed", h.Progress.Last().Step);
+        Assert.Equal("Completed with skips", h.Progress.Last().Step);
         Assert.Contains("Completed with skips", h.History.ReadReport());
         Assert.Contains("Marketplace skipped: age confirmation needed", h.History.ReadReport());
     }

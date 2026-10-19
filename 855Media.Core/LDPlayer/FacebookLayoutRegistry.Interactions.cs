@@ -16,7 +16,8 @@ public static partial class FacebookLayoutRegistry
                 or FacebookScreenKind.ReactionPicker
                 or FacebookScreenKind.CommentSheet
                 or FacebookScreenKind.PublishedComment
-                or FacebookScreenKind.EmailUpdatePrompt;
+                or FacebookScreenKind.EmailUpdatePrompt
+                or FacebookScreenKind.CreatorDashboardWelcome;
 
     private static IEnumerable<FacebookLayoutDefinition> InteractionDefinitions()
     {

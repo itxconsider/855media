@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Update="CSharpier.MsBuild" Version="1.2.6" />
+    <PackageReference Include="Avalonia.Headless" Version="11.3.14" />
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="11.3.13" />
+    <PackageReference Include="Material.Avalonia" Version="3.9.2" />
+    <PackageReference Include="Material.Avalonia.DataGrid" Version="3.9.2" />
+    <Compile Include="../../855Media/Views/Components/PostQueueGrid.cs" Link="PostQueueGrid.cs" />
+  </ItemGroup>
+</Project>

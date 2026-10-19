@@ -138,17 +138,43 @@ public sealed class ScreenTimeOptions : INotifyPropertyChanged
             }
         }
     }
-    private int _reelDwellSeconds = 5;
-    public int ReelDwellSeconds
+    private int _reelDwellMinSeconds = 8;
+    public int ReelDwellMinSeconds
     {
-        get => _reelDwellSeconds;
+        get => _reelDwellMinSeconds;
         set
         {
-            if (!Equals(_reelDwellSeconds, value))
+            if (_reelDwellMinSeconds != value)
             {
-                _reelDwellSeconds = value;
+                _reelDwellMinSeconds = value;
                 Changed();
             }
+        }
+    }
+    private int _reelDwellMaxSeconds = 30;
+    public int ReelDwellMaxSeconds
+    {
+        get => _reelDwellMaxSeconds;
+        set
+        {
+            if (_reelDwellMaxSeconds != value)
+            {
+                _reelDwellMaxSeconds = value;
+                Changed();
+            }
+        }
+    }
+
+    // Compatibility for callers assigning a fixed duration; old saved fixed values
+    // are intentionally superseded by the new default range.
+    [System.Text.Json.Serialization.JsonIgnore]
+    public int ReelDwellSeconds
+    {
+        get => ReelDwellMinSeconds;
+        set
+        {
+            ReelDwellMinSeconds = value;
+            ReelDwellMaxSeconds = value;
         }
     }
     private bool _reactions = false;

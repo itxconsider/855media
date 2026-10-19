@@ -15,7 +15,13 @@ public static class PFlowAccountBatchRunner
         System.Func<PFlowPersonalAccount, CancellationToken, Task> returnPersonal,
         System.Func<CancellationToken, Task> requireIdle,
         CancellationToken ct,
-        bool returnLastPersonal = true
+        bool returnLastPersonal = true,
+        System.Func<
+            PFlowPersonalAccount,
+            System.Exception,
+            CancellationToken,
+            Task
+        >? screenTimeFailed = null
     )
     {
         for (var index = 0; index < accounts.Count; index++)
@@ -25,7 +31,18 @@ public static class PFlowAccountBatchRunner
             await requireIdle(ct);
             await ensure(account, ct);
             if (account.SelectedForScreenTime)
-                await screenTime(account, ct);
+            {
+                try
+                {
+                    await screenTime(account, ct);
+                }
+                catch (System.Exception ex)
+                    when (!ct.IsCancellationRequested && screenTimeFailed != null)
+                {
+                    await screenTimeFailed(account, ex, ct);
+                }
+            }
+            ct.ThrowIfCancellationRequested();
             await requireIdle(ct);
             if (account.SelectedForPosting)
                 await post(account, ct);

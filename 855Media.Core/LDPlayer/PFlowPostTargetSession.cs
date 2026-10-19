@@ -53,7 +53,8 @@ public sealed class PFlowPostTargetSession
         Func<CancellationToken, Task<bool>> openOwnProfile,
         Func<CancellationToken, Task<string>> observe,
         CancellationToken ct,
-        string? initialXml = null
+        string? initialXml = null,
+        bool allowFeedAfterLiveUid = false
     )
     {
         var target = Target.Read(job);
@@ -93,15 +94,28 @@ public sealed class PFlowPostTargetSession
                 throw new InvalidOperationException(
                     "Posting target changed during UID verification."
                 );
-            if (!await openOwnProfile(ct))
-                throw new InvalidOperationException(
-                    "Live UID was verified, but the target profile screen could not be confirmed. No post was submitted."
-                );
-            xml = await observe(ct);
-            if (!HasOwnProfile(job, xml))
-                throw new InvalidOperationException(
-                    "Live UID was verified, but the expected own-profile controls were not visible. No post was submitted."
-                );
+            var afterUid = allowFeedAfterLiveUid ? await observe(ct) : "";
+            if (
+                allowFeedAfterLiveUid
+                && CanContinueFrom(afterUid, job.AppPackage)
+                && FacebookLayoutRegistry.Match(afterUid, FacebookScreenKind.NewsFeed).IsMatch
+            )
+            {
+                job.TargetContinuation = new(job.JobId, target, DateTime.UtcNow);
+                xml = afterUid;
+            }
+            else
+            {
+                if (!await openOwnProfile(ct))
+                    throw new InvalidOperationException(
+                        "Live UID was verified, but the target profile screen could not be confirmed. No post was submitted."
+                    );
+                xml = await observe(ct);
+                if (!HasOwnProfile(job, xml))
+                    throw new InvalidOperationException(
+                        "Live UID was verified, but the expected own-profile controls were not visible. No post was submitted."
+                    );
+            }
         }
         ct.ThrowIfCancellationRequested();
         if (Target.Read(job) != target)
@@ -134,7 +148,7 @@ public sealed class PFlowPostTargetSession
                     || xml.Contains("Manage Page", StringComparison.OrdinalIgnoreCase)
         );
 
-    private static bool CanContinueFrom(string xml, string package)
+    internal static bool CanContinueFrom(string xml, string package)
     {
         using var scope = FacebookHierarchyCache.Enter();
         var nodes = ScreenTimeHierarchy.Nodes(xml);

@@ -106,6 +106,7 @@ public sealed class PFlowPersonalAccount
 
     // Only explicit same-index remaps create these entries; used to recover Page rows after restart.
     public List<PFlowAccountBinding> PreviousBindings { get; set; } = [];
+    public List<PFlowAccountBinding> TransferredFromBindings { get; set; } = [];
 }
 
 public sealed class PFlowPageAccess

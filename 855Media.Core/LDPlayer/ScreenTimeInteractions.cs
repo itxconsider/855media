@@ -198,18 +198,92 @@ internal sealed partial class ScreenTimeInteractions
     public async Task<bool> LikeAsync(CancellationToken ct)
     {
         var before = Likes;
-        await ReactCoreAsync(ct, null, "Like", true);
+        var xml = await Dump(ct);
+        var reel = ScreenTimeReelReactionTarget.Read(xml);
+        if (reel != null)
+        {
+            await LikeReelAsync(reel, ct);
+            return Likes > before;
+        }
+        await ReactCoreAsync(ct, null, "Like", true, xml);
         return Likes > before;
+    }
+
+    private async Task LikeReelAsync(ScreenTimeReelReactionTarget reel, CancellationToken ct)
+    {
+        if (reel.Applied)
+        {
+            await Skip("reel-already-reacted", null);
+            return;
+        }
+        RequireOwner();
+        var id = Guid.NewGuid().ToString("N");
+        if (!await _history.ReserveAsync(id, _session, _settings.OwnerUid, reel.Key, "Reaction"))
+        {
+            Skipped++;
+            return;
+        }
+        var fresh = ScreenTimeReelReactionTarget.Read(await Dump(ct));
+        if (fresh == null || fresh.Key != reel.Key || fresh.Applied)
+        {
+            await _history.ActionAsync(
+                id,
+                "NotSubmitted",
+                "Reel target or reaction state changed; no tap made."
+            );
+            Skipped++;
+            return;
+        }
+        ct.ThrowIfCancellationRequested();
+        await _history.ActionAsync(
+            id,
+            "Submitted",
+            "Verified Reel reaction icon; one Like tap about to be attempted"
+        );
+        try
+        {
+            if (!await Tap(fresh.Control, ct))
+                throw new InvalidOperationException("Reel Like tap not acknowledged.");
+            for (var poll = 0; poll < 6; poll++)
+            {
+                await Wait(TimeSpan.FromMilliseconds(500), ct);
+                var after = ScreenTimeReelReactionTarget.Read(await Dump(ct));
+                if (after?.Key == reel.Key && after.Applied)
+                {
+                    await _history.ActionAsync(
+                        id,
+                        "Confirmed",
+                        "Reel reaction icon selected after one Like tap"
+                    );
+                    Likes++;
+                    return;
+                }
+            }
+            throw new InvalidOperationException("Reel reaction state was not confirmed.");
+        }
+        catch
+        {
+            await _history.ActionAsync(
+                id,
+                "Unknown",
+                "Reel Like outcome needs review; no repeat tap permitted."
+            );
+            await CaptureFailure("reel-like-unknown");
+            throw new InvalidOperationException(
+                "ScreenTime reaction needs review. No repeat was attempted."
+            );
+        }
     }
 
     private async Task ReactCoreAsync(
         CancellationToken ct,
         ScreenTimeFeedTarget? target,
         string reaction,
-        bool legacyLike
+        bool legacyLike,
+        string? initialXml = null
     )
     {
-        var xml = await Dump(ct);
+        var xml = initialXml ?? await Dump(ct);
         if (target != null)
         {
             var fresh = ScreenTimeFeedTarget.Resolve(xml);

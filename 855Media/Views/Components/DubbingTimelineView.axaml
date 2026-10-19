@@ -1,0 +1,111 @@
+<UserControl
+    x:Class="_855Media.Views.Components.DubbingTimelineView"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="clr-namespace:_855Media.ViewModels.Components"
+    xmlns:icons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+    xmlns:images="clr-namespace:AsyncImageLoader;assembly=AsyncImageLoader.Avalonia"
+    x:DataType="vm:DubbingViewModel">
+    <UserControl.Styles>
+        <Style Selector="Button.clip">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="3" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="ClipToBounds" Value="True" />
+        </Style>
+        <Style Selector="Button.clip:pointerover"><Setter Property="BorderBrush" Value="#E5ECF8" /></Style>
+        <Style Selector="Button.clip.selected"><Setter Property="BorderBrush" Value="#FFFFFF" /><Setter Property="BorderThickness" Value="2" /></Style>
+        <Style Selector="Button.transport"><Setter Property="Background" Value="#292E39" /><Setter Property="Foreground" Value="#E4E8F0" /><Setter Property="Height" Value="28" /><Setter Property="Padding" Value="8,2" /><Setter Property="CornerRadius" Value="3" /></Style>
+    </UserControl.Styles>
+    <Grid RowDefinitions="Auto,Auto,*" Background="#15171C">
+        <Grid Margin="12,6" ColumnDefinitions="Auto,*,Auto">
+            <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                <Button Classes="transport" Command="{Binding StartTimelineReviewCommand}" Content="Review mix" ToolTip.Tip="Load the source video and synthesized dialogue in the monitor" />
+                <Button Classes="transport" Command="{Binding JumpToPreviousSegmentCommand}" ToolTip.Tip="Previous dialogue"><icons:MaterialIcon Kind="SkipPrevious" Width="16" Height="16" /></Button>
+                <Button Classes="transport" Command="{Binding ToggleReviewPlayPauseCommand}" ToolTip.Tip="Play or pause (Space)">
+                    <Panel><icons:MaterialIcon Kind="Play" Width="16" Height="16" IsVisible="{Binding !IsReviewPlaying}" /><icons:MaterialIcon Kind="Pause" Width="16" Height="16" IsVisible="{Binding IsReviewPlaying}" /></Panel>
+                </Button>
+                <Button Classes="transport" Command="{Binding JumpToNextSegmentCommand}" ToolTip.Tip="Next dialogue"><icons:MaterialIcon Kind="SkipNext" Width="16" Height="16" /></Button>
+                <TextBlock Text="{Binding FormattedPlayheadTime}" FontFamily="Consolas" FontSize="13" Foreground="#82B7FF" VerticalAlignment="Center" Margin="8,0" />
+                <TextBlock Text="{Binding FormattedTotalDuration, StringFormat='/ {0}'}" FontFamily="Consolas" FontSize="11" Foreground="#8D96A8" VerticalAlignment="Center" />
+            </StackPanel>
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4">
+                <Button Classes="transport" Command="{Binding ZoomOutTimelinePixelsCommand}" ToolTip.Tip="Zoom out"><icons:MaterialIcon Kind="MagnifyMinusOutline" Width="16" Height="16" /></Button>
+                <Button Classes="transport" Click="OnFitTimeline" Content="Fit" ToolTip.Tip="Fit the sequence to the visible timeline" />
+                <Button Classes="transport" Command="{Binding ZoomInTimelinePixelsCommand}" ToolTip.Tip="Zoom in"><icons:MaterialIcon Kind="MagnifyPlusOutline" Width="16" Height="16" /></Button>
+            </StackPanel>
+        </Grid>
+        <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" Margin="12,0,12,6">
+            <StackPanel Orientation="Horizontal" Spacing="4">
+                <TextBlock Text="MONITOR" Foreground="#8D96A8" FontSize="9" LetterSpacing="1" VerticalAlignment="Center" Margin="0,0,6,0" />
+                <Button Classes="transport" Command="{Binding SetAudioReviewModeCommand}" CommandParameter="Dual" Background="{Binding DualModeBrush}" Content="Mix" ToolTip.Tip="Original audio and dubbed dialogue" />
+                <Button Classes="transport" Command="{Binding SetAudioReviewModeCommand}" CommandParameter="Original" Background="{Binding OriginalModeBrush}" Content="Original" />
+                <Button Classes="transport" Command="{Binding SetAudioReviewModeCommand}" CommandParameter="Dubbed" Background="{Binding DubbedModeBrush}" Content="Dubbed" />
+            </StackPanel>
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <TextBlock Text="Source" Foreground="#A1AABB" FontSize="10" VerticalAlignment="Center" />
+                <Slider Width="80" Minimum="0" Maximum="1" Value="{Binding OriginalAudioVolume}" ToolTip.Tip="Original monitor volume" />
+                <TextBlock Text="Voice" Foreground="#A1AABB" FontSize="10" VerticalAlignment="Center" />
+                <Slider Width="80" Minimum="0" Maximum="1" Value="{Binding DubbedAudioVolume}" ToolTip.Tip="Dubbed monitor volume" />
+            </StackPanel>
+        </Grid>
+        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <Grid ColumnDefinitions="140,*" MinHeight="214">
+                <StackPanel Background="#1C1F26">
+                    <Border Height="30" BorderBrush="#303540" BorderThickness="0,1,1,1" Padding="12,6"><TextBlock Text="TRACKS" FontSize="9" LetterSpacing="1" Foreground="#8D96A8" /></Border>
+                    <Border Height="56" BorderBrush="#303540" BorderThickness="0,0,1,1" Padding="12,8">
+                        <StackPanel Spacing="3"><TextBlock Text="V1   Source video" FontSize="11" Foreground="#BDB8FF" /><TextBlock Text="Scene references" FontSize="9" Foreground="#8D96A8" /></StackPanel>
+                    </Border>
+                    <Border Height="56" BorderBrush="#303540" BorderThickness="0,0,1,1" Padding="12,8">
+                        <StackPanel Spacing="3"><TextBlock Text="A1   Original" FontSize="11" Foreground="#E8C589" /><TextBlock Text="Source dialogue" FontSize="9" Foreground="#8D96A8" /></StackPanel>
+                    </Border>
+                    <Border Height="64" BorderBrush="#303540" BorderThickness="0,0,1,1" Padding="12,8">
+                        <StackPanel Spacing="3"><TextBlock Text="A2   Khmer voice" FontSize="11" Foreground="#83D6BE" /><TextBlock Text="Synthesized dialogue" FontSize="9" Foreground="#8D96A8" /></StackPanel>
+                    </Border>
+                </StackPanel>
+                <ScrollViewer Grid.Column="1" x:Name="TimelineScroll" HorizontalContentAlignment="Left" VerticalContentAlignment="Top" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                    <Canvas HorizontalAlignment="Left" Width="{Binding TimelineCanvasWidth}" Height="206" Background="#14161B" PointerPressed="OnTimelinePointerPressed">
+                        <ItemsControl Width="{Binding TimelineCanvasWidth}" Height="30" ItemsSource="{Binding TimelineRulerMarks}" Background="#20232B" IsHitTestVisible="False">
+                            <ItemsControl.ItemsPanel><ItemsPanelTemplate><Canvas /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                            <ItemsControl.Styles><Style Selector="ContentPresenter" x:DataType="vm:TimelineRulerMark"><Setter Property="Canvas.Left" Value="{Binding X}" /></Style></ItemsControl.Styles>
+                            <ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:TimelineRulerMark"><StackPanel><TextBlock Text="{Binding Label}" FontFamily="Consolas" FontSize="9" Foreground="#A1AABB" Margin="4,0,0,3" /><Rectangle Width="1" Height="{Binding Height}" Fill="#525B6B" HorizontalAlignment="Left" /></StackPanel></DataTemplate></ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <Border Canvas.Top="30" Width="{Binding TimelineCanvasWidth}" Height="56" BorderBrush="#292D37" BorderThickness="0,0,0,1" IsHitTestVisible="False" />
+                        <Border Canvas.Top="86" Width="{Binding TimelineCanvasWidth}" Height="56" BorderBrush="#292D37" BorderThickness="0,0,0,1" IsHitTestVisible="False" />
+                        <ItemsControl Canvas.Top="34" Width="{Binding TimelineCanvasWidth}" Height="48" ItemsSource="{Binding TimelineVideoItems}">
+                            <ItemsControl.ItemsPanel><ItemsPanelTemplate><Canvas /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                            <ItemsControl.Styles><Style Selector="ContentPresenter" x:DataType="vm:TimelineItemViewModel"><Setter Property="Canvas.Left" Value="{Binding LeftOffset}" /></Style></ItemsControl.Styles>
+                            <ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:TimelineItemViewModel">
+                                <Button Classes="clip" Width="{Binding Width}" Height="48" Background="#353054" BorderBrush="#7067AA" Click="OnClipClicked" Classes.selected="{Binding IsSelected}" ToolTip.Tip="{Binding OriginalText}">
+                                    <Grid><Image images:ImageLoader.Source="{Binding ThumbnailPath}" Stretch="UniformToFill" Opacity="0.45" /><Border Background="#66302B4B" Padding="5,3" VerticalAlignment="Bottom"><TextBlock Text="{Binding Index, StringFormat='Scene {0}'}" FontSize="10" Foreground="#F0ECFF" TextTrimming="CharacterEllipsis" /></Border></Grid>
+                                </Button>
+                            </DataTemplate></ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <ItemsControl Canvas.Top="90" Width="{Binding TimelineCanvasWidth}" Height="48" ItemsSource="{Binding TimelineOriginalAudioItems}">
+                            <ItemsControl.ItemsPanel><ItemsPanelTemplate><Canvas /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                            <ItemsControl.Styles><Style Selector="ContentPresenter" x:DataType="vm:TimelineItemViewModel"><Setter Property="Canvas.Left" Value="{Binding LeftOffset}" /></Style></ItemsControl.Styles>
+                            <ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:TimelineItemViewModel">
+                                <Button Classes="clip" Width="{Binding Width}" Height="48" Background="#493C28" BorderBrush="#947849" Click="OnClipClicked" Classes.selected="{Binding IsSelected}" ToolTip.Tip="{Binding OriginalText}">
+                                    <StackPanel Margin="6,4" Spacing="4"><TextBlock Text="{Binding OriginalText}" Foreground="#F1D7A8" FontSize="10" TextTrimming="CharacterEllipsis" /><TextBlock Text="{Binding FormattedDuration}" Foreground="#C7AE84" FontSize="9" /></StackPanel>
+                                </Button>
+                            </DataTemplate></ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <ItemsControl Canvas.Top="146" Width="{Binding TimelineCanvasWidth}" Height="56" ItemsSource="{Binding TimelineDubbedAudioItems}">
+                            <ItemsControl.ItemsPanel><ItemsPanelTemplate><Canvas /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                            <ItemsControl.Styles><Style Selector="ContentPresenter" x:DataType="vm:TimelineItemViewModel"><Setter Property="Canvas.Left" Value="{Binding LeftOffset}" /></Style></ItemsControl.Styles>
+                            <ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:TimelineItemViewModel">
+                                <Button Classes="clip" Width="{Binding Width}" Height="56" Background="#21473D" BorderBrush="#438C76" Click="OnClipClicked" Classes.selected="{Binding IsSelected}" ToolTip.Tip="{Binding KhmerText}">
+                                    <StackPanel Margin="6,4" Spacing="3"><TextBlock Text="{Binding SpeakerName}" Foreground="#C0F0DF" FontSize="9" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" /><TextBlock Text="{Binding KhmerText}" Foreground="#D8F6EC" FontSize="11" TextTrimming="CharacterEllipsis" /><TextBlock Text="No audio generated" IsVisible="{Binding !HasAudioClip}" Foreground="#9FCAB9" FontSize="9" /></StackPanel>
+                                </Button>
+                            </DataTemplate></ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <Border Canvas.Left="{Binding PlayheadCanvasLeft}" Width="1" Height="206" Background="#72ABFF" IsHitTestVisible="False" />
+                        <Border Canvas.Left="{Binding PlayheadCanvasLeft}" Width="8" Height="8" Background="#72ABFF" CornerRadius="0,0,2,2" IsHitTestVisible="False" />
+                    </Canvas>
+                </ScrollViewer>
+            </Grid>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

@@ -6,6 +6,62 @@ namespace _855Media.Core.Tests.LDPlayer;
 
 public class PFlowPostTargetSessionTests
 {
+    [Theory]
+    [InlineData("ld2-feed-after-john-ward-confirmed")]
+    [InlineData("ld2-feed-after-kc-waterheaters-confirmed")]
+    public async Task ConfirmedSameTargetContinuesCapturedHomeWithoutAnotherUidOrProfileLookup(
+        string fixture
+    )
+    {
+        var h = new Harness();
+        var previous = Job();
+        await h.Verify(previous);
+        Confirm(previous);
+        h.Xml = FacebookLayoutRegistryTests.Fixture(fixture);
+        var uidReads = h.UidReads;
+        var opens = h.Opens;
+        var next = Job();
+        Assert.True(await h.Verify(next));
+        Assert.Equal(uidReads, h.UidReads);
+        Assert.Equal(opens, h.Opens);
+        next.State = PFlowState.IdentityVerified;
+        Assert.True(PFlowPostTargetSession.ConsumeContinuation(next, h.Xml));
+    }
+
+    [Theory]
+    [InlineData("Graph UID")]
+    [InlineData("Wrong UID")]
+    public async Task ExplicitRecoveryAcceptsVerifiedUidAndHomeButNeverAMismatchedUid(string method)
+    {
+        var session = new PFlowPostTargetSession();
+        var job = Job();
+        var xml = FacebookLayoutRegistryTests.Fixture("ld2-feed-after-kc-waterheaters-confirmed");
+        var opens = 0;
+        Task<bool> Verify() =>
+            session.VerifyAsync(
+                job,
+                _ => Task.FromResult(method),
+                _ =>
+                {
+                    opens++;
+                    return Task.FromResult(false);
+                },
+                _ => Task.FromResult(xml),
+                default,
+                xml,
+                allowFeedAfterLiveUid: true
+            );
+        if (method == "Wrong UID")
+            await Assert.ThrowsAsync<InvalidOperationException>(Verify);
+        else
+        {
+            Assert.True(await Verify());
+            job.State = PFlowState.IdentityVerified;
+            Assert.True(PFlowPostTargetSession.ConsumeContinuation(job, xml));
+        }
+        Assert.Equal(0, opens);
+    }
+
     internal const string Feed =
         "<hierarchy><node package='com.facebook.katana' bounds='[0,0][720,1280]'><node text='Home'/></node></hierarchy>";
 

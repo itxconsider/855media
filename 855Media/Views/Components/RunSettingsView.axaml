@@ -114,8 +114,13 @@
                                                 <TextBlock Grid.Column="2" Text="s" Classes="settings-note" VerticalAlignment="Center"/>
                                             </Grid>
                                             <Grid ColumnDefinitions="*,88,24" ColumnSpacing="8">
-                                                <TextBlock Text="Reel dwell" VerticalAlignment="Center" TextWrapping="Wrap"/>
-                                                <NumericUpDown Classes="settings-number" Value="{Binding ScreenTimeOptions.ReelDwellSeconds}" Minimum="1" Maximum="60" FormatString="0" Grid.Column="1"/>
+                                                <TextBlock Text="Reel watch minimum" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                                <NumericUpDown Classes="settings-number" Value="{Binding ScreenTimeOptions.ReelDwellMinSeconds}" Minimum="1" Maximum="60" FormatString="0" Grid.Column="1"/>
+                                                <TextBlock Grid.Column="2" Text="s" Classes="settings-note" VerticalAlignment="Center"/>
+                                            </Grid>
+                                            <Grid ColumnDefinitions="*,88,24" ColumnSpacing="8">
+                                                <TextBlock Text="Reel watch maximum" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                                <NumericUpDown Classes="settings-number" Value="{Binding ScreenTimeOptions.ReelDwellMaxSeconds}" Minimum="1" Maximum="60" FormatString="0" Grid.Column="1"/>
                                                 <TextBlock Grid.Column="2" Text="s" Classes="settings-note" VerticalAlignment="Center"/>
                                             </Grid>
                                         </StackPanel>

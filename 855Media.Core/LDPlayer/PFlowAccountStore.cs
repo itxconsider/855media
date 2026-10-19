@@ -41,6 +41,7 @@ public sealed partial class PFlowAccountStore(
     {
         public int Version { get; set; } = 1;
         public List<PFlowPersonalAccount> Accounts { get; set; } = [];
+        public List<PFlowAccountBinding> RemovedBindings { get; set; } = [];
     }
 
     public async Task<List<PFlowPersonalAccount>> LoadAsync(CancellationToken ct = default)
@@ -57,14 +58,17 @@ public sealed partial class PFlowAccountStore(
         return document.Accounts;
     }
 
-    public async Task UpdateAsync(
+    public Task UpdateAsync(
         Action<List<PFlowPersonalAccount>> update,
         CancellationToken ct = default
-    )
+    ) => UpdateDocumentAsync(document => update(document.Accounts), ct);
+
+    private async Task UpdateDocumentAsync(Action<Document> update, CancellationToken ct = default)
     {
         using var gate = await LockAsync(ct);
         var document = await ReadAsync(ct);
-        update(document.Accounts);
+        update(document);
+        document.RemovedBindings.RemoveAll(b => document.Accounts.Any(a => a.Binding == b));
         Validate(document);
         var temporary = FilePath + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
@@ -346,9 +350,23 @@ public sealed partial class PFlowAccountStore(
             throw new PFlowAccountVersionException();
         if (
             document.Accounts == null
+            || document.RemovedBindings == null
             || document.Accounts.Any(a => a == null || a.Binding == null || a.Pages == null)
         )
             throw new JsonException("Invalid PFlow account records.");
+        foreach (var removed in document.RemovedBindings)
+        {
+            if (removed == null)
+                throw new JsonException("Invalid removed account binding.");
+            try
+            {
+                removed.Validate();
+            }
+            catch (InvalidOperationException ex)
+            {
+                throw new JsonException("Invalid removed account binding.", ex);
+            }
+        }
         foreach (var account in document.Accounts)
         {
             try
@@ -358,6 +376,10 @@ public sealed partial class PFlowAccountStore(
                     throw new InvalidOperationException("Missing remap history.");
                 foreach (var previous in account.PreviousBindings)
                     PFlowAccountRemap.RequireSameAssignment(previous, account.Binding);
+                if (account.TransferredFromBindings == null)
+                    throw new InvalidOperationException("Missing transfer history.");
+                foreach (var previous in account.TransferredFromBindings)
+                    PFlowAccountRemap.RequireSameAccount(previous, account.Binding);
                 if (
                     account.PreviousBindings.Distinct().Count() != account.PreviousBindings.Count
                     || account.PreviousBindings.Contains(account.Binding)

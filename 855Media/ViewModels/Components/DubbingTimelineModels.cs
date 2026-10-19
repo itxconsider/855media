@@ -1,10 +1,17 @@
 using System.IO;
 using _855Media.Core.Dubbing;
+using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace _855Media.ViewModels.Components;
 
-public class TimelineItemViewModel
+public class TimelineItemViewModel : ObservableObject
 {
+    private bool _isSelected;
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set => SetProperty(ref _isSelected, value);
+    }
     public int Index { get; set; }
     public SubtitleSegment? Segment { get; set; }
     public double LeftOffset { get; set; }

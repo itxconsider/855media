@@ -65,6 +65,7 @@ public class DubbingProject
     public double VoiceVolume { get; set; } = 1.0;
     public bool EnableDynamicDucking { get; set; } = true;
     public bool EnableAiStemSeparation { get; set; } = true;
+    public MetaDubbingOptions Meta { get; set; } = new();
     public bool EnableLoudnessNormalization { get; set; } = true;
     public bool EnableSmartTimeStretch { get; set; } = true;
 

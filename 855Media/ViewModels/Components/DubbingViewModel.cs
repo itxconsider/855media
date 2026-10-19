@@ -43,7 +43,30 @@ public partial class DubbingViewModel : ViewModelBase
     private CancellationTokenSource? _activeCts;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SourceFileName))]
     private string _videoFilePath = string.Empty;
+
+    public string SourceFileName =>
+        string.IsNullOrWhiteSpace(VideoFilePath)
+            ? "No source selected"
+            : Path.GetFileName(VideoFilePath);
+
+    private bool _timelineRefreshPending;
+
+    private void QueueTimelineRefresh()
+    {
+        if (_timelineRefreshPending)
+            return;
+        _timelineRefreshPending = true;
+        Dispatcher.UIThread.Post(
+            () =>
+            {
+                _timelineRefreshPending = false;
+                UpdateTimelineVisuals();
+            },
+            DispatcherPriority.Background
+        );
+    }
 
     [ObservableProperty]
     private string _outputFilePath = string.Empty;
@@ -124,6 +147,64 @@ public partial class DubbingViewModel : ViewModelBase
 
     [ObservableProperty]
     private bool _enableAiStemSeparation = true;
+
+    [ObservableProperty]
+    private bool _useSamAudio;
+
+    [ObservableProperty]
+    private bool _useOmnilingualAsr;
+
+    [ObservableProperty]
+    private string _metaPythonPath = string.Empty;
+
+    [ObservableProperty]
+    private bool _isCheckingMetaRuntime;
+
+    private MetaDubbingOptions CreateMetaOptions() =>
+        new()
+        {
+            EnableSamAudio = UseSamAudio,
+            EnableOmnilingualAsr = UseOmnilingualAsr,
+            PythonPath = MetaPythonPath,
+        };
+
+    private void ApplyMetaOptions(MetaDubbingOptions? options)
+    {
+        UseSamAudio = options?.EnableSamAudio ?? false;
+        UseOmnilingualAsr = options?.EnableOmnilingualAsr ?? false;
+        MetaPythonPath = options?.PythonPath ?? string.Empty;
+    }
+
+    partial void OnUseSamAudioChanged(bool value) => IsProjectDirty = true;
+
+    partial void OnUseOmnilingualAsrChanged(bool value) => IsProjectDirty = true;
+
+    partial void OnMetaPythonPathChanged(string value) => IsProjectDirty = true;
+
+    [RelayCommand]
+    private async Task CheckMetaRuntimeAsync()
+    {
+        if (IsCheckingMetaRuntime)
+            return;
+        IsCheckingMetaRuntime = true;
+        try
+        {
+            StatusMessage = "Checking Meta audio runtime...";
+            var summary = await new MetaDubbingService().CheckAsync(CreateMetaOptions());
+            StatusMessage = summary;
+            DetailedLog += Environment.NewLine + summary;
+            _snackbarManager.Notify(summary);
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Meta runtime check failed: {ex.Message}";
+            _snackbarManager.Notify(StatusMessage);
+        }
+        finally
+        {
+            IsCheckingMetaRuntime = false;
+        }
+    }
 
     [ObservableProperty]
     private bool _enableDynamicDucking = true;
@@ -381,7 +462,7 @@ public partial class DubbingViewModel : ViewModelBase
     }
 
     [ObservableProperty]
-    private int _selectedStudioTab; // 0 = Script & Translation Table, 1 = Multi-Track Timeline, 2 = Voice Cast Director
+    private int _selectedStudioTab = 1; // 0 = Script, 1 = Timeline, 2 = Cast, 3 = Queue
 
     [ObservableProperty]
     private double _timelineZoom = 1.0;
@@ -442,7 +523,7 @@ public partial class DubbingViewModel : ViewModelBase
     private double _currentPlayheadSeconds;
 
     [ObservableProperty]
-    private double _totalTimelineDurationSeconds = 60.0;
+    private double _totalTimelineDurationSeconds;
 
     [ObservableProperty]
     private string _formattedPlayheadTime = "00:00:00.00";
@@ -472,7 +553,21 @@ public partial class DubbingViewModel : ViewModelBase
     private bool _autoScrollPlayhead = true;
 
     public double TimelineCanvasWidth =>
-        Math.Max(1200.0, TotalTimelineDurationSeconds * TimelinePixelsPerSecond);
+        Math.Max(
+            1.0,
+            (TotalTimelineDurationSeconds > 0 ? TotalTimelineDurationSeconds : 60)
+                * TimelinePixelsPerSecond
+        );
+
+    partial void OnSelectedSegmentChanged(SubtitleSegment? value)
+    {
+        foreach (
+            var item in TimelineVideoItems
+                .Concat(TimelineOriginalAudioItems)
+                .Concat(TimelineDubbedAudioItems)
+        )
+            item.IsSelected = ReferenceEquals(item.Segment, value);
+    }
 
     public double PlayheadCanvasLeft =>
         Math.Max(0.0, CurrentPlayheadSeconds * TimelinePixelsPerSecond);
@@ -481,9 +576,9 @@ public partial class DubbingViewModel : ViewModelBase
 
     public double EffectiveDubbedVolume => IsDubbedMuted ? 0.0 : DubbedAudioVolume;
 
-    public string DualModeBrush => AudioReviewMode == "Dual" ? "#FFFFFF" : "#2B2D31";
-    public string OriginalModeBrush => AudioReviewMode == "Original" ? "#FFFFFF" : "#2B2D31";
-    public string DubbedModeBrush => AudioReviewMode == "Dubbed" ? "#FFFFFF" : "#2B2D31";
+    public string DualModeBrush => AudioReviewMode == "Dual" ? "#344B6D" : "#252933";
+    public string OriginalModeBrush => AudioReviewMode == "Original" ? "#344B6D" : "#252933";
+    public string DubbedModeBrush => AudioReviewMode == "Dubbed" ? "#344B6D" : "#252933";
     public string OriginalMuteBrush => IsOriginalMuted ? "#71717A" : "#2B2D31";
     public string DubbedMuteBrush => IsDubbedMuted ? "#71717A" : "#2B2D31";
 
@@ -579,6 +674,7 @@ public partial class DubbingViewModel : ViewModelBase
                 {
                     Index = seg.Index,
                     Segment = seg,
+                    IsSelected = ReferenceEquals(seg, SelectedSegment),
                     LeftOffset = left,
                     Width = width,
                     TopOffset = 0,
@@ -586,6 +682,7 @@ public partial class DubbingViewModel : ViewModelBase
                     SpeakerName = seg.SpeakerName,
                     SpeakerColor = seg.SpeakerColor,
                     ThumbnailPath = seg.ThumbnailPath,
+                    OriginalText = seg.OriginalText,
                 }
             );
 
@@ -595,6 +692,7 @@ public partial class DubbingViewModel : ViewModelBase
                 {
                     Index = seg.Index,
                     Segment = seg,
+                    IsSelected = ReferenceEquals(seg, SelectedSegment),
                     LeftOffset = left,
                     Width = width,
                     TopOffset = 0,
@@ -610,6 +708,7 @@ public partial class DubbingViewModel : ViewModelBase
                 {
                     Index = seg.Index,
                     Segment = seg,
+                    IsSelected = ReferenceEquals(seg, SelectedSegment),
                     LeftOffset = left,
                     Width = width,
                     TopOffset = 0,
@@ -985,6 +1084,7 @@ public partial class DubbingViewModel : ViewModelBase
             OnPropertyChanged(nameof(IsAllSegmentsSelected));
             OnPropertyChanged(nameof(HasSegments));
             OnPropertyChanged(nameof(DisplayedSegments));
+            QueueTimelineRefresh();
         };
 
         Characters.CollectionChanged += (s, e) =>
@@ -1034,6 +1134,19 @@ public partial class DubbingViewModel : ViewModelBase
     {
         if (sender is not SubtitleSegment changedSeg)
             return;
+
+        if (
+            e.PropertyName
+            is nameof(SubtitleSegment.StartTime)
+                or nameof(SubtitleSegment.EndTime)
+                or nameof(SubtitleSegment.OriginalText)
+                or nameof(SubtitleSegment.KhmerText)
+                or nameof(SubtitleSegment.AudioClipPath)
+                or nameof(SubtitleSegment.ThumbnailPath)
+                or nameof(SubtitleSegment.SpeakerName)
+                or nameof(SubtitleSegment.SpeakerColor)
+        )
+            QueueTimelineRefresh();
 
         if (e.PropertyName == nameof(SubtitleSegment.IsSelected))
         {
@@ -3382,9 +3495,9 @@ public partial class DubbingViewModel : ViewModelBase
                         : (character?.EmotionPreset ?? ActorEmotionEngine.EmotionNormal);
                 var emotionCfg = ActorEmotionEngine.GetConfig(emotionName);
 
-                var effectiveRate = ActorEmotionEngine.ComputeEffectiveRate(
-                    character?.SpeechRate,
-                    emotionCfg.TtsRateOffset
+                var effectiveRate = ActorEmotionEngine.ComputeCharacterSpeechRate(
+                    character,
+                    emotionCfg
                 );
                 var effectivePitch = ActorEmotionEngine.ComputeEffectiveTtsPitch(
                     character?.PitchShift ?? 0,
@@ -3903,7 +4016,7 @@ public partial class DubbingViewModel : ViewModelBase
         string? tempScanDir = null;
         try
         {
-            if (!IsWhisperAvailable)
+            if (!UseOmnilingualAsr && !IsWhisperAvailable)
             {
                 StatusMessage = "Setting up Whisper AI speech engine...";
                 await DownloadWhisperAiAsync();
@@ -3915,7 +4028,7 @@ public partial class DubbingViewModel : ViewModelBase
             string audioToTranscribe = VideoFilePath;
 
             // If stem separation is enabled, extract vocal stem to eliminate background rain, thunder & music
-            if (EnableAiStemSeparation)
+            if (EnableAiStemSeparation || UseSamAudio)
             {
                 try
                 {
@@ -3935,8 +4048,9 @@ public partial class DubbingViewModel : ViewModelBase
                         fullAudio,
                         vocalPath,
                         bgmPath,
-                        useAiDemucs: true,
-                        progressLogger: msg => StatusMessage = msg
+                        useAiDemucs: EnableAiStemSeparation,
+                        progressLogger: msg => StatusMessage = msg,
+                        metaOptions: CreateMetaOptions()
                     );
 
                     if (File.Exists(vocalPath))
@@ -3955,7 +4069,8 @@ public partial class DubbingViewModel : ViewModelBase
                 ffmpeg,
                 audioToTranscribe,
                 SourceLanguage,
-                progress
+                progress,
+                metaOptions: CreateMetaOptions()
             );
 
             var defaultChar = Characters.FirstOrDefault();
@@ -4175,6 +4290,7 @@ public partial class DubbingViewModel : ViewModelBase
                 VoiceVolume = VoiceVolume,
                 EnableDynamicDucking = EnableDynamicDucking,
                 EnableAiStemSeparation = EnableAiStemSeparation,
+                Meta = CreateMetaOptions(),
                 EnableLoudnessNormalization = EnableLoudnessNormalization,
                 EnableSmartTimeStretch = EnableSmartTimeStretch,
             };
@@ -4272,6 +4388,7 @@ public partial class DubbingViewModel : ViewModelBase
             VoiceVolume = project.VoiceVolume;
             EnableDynamicDucking = project.EnableDynamicDucking;
             EnableAiStemSeparation = project.EnableAiStemSeparation;
+            ApplyMetaOptions(project.Meta);
             EnableLoudnessNormalization = project.EnableLoudnessNormalization;
             EnableSmartTimeStretch = project.EnableSmartTimeStretch;
 
@@ -4791,6 +4908,7 @@ public partial class DubbingViewModel : ViewModelBase
             BgmVolume = BgmVolume,
             VoiceVolume = VoiceVolume,
             EnableAiStemSeparation = EnableAiStemSeparation,
+            Meta = CreateMetaOptions(),
             EnableDynamicDucking = EnableDynamicDucking,
             EnableLoudnessNormalization = EnableLoudnessNormalization,
             EnableSmartTimeStretch = EnableSmartTimeStretch,
@@ -4944,6 +5062,7 @@ public partial class DubbingViewModel : ViewModelBase
                 BgmVolume = BgmVolume,
                 VoiceVolume = VoiceVolume,
                 EnableAiStemSeparation = EnableAiStemSeparation,
+                Meta = CreateMetaOptions(),
                 EnableDynamicDucking = EnableDynamicDucking,
                 EnableLoudnessNormalization = EnableLoudnessNormalization,
                 EnableSmartTimeStretch = EnableSmartTimeStretch,
@@ -4998,6 +5117,7 @@ public partial class DubbingViewModel : ViewModelBase
             BgmVolume = BgmVolume,
             VoiceVolume = VoiceVolume,
             EnableAiStemSeparation = EnableAiStemSeparation,
+            Meta = CreateMetaOptions(),
             EnableDynamicDucking = EnableDynamicDucking,
             EnableLoudnessNormalization = EnableLoudnessNormalization,
             EnableSmartTimeStretch = EnableSmartTimeStretch,
@@ -5198,6 +5318,7 @@ public partial class DubbingViewModel : ViewModelBase
         BgmVolume = target.BgmVolume;
         VoiceVolume = target.VoiceVolume;
         EnableAiStemSeparation = target.EnableAiStemSeparation;
+        ApplyMetaOptions(target.Meta);
         EnableDynamicDucking = target.EnableDynamicDucking;
 
         if (target.Segments.Count > 0)

@@ -7,6 +7,66 @@ namespace _855Media.Core.Tests.LDPlayer;
 public class FacebookCreatorProfileLayoutTests
 {
     [Fact]
+    public void MuseBusinessPromotionDoesNotHideOwnProfileDashboardOrCreateReel()
+    {
+        // Construct the screenshot's promotion on a known Page profile hierarchy.
+        var doc = XDocument.Parse(
+            FacebookLayoutRegistryTests.Fixture("creator-profile-bottom-reel-screenshot")
+        );
+        doc.Root!.Element("node")!
+            .Add(
+                new XElement(
+                    "node",
+                    new XAttribute("package", "com.facebook.katana"),
+                    new XAttribute("class", "android.view.ViewGroup"),
+                    new XAttribute("bounds", "[12,300][310,465]"),
+                    new XElement(
+                        "node",
+                        new XAttribute(
+                            "text",
+                            "Muse for Small Business keeps working after you log off"
+                        )
+                    ),
+                    new XElement(
+                        "node",
+                        new XAttribute(
+                            "text",
+                            "Muse keeps going between your decisions. It reports back with what it finished and what needs your review."
+                        )
+                    ),
+                    new XElement(
+                        "node",
+                        new XAttribute("text", "Learn more"),
+                        new XAttribute("clickable", "true")
+                    ),
+                    new XElement(
+                        "node",
+                        new XAttribute("content-desc", "Close"),
+                        new XAttribute("clickable", "true")
+                    )
+                )
+            );
+        var xml = doc.ToString();
+        var match = FacebookLayoutRegistry.Match(
+            xml,
+            FacebookScreenKind.OwnProfile,
+            new("Tail Talks+")
+        );
+        Assert.True(match.IsMatch, match.Diagnostic);
+        Assert.NotNull(match.Control(FacebookControlRole.Dashboard));
+        Assert.Null(match.Control(FacebookControlRole.Dismiss));
+        Assert.NotNull(PFlowReelLayout.CreateEntry(xml));
+        Assert.True(
+            PFlowPostTargetSession.HasOwnProfile(new PFlowJob { TargetName = "Tail Talks+" }, xml)
+        );
+        Assert.False(
+            FacebookLayoutRegistry
+                .Match(xml, FacebookScreenKind.OwnProfile, new("Wrong Page"))
+                .IsMatch
+        );
+    }
+
+    [Fact]
     public void WeeklyProgressCardKeepsDashboardAndIgnoresItsTasksAndClose()
     {
         var xml = FacebookLayoutRegistryTests.Fixture("profile-weekly-progress-screenshot");

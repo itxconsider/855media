@@ -6133,6 +6133,13 @@ public partial class LDPlayerService : ILDPlayerService
                         customPath,
                         cancellationToken
                     );
+                    dashboardScreen = await PFlowCreatorDashboardWelcome.DismissAsync(
+                        this,
+                        index,
+                        dashboardScreen,
+                        customPath,
+                        cancellationToken
+                    );
                     if (
                         dashboardScreen != null
                         && !string.IsNullOrWhiteSpace(dashboardScreen.RawXml)
