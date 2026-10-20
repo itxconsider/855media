@@ -420,7 +420,7 @@ public sealed class ScreenTimeService : IScreenTimeService
             for (var attempt = 0; attempt < 12; attempt++)
             {
                 lastScreen = await _ld.DumpUiHierarchyAsync(index, path, ct);
-                lastScreen = await PFlowEmailUpdatePrompt.DismissAsync(
+                lastScreen = await PFlowNavigationPrompts.DismissAsync(
                     _ld,
                     index,
                     lastScreen,
@@ -741,7 +741,7 @@ public sealed class ScreenTimeService : IScreenTimeService
                 {
                     ct.ThrowIfCancellationRequested();
                     xml = await _ld.DumpUiHierarchyAsync(index, path, ct);
-                    xml = await PFlowEmailUpdatePrompt.DismissAsync(
+                    xml = await PFlowNavigationPrompts.DismissAsync(
                         _ld,
                         index,
                         xml,

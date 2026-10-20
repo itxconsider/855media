@@ -13,6 +13,7 @@ public partial class AutoPostViewModel
 {
     private readonly PFlowDispatchQueueStore _dispatchQueueStore = new();
     private readonly HashSet<AutoPostTaskItem> _persistedQueueRows = [];
+    private readonly HashSet<AutoPostTaskItem> _preparedQueueWrites = [];
     private bool _queueStorageReady,
         _queueStorageErrorShown;
 
@@ -81,14 +82,48 @@ public partial class AutoPostViewModel
             foreach (AutoPostTaskItem row in e.NewItems)
             {
                 TrackQueueRow(row);
-                QueueWrite(() => _dispatchQueueStore.Save(row));
+                SaveQueueRow(row);
             }
     }
 
     private void PersistentQueueRowChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (sender is AutoPostTaskItem row)
+            SaveQueueRow(row);
+    }
+
+    private void SaveQueueRow(AutoPostTaskItem row)
+    {
+        if (IsPreparingPostQueue)
+            _preparedQueueWrites.Add(row);
+        else
             QueueWrite(() => _dispatchQueueStore.Save(row));
+    }
+
+    private async Task FlushPreparedQueueAsync()
+    {
+        var current = Tasks.ToHashSet();
+        _preparedQueueWrites.RemoveWhere(row => !current.Contains(row));
+        var rows = Tasks.Where(_preparedQueueWrites.Contains).ToArray();
+        if (rows.Length == 0)
+            return;
+        try
+        {
+            if (!_queueStorageReady)
+                throw new InvalidOperationException(
+                    "The saved queue could not be loaded; its file was preserved."
+                );
+            await Task.Run(() => _dispatchQueueStore.SaveBatch(rows));
+            _preparedQueueWrites.ExceptWith(rows);
+            _queueStorageErrorShown = false;
+        }
+        catch (Exception ex)
+        {
+            _queueStorageErrorShown = true;
+            _snackbarManager.Notify(
+                "Selected files are visible, but the queue could not be saved: " + ex.Message
+            );
+        }
     }
 
     private async Task ReconcileSavedPostQueueAsync()

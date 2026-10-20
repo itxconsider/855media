@@ -11,9 +11,14 @@ namespace _855Media.Core.Downloading;
 
 public static partial class MediaCompatibility
 {
-    // Download concurrency must not multiply the number of active transcodes.
-    private static readonly SemaphoreSlim ConversionGate = new(1, 1);
+    private static readonly ConversionConcurrencyLimiter ConversionGate = new();
     private static readonly int ThreadLimit = Math.Clamp(Environment.ProcessorCount / 2, 1, 2);
+
+    public static int MaxConcurrentConversions
+    {
+        get => ConversionGate.MaxCount;
+        set => ConversionGate.MaxCount = value;
+    }
 
     public static async Task EnsureWindowsCompatibleAsync(
         string filePath,
@@ -27,7 +32,7 @@ public static partial class MediaCompatibility
         if (!File.Exists(filePath) || new FileInfo(filePath).Length == 0)
             throw new InvalidOperationException("The downloaded video is missing or empty.");
 
-        await ConversionGate.WaitAsync(cancellationToken);
+        using var conversionSlot = await ConversionGate.AcquireAsync(cancellationToken);
         var tempOutput = filePath + ".transcoded.mp4";
         try
         {
@@ -105,15 +110,8 @@ public static partial class MediaCompatibility
         }
         finally
         {
-            try
-            {
-                // Cleanup still has to run when the download token has been cancelled.
-                await FileUtils.TryDeleteWithRetryAsync(tempOutput);
-            }
-            finally
-            {
-                ConversionGate.Release();
-            }
+            // Cleanup still has to run when the download token has been cancelled.
+            await FileUtils.TryDeleteWithRetryAsync(tempOutput);
         }
     }
 

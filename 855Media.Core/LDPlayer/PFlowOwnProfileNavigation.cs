@@ -99,7 +99,7 @@ internal static class PFlowOwnProfileNavigation
             ct.ThrowIfCancellationRequested();
             // Fetch again after closing the identity sheet; never use its old bounds.
             var xml = await ld.DumpUiHierarchyAsync(index, path, ct);
-            xml = await PFlowEmailUpdatePrompt.DismissAsync(ld, index, xml, path, ct, delay);
+            xml = await PFlowNavigationPrompts.DismissAsync(ld, index, xml, path, ct, delay);
             var screen = AtxAgentClient.ParseBloksHierarchy(xml);
             if (
                 PFlowLoginScreen.RequiresAuthentication(PFlowLoginScreen.Classify(xml))

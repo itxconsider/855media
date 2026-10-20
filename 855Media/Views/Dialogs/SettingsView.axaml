@@ -480,6 +480,19 @@
                                     </DockPanel>
                                     <Border Height="1" Background="{DynamicResource MuseDividerBrush}" />
 
+                                    <!-- Conversion concurrency -->
+                                    <DockPanel Margin="16,14" LastChildFill="False">
+                                        <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center" Spacing="2" MaxWidth="340">
+                                            <TextBlock Text="Simultaneous conversions" FontSize="14" FontWeight="Medium" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                            <TextBlock Text="H.264 conversions at once; also limited by simultaneous downloads. Higher values use more CPU/GPU and memory." TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        </StackPanel>
+                                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding ConversionParallelLimit}" FontWeight="Bold" Width="20" TextAlignment="Right" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityTextBrush}" />
+                                            <Slider Width="140" IsSnapToTickEnabled="True" Maximum="10" Minimum="1" TickFrequency="1" Value="{Binding ConversionParallelLimit}" />
+                                        </StackPanel>
+                                    </DockPanel>
+                                    <Border Height="1" Background="{DynamicResource MuseDividerBrush}" />
+
                                     <!-- Auto-retry -->
                                     <DockPanel Margin="16,14" LastChildFill="False">
                                         <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center" Spacing="2">

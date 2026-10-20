@@ -162,7 +162,6 @@ public class KhmerTtsService
     {
         var candidates = new[]
         {
-            @"C:\Applio-3.6.4\env\Scripts\edge-tts.exe",
             Path.Combine(AppContext.BaseDirectory, "tools", "edge-tts", "edge-tts.exe"),
             Path.Combine(AppContext.BaseDirectory, "tools", "edge-tts.exe"),
         };
@@ -176,22 +175,7 @@ public class KhmerTtsService
         return null;
     }
 
-    private static string? FindPythonWithEdgeTts()
-    {
-        var candidates = new[]
-        {
-            @"C:\Applio-3.6.4\env\python.exe",
-            Path.Combine(AppContext.BaseDirectory, "python", "python.exe"),
-        };
-
-        foreach (var c in candidates)
-        {
-            if (File.Exists(c))
-                return c;
-        }
-
-        return null;
-    }
+    private static string? FindPythonWithEdgeTts() => DubbingRuntime.FindPythonExecutable();
 
     private static async Task<bool> TrySynthesizeViaEdgeTtsCliAsync(
         string text,

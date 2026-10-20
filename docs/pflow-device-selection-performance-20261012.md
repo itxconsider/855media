@@ -9,7 +9,7 @@ LD selection no longer refreshes media counts. Counts are populated when targets
 ## Validation
 
 - Focused Core test run: 796 passed, zero failed/skipped (`TargetRefreshTests`, PFlow, ScreenTime, AtxAgentClient).
-- `tools/PFlowSelectionCheck` exercises the actual view model with synthetic 78 LDs, 65 profiles and 75 Pages. Its LDPlayer proxy throws if the view model attempts a device command.
+- `tools/diagnostics/PFlowSelectionCheck` exercises the actual view model with synthetic 78 LDs, 65 profiles and 75 Pages. Its LDPlayer proxy throws if the view model attempts a device command.
 - 100 unchanged refreshes took approximately 19 ms total, with zero collection and row-property notifications. Select All completed in one deferred refresh, approximately 0.3 ms in the harness.
 - Filtering to one LD, searching a Page, clearing search, collapsed groups surviving hide/show, and removal of deleted profiles passed.
 
@@ -27,6 +27,6 @@ view-model check covers these combinations and refuses device calls when all LDs
 are stopped.
 
 ```powershell
-dotnet run --project tools/PFlowSelectionCheck/PFlowSelectionCheck.csproj --artifacts-path "$env:TEMP/855Media-selection-check-20261012" --verbosity quiet
+dotnet run --project tools/diagnostics/PFlowSelectionCheck/PFlowSelectionCheck.csproj --artifacts-path "$env:TEMP/855Media-selection-check-20261012" --verbosity quiet
 dotnet test 855Media.Core.Tests/855Media.Core.Tests.csproj --filter "FullyQualifiedName~TargetRefreshTests|FullyQualifiedName~PFlow|FullyQualifiedName~ScreenTime|FullyQualifiedName~AtxAgentClient" --verbosity quiet
 ```

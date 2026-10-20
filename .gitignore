@@ -9,13 +9,12 @@ env/
 
 # Build results & releases
 /artifacts/
+/.verify-build/
 [Bb]in/
 [Oo]bj/
 # Local release artifacts; never commit the root dist folder.
 /dist/
 [Dd]ist/
-dist/
-**/dist/
 *.zip
 *.rar
 *.7z
@@ -60,3 +59,8 @@ tools/whisper/
 *.lic
 .env
 .env.local
+
+# Independent local speech runtime and preserved training assets
+/python/
+/tools/rvc/runtime/
+/assets/voice-training/

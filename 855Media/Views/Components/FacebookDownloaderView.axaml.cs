@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using _855Media.Services;
 using _855Media.ViewModels.Components;
@@ -22,12 +24,17 @@ public partial class FacebookDownloaderView : UserControl
     private CoreWebView2? _coreWebView2;
     private CoreWebView2Controller? _coreWebView2Controller;
     private FacebookDownloaderViewModel? _boundViewModel;
+    private CancellationTokenSource? _photoResolutionCts;
 
     public FacebookDownloaderView()
     {
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
-        DetachedFromVisualTree += (_, _) => UpdateBrowserVisibility(false);
+        DetachedFromVisualTree += (_, _) =>
+        {
+            _photoResolutionCts?.Cancel();
+            UpdateBrowserVisibility(false);
+        };
         AttachedToVisualTree += (_, _) =>
             UpdateBrowserVisibility(_boundViewModel?.IsActiveTab ?? true);
     }
@@ -102,6 +109,7 @@ public partial class FacebookDownloaderView : UserControl
 
     private void OnNavigateRequested(string url)
     {
+        _photoResolutionCts?.Cancel();
         if (_coreWebView2 is not null)
         {
             _coreWebView2.Navigate(url);
@@ -145,30 +153,43 @@ public partial class FacebookDownloaderView : UserControl
 
     private async void OnSendScriptMessageRequested(string message)
     {
-        if (_coreWebView2 is null)
+        if (
+            message.Contains("STOP_SCRAPING", StringComparison.Ordinal)
+            || message.Contains("\"CLEAR\"", StringComparison.Ordinal)
+        )
+            _photoResolutionCts?.Cancel();
+        if (_coreWebView2 is null || !await EnsureScraperInjectedAsync())
+        {
+            if (DataContext is FacebookDownloaderViewModel unavailable)
+            {
+                unavailable.IsScrapingActive = false;
+                unavailable.CollectionStatus =
+                    "Facebook browser is not ready. Wait for the page to load, then try again.";
+            }
             return;
-
-        await EnsureScraperInjectedAsync();
-
-        try
-        {
-            _coreWebView2.PostWebMessageAsString(message);
-        }
-        catch
-        {
-            // Ignore post message errors
         }
 
-        // Direct script execution fallback for 100% reliable trigger
+        // Use one command path. Posting and executing the same request imported twice.
         try
         {
             using var doc = JsonDocument.Parse(message);
             var action = doc.RootElement.TryGetProperty("action", out var a) ? a.GetString() : null;
 
+            if (
+                action is "START_SCRAPING" or "GET_PAYLOAD"
+                && DataContext is FacebookDownloaderViewModel access
+                && !access.HasPhotoDownloadAccess
+            )
+            {
+                access.CollectionStatus =
+                    "An active subscription is required. Open Settings → Subscription.";
+                return;
+            }
+
             if (action == "START_SCRAPING")
             {
                 await _coreWebView2.ExecuteScriptAsync(
-                    "window.__fbdStartScraping ? window.__fbdStartScraping(1000, 1200) : null;"
+                    "window.__fbdStartScraping ? window.__fbdStartScraping(0, 1400) : null;"
                 );
             }
             else if (action == "STOP_SCRAPING")
@@ -201,15 +222,99 @@ public partial class FacebookDownloaderView : UserControl
 
                         if (payload is not null && DataContext is FacebookDownloaderViewModel vm)
                         {
-                            vm.ProcessReceivedPayload(payload);
+                            if (payload.Items.Count == 0)
+                                vm.CollectionStatus =
+                                    "No photos collected. Sign in, open Photos and choose Auto-Scroll first.";
+                            else
+                            {
+                                var resolved = await ResolveFullSizePhotosAsync(payload, vm);
+                                if (resolved is not null && resolved.Items.Count > 0)
+                                    vm.ProcessReceivedPayload(resolved);
+                            }
                         }
                     }
                 }
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Ignore execution errors
+            if (DataContext is FacebookDownloaderViewModel vm)
+            {
+                vm.IsScrapingActive = false;
+                vm.CollectionStatus = "Facebook collection failed: " + ex.Message;
+            }
+        }
+    }
+
+    private async Task<MediaPayload?> ResolveFullSizePhotosAsync(
+        MediaPayload payload,
+        FacebookDownloaderViewModel vm
+    )
+    {
+        if (_photoResolutionCts is not null)
+            return null;
+        _coreWebView2Controller ??= GetCoreWebView2Controller();
+        if (_coreWebView2 is null || _coreWebView2Controller is null)
+            throw new InvalidOperationException(
+                "Facebook browser is not ready to open full-size photos."
+            );
+        using var cancellation = new CancellationTokenSource();
+        _photoResolutionCts = cancellation;
+        vm.IsResolvingPhotos = true;
+        vm.IsScrapingActive = true; // The existing Stop action also cancels resolution.
+        try
+        {
+            await _coreWebView2.ExecuteScriptAsync("window.__fbdStopScraping?.();");
+            using var reader = await FacebookPhotoDetailReader.CreateAsync(
+                _coreWebView2,
+                _coreWebView2Controller
+            );
+            var resolved = new List<MediaPayloadItem>();
+            var items = payload.Items.DistinctBy(i => i.Id).ToArray();
+            var failed = 0;
+            for (var index = 0; index < items.Length; index++)
+            {
+                cancellation.Token.ThrowIfCancellationRequested();
+                if (!vm.HasPhotoDownloadAccess)
+                    throw new InvalidOperationException(
+                        "An active subscription is required. Open Settings → Subscription."
+                    );
+                vm.CollectionStatus =
+                    $"Opening full-size photo {index + 1}/{items.Length}. Stop cancels this import.";
+                var item = items[index];
+                var detail = await reader.ResolveAsync(item, cancellation.Token);
+                if (detail is null)
+                {
+                    failed++;
+                    continue;
+                }
+                resolved.Add(
+                    new MediaPayloadItem
+                    {
+                        Id = item.Id,
+                        Url = detail.Url,
+                        PhotoPageUrl = item.PhotoPageUrl,
+                        Caption = detail.Caption,
+                        Username = item.Username,
+                        Date = item.Date,
+                    }
+                );
+            }
+            vm.CollectionStatus =
+                $"Resolved {resolved.Count} full-size photos. {failed} unavailable photos skipped; no gallery thumbnails substituted.";
+            return new MediaPayload { PageUrl = payload.PageUrl, Items = resolved };
+        }
+        catch (OperationCanceledException)
+        {
+            vm.CollectionStatus =
+                "Full-size photo import stopped. Your collected gallery is retained; choose Import to try again.";
+            return null;
+        }
+        finally
+        {
+            _photoResolutionCts = null;
+            vm.IsResolvingPhotos = false;
+            vm.IsScrapingActive = false;
         }
     }
 
@@ -217,7 +322,7 @@ public partial class FacebookDownloaderView : UserControl
     {
         if (FacebookWebBrowser.Url is null)
         {
-            FacebookWebBrowser.Url = new Uri(FacebookHomeUrl);
+            FacebookWebBrowser.Url = new Uri(_boundViewModel?.CurrentUrl ?? FacebookHomeUrl);
         }
     }
 
@@ -321,10 +426,10 @@ public partial class FacebookDownloaderView : UserControl
         });
     }
 
-    private async Task EnsureScraperInjectedAsync()
+    private async Task<bool> EnsureScraperInjectedAsync()
     {
         if (_coreWebView2 is null)
-            return;
+            return false;
 
         try
         {
@@ -340,10 +445,13 @@ public partial class FacebookDownloaderView : UserControl
                     await _coreWebView2.ExecuteScriptAsync(script);
                 }
             }
+            return await _coreWebView2.ExecuteScriptAsync(
+                    "typeof window.__fbdGetPayload === 'function' && typeof window.__fbdStartScraping === 'function';"
+                ) == "true";
         }
         catch
         {
-            // Ignore execution errors
+            return false;
         }
     }
 
@@ -378,13 +486,15 @@ public partial class FacebookDownloaderView : UserControl
                     : 0;
                 var running =
                     root.TryGetProperty("running", out var runProp) && runProp.GetBoolean();
+                var reason = root.TryGetProperty("reason", out var reasonProp)
+                    ? reasonProp.GetString()
+                    : null;
 
                 Dispatcher.UIThread.Post(() =>
                 {
                     if (DataContext is FacebookDownloaderViewModel vm)
                     {
-                        vm.DetectedPhotosCount = count;
-                        vm.IsScrapingActive = running;
+                        vm.UpdateCollectionState(count, running, reason);
                     }
                 });
             }

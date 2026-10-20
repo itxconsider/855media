@@ -22,7 +22,7 @@ binding. A profile transparency Page ID is never used as the personal UID.
   exposed editing controls but no settings control.
 
 Successful diagnostic reports are beneath
-`tools/PFlowLoginCheck/bin/Debug/net10.0/reports/`:
+`tools/diagnostics/PFlowLoginCheck/bin/Debug/net10.0/reports/`:
 
 | Instance | Report |
 | --- | --- |

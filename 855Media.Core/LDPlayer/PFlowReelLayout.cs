@@ -44,7 +44,23 @@ internal static class PFlowReelLayout
         && !IsTabbedPicker(o)
         && !o.Has("Create story")
         && PFlowStoryLayout.Dropdown(o.Xml) != null
-        && (o.Has("Select multiple") || o.Has("Start a Camera reel"));
+        && (
+            o.Has("Select multiple")
+            || o.Has("Start a Camera reel")
+            || (
+                o.Has("Music")
+                && o.Has("Templates")
+                && o.Has("Drafts")
+                && o.Has("Green screen")
+                && o.Nodes.Count(n =>
+                    n.Attribute("package")?.Value == "com.facebook.katana"
+                    && n.Attribute("class")?.Value == "android.widget.Button"
+                    && n.Attribute("content-desc")?.Value == "Select"
+                    && n.Attribute("clickable")?.Value == "true"
+                    && PFlowStoryLayout.ControlCenter(n) != null
+                ) == 1
+            )
+        );
 
     internal static bool IsTabbedPicker(FacebookLayoutObservation o) =>
         o.Has("Create reel")

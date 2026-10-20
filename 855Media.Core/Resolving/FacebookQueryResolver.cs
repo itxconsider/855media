@@ -120,12 +120,10 @@ public partial class FacebookQueryResolver()
             var debugDetails = EnableDebugDiagnostics
                 ? await BuildDebugDiagnosticsAsync(normalizedQuery, cancellationToken)
                 : null;
-            var requiresLogin = await IsLoginRequiredAsync(normalizedQuery, cancellationToken);
             throw new InvalidOperationException(
-                "Facebook restricts native scraping of profile photos. "
-                    + "To bulk download photos from this profile, please load the 'facebook-photo-exporter' "
-                    + "Chrome extension to collect URLs, and then import them using the 'Batch Download' "
-                    + "button in the side rail."
+                "No directly downloadable photos were found. Open the profile or Page in the Facebook tab, "
+                    + "sign in if needed, open Photos, then choose Auto-Scroll and Import. "
+                    + "Only photos accessible to your signed-in account can be collected."
             );
         }
 

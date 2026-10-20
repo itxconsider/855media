@@ -33,9 +33,9 @@ Provider references: [ipify API](https://www.ipify.org/) and
 
 - 22 focused core tests passed: address validation, malformed output, location
   mismatch, shared-IP caching, changed IPs, outages and cancellation.
-- `tools/LDNetworkCheck` synthetic view-model check passed: running-only probes,
+- `tools/diagnostics/LDNetworkCheck` synthetic view-model check passed: running-only probes,
   late response after stop, fresh IP on restart and disposal.
-- Existing `tools/PFlowSelectionCheck` passed: selection still performs no LD
+- Existing `tools/diagnostics/PFlowSelectionCheck` passed: selection still performs no LD
   commands; 78-row select-all coalesces to one refresh.
 - Read-only live check passed on five already running LDs:
   LD-3 Los Angeles, LD-4 Miami, LD-5 Detroit, LD-6 New York City, LD-7 Denver.

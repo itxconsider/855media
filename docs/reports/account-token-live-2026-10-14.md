@@ -31,6 +31,6 @@ Names are a consistency check, not unique identity proof. Missing tokens remain 
 
 - [Full comparison, including UIDs](/D:/repos/855Media/artifacts/account-token-live-20261014/report.json)
 - [Follow-up Page identity comparison](/D:/repos/855Media/artifacts/account-token-live-20261014/persona-check/report.json)
-- [Reusable read-only test harness](/D:/repos/855Media/tools/AccountTokenLiveCheck/Program.cs)
+- [Reusable read-only test harness](/D:/repos/855Media/tools/diagnostics/AccountTokenLiveCheck/Program.cs)
 
 The first requests were rejected locally before receiving an HTTP response because binary light-preference framing was included in the token field. Extracting the token alphabet without that framing resolved this; the successful results above use the corrected parser. No production verifier was changed by this test.

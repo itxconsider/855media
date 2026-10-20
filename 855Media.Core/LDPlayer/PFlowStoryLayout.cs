@@ -243,7 +243,60 @@ internal static class PFlowStoryLayout
                         StringComparison.Ordinal
                     )
                 )
+        )
+        || ReelAlbumRows(o.Xml).Length > 0;
+
+    private static string? ReelAlbumName(XElement row)
+    {
+        var match = Regex.Match(
+            row.Attribute("content-desc")?.Value ?? "",
+            @"^(?<name>.+), (?<count>\d+), Media$"
         );
+        if (
+            !match.Success
+            || row.Attribute("class")?.Value != "android.view.ViewGroup"
+            || row.Attribute("package")?.Value != "com.facebook.katana"
+            || row.Attribute("clickable")?.Value != "true"
+            || ControlCenter(row) == null
+        )
+            return null;
+        var name = match.Groups["name"].Value;
+        return row.Descendants("node").Any(n => Visible(n) && n.Attribute("text")?.Value == name)
+            ? name
+            : null;
+    }
+
+    private static XElement[] ReelAlbumRows(string xml)
+    {
+        var nodes = ScreenTimeHierarchy.Nodes(xml);
+        if (
+            !nodes.Any(n =>
+                Visible(n)
+                && n.Attribute("package")?.Value == "com.facebook.katana"
+                && (
+                    n.Attribute("text")?.Value == "Create reel"
+                    || n.Attribute("content-desc")?.Value == "Create reel"
+                )
+            )
+            || Dropdown(xml) == null
+        )
+            return [];
+        var lists = nodes
+            .Where(n =>
+                Visible(n)
+                && n.Attribute("package")?.Value == "com.facebook.katana"
+                && n.Attribute("class")?.Value == "androidx.recyclerview.widget.RecyclerView"
+            )
+            .Select(n =>
+                n.Elements("node")
+                    .Where(c => Visible(c) && c.Attribute("clickable")?.Value == "true")
+                    .ToArray()
+            )
+            .Where(rows => rows.Length > 0 && rows.All(row => ReelAlbumName(row) != null))
+            .Take(2)
+            .ToArray();
+        return lists.Length == 1 ? lists[0] : [];
+    }
 
     internal static bool IsEditor(FacebookLayoutObservation o) =>
         o.Has("Share")
@@ -254,13 +307,19 @@ internal static class PFlowStoryLayout
         && !o.Has("Create story")
         && !o.Has("Reel Settings");
 
-    internal static XElement? Album(string xml, string album) =>
-        Unique(
+    internal static XElement? Album(string xml, string album)
+    {
+        var legacy = Unique(
             xml,
             n =>
                 n.Attribute("class")?.Value == "android.widget.Button"
                 && n.Attribute("content-desc")?.Value == "Select album, " + album
         );
+        if (legacy != null)
+            return legacy;
+        var rows = ReelAlbumRows(xml).Where(row => ReelAlbumName(row) == album).Take(2).ToArray();
+        return rows.Length == 1 ? rows[0] : null;
+    }
 
     internal static XElement? Dropdown(string xml) =>
         Unique(
@@ -327,7 +386,28 @@ internal static class PFlowStoryLayout
     // explicitly enabled child controls remain interactive (verified on LD-20).
     // The exception applies only to that wrapper, never to a disabled control.
     internal static (int X, int Y)? ControlCenter(XElement node) =>
-        FacebookLayoutRegistry.UsableCenter(node, storyPicker: true, storyTray: true);
+        FacebookLayoutRegistry.UsableCenter(
+            node,
+            storyPicker: true,
+            storyTray: true,
+            readOnlyList: node.Attribute("package")?.Value == "com.facebook.katana"
+                && (
+                    (
+                        node.Attribute("class")?.Value == "android.widget.Spinner"
+                        && (node.Attribute("content-desc")?.Value ?? "").StartsWith(
+                            "Select album, ",
+                            StringComparison.Ordinal
+                        )
+                    )
+                    || (
+                        node.Attribute("class")?.Value == "android.view.ViewGroup"
+                        && Regex.IsMatch(
+                            node.Attribute("content-desc")?.Value ?? "",
+                            @"^.+, \d+, Media$"
+                        )
+                    )
+                )
+        );
 
     private static XElement? Unique(string xml, Func<XElement, bool> predicate)
     {
@@ -342,6 +422,7 @@ internal static class PFlowStoryLayout
 
     internal static (int Left, int Top, int Right, int Bottom)? AlbumScrollBounds(string xml)
     {
+        var reelRows = ReelAlbumRows(xml);
         var lists = ScreenTimeHierarchy
             .Nodes(xml)
             .Where(n =>
@@ -351,7 +432,7 @@ internal static class PFlowStoryLayout
                         (c.Attribute("content-desc")?.Value ?? "").StartsWith(
                             "Select album, ",
                             StringComparison.Ordinal
-                        )
+                        ) || reelRows.Contains(c)
                     )
             )
             .Take(2)

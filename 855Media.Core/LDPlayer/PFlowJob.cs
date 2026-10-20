@@ -34,6 +34,8 @@ public sealed class PFlowJob
     public bool IsProfile { get; set; }
     public int DeviceIndex { get; set; }
     public string AppPackage { get; set; } = "com.facebook.katana";
+    public string PartGroupKey { get; set; } = "";
+    public int PartNumber { get; set; }
     public string SourcePath { get; set; } = "";
     public string Sha256 { get; set; } = "";
     public string CaptionFileSha256 { get; set; } = "";

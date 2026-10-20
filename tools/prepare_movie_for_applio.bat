@@ -41,9 +41,9 @@ if not "%DATASET_NAME%"=="" (
     echo Dataset Name: %DATASET_NAME%
 )
 
-"C:\Applio-3.6.4\env\python.exe" "%~dp0clean_dataset_for_applio.py" -i "%INPUT_FILE%" -n "%DATASET_NAME%" %EXTRA_ARGS%
+"%~dp0..\python\python.exe" "%~dp0clean_dataset_for_applio.py" -i "%INPUT_FILE%" -n "%DATASET_NAME%" %EXTRA_ARGS%
 
 echo.
-echo Dataset is ready in Applio!
-echo In Applio GUI: Go to Train tab -^> Dataset Path -^> Select your dataset!
+echo Dataset is ready in project assets\voice-training\datasets!
+
 pause

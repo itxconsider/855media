@@ -7,8 +7,6 @@
   "extraPaths": [
     "tools/facebook",
     "tools/facebook/.venv/Lib/site-packages",
-    ".venv/Lib/site-packages",
-    "C:/Applio-3.6.4",
-    "C:/Applio-3.6.4/env/Lib/site-packages"
+    ".venv/Lib/site-packages"
   ]
 }

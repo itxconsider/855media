@@ -17,7 +17,11 @@ public static partial class FacebookLayoutRegistry
                 or FacebookScreenKind.CommentSheet
                 or FacebookScreenKind.PublishedComment
                 or FacebookScreenKind.EmailUpdatePrompt
-                or FacebookScreenKind.CreatorDashboardWelcome;
+                or FacebookScreenKind.CreatorDashboardWelcome
+                or FacebookScreenKind.MetaAccountSettings
+                or FacebookScreenKind.MetaAccount
+                or FacebookScreenKind.PersonalInformationPermissions
+                or FacebookScreenKind.MetaBirthdayDetails;
 
     private static IEnumerable<FacebookLayoutDefinition> InteractionDefinitions()
     {

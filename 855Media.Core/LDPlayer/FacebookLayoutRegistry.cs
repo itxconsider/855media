@@ -38,6 +38,10 @@ public enum FacebookScreenKind
     EmailUpdatePrompt,
     ProfileDetails,
     CreatorDashboardWelcome,
+    MetaAccountSettings,
+    MetaAccount,
+    PersonalInformationPermissions,
+    MetaBirthdayDetails,
 }
 
 public enum FacebookLayoutStatus
@@ -78,6 +82,8 @@ public enum FacebookControlRole
     Skip,
     ContinueInEnglish,
     Transparency,
+    OpenMetaAccount,
+    PersonalInformation,
 }
 
 public sealed record FacebookLayoutContext(
@@ -734,6 +740,16 @@ public static partial class FacebookLayoutRegistry
         FacebookScreenKind screen
     )
     {
+        if (role is FacebookControlRole.OpenMetaAccount or FacebookControlRole.PersonalInformation)
+        {
+            var metaLabels =
+                role == FacebookControlRole.OpenMetaAccount
+                    ? new[] { "Meta Account" }
+                    : new[] { "Your information and permissions" };
+            if (PFlowPersonalBirthdayReader.Control(o.Xml, metaLabels) is { } point)
+                yield return point;
+            yield break;
+        }
         if (screen == FacebookScreenKind.CreatorDashboardWelcome)
         {
             if (

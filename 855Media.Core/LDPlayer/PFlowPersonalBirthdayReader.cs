@@ -137,7 +137,7 @@ internal static class PFlowPersonalBirthdayReader
             );
 
     private static bool Blocked(string? xml) =>
-        PFlowUiPrivacy.ContainsInput(xml)
+        (PFlowUiPrivacy.ContainsInput(xml) && !PFlowMetaAccountLayout.IsSettings(xml))
         || PFlowLoginScreen.RequiresAuthentication(PFlowLoginScreen.Classify(xml))
         || PFlowIdentitySwitchLayout.IsSwitching(xml)
         || PFlowPersonaSwitcherService.IsNativeSwitcherSheetOpen(xml)
@@ -151,8 +151,20 @@ internal static class PFlowPersonalBirthdayReader
     internal static string ReadDate(string xml, bool personalDetailsConfirmed)
     {
         if (
+            personalDetailsConfirmed
+            && !Blocked(xml)
+            && FacebookLayoutRegistry.Match(xml, FacebookScreenKind.MetaBirthdayDetails).IsMatch
+        )
+            return PFlowMetaAccountLayout.ReadBirthday(xml);
+        if (
             !personalDetailsConfirmed
             || Blocked(xml)
+            || (
+                Has(xml, "Your information and permissions")
+                && !FacebookLayoutRegistry
+                    .Match(xml, FacebookScreenKind.PersonalInformationPermissions)
+                    .IsMatch
+            )
             || Has(xml, "Instagram", "Choose a profile", "Select a profile")
             || Has(xml, "Profiles") && !Has(xml, "Personal details", "Personal information")
             || !Has(
@@ -300,7 +312,8 @@ internal static class PFlowPersonalBirthdayReader
                 var screen = AtxAgentClient.ParseBloksHierarchy(xml);
                 var center =
                     (
-                        Has(xml, "Accounts Center", "Accounts Centre")
+                        FacebookLayoutRegistry.Match(xml, FacebookScreenKind.MetaAccount).IsMatch
+                        || Has(xml, "Accounts Center", "Accounts Centre")
                         || Has(xml, "Profiles and personal details")
                             && Has(
                                 xml,
@@ -347,6 +360,16 @@ internal static class PFlowPersonalBirthdayReader
                     if (acknowledged)
                         await delay(TimeSpan.FromMilliseconds(1000), ct);
                     return acknowledged;
+                }
+                if (
+                    center
+                    && !personal
+                    && FacebookLayoutRegistry.Match(xml, FacebookScreenKind.MetaAccount).IsMatch
+                    && await Tap("Your information and permissions")
+                )
+                {
+                    personal = true;
+                    continue;
                 }
                 if (center && !profilesOpened && await Tap("Profiles and personal details"))
                 {
@@ -399,6 +422,7 @@ internal static class PFlowPersonalBirthdayReader
                 {
                     if (
                         await Tap(
+                            "Meta Account",
                             "Accounts Center",
                             "See more in Accounts Center",
                             "See more in Accounts Centre"
@@ -528,6 +552,8 @@ internal static class PFlowPersonalBirthdayReader
                                 xml,
                                 "Accounts Center",
                                 "Accounts Centre",
+                                "Meta Account",
+                                "Your information and permissions",
                                 "Profiles and personal details",
                                 "Personal details",
                                 "Personal information",
@@ -549,6 +575,7 @@ internal static class PFlowPersonalBirthdayReader
                                 xml,
                                 "Accounts Center",
                                 "Accounts Centre",
+                                "Meta Account",
                                 "Profiles and personal details"
                             )
                             && Control(xml, "Close") is { } close

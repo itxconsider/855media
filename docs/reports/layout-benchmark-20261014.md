@@ -44,6 +44,6 @@ These are differences between predicates, not independently labelled accuracy sc
 
 ## Reproduction
 
-Use tools/LayoutBenchmark/PrepareBaseline.ps1 with a new temporary destination. Build the current tool and copied baseline tool in Release with separate OutputPath directories, then run each DLL against docs/fixtures three times in alternating order. Use Summarize.ps1 to produce this report. Benchmark builds used NuGetAudit=false to avoid pre-existing dependency audit errors without changing dependency versions, and CSharpier_Check=false to format benchmark sources. No benchmark code runs an emulator or publishes a post.
+Use tools/diagnostics/LayoutBenchmark/PrepareBaseline.ps1 with a new temporary destination. Build the current tool and copied baseline tool in Release with separate OutputPath directories, then run each DLL against docs/fixtures three times in alternating order. Use Summarize.ps1 to produce this report. Benchmark builds used NuGetAudit=false to avoid pre-existing dependency audit errors without changing dependency versions, and CSharpier_Check=false to format benchmark sources. No benchmark code runs an emulator or publishes a post.
 
 Raw outputs: artifacts/layout-benchmark/old-1.json through old-3.json, new-1.json through new-3.json, and summary.json. The range of process medians for each check is retained in summary.json.

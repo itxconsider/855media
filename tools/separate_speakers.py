@@ -90,7 +90,7 @@ class ActorFolderInfo:
 
 def separate_dataset(
     dataset_dir: str,
-    output_base_dir: str = r"C:\Applio-3.6.4\assets\datasets",
+    output_base_dir: str = str(Path(__file__).resolve().parents[1] / "assets" / "voice-training" / "datasets"),
     num_actors: int = 2,
     actor_names: str = "",
     reference_file: str = "",
@@ -305,7 +305,7 @@ def separate_dataset(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Separate multiple voice actors from movie dataset into individual Applio datasets")
     parser.add_argument("--dataset-dir", "-d", required=True, help="Path to input dataset folder with .wav slices")
-    parser.add_argument("--output-base-dir", "-o", default=r"C:\Applio-3.6.4\assets\datasets", help="Applio assets dataset root folder")
+    parser.add_argument("--output-base-dir", "-o", default=str(Path(__file__).resolve().parents[1] / "assets" / "voice-training" / "datasets"), help="Applio assets dataset root folder")
     parser.add_argument("--num-actors", "-k", type=int, default=2, help="Number of actors to cluster into (e.g. 2 or 3)")
     parser.add_argument("--names", "-n", default="", help="Comma-separated custom names (e.g. 'child,mother' or 'actor1,actor2')")
     parser.add_argument("--reference-file", "-ref", default="", help="Path to reference .wav slice of a single actor")

@@ -1,0 +1,11 @@
+# Recover an unknown starting Facebook screen
+
+Before account verification at run startup and before per-job target verification, an unrecognized Facebook screen can return through fb://feed instead of immediately failing unknown-screen navigation. The assigned Facebook package must actually be foreground. A known Feed/recognized layout does not receive unnecessary recovery navigation.
+
+The routine sends one Feed deep link, waits up to 20 fresh observations with 500 ms polling delays, dismisses only supported navigation reminders and requires the NewsFeed registry match. Cancellation and existing I/O timeouts still apply. A timeout, foreground change or unexpected foreign/system dialog stops the job without submission. No generic taps, app-data clearing or automatic Facebook restart are used.
+
+Cached target-session and startup identity evidence is invalidated before recovery waits/navigation. Feed recognition is not identity verification: the normal fresh Graph/UI UID verification and target rules still run afterward. Returning to Feed never changes a job to IdentityVerified or Submitted.
+
+Recovery is skipped when the job already has SubmittedUtc, is SubmitRequested/Submitted/Unknown/Confirmed, or device history contains a SubmitRequested/Submitted/Unknown job. Pending publication remains subject to its existing confirmation/review workflow; this path does not restart or retry it. Authentication/checkpoint, switching, foreign-app and arbitrary editable starting screens are not dismissed. The specifically recognized Settings screen may contain its read-only Search settings field, which is never typed into.
+
+Validation: 92 focused tests passed across job-start recovery, target sessions, startup identity and session workflow. Cases include delayed/empty transition frames, one Feed request, fresh UID rejection after successful Feed recovery, pending jobs/device history, known Feed no-op, editable/foreign surfaces, cancellation and bounded timeout. Desktop build passed into artifacts/start-feed-recovery-build. Logs: artifacts/start-feed-recovery-tests.log and artifacts/start-feed-recovery-build.log. No live post was submitted to test this feature, and the running desktop app was not replaced.

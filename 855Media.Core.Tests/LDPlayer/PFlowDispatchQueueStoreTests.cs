@@ -9,6 +9,69 @@ namespace _855Media.Core.Tests.LDPlayer;
 
 public sealed class PFlowDispatchQueueStoreTests : IDisposable
 {
+    [Fact]
+    public void BatchSavePreservesOrderMetadataAndExistingRows()
+    {
+        var store = new PFlowDispatchQueueStore(FilePath);
+        var prior = new AutoPostTaskItem { Title = "Keep existing" };
+        store.Save(prior);
+        var rows = Enumerable
+            .Range(1, 250)
+            .Select(n => new AutoPostTaskItem
+            {
+                Title = "Caption " + n,
+                PartGroupKey = "series",
+                PartNumber = n,
+            })
+            .ToArray();
+        store.SaveBatch(rows);
+        var restored = new PFlowDispatchQueueStore(FilePath).Read();
+        Assert.Equal(
+            new[] { prior.QueueId }.Concat(rows.Select(r => r.QueueId)),
+            restored.Select(r => r.QueueId)
+        );
+        Assert.Equal(Enumerable.Range(1, 250), restored.Skip(1).Select(r => r.PartNumber));
+        rows[0].Title = "Updated";
+        store.SaveBatch([rows[0]]);
+        Assert.Equal("Updated", store.Read()[1].Title);
+        Assert.Equal(251, store.Read().Count);
+    }
+
+    [Fact]
+    public void InvalidBatchDoesNotWriteAnyRows()
+    {
+        var store = new PFlowDispatchQueueStore(FilePath);
+        var prior = new AutoPostTaskItem();
+        store.Save(prior);
+        Assert.Throws<InvalidDataException>(() =>
+            store.SaveBatch([new AutoPostTaskItem(), new AutoPostTaskItem { QueueId = "invalid" }])
+        );
+        Assert.Equal(prior.QueueId, Assert.Single(store.Read()).QueueId);
+    }
+
+    [Fact]
+    public void DatabaseFailureRollsBackTheWholeBatch()
+    {
+        var store = new PFlowDispatchQueueStore(FilePath);
+        var prior = new AutoPostTaskItem { Title = "Existing" };
+        store.Save(prior);
+        using (var connection = new SqliteConnection($"Data Source={FilePath};Pooling=False"))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText =
+                "CREATE TRIGGER reject_test_row BEFORE INSERT ON dispatch_queue WHEN json_extract(NEW.json,'$.Title')='reject' BEGIN SELECT RAISE(ABORT,'test rollback'); END";
+            command.ExecuteNonQuery();
+        }
+        Assert.Throws<SqliteException>(() =>
+            store.SaveBatch([
+                new AutoPostTaskItem { Title = "Inserted before error" },
+                new AutoPostTaskItem { Title = "reject" },
+            ])
+        );
+        Assert.Equal(prior.QueueId, Assert.Single(store.Read()).QueueId);
+    }
+
     private readonly string directory = Path.Combine(
         Path.GetTempPath(),
         "dispatch-queue-" + Guid.NewGuid().ToString("N")

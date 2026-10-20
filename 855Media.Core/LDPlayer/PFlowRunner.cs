@@ -95,6 +95,15 @@ public sealed partial class PFlowRunner
         int dailyLimit = int.MaxValue
     )
     {
+        if (job.PartGroupKey.Length > 0 || job.PartNumber > 0)
+        {
+            var reason = PFlowPartGroups.BlockingReason(job, await _history.ReadAsync(ct));
+            if (reason.Length > 0)
+            {
+                await progress("Held (Part order): " + reason);
+                return false;
+            }
+        }
         await PFlowJobBindingGuard.RequireAsync(_ld, job, ldPath, ct);
         var gate = SourceGates.GetOrAdd(Path.GetFullPath(job.SourcePath), _ => new(1, 1));
         await gate.WaitAsync(ct);

@@ -73,6 +73,8 @@ public partial class FacebookPageTarget
     public bool UseCaptionFromFilename { get; set; }
 
     // Nullable values migrate older configurations using the former shared option.
+    public bool KeepReelPartsTogether { get; set; }
+    public System.Collections.Generic.List<ReelPartGroup> PendingReelPartGroups { get; set; } = [];
     public bool? ReelTitleFromTextFile { get; set; }
     public bool? PhotoTitleFromTextFile { get; set; }
     public bool? VideoTitleFromTextFile { get; set; }
@@ -451,6 +453,12 @@ public class AutoPostTaskItem : INotifyPropertyChanged
     public bool IsProfile { get; set; }
     public string OwnerUid { get; set; } = string.Empty;
     public PFlowAccountBinding? AccountBinding { get; set; }
+    public string PartGroupKey { get; set; } = "";
+    public int PartNumber { get; set; }
+    public string PartGroupDisplay =>
+        PartGroupKey.Length == 0
+            ? ""
+            : $"{System.IO.Path.GetFileName(PartGroupKey)} · Part {PartNumber}";
     public string Page { get; set; } = string.Empty;
 
     public string Status

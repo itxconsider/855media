@@ -556,6 +556,12 @@ public partial class DashboardViewModel : ViewModelBase
             return;
         }
 
+        if (download.IsDisposed)
+            return;
+
+        // An attempt must keep its own token if the row is removed or manually retried.
+        var cancellationToken = download.CancellationToken;
+
         if (!Downloads.Contains(download))
         {
             Downloads.Insert(position, download);
@@ -571,7 +577,8 @@ public partial class DashboardViewModel : ViewModelBase
         {
             var tagInjector = new MediaTagInjector();
 
-            using var access = await _downloadSemaphore.AcquireAsync(download.CancellationToken);
+            using var access = await _downloadSemaphore.AcquireAsync(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
             RequireSubscription();
 
             if (!string.IsNullOrWhiteSpace(download.FilePath))
@@ -607,7 +614,7 @@ public partial class DashboardViewModel : ViewModelBase
                     download.DownloadOption,
                     _settingsService.FFmpegFilePath,
                     download.Progress.Merge(progress),
-                    download.CancellationToken,
+                    cancellationToken,
                     download.DownloadPreference
                 );
             }
@@ -624,7 +631,7 @@ public partial class DashboardViewModel : ViewModelBase
                     download.DownloadOption,
                     _settingsService.FFmpegFilePath,
                     download.Progress.Merge(progress),
-                    download.CancellationToken,
+                    cancellationToken,
                     download.DownloadPreference
                 );
             }
@@ -642,7 +649,7 @@ public partial class DashboardViewModel : ViewModelBase
                     download.DownloadOption,
                     _settingsService.FFmpegFilePath,
                     download.Progress.Merge(progress),
-                    download.CancellationToken,
+                    cancellationToken,
                     download.DownloadPreference
                 );
             }
@@ -652,7 +659,7 @@ public partial class DashboardViewModel : ViewModelBase
                     download.FilePath!,
                     download.Video,
                     download.Progress.Merge(progress),
-                    download.CancellationToken
+                    cancellationToken
                 );
             }
             else
@@ -668,7 +675,7 @@ public partial class DashboardViewModel : ViewModelBase
                         youtubeVideo.Id,
                         download.DownloadPreference!,
                         _settingsService.ShouldInjectLanguageSpecificAudioStreams,
-                        download.CancellationToken
+                        cancellationToken
                     );
 
                 await downloader.DownloadVideoAsync(
@@ -679,7 +686,7 @@ public partial class DashboardViewModel : ViewModelBase
                     translateCaptions,
                     _settingsService.FFmpegFilePath,
                     download.Progress.Merge(progress),
-                    download.CancellationToken
+                    cancellationToken
                 );
             }
 
@@ -703,14 +710,14 @@ public partial class DashboardViewModel : ViewModelBase
                                 ffmpegPath,
                                 download.FilePath,
                                 "auto",
-                                download.CancellationToken
+                                cancellationToken
                             );
                             if (discovered.Count > 0)
                             {
                                 await subService.TranslateSegmentsToEnglishAsync(
                                     discovered,
                                     "auto",
-                                    cancellationToken: download.CancellationToken
+                                    cancellationToken: cancellationToken
                                 );
                                 var translatedSrt = SubtitleTranslationService.GenerateSrt(
                                     discovered,
@@ -720,7 +727,7 @@ public partial class DashboardViewModel : ViewModelBase
                                     srtPath,
                                     translatedSrt,
                                     new UTF8Encoding(false),
-                                    download.CancellationToken
+                                    cancellationToken
                                 );
                             }
                         }
@@ -739,7 +746,7 @@ public partial class DashboardViewModel : ViewModelBase
                     await tagInjector.InjectTagsAsync(
                         download.FilePath!,
                         download.Video!,
-                        download.CancellationToken
+                        cancellationToken
                     );
                 }
                 catch
@@ -770,7 +777,7 @@ public partial class DashboardViewModel : ViewModelBase
                         ffmpegPath,
                         download.FilePath,
                         audioMode,
-                        download.CancellationToken
+                        cancellationToken
                     );
                 }
             }
@@ -780,20 +787,24 @@ public partial class DashboardViewModel : ViewModelBase
             if (
                 _settingsService.ShouldSaveTitleToTextFile
                 && !string.IsNullOrWhiteSpace(download.FilePath)
-                && !string.IsNullOrWhiteSpace(download.Video?.Title)
+                && !string.IsNullOrWhiteSpace(download.Video?.Caption ?? download.Video?.Title)
             )
             {
                 try
                 {
-                    var titleText = download.Video.Title;
-                    if (translateTitle && !string.IsNullOrWhiteSpace(titleText))
+                    var titleText = download.Video!.Caption ?? download.Video.Title;
+                    if (
+                        download.Video.Caption is null
+                        && translateTitle
+                        && !string.IsNullOrWhiteSpace(titleText)
+                    )
                     {
                         try
                         {
                             var subService = new SubtitleTranslationService();
                             var translated = await subService.TranslateToEnglishAsync(
                                 titleText,
-                                cancellationToken: download.CancellationToken
+                                cancellationToken: cancellationToken
                             );
                             if (!string.IsNullOrWhiteSpace(translated))
                             {
@@ -807,12 +818,11 @@ public partial class DashboardViewModel : ViewModelBase
                         }
                     }
 
-                    var txtFilePath = Path.ChangeExtension(download.FilePath, ".txt");
-                    await File.WriteAllTextAsync(
-                        txtFilePath,
+                    await MediaTextFile.SaveAsync(
+                        download.FilePath,
+                        download.Video,
                         titleText,
-                        new UTF8Encoding(false),
-                        download.CancellationToken
+                        cancellationToken
                     );
                 }
                 catch
@@ -855,8 +865,7 @@ public partial class DashboardViewModel : ViewModelBase
             }
 
             bool isCancellation =
-                ex is OperationCanceledException
-                || download.CancellationToken.IsCancellationRequested;
+                ex is OperationCanceledException || cancellationToken.IsCancellationRequested;
             download.Status = isCancellation ? DownloadStatus.Canceled : DownloadStatus.Failed;
             download.ErrorMessage = ex is YoutubeExplodeException ? ex.Message : ex.ToString();
 
@@ -870,11 +879,11 @@ public partial class DashboardViewModel : ViewModelBase
                 download.IsRetrying = true;
                 try
                 {
-                    await Task.Delay(
-                        _settingsService.RetryDelaySeconds * 1000,
-                        download.CancellationToken
-                    );
+                    await Task.Delay(_settingsService.RetryDelaySeconds * 1000, cancellationToken);
                     download.IsRetrying = false;
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (download.IsDisposed || !Downloads.Contains(download))
+                        return;
                     download.Status = DownloadStatus.Enqueued;
                     progress.ReportCompletion();
                     EnqueueDownload(download, position);
@@ -938,6 +947,17 @@ public partial class DashboardViewModel : ViewModelBase
                 '\n',
                 StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries
             );
+
+            if (
+                queries.Length == 1
+                && FacebookPhotoCollection.TryGetGalleryUrl(queries[0], out var galleryUrl)
+            )
+            {
+                SelectedTab = DashboardTab.Facebook;
+                FacebookDownloader.OpenPhotoCollection(galleryUrl);
+                Query = string.Empty;
+                return;
+            }
 
             // Process individual queries
             var queryResults = new List<QueryResult>();
@@ -1057,6 +1077,16 @@ public partial class DashboardViewModel : ViewModelBase
 
     private async Task<IReadOnlyList<VideoDownloadOption>> GetDownloadOptionsAsync(VideoInfo video)
     {
+        if (video.Source == VideoSource.FacebookPhoto)
+            return
+            [
+                new VideoDownloadOption(
+                    new YoutubeExplode.Videos.Streams.Container("jpg"),
+                    true,
+                    []
+                ),
+            ];
+
         // An Instagram carousel entry must keep its selected media index during download.
         if (video.Source == VideoSource.Instagram)
             return YtDlp.GetDefaultOptions();
@@ -1165,6 +1195,7 @@ public partial class DashboardViewModel : ViewModelBase
     private void RemoveDownload(DownloadViewModel download)
     {
         Downloads.Remove(download);
+        download.RetryRequested -= OnDownloadRetryRequested;
         download.CancelCommand.ExecuteIfCan(null);
         download.Dispose();
     }

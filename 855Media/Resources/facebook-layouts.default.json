@@ -238,6 +238,42 @@
       "controlAliases": {}
     },
     {
+      "id": "settings.meta-birthday-details.v1",
+      "baseId": "settings.meta-birthday-details.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "settings.meta-account-entry.v1",
+      "baseId": "settings.meta-account-entry.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "settings.meta-account-home.v1",
+      "baseId": "settings.meta-account-home.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "settings.meta-information-permissions.v1",
+      "baseId": "settings.meta-information-permissions.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
       "id": "dashboard.creator-welcome.v1",
       "baseId": "dashboard.creator-welcome.v1",
       "version": 1,

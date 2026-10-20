@@ -27,6 +27,62 @@ public static partial class FacebookLayoutRegistry
     private static IEnumerable<FacebookLayoutDefinition> ComponentDefinitions()
     {
         yield return new(
+            "settings.meta-birthday-details.v1",
+            FacebookScreenKind.MetaBirthdayDetails,
+            [],
+            [
+                Rule(
+                    "meta-birthday-readonly",
+                    "Read-only Birthday summary; Edit and age confirmation are never actions",
+                    o => PFlowMetaAccountLayout.IsBirthday(o.Xml)
+                ),
+            ],
+            [Authentication, SwitcherOverlay, ComposerOverlay],
+            []
+        );
+        yield return new(
+            "settings.meta-account-entry.v1",
+            FacebookScreenKind.MetaAccountSettings,
+            [],
+            [
+                Rule(
+                    "meta-settings",
+                    "Settings with Meta Account entry and read-only search",
+                    o => PFlowMetaAccountLayout.IsSettings(o.Xml)
+                ),
+            ],
+            [Authentication, SwitcherOverlay, ComposerOverlay],
+            [FacebookControlRole.OpenMetaAccount]
+        );
+        yield return new(
+            "settings.meta-account-home.v1",
+            FacebookScreenKind.MetaAccount,
+            [],
+            [
+                Rule(
+                    "meta-account-home",
+                    "Meta Account with information/permissions navigation",
+                    o => PFlowMetaAccountLayout.IsHome(o.Xml)
+                ),
+            ],
+            [Authentication, SwitcherOverlay, ComposerOverlay],
+            [FacebookControlRole.PersonalInformation]
+        );
+        yield return new(
+            "settings.meta-information-permissions.v1",
+            FacebookScreenKind.PersonalInformationPermissions,
+            [],
+            [
+                Rule(
+                    "meta-information",
+                    "Read-only information/permissions screen with Birthday row",
+                    o => PFlowMetaAccountLayout.IsInformation(o.Xml)
+                ),
+            ],
+            [Authentication, SwitcherOverlay, ComposerOverlay],
+            []
+        );
+        yield return new(
             "dashboard.creator-welcome.v1",
             FacebookScreenKind.CreatorDashboardWelcome,
             [],

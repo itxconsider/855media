@@ -189,53 +189,7 @@ public class AudioStemSeparationService
         }
     }
 
-    private static string? FindPythonExecutable()
-    {
-        var candidates = new List<string>
-        {
-            @"C:\Applio-3.6.4\env\python.exe",
-            Path.Combine(AppContext.BaseDirectory, "python", "python.exe"),
-            Path.Combine(AppContext.BaseDirectory, "env", "python.exe"),
-            Path.Combine(AppContext.BaseDirectory, "env", "Scripts", "python.exe"),
-        };
-
-        // Walk up from AppContext.BaseDirectory
-        DirectoryInfo? cur = null;
-        try
-        {
-            cur = new DirectoryInfo(AppContext.BaseDirectory);
-        }
-        catch { }
-        for (int i = 0; i < 6 && cur?.Parent != null; i++)
-        {
-            cur = cur.Parent;
-            candidates.Add(Path.Combine(cur.FullName, "env", "Scripts", "python.exe"));
-            candidates.Add(Path.Combine(cur.FullName, "env", "python.exe"));
-            candidates.Add(Path.Combine(cur.FullName, "python", "python.exe"));
-        }
-
-        foreach (var p in candidates)
-        {
-            if (File.Exists(p))
-                return p;
-        }
-
-        // Check system PATH
-        var pathEnv = Environment.GetEnvironmentVariable("PATH");
-        if (!string.IsNullOrWhiteSpace(pathEnv))
-        {
-            foreach (var part in pathEnv.Split(Path.PathSeparator))
-            {
-                if (string.IsNullOrWhiteSpace(part))
-                    continue;
-                var py = Path.Combine(part.Trim(), "python.exe");
-                if (File.Exists(py))
-                    return py;
-            }
-        }
-
-        return null;
-    }
+    private static string? FindPythonExecutable() => DubbingRuntime.FindPythonExecutable();
 
     private static string? FindSeparateScript()
     {

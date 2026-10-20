@@ -7,6 +7,121 @@ namespace _855Media.Core.Tests.LDPlayer;
 public class PFlowNativeReelTests
 {
     [Fact]
+    public void CapturedRecyclerAlbumsMatchOnlyFullJobAlbum()
+    {
+        var xml = FacebookLayoutRegistryTests.Fixture("ld23-reel-albums-recycler");
+        const string album = "Reel_18206b3d3f0148789970a5d35bf78798";
+        var match = FacebookLayoutRegistry.Match(xml, FacebookScreenKind.StoryAlbums);
+        Assert.True(match.IsMatch, match.Diagnostic);
+        var row = PFlowStoryLayout.Album(xml, album);
+        Assert.NotNull(row);
+        Assert.Equal(album + ", 1, Media", row!.Attribute("content-desc")?.Value);
+        Assert.Null(PFlowStoryLayout.Album(xml, album[..20]));
+        Assert.Null(PFlowStoryLayout.Album(xml, "Reel_other_job"));
+        Assert.False(
+            FacebookLayoutRegistry
+                .Match(
+                    FacebookLayoutRegistryTests.Fixture("ld23-reel-picker-select"),
+                    FacebookScreenKind.StoryAlbums
+                )
+                .IsMatch
+        );
+        Assert.Null(PFlowStoryLayout.AlbumScrollBounds(xml));
+        var scrollableDoc = System.Xml.Linq.XDocument.Parse(xml);
+        scrollableDoc
+            .Descendants("node")
+            .Single(n => n.Attribute("class")?.Value == "androidx.recyclerview.widget.RecyclerView")
+            .SetAttributeValue("scrollable", "true");
+        Assert.NotNull(PFlowStoryLayout.AlbumScrollBounds(scrollableDoc.ToString()));
+        Assert.False(
+            FacebookLayoutRegistry
+                .Match(
+                    xml.Replace("com.facebook.katana", "another.app"),
+                    FacebookScreenKind.StoryAlbums
+                )
+                .IsMatch
+        );
+        var doc = System.Xml.Linq.XDocument.Parse(xml);
+        var albumRow = doc.Descendants("node")
+            .Single(n => n.Attribute("content-desc")?.Value == album + ", 1, Media");
+        albumRow.SetAttributeValue("enabled", "false");
+        Assert.Null(PFlowStoryLayout.Album(doc.ToString(), album));
+    }
+
+    [Fact]
+    public void CapturedLd23SelectPickerIsRecognizedAndDoesNotSelectMixedGalleryMedia()
+    {
+        var xml = FacebookLayoutRegistryTests.Fixture("ld23-reel-picker-select");
+        var match = FacebookLayoutRegistry.Match(xml, FacebookScreenKind.ReelPicker);
+        Assert.True(match.IsMatch, match.Diagnostic);
+        Assert.Equal(
+            "Select album, Gallery",
+            PFlowStoryLayout.Dropdown(xml)?.Attribute("content-desc")?.Value
+        );
+        Assert.Null(
+            PFlowReelLayout.Media(
+                xml,
+                new PFlowStoryMedia(1, "file.mp4", "Reel_job", "video/mp4", 1, 65000)
+            )
+        );
+        Assert.False(
+            FacebookLayoutRegistry
+                .Match(
+                    xml.Replace("Select album, Gallery", "Gallery"),
+                    FacebookScreenKind.ReelPicker
+                )
+                .IsMatch
+        );
+        Assert.False(
+            FacebookLayoutRegistry
+                .Match(
+                    xml.Replace("com.facebook.katana", "another.app"),
+                    FacebookScreenKind.ReelPicker
+                )
+                .IsMatch
+        );
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FirstUseMediaPermissionsContinueToExactJobPickerWithoutPublishing(
+        bool capturedSelectPicker
+    )
+    {
+        var ld = DispatchProxy.Create<ILDPlayerService, ReelDevice>();
+        var device = (ReelDevice)(object)ld;
+        device.FirstUseMedia = true;
+        device.RecyclerAlbums = capturedSelectPicker;
+        if (capturedSelectPicker)
+            device.InitialPickerXml = FacebookLayoutRegistryTests.Fixture(
+                "ld23-reel-picker-select"
+            );
+        var job = new PFlowJob
+        {
+            TargetName = "Target",
+            TargetId = "123",
+            SourcePath = "test.mp4",
+            State = PFlowState.IdentityVerified,
+            Size = 1,
+            Sha256 = new string('A', 64),
+            NativeReelAlbum = true,
+        };
+        device.Job = job;
+        await new PFlowAutoPostService(ld).PublishAsync(
+            job,
+            _ => Task.CompletedTask,
+            null,
+            default,
+            dryRun: true
+        );
+        Assert.Equal(PFlowState.CancelledBeforeSubmission, job.State);
+        Assert.Equal(3, device.MediaAccessTaps);
+        Assert.Equal(0, device.AndroidShares + device.PublishTaps);
+        Assert.StartsWith("Bloks Reel picker", job.MediaSelectionEvidence);
+    }
+
+    [Fact]
     public void CapturedEditorProcessingIsRecognizedWithoutEditorControls()
     {
         var xml = FacebookLayoutRegistryTests.Fixture("ld57-reel-editor-processing");
@@ -237,6 +352,10 @@ public class PFlowNativeReelTests
     {
         public PFlowJob Job = null!;
         public string? InitialOwnXml;
+        public string? InitialPickerXml;
+        public bool RecyclerAlbums;
+        public bool FirstUseMedia;
+        public int MediaAccessTaps;
         public bool Unavailable,
             Authentication,
             ChangedBytes;
@@ -279,13 +398,19 @@ public class PFlowNativeReelTests
                     return Task.FromResult<string?>(
                         State switch
                         {
+                            "MediaIntro" => PFlowMediaAccessTests.Intro(),
+                            "MediaStorage" => PFlowMediaAccessTests.Storage(),
+                            "MediaPermission" => PFlowMediaAccessTests.Permission(),
                             "Own" => InitialOwnXml
                                 ?? Head
                                     + Node("Target", "[0,0][200,40]")
                                     + Node("Professional dashboard", "[0,50][200,90]")
                                     + Node("Create reel", "[0,100][200,140]")
                                     + Tail,
-                            "Picker" => Picker("Gallery", false),
+                            "Picker" => InitialPickerXml ?? Picker("Gallery", false),
+                            "Albums" when RecyclerAlbums => FacebookLayoutRegistryTests
+                                .Fixture("ld23-reel-albums-recycler")
+                                .Replace("18206b3d3f0148789970a5d35bf78798", Job.JobId),
                             "Albums" => Head
                                 + "<node package='com.facebook.katana' class='android.widget.ListView'>"
                                 + Node(
@@ -337,11 +462,16 @@ public class PFlowNativeReelTests
                     return Task.FromResult(true);
                 case "TapAsync":
                     var y = (int)args![2]!;
+                    if (State is "MediaIntro" or "MediaStorage" or "MediaPermission")
+                        MediaAccessTaps++;
                     if (y == 1210)
                         PublishTaps++;
                     State = State switch
                     {
-                        "Own" => "Picker",
+                        "Own" => FirstUseMedia ? "MediaIntro" : "Picker",
+                        "MediaIntro" => "MediaStorage",
+                        "MediaStorage" => "MediaPermission",
+                        "MediaPermission" => "Picker",
                         "Picker" => "Albums",
                         "Albums" => "Selected",
                         "Selected" => "Editor",

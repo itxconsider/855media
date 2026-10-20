@@ -66,15 +66,38 @@ public sealed class PFlowDispatchQueueStore(string? path = null)
         }
     }
 
-    public void Save(AutoPostTaskItem task)
+    public void Save(AutoPostTaskItem task) => SaveBatch([task]);
+
+    public void SaveBatch(IEnumerable<AutoPostTaskItem> tasks)
     {
-        if (!Guid.TryParseExact(task.QueueId, "N", out _))
-            throw new InvalidDataException("Invalid queue row identity.");
-        Execute(
-            "INSERT INTO dispatch_queue(id,json) VALUES($id,$json) ON CONFLICT(id) DO UPDATE SET json=excluded.json",
-            task.QueueId,
-            JsonSerializer.Serialize(task)
-        );
+        // Validate and freeze every row before opening the transaction.
+        var rows = new List<(string Id, string Json)>();
+        foreach (var task in tasks)
+        {
+            if (!Guid.TryParseExact(task.QueueId, "N", out _))
+                throw new InvalidDataException("Invalid queue row identity.");
+            rows.Add((task.QueueId, JsonSerializer.Serialize(task)));
+        }
+        if (rows.Count == 0)
+            return;
+        lock (gate)
+        {
+            using var connection = Open();
+            using var transaction = connection.BeginTransaction();
+            using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText =
+                "INSERT INTO dispatch_queue(id,json) VALUES($id,$json) ON CONFLICT(id) DO UPDATE SET json=excluded.json";
+            var id = command.Parameters.AddWithValue("$id", "");
+            var json = command.Parameters.AddWithValue("$json", "");
+            foreach (var row in rows)
+            {
+                id.Value = row.Id;
+                json.Value = row.Json;
+                command.ExecuteNonQuery();
+            }
+            transaction.Commit();
+        }
     }
 
     public void Remove(string id) => Execute("DELETE FROM dispatch_queue WHERE id=$id", id);

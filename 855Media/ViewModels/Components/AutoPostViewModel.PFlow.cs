@@ -235,6 +235,8 @@ public partial class AutoPostViewModel
                             PersonaUid = page.PersonaUid,
                             IsProfile = page.IsProfile,
                             SourcePath = file,
+                            PartGroupKey = task.PartGroupKey,
+                            PartNumber = task.PartNumber,
                             PostType = type,
                             Caption =
                                 type == "Story" ? ""
@@ -368,6 +370,15 @@ public partial class AutoPostViewModel
                 continue;
             _pFlowTasks.TryGetValue(job.JobId, out var task);
             var records = await _pFlowHistory.ReadAsync(ct);
+            var partBlock = PFlowPartGroups.BlockingReason(job, records);
+            if (partBlock.Length > 0)
+            {
+                worker.Status = $"P-Flow [{page.PageName}]: {partBlock}";
+                if (task != null)
+                    task.Status = "Held (Part order): " + partBlock;
+                // Leave later parts queued; the earlier part must be resolved first.
+                break;
+            }
             int uncertain = records.Count(j =>
                 j.TargetId == page.PageId
                 && j.State
@@ -540,6 +551,13 @@ public partial class AutoPostViewModel
         string? initialXml = await _ldPlayerService.DumpUiHierarchyAsync(
             worker.Index,
             LdFolder,
+            ct
+        );
+        initialXml = await RecoverRunStartingScreenAsync(
+            account.Binding,
+            plannedTarget.PageName,
+            expectedJob,
+            initialXml,
             ct
         );
         var sessionScreen = PFlowLoginScreen.Classify(initialXml);

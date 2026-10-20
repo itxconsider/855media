@@ -72,7 +72,8 @@ public partial class AutoPostViewModel
                     (
                         PFlowAvailableMedia Reels,
                         PFlowAvailableMedia Photos,
-                        PFlowAvailableMedia Stories
+                        PFlowAvailableMedia Stories,
+                        PFlowPublishedCounts? Published
                     )
                 >();
                 foreach (var snapshot in snapshots)
@@ -81,13 +82,18 @@ public partial class AutoPostViewModel
                     if (historyError.Length > 0)
                     {
                         var unavailable = new PFlowAvailableMedia([], 0, 0, 0, 0, historyError);
-                        results[snapshot.Page] = (unavailable, unavailable, unavailable);
+                        results[snapshot.Page] = (unavailable, unavailable, unavailable, null);
                         continue;
                     }
                     results[snapshot.Page] = (
                         await _mediaAvailability.ReadAsync(snapshot.Source, "Reel", history),
                         await _mediaAvailability.ReadAsync(snapshot.Source, "Picture", history),
-                        await _mediaAvailability.ReadAsync(snapshot.Source, "Story", history)
+                        await _mediaAvailability.ReadAsync(snapshot.Source, "Story", history),
+                        PFlowPublishedCounts.ForTarget(
+                            history,
+                            snapshot.Source.PageId,
+                            snapshot.Source.IsPrimaryProfile
+                        )
                     );
                 }
                 return results;
@@ -110,6 +116,7 @@ public partial class AutoPostViewModel
                     {
                         snapshot.Page.ApplyMediaSnapshot(snapshot.Source);
                         var counts = availability[snapshot.Page];
+                        snapshot.Page.AppPublishedCounts = counts.Published;
                         snapshot.Page.ApplyAvailability(
                             counts.Reels,
                             counts.Photos,

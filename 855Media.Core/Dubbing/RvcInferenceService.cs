@@ -42,22 +42,6 @@ public class RvcInferenceService
             cur = cur.Parent;
             yield return Path.Combine(cur.FullName, "models", "voices");
         }
-
-        // Probe local Applio training export directories
-        var applioRoots = new[]
-        {
-            @"C:\Applio-3.6.4\logs",
-            @"C:\Applio\logs",
-            @"D:\Applio-3.6.4\logs",
-            @"D:\Applio\logs",
-        };
-        foreach (var a in applioRoots)
-        {
-            if (Directory.Exists(a))
-            {
-                yield return a;
-            }
-        }
     }
 
     public IReadOnlyList<RvcModelInfo> GetAvailableVoiceModels()
@@ -157,52 +141,7 @@ public class RvcInferenceService
         return null;
     }
 
-    private static string? FindPythonExecutable()
-    {
-        var candidates = new List<string>
-        {
-            @"C:\Applio-3.6.4\env\python.exe",
-            Path.Combine(AppContext.BaseDirectory, "python", "python.exe"),
-            Path.Combine(AppContext.BaseDirectory, "env", "python.exe"),
-            Path.Combine(AppContext.BaseDirectory, "env", "Scripts", "python.exe"),
-        };
-
-        DirectoryInfo? cur = null;
-        try
-        {
-            cur = new DirectoryInfo(AppContext.BaseDirectory);
-        }
-        catch { }
-        for (int i = 0; i < 6 && cur?.Parent != null; i++)
-        {
-            cur = cur.Parent;
-            candidates.Add(Path.Combine(cur.FullName, "env", "Scripts", "python.exe"));
-            candidates.Add(Path.Combine(cur.FullName, "env", "python.exe"));
-            candidates.Add(Path.Combine(cur.FullName, "python", "python.exe"));
-        }
-
-        foreach (var c in candidates)
-        {
-            if (File.Exists(c))
-                return c;
-        }
-
-        // Check system PATH
-        var pathEnv = Environment.GetEnvironmentVariable("PATH");
-        if (!string.IsNullOrWhiteSpace(pathEnv))
-        {
-            foreach (var part in pathEnv.Split(Path.PathSeparator))
-            {
-                if (string.IsNullOrWhiteSpace(part))
-                    continue;
-                var py = Path.Combine(part.Trim(), "python.exe");
-                if (File.Exists(py))
-                    return py;
-            }
-        }
-
-        return null;
-    }
+    private static string? FindPythonExecutable() => DubbingRuntime.FindPythonExecutable();
 
     public async Task ConvertVoiceAsync(
         string inputAudioPath,
@@ -220,7 +159,7 @@ public class RvcInferenceService
         if (!File.Exists(pthModelPath))
             throw new FileNotFoundException("RVC model file not found", pthModelPath);
 
-        // 1. Try Python RVC engine (Applio / infer_cli.py)
+        // 1. Try project-local Python RVC engine
         var pythonExe = FindPythonExecutable();
         var inferScript = FindRvcCliScript();
 

@@ -238,7 +238,7 @@ public class PFlowFeedEngagementService : IPFlowFeedEngagementService
         bool needsDismiss = false;
         if (PFlowEmailUpdatePrompt.Card(xml) != null)
         {
-            await PFlowEmailUpdatePrompt.DismissAsync(
+            await PFlowNavigationPrompts.DismissAsync(
                 _ldPlayer,
                 index,
                 xml,

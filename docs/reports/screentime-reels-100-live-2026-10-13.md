@@ -43,4 +43,4 @@ This was a browsing test. No posting, login, account rotation, likes, reactions 
 
 The test confirms the production accessibility identity changed, rather than counting arbitrary video-frame changes. A new video without accessible identity evidence can remain unverifiable. That limitation was reported explicitly; no unverified advances were counted in this run.
 
-[Machine-readable results](/D:/repos/855Media/artifacts/reels-live-20261013/report.json) and per-device hierarchy snapshots/screenshots are in the same report folder. The reusable test harness is [ScreenTimeLiveCheck](/D:/repos/855Media/tools/ScreenTimeLiveCheck/README.md).
+[Machine-readable results](/D:/repos/855Media/artifacts/reels-live-20261013/report.json) and per-device hierarchy snapshots/screenshots are in the same report folder. The reusable test harness is [ScreenTimeLiveCheck](/D:/repos/855Media/tools/diagnostics/ScreenTimeLiveCheck/README.md).

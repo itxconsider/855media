@@ -69,6 +69,21 @@ public partial class SettingsService()
     public partial int ParallelLimit { get; set; } = 1;
 
     [ObservableProperty]
+    public partial int ConversionParallelLimit { get; set; } = 2;
+
+    partial void OnConversionParallelLimitChanged(int value)
+    {
+        var limit = Math.Clamp(value, 1, 10);
+        if (value != limit)
+        {
+            ConversionParallelLimit = limit;
+            return;
+        }
+
+        MediaCompatibility.MaxConcurrentConversions = limit;
+    }
+
+    [ObservableProperty]
     [JsonConverter(typeof(AuthCookiesEncryptionConverter))]
     public partial IReadOnlyList<Cookie>? LastAuthCookies { get; set; }
 

@@ -6,7 +6,7 @@
     xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
     x:DataType="components:FacebookDownloaderViewModel">
 
-    <Grid RowDefinitions="Auto,Auto,*">
+    <Grid RowDefinitions="Auto,Auto,Auto,*">
         <!--  Browser Navigation & Extraction Toolbar  -->
         <Border
             Grid.Row="0"
@@ -121,7 +121,7 @@
                         CornerRadius="8"
                         Padding="12,6"
                         Theme="{DynamicResource MaterialFlatButton}"
-                        ToolTip.Tip="Automatically scrolls the page and collects high-resolution album photos">
+                        ToolTip.Tip="Scroll the gallery and collect photo images loaded by Facebook">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <materialIcons:MaterialIcon
                                 Width="16"
@@ -136,20 +136,23 @@
                                 Kind="StopCircleOutline" />
                             <TextBlock
                                 Text="Auto-Scroll"
+                                IsVisible="{Binding !IsScrapingActive}"
                                 VerticalAlignment="Center"
                                 FontSize="13"
                                 FontWeight="SemiBold" />
+                            <TextBlock Text="Stop" IsVisible="{Binding IsScrapingActive}" VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold" />
                         </StackPanel>
                     </Button>
 
                     <!--  Import Photos Button  -->
                     <Button
                         Command="{Binding ImportPhotosCommand}"
+                        IsEnabled="{Binding !IsResolvingPhotos}"
                         Classes="btn-primary"
                         CornerRadius="8"
                         Padding="14,6"
                         Theme="{DynamicResource MaterialFlatButton}"
-                        ToolTip.Tip="Import all detected photos on this page into 855Media download queue">
+                        ToolTip.Tip="Open each collected photo at full size, then select a download folder">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <materialIcons:MaterialIcon Width="16" Height="16" Kind="Download" />
                             <TextBlock
@@ -249,7 +252,8 @@
         </Border>
 
         <!--  Embedded Chromium WebView2  -->
-        <Panel Grid.Row="2">
+        <TextBlock Grid.Row="2" Margin="12,6" Text="{Binding CollectionStatus}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" />
+        <Panel Grid.Row="3">
             <!--  Loading Placeholder  -->
             <StackPanel
                 HorizontalAlignment="Center"

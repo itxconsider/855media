@@ -184,6 +184,24 @@ public partial class FacebookPageTargetViewModel : ObservableObject
     }
 
     public string FollowersDisplay => FollowersKnown ? Followers.ToString() : "—";
+
+    [ObservableProperty]
+    private PFlowPublishedCounts? _appPublishedCounts;
+
+    public string PublishedReelsDisplay => AppPublishedCounts?.Reels.ToString("N0") ?? "—";
+    public string PublishedPhotosDisplay => AppPublishedCounts?.Photos.ToString("N0") ?? "—";
+    public string PublishedCountsTooltip =>
+        AppPublishedCounts == null
+            ? "Confirmed posting history has not been loaded or could not be read."
+            : "All-time confirmed posts made by this app. Excludes failed, cancelled, pending and uncertain posts; independent of media folders and daily limits.";
+
+    partial void OnAppPublishedCountsChanged(PFlowPublishedCounts? value)
+    {
+        OnPropertyChanged(nameof(PublishedReelsDisplay));
+        OnPropertyChanged(nameof(PublishedPhotosDisplay));
+        OnPropertyChanged(nameof(PublishedCountsTooltip));
+    }
+
     public string ReelsCountDisplay => ReelsCountKnown ? ReelsCount.ToString() : "—";
     public string VideosCountDisplay => VideosCountKnown ? VideosCount.ToString() : "—";
     public string PictureCountDisplay => PictureCountKnown ? PictureCount.ToString() : "—";
@@ -354,6 +372,9 @@ public partial class FacebookPageTargetViewModel : ObservableObject
     private bool _reelTitleFromTextFile;
 
     [ObservableProperty]
+    private bool _keepReelPartsTogether;
+
+    [ObservableProperty]
     private bool _photoTitleFromTextFile;
 
     [ObservableProperty]
@@ -498,6 +519,7 @@ public partial class FacebookPageTargetViewModel : ObservableObject
         Notifications = model.Notifications;
         ManagedBy = model.ManagedBy;
 
+        KeepReelPartsTogether = model.KeepReelPartsTogether;
         ReelTitleFromTextFile = model.ReelTitleFromTextFile ?? model.UseTitleFromTextFile;
         PhotoTitleFromTextFile = model.PhotoTitleFromTextFile ?? model.UseTitleFromTextFile;
         VideoTitleFromTextFile = model.VideoTitleFromTextFile ?? model.UseTitleFromTextFile;
@@ -661,6 +683,7 @@ public partial class FacebookPageTargetViewModel : ObservableObject
         Model.Notifications = Notifications;
         Model.ManagedBy = ManagedBy;
 
+        Model.KeepReelPartsTogether = KeepReelPartsTogether;
         Model.ReelTitleFromTextFile = ReelTitleFromTextFile;
         Model.PhotoTitleFromTextFile = PhotoTitleFromTextFile;
         Model.VideoTitleFromTextFile = VideoTitleFromTextFile;

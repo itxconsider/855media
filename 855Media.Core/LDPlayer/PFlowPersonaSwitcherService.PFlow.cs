@@ -81,7 +81,7 @@ public partial class PFlowPersonaSwitcherService
         var screen = await _ldPlayer.DumpBloksScreenAsync(index, path, ct);
         if (screen == null)
             return null;
-        var xml = await PFlowEmailUpdatePrompt.DismissAsync(
+        var xml = await PFlowNavigationPrompts.DismissAsync(
             _ldPlayer,
             index,
             screen.RawXml,

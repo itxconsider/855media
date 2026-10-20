@@ -8,6 +8,33 @@ namespace _855Media.Core.Tests.LDPlayer;
 public class PFlowPersonalLookupRecoveryTests
 {
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task NewMetaAccountRouteReadsBirthdayAndReturnsWithoutEditing(bool fallback)
+    {
+        var ld = DispatchProxy.Create<ILDPlayerService, Device>();
+        var device = (Device)(object)ld;
+        device.Mode = "meta-account";
+        device.IgnoreLink = fallback;
+        Assert.Equal(
+            "March 14, 1992",
+            await PFlowPersonalBirthdayReader.ReadAsync(
+                ld,
+                973,
+                "Target",
+                null,
+                default,
+                (_, _) => Task.CompletedTask
+            )
+        );
+        Assert.Contains("Your information and permissions", device.Actions);
+        if (fallback)
+            Assert.Contains("Meta Account", device.Actions);
+        Assert.DoesNotContain("Birthday", device.Actions);
+        Assert.Equal("own", device.State);
+    }
+
+    [Theory]
     [InlineData("ld67-menu-duplicate-profile-label", "Kian Pearce")]
     [InlineData("ld68-menu-duplicate-profile-label", "Alisha Armstrong")]
     public async Task RecordedDrawerReturnsToOwnProfileWithoutChoosingCreatePage(
@@ -397,6 +424,7 @@ public class PFlowPersonalLookupRecoveryTests
                     ("Birthday, March 14, 1992", 500, false),
                     ("Back", 20, true)
                 ),
+                "center" when Mode == "meta-account" => MetaAccountLayoutTests.Home(),
                 "center" => Xml(
                     ("Accounts Center", 100, false),
                     ("Personal details", 230, true),
@@ -425,11 +453,13 @@ public class PFlowPersonalLookupRecoveryTests
                     ("Settings", 230, true),
                     ("Back", 20, true)
                 ),
+                "settings" when Mode == "meta-account" => MetaAccountLayoutTests.Settings(),
                 "settings" => Xml(
                     ("Settings & privacy", 100, false),
                     ("Accounts Center", 230, true),
                     ("Back", 20, true)
                 ),
+                "personal" when Mode == "meta-account" => MetaAccountLayoutTests.Information(),
                 "personal" when Mode == "editable" => Xml(
                         ("Personal details", 100, false),
                         ("Back", 20, true)
@@ -495,6 +525,8 @@ public class PFlowPersonalLookupRecoveryTests
                             "expanded",
                         "Settings" => "settings",
                         "Accounts Center" => "center",
+                        "Meta Account" => "center",
+                        "Your information and permissions" => "personal",
                         "Profiles and personal details" => "profiles",
                         "Personal details" => "personal",
                         _ => throw new Exception("Unexpected tap " + label),

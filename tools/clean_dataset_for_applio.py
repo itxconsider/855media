@@ -38,10 +38,9 @@ from scipy import signal  # type: ignore
 
 
 def find_ffmpeg(custom_path: str = "") -> str:
-    """Find FFmpeg executable from Applio, 855Media, or system PATH."""
+    """Find FFmpeg executable from 855Media or system PATH."""
     candidates = [
         custom_path,
-        r"C:\Applio-3.6.4\ffmpeg.exe",
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "855Media", "bin", "Debug", "net10.0", "ffmpeg.exe"),
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "ffmpeg.exe"),
     ]
@@ -331,9 +330,9 @@ def process_dataset(
 
     ds_name = sanitize_name(dataset_name or inferred_name)
     if not output_dir:
-        output_dir = os.path.join(r"d:\repos\855Media\downloads", f"{ds_name}_clean")
+        output_dir = str(Path(__file__).resolve().parents[1] / "downloads" / f"{ds_name}_clean")
     if not applio_dataset_dir:
-        applio_dataset_dir = os.path.join(r"C:\Applio-3.6.4\assets\datasets", ds_name)
+        applio_dataset_dir = os.path.join(str(Path(__file__).resolve().parents[1] / "assets" / "voice-training" / "datasets"), ds_name)
 
     # 2. Handle Target Voice Reference if provided
     ref_embedding = None
@@ -559,7 +558,7 @@ def process_dataset(
             for spk_idx in range(actual_clusters):
                 spk_name = f"{ds_name}_actor{spk_idx + 1}"
                 spk_out_dir = os.path.join(output_dir, spk_name)
-                spk_applio_dir = os.path.join(r"C:\Applio-3.6.4\assets\datasets", spk_name)
+                spk_applio_dir = os.path.join(os.path.dirname(applio_dataset_dir), spk_name)
                 os.makedirs(spk_out_dir, exist_ok=True)
                 os.makedirs(spk_applio_dir, exist_ok=True)
 
@@ -609,7 +608,7 @@ def process_dataset(
             print(f"    - {info['dataset_name']}: {info['slices']} slices ({info['clean_minutes']} min)")
     else:
         print(f"  Applio Ready Location:  {applio_dataset_dir}")
-        print(f"  --> In Applio GUI: Select '{ds_name}' under Train -> Dataset Path!")
+        print("  Training data is preserved in project assets/voice-training/datasets.")
     print("=" * 65)
 
 
@@ -618,7 +617,7 @@ if __name__ == "__main__":
     parser.add_argument("--input", "-i", required=True, help="Path to movie file (e.g. movie.mp4, movie.mkv) or folder of files")
     parser.add_argument("--name", "-n", default="", help="Dataset name for Applio (e.g. movie_actor, eva_drama)")
     parser.add_argument("--output-dir", "-o", default="", help="Path to cleaned dataset output folder")
-    parser.add_argument("--applio-dir", "-a", default="", help="Applio assets dataset folder (default: C:\\Applio-3.6.4\\assets\\datasets\\<name>)")
+    parser.add_argument("--applio-dir", "-a", default="", help="Applio assets dataset folder (default: project assets/voice-training/datasets/<name>)")
     parser.add_argument("--sample-rate", "-sr", type=int, default=40000, help="Target sample rate: 40000 (RVC v2 40k) or 48000 (48k)")
     parser.add_argument("--target-duration-minutes", "-d", type=float, default=25.0, help="Target clean speech duration in minutes (default: 25.0 min, set 0 for unlimited)")
     parser.add_argument("--target-voice", "-tv", default="", help="Path to reference audio sample of target actor to match & filter dialogue")

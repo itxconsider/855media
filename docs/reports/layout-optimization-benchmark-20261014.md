@@ -29,4 +29,4 @@ All seven recognizers return identical positive/negative classifications before 
 
 ## Reproduction
 
-Build tools/LayoutBenchmark in Release to a separate output directory. Run the frozen pre-optimization DLL and optimized DLL three times each against docs/fixtures; retain outputs as beforeopt-1.json through beforeopt-3.json and optimized-1.json through optimized-3.json. Run tools/LayoutBenchmark/SummarizeOptimization.ps1. Original baseline data remains in old-*.json. Raw data and scripts are local artifacts; no emulator or post is needed.
+Build tools/diagnostics/LayoutBenchmark in Release to a separate output directory. Run the frozen pre-optimization DLL and optimized DLL three times each against docs/fixtures; retain outputs as beforeopt-1.json through beforeopt-3.json and optimized-1.json through optimized-3.json. Run tools/diagnostics/LayoutBenchmark/SummarizeOptimization.ps1. Original baseline data remains in old-*.json. Raw data and scripts are local artifacts; no emulator or post is needed.

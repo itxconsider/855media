@@ -21,7 +21,7 @@ settings surface did not change while the request was running.
 - 135 focused profile-link, native-account, and own-profile navigation tests passed.
 - Live LD-57 `--inspect` succeeded and independently matched the mapped account UID.
 - No logout, credential submission, publishing, or media transfer was performed.
-- Diagnostic report: `tools/PFlowLoginCheck/bin/Debug/net10.0/reports/ld-57-20261013-194855`.
+- Diagnostic report: `tools/diagnostics/PFlowLoginCheck/bin/Debug/net10.0/reports/ld-57-20261013-194855`.
   The report name uses UTC; this verification occurred on October 14 in Bangkok.
 - Updated build: `C:\Users\itxco\AppData\Local\Temp\855Media-username-uid-build\855Media.exe`.
 

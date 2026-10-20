@@ -395,6 +395,12 @@ public partial class SettingsViewModel : DialogViewModelBase
         set => _settingsService.ParallelLimit = Math.Clamp(value, 1, 10);
     }
 
+    public int ConversionParallelLimit
+    {
+        get => _settingsService.ConversionParallelLimit;
+        set => _settingsService.ConversionParallelLimit = Math.Clamp(value, 1, 10);
+    }
+
     public bool AutoRetryFailedDownloads
     {
         get => _settingsService.AutoRetryFailedDownloads;

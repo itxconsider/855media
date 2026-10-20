@@ -2024,6 +2024,7 @@ public partial class AutoPostViewModel : ViewModelBase
     private static readonly string[] PageConfigProperties =
     [
         "CustomMaxDailyPosts",
+        "KeepReelPartsTogether",
         "ReelTitleFromTextFile",
         "PhotoTitleFromTextFile",
         "VideoTitleFromTextFile",
@@ -4030,11 +4031,49 @@ public partial class AutoPostViewModel : ViewModelBase
         _snackbarManager.Notify($"Deleted {toRemove.Count} pages.");
     }
 
+    [ObservableProperty]
+    private bool _isPreparingPostQueue;
+
+    [ObservableProperty]
+    private string _queuePreparationStatus = "";
+
     [RelayCommand]
     public async Task SetFileUploadAsync()
     {
-        if (!CanUseSubscription())
+        if (IsPreparingPostQueue || IsRunning || IsBusy || !CanUseSubscription())
             return;
+        IsPreparingPostQueue = true;
+        IsBusy = true;
+        QueuePreparationStatus = "Checking selected targets…";
+        try
+        {
+            await Task.Delay(1);
+            await PrepareSelectedFilesAsync();
+        }
+        catch (Exception ex)
+        {
+            _snackbarManager.Notify("Queue preparation stopped: " + ex.Message);
+        }
+        finally
+        {
+            try
+            {
+                QueuePreparationStatus = "Saving selected files…";
+                await FlushPreparedQueueAsync();
+            }
+            finally
+            {
+                IsPreparingPostQueue = false;
+                IsBusy = false;
+                QueuePreparationStatus = "";
+                SynchronizeDashboardRows();
+                RefreshPFlowDashboard();
+            }
+        }
+    }
+
+    private async Task PrepareSelectedFilesAsync()
+    {
         // 1. Identify target pages from selection
         var selectedPages = DisplayedManagePages.Where(p => p.IsSelected).ToList();
         if (selectedPages.Count == 0)
@@ -4057,13 +4096,20 @@ public partial class AutoPostViewModel : ViewModelBase
             _ => "Reel",
         };
 
+        QueuePreparationStatus = "Checking media availability…";
         await RefreshMediaCountsForPagesAsync(selectedPages.ToArray());
+        var partHistory = await _pFlowHistory.ReadAsync();
+        var partNotices = new List<string>();
         int totalQueued = 0;
         int pagesWithFiles = 0;
         var skippedDueToDailyLimit = new List<string>();
 
+        var preparedTargets = 0;
         foreach (var page in selectedPages)
         {
+            QueuePreparationStatus =
+                $"Selecting files for {page.PageName} ({++preparedTargets}/{selectedPages.Count})…";
+            await Task.Delay(1);
             // Automatic Max Post by Page Maturity check
             int remainingAllowed = int.MaxValue;
             if (AutoMaxPostByMaturity)
@@ -4071,9 +4117,9 @@ public partial class AutoPostViewModel : ViewModelBase
                 int maxDaily = page.GetMaxDailyPostsLimit();
                 int postedToday = page.GetPostsToday();
                 int alreadyQueued = Tasks.Count(t =>
-                    string.Equals(t.Page, page.PageName, StringComparison.OrdinalIgnoreCase)
-                    && t.Status != "Failed"
-                    && t.Status != "Skipped"
+                    ResolveDeviceIndex(t.DeviceName) == ResolveDeviceIndex(page.DeviceName)
+                    && PFlowTaskRouting.MatchesTarget(t, page.Model, Pages.Select(p => p.Model))
+                    && t.Status == "Queued"
                 );
                 int currentTotal = postedToday + alreadyQueued;
                 remainingAllowed = maxDaily - currentTotal;
@@ -4098,10 +4144,15 @@ public partial class AutoPostViewModel : ViewModelBase
             }
             var candidateFiles = mediaSnapshot.Files.ToList();
 
-            if (candidateFiles.Count == 0)
-            {
+            if (
+                candidateFiles.Count == 0
+                && !(
+                    postType == "Reel"
+                    && page.KeepReelPartsTogether
+                    && page.Model.PendingReelPartGroups.Count > 0
+                )
+            )
                 continue;
-            }
 
             // A target must never receive the same queued file twice. The unique option
             // additionally reserves it across targets sharing the media folder.
@@ -4114,24 +4165,81 @@ public partial class AutoPostViewModel : ViewModelBase
                     )
                 )
                 .Select(t => t.FilePath);
-            candidateFiles = PFlowQueueMedia
-                .ExcludeReserved(candidateFiles, reservedPaths)
-                .ToList();
+            var reservationSnapshot = reservedPaths.ToArray();
+            var groupParts = new Dictionary<string, ReelPartFile>(StringComparer.OrdinalIgnoreCase);
+            if (postType != "Reel" || !page.KeepReelPartsTogether)
+                candidateFiles = PFlowQueueMedia
+                    .ExcludeReserved(candidateFiles, reservationSnapshot)
+                    .ToList();
 
-            if (candidateFiles.Count == 0)
-            {
+            if (
+                candidateFiles.Count == 0
+                && !(
+                    postType == "Reel"
+                    && page.KeepReelPartsTogether
+                    && page.Model.PendingReelPartGroups.Count > 0
+                )
+            )
                 continue;
-            }
 
             int minCount = Math.Max(1, Math.Min(PostFromCount, PostToCount));
             int maxCount = Math.Max(minCount, Math.Max(PostFromCount, PostToCount));
 
             List<string> filesToQueue = [];
-            if (SelectedFileByIndex == 0) // Random
+            if (postType == "Reel" && page.KeepReelPartsTogether)
+            {
+                var sourceSnapshot = page.Model.CreateSnapshot();
+                var physical = await Task.Run(() => sourceSnapshot.ReadUploadMediaSnapshot("Reel"));
+                if (physical.Error.Length > 0)
+                {
+                    partNotices.Add($"{page.PageName}: {physical.Error}");
+                    continue;
+                }
+                var groupHistory = partHistory
+                    .Where(h =>
+                        PFlowPartGroups.SameTarget(
+                            h,
+                            sourceSnapshot,
+                            ResolveDeviceIndex(page.DeviceName)
+                        )
+                    )
+                    .ToArray();
+                var randomGroups = SelectedFileByIndex == 0;
+                var savedGroups = sourceSnapshot.PendingReelPartGroups.ToArray();
+                var plan = await Task.Run(() =>
+                    PFlowPartGroups.Plan(
+                        physical.Files,
+                        candidateFiles,
+                        reservationSnapshot,
+                        groupHistory,
+                        savedGroups,
+                        randomGroups,
+                        minCount,
+                        maxCount,
+                        remainingAllowed
+                    )
+                );
+                page.Model.PendingReelPartGroups = plan.PendingGroups;
+                foreach (var part in plan.Files)
+                    groupParts[part.Path] = part;
+                filesToQueue = plan.Files.Select(p => p.Path).ToList();
+                partNotices.AddRange(plan.Warnings.Take(3).Select(w => $"{page.PageName}: {w}"));
+                if (plan.Waiting > 0)
+                    partNotices.Add(
+                        $"{page.PageName}: {plan.Waiting} part(s) waiting for daily capacity; prepare again on a later run."
+                    );
+                // Save the complete selected series before any dispatch rows are added.
+                await PersistPagesSnapshotAsync();
+            }
+            else if (SelectedFileByIndex == 0) // Random
             {
                 int countToTake = Random.Shared.Next(minCount, maxCount + 1);
-                var shuffled = candidateFiles.OrderBy(_ => Random.Shared.Next()).ToList();
-                filesToQueue = shuffled.Take(Math.Min(countToTake, shuffled.Count)).ToList();
+                Random.Shared.Shuffle(
+                    System.Runtime.InteropServices.CollectionsMarshal.AsSpan(candidateFiles)
+                );
+                filesToQueue = candidateFiles
+                    .Take(Math.Min(countToTake, candidateFiles.Count))
+                    .ToList();
             }
             else // Sequential
             {
@@ -4156,17 +4264,23 @@ public partial class AutoPostViewModel : ViewModelBase
             if (filesToQueue.Count > 0)
             {
                 pagesWithFiles++;
+                var useTextCaption =
+                    postType == "Picture" ? page.PhotoTitleFromTextFile
+                    : postType == "Video" ? page.VideoTitleFromTextFile
+                    : page.ReelTitleFromTextFile;
+                var captions = await Task.Run(() =>
+                    filesToQueue.ToDictionary(
+                        file => file,
+                        file =>
+                            postType == "Story"
+                                ? Path.GetFileName(file)
+                                : ResolveCaptionForMedia(file, useTextCaption),
+                        StringComparer.OrdinalIgnoreCase
+                    )
+                );
                 foreach (var file in filesToQueue)
                 {
-                    var title =
-                        postType == "Story"
-                            ? Path.GetFileName(file)
-                            : ResolveCaptionForMedia(
-                                file,
-                                postType == "Picture" ? page.PhotoTitleFromTextFile
-                                    : postType == "Video" ? page.VideoTitleFromTextFile
-                                    : page.ReelTitleFromTextFile
-                            );
+                    var title = captions[file];
 
                     var task = new AutoPostTaskItem
                     {
@@ -4182,14 +4296,27 @@ public partial class AutoPostViewModel : ViewModelBase
                         OwnerUid = page.UserUid,
                         AccountBinding = page.Model.AccountBinding,
                         Status = "Queued",
+                        PartGroupKey = groupParts.TryGetValue(file, out var partInfo)
+                            ? partInfo.GroupKey
+                            : "",
+                        PartNumber = partInfo?.Number ?? 0,
                     };
 
                     Tasks.Add(task);
                     totalQueued++;
+                    if (totalQueued % 25 == 0)
+                    {
+                        QueuePreparationStatus = $"Adding selected files… {totalQueued:N0} queued";
+                        await Task.Delay(1);
+                    }
                 }
             }
         }
 
+        var partNotice =
+            partNotices.Count == 0 ? "" : "\n" + string.Join("\n", partNotices.Take(5));
+        if (partNotice.Length > 0)
+            StatusSummary = $"Queued {totalQueued} {postType}(s)." + partNotice;
         if (totalQueued > 0)
         {
             if (postType == "Reel")
@@ -4207,7 +4334,7 @@ public partial class AutoPostViewModel : ViewModelBase
                     : "";
 
             _snackbarManager.Notify(
-                $"Queued {totalQueued} {postType}(s) across {pagesWithFiles} pages into Active Dispatch Queue.{skipNotice}"
+                $"Queued {totalQueued} {postType}(s) across {pagesWithFiles} pages into Active Dispatch Queue.{skipNotice}{partNotice}"
             );
         }
         else if (skippedDueToDailyLimit.Count > 0)
@@ -4219,7 +4346,9 @@ public partial class AutoPostViewModel : ViewModelBase
         else
         {
             _snackbarManager.Notify(
-                $"No valid {postType} files found in configured paths for selected pages."
+                partNotice.Length > 0
+                    ? partNotice.Trim()
+                    : $"No valid {postType} files found in configured paths for selected pages."
             );
         }
     }

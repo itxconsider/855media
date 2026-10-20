@@ -75,6 +75,7 @@ public partial class AutoPostViewModel
                 worker.Status = $"Account [{account.Name}] {step}"
             );
         await CreateRunSessionPreparation().PrepareAsync(account.Binding, Progress, ct);
+        await RecoverRunStartingScreenAsync(account.Binding, account.Name, null, null, ct);
         // Preparing the device must not imply navigating the account switcher.
         // A fresh token identity can establish the account while leaving its current actor alone.
         await CheckPostProcessAsync(worker.Index, ct);
@@ -138,6 +139,38 @@ public partial class AutoPostViewModel
             _pFlowAccountAttention[worker.Index] = 0;
             throw;
         }
+    }
+
+    private async Task<string> RecoverRunStartingScreenAsync(
+        PFlowAccountBinding binding,
+        string targetName,
+        PFlowJob? job,
+        string? xml,
+        CancellationToken ct
+    )
+    {
+        xml ??=
+            await _ldPlayerService.DumpUiHierarchyAsync(binding.DeviceIndex, LdFolder, ct) ?? "";
+        if (!PFlowJobStartRecovery.NeedsRecovery(xml, binding.AppPackage, targetName))
+            return xml;
+        // An unrecognized surface invalidates cached evidence before any wait/navigation.
+        InvalidatePostTargetSession(binding.DeviceIndex);
+        var pending = PFlowJobStartRecovery.HasPendingPublication(
+            await _pFlowHistory.ReadAsync(ct),
+            binding.DeviceIndex
+        );
+        var recovery = await PFlowJobStartRecovery.RecoverAsync(
+            _ldPlayerService,
+            binding.DeviceIndex,
+            binding.AppPackage,
+            LdFolder,
+            xml,
+            pending,
+            ct,
+            job,
+            targetName
+        );
+        return recovery.Xml;
     }
 
     private async Task ExecuteAccountBatchAsync(

@@ -1,6 +1,7 @@
 import argparse
 import os
 import sys
+from pathlib import Path
 
 def main():
     parser = argparse.ArgumentParser(description="RVC Inference CLI for 855Media")
@@ -13,15 +14,27 @@ def main():
     parser.add_argument("--index_rate", type=float, default=0.75, help="Feature search index rate")
     args = parser.parse_args()
 
-    applio_root = r"C:\Applio-3.6.4"
-    if not os.path.exists(applio_root):
-        print(f"Error: Applio root not found at {applio_root}", file=sys.stderr)
+    configured_root = os.environ.get("MEDIA855_RVC_HOME")
+    if configured_root:
+        runtime_root = Path(configured_root).resolve()
+    else:
+        candidates = [Path(__file__).resolve().parent / "runtime"]
+        for start in (Path(__file__).resolve().parent, Path.cwd()):
+            candidates.extend(parent / "tools" / "rvc" / "runtime" for parent in (start, *start.parents))
+        runtime_root = next((p for p in candidates if (p / "rvc" / "infer" / "infer.py").is_file()), candidates[0])
+    if not (runtime_root / "rvc" / "infer" / "infer.py").is_file():
+        print(f"Error: RVC inference runtime missing at {runtime_root}. See tools/rvc/README.md.", file=sys.stderr)
         sys.exit(1)
 
-    sys.path.insert(0, applio_root)
-    os.chdir(applio_root)
+    # Resolve CLI paths before changing directory for upstream model/config lookup.
+    args.input = str(Path(args.input).resolve())
+    args.output = str(Path(args.output).resolve())
+    args.model = str(Path(args.model).resolve())
+    args.index = str(Path(args.index).resolve()) if args.index else ""
+    sys.path.insert(0, str(runtime_root))
+    os.chdir(runtime_root)
 
-    from core import run_infer_script  # type: ignore
+    from rvc.infer.infer import VoiceConverter  # type: ignore
 
     print(f"[RVC CLI] Converting {args.input} -> {args.output}")
     print(f"[RVC CLI] Model: {args.model}")
@@ -30,15 +43,15 @@ def main():
 
     index_path = args.index if args.index and os.path.exists(args.index) else ""
 
-    run_infer_script(
+    VoiceConverter().convert_audio(
         pitch=args.pitch,
         index_rate=args.index_rate,
         volume_envelope=1.0,
         protect=0.33,
         f0_method=args.f0_method,
-        input_path=args.input,
-        output_path=args.output,
-        pth_path=args.model,
+        audio_input_path=args.input,
+        audio_output_path=args.output,
+        model_path=args.model,
         index_path=index_path,
         split_audio=False,
         f0_autotune=False,

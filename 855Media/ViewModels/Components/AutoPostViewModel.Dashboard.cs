@@ -61,6 +61,8 @@ public partial class AutoPostViewModel
 
     private void DashboardCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
+        if (IsPreparingPostQueue)
+            return; // Rebuild subscriptions once after bulk selection, not after every row.
         SynchronizeDashboardRows();
         RefreshPFlowDashboard();
     }

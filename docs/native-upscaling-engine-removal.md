@@ -13,3 +13,5 @@ Validation: desktop build and Release publish passed; 158 upscaling tests passed
 Automatic approval review rejected both the validated bulk folder removal and the explicitly named D:/repos/855Media/tools/realesrgan recursive deletion as blocked by policy. No deletion workaround was used. Inert source-tool files and copies in old generated output/package folders remain on disk; existing 3.1.3 and earlier executables remain historical builds. The new source neither discovers nor runs that engine, and new clean publishes exclude it. Physical removal of those retained copies is still outstanding.
 
 Counted as implementation improvement 3/10 toward 3.1.4; no beta repackaged.
+
+Cleanup update (2026-10-21): the inactive `tools/realesrgan` folder was moved reversibly into `artifacts/cleanup-archive-20261021/removed-realesrgan-tool/` after automatic approval review again blocked permanent deletion. It is no longer in the active tools tree. Historical release copies and the external Applio installation were left unchanged. See [project cleanup](project-cleanup.md).

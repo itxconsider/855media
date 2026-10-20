@@ -1648,7 +1648,7 @@ public partial class LDPlayerService : ILDPlayerService
         bool needsDismiss = false;
         if (PFlowEmailUpdatePrompt.Card(xml) != null)
         {
-            await PFlowEmailUpdatePrompt.DismissAsync(
+            await PFlowNavigationPrompts.DismissAsync(
                 this,
                 index,
                 xml,

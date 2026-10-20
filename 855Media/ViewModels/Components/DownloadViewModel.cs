@@ -23,6 +23,7 @@ public partial class DownloadViewModel : ViewModelBase
 
     private readonly IDisposable _eventSubscription;
     private CancellationTokenSource _cancellationTokenSource = new();
+    private CancellationToken _cancellationToken;
 
     private bool _isDisposed;
 
@@ -32,6 +33,7 @@ public partial class DownloadViewModel : ViewModelBase
         LocalizationManager localizationManager
     )
     {
+        _cancellationToken = _cancellationTokenSource.Token;
         _viewModelManager = viewModelManager;
         _dialogManager = dialogManager;
         LocalizationManager = localizationManager;
@@ -86,7 +88,10 @@ public partial class DownloadViewModel : ViewModelBase
 
     public event EventHandler? RetryRequested;
 
-    public CancellationToken CancellationToken => _cancellationTokenSource.Token;
+    // Token values remain readable after the owning source has been disposed.
+    public CancellationToken CancellationToken => _cancellationToken;
+
+    internal bool IsDisposed => _isDisposed;
 
     public string? FileName => Path.GetFileName(FilePath);
 
@@ -96,7 +101,8 @@ public partial class DownloadViewModel : ViewModelBase
 
     public bool IsCanceledOrFailed => Status is DownloadStatus.Canceled or DownloadStatus.Failed;
 
-    private bool CanCancel() => Status is DownloadStatus.Enqueued or DownloadStatus.Started;
+    private bool CanCancel() =>
+        !_isDisposed && Status is DownloadStatus.Enqueued or DownloadStatus.Started;
 
     [RelayCommand(CanExecute = nameof(CanCancel))]
     private void Cancel()
@@ -163,22 +169,24 @@ public partial class DownloadViewModel : ViewModelBase
 
     public void ResetCancellationToken()
     {
-        if (_cancellationTokenSource.IsCancellationRequested || _isDisposed)
+        if (_isDisposed)
+            return;
+
+        // Manual retry supersedes the previous attempt, including any automatic retry delay.
+        try
         {
-            try
-            {
-                _cancellationTokenSource.Dispose();
-            }
-            catch
-            {
-                // Ignore
-            }
-            _cancellationTokenSource = new CancellationTokenSource();
-            _isDisposed = false;
+            _cancellationTokenSource.Cancel();
         }
+        finally
+        {
+            _cancellationTokenSource.Dispose();
+        }
+        _cancellationTokenSource = new CancellationTokenSource();
+        _cancellationToken = _cancellationTokenSource.Token;
     }
 
-    private bool CanRetry() => Status is DownloadStatus.Failed or DownloadStatus.Canceled;
+    private bool CanRetry() =>
+        !_isDisposed && Status is DownloadStatus.Failed or DownloadStatus.Canceled;
 
     [RelayCommand(CanExecute = nameof(CanRetry))]
     private void Retry()
@@ -194,12 +202,22 @@ public partial class DownloadViewModel : ViewModelBase
 
     protected override void Dispose(bool disposing)
     {
-        if (_isDisposed)
+        if (!disposing || _isDisposed)
             return;
 
         _isDisposed = true;
 
-        _eventSubscription.Dispose();
-        _cancellationTokenSource.Dispose();
+        RetryRequested = null;
+        try
+        {
+            _cancellationTokenSource.Cancel();
+        }
+        finally
+        {
+            _eventSubscription.Dispose();
+            _cancellationTokenSource.Dispose();
+        }
+
+        base.Dispose(disposing);
     }
 }

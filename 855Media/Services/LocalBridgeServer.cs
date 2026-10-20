@@ -12,6 +12,7 @@ namespace _855Media.Services;
 public class MediaPayloadItem
 {
     public string Url { get; set; } = string.Empty;
+    public string PhotoPageUrl { get; set; } = string.Empty;
     public string Caption { get; set; } = string.Empty;
     public string Id { get; set; } = string.Empty;
     public string Date { get; set; } = string.Empty;

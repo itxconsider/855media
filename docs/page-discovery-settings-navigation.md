@@ -1,0 +1,11 @@
+# Page discovery entering Settings instead of the switcher
+
+The new-PC report showed “Page discovery left the switcher; enumeration is incomplete” on LD-3, LD-53 and LD-75. The user confirmed that Facebook was on Meta Account/Settings and supplied a Settings & privacy screenshot. The remote PC's diagnostic logs were not available locally.
+
+The discovery warm-up used OpenFacebookMenuFromFeedAsync followed by ClickProfileSwitcherDropdownAsync. The latter has broad header candidates and a proportional coordinate fallback that reports success without observing the resulting sheet. Discovery then immediately required the switcher, so incorrect navigation and slow transitions produced the same error.
+
+The warm-up now uses the existing native route planner's matched profile-header dropdown and navigation controls. It does not call the legacy dropdown helper. A known Settings/Meta Account screen returns through fb://feed without tapping Settings controls, including when a Search settings edit field is present. Authentication/password and foreign-app surfaces still stop navigation. After a dropdown tap, discovery waits up to ten seconds for the recognized sheet rather than tapping again immediately; empty transition frames are retried. Enumeration swipes use visible switcher row bounds rather than full-screen coordinates. Unknown layouts remain incomplete; they do not become verified targets. Owner UID and subsequent per-Page identity checks remain unchanged.
+
+If opening or maintaining the switcher still fails, diagnostic capture is attempted under %APPDATA%/855Media/logs/p-flow-ui with discovery-switcher-open-failed or discovery-switcher-unconfirmed in the filename. Editable fields are redacted in XML and prevent screenshot capture. Diagnostic failure cannot replace the navigation error.
+
+Validation: 151 focused Page discovery, untyped switcher, native account and discovery recovery/retention tests passed. Includes Settings-to-Feed recovery without coordinate taps, settings search field, delayed/empty transition observations, captured Menu-to-switcher navigation, bounded timeout, foreign-app/password rejection and swipe geometry. Desktop Debug build passed with zero warnings/errors. New-PC live testing remains pending. Source change is not included in the previously packaged 3.1.4 ZIP.

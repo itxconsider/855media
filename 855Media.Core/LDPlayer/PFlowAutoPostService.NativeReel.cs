@@ -50,9 +50,19 @@ public partial class PFlowAutoPostService
         var query =
             "shell content query --uri content://media/external/file --projection _id:_data:_display_name:_size:mime_type:bucket_display_name:media_type:duration --where "
             + ShellQuote("bucket_display_name='" + album + "'");
+        var awaitingMediaAccess = false;
         async Task<string> Observe()
         {
             var xml = await _ldPlayer.DumpUiHierarchyAsync(job.DeviceIndex, path, ct) ?? "";
+            if (awaitingMediaAccess)
+                xml = await PFlowMediaAccess.CompleteAsync(
+                    _ldPlayer,
+                    job.DeviceIndex,
+                    job.AppPackage,
+                    path,
+                    xml,
+                    ct
+                );
             if (!ScreenTimeHierarchy.Nodes(xml).Any())
                 throw new NativeReelUnavailable("Empty UI hierarchy");
             if (
@@ -232,7 +242,15 @@ public partial class PFlowAutoPostService
             }
             navigated = true;
             await Tap(entry);
-            xml = await WaitFor(FacebookScreenKind.ReelPicker);
+            awaitingMediaAccess = true;
+            try
+            {
+                xml = await WaitFor(FacebookScreenKind.ReelPicker);
+            }
+            finally
+            {
+                awaitingMediaAccess = false;
+            }
             await Tap(PFlowStoryLayout.Dropdown(xml));
             xml = await WaitFor(FacebookScreenKind.StoryAlbums);
             var albumFound = false;

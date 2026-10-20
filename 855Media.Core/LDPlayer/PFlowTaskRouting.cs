@@ -15,6 +15,12 @@ public static class PFlowTaskRouting
 
     public static void RestoreUnmatchedQueueRow(AutoPostTaskItem task)
     {
+        // This hold never submits media; repeat the confirmation guard on the next start.
+        if (
+            task.PartGroupKey.Length > 0
+            && task.Status.StartsWith("Held (Part order): ", StringComparison.Ordinal)
+        )
+            task.Status = "Queued";
         // This legacy status means no posting job was created. Replanning still
         // checks the account binding, content history and publication reservations.
         if (

@@ -3,12 +3,14 @@
     <File Path="Directory.Build.props" />
     <File Path="Directory.Packages.props" />
     <File Path="global.json" />
-    <File Path="License.txt" />
     <File Path="NuGet.config" />
-    <File Path="Readme.md" />
+    <File Path="README.md" />
+    <File Path="AGENTS.md" />
+    <File Path="tools/README.md" />
   </Folder>
 
   <Project Path="855Media/855Media.csproj" />
   <Project Path="855Media.Core/855Media.Core.csproj" />
+  <Project Path="855Media.Core.Tests/855Media.Core.Tests.csproj" />
   <Project Path="tools/855Media.KeyGen/855Media.KeyGen.csproj" />
 </Solution>

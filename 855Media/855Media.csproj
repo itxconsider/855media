@@ -76,6 +76,8 @@
   <ItemGroup>
     <AvaloniaResource Include="../favicon.ico" Link="favicon.ico" />
     <EmbeddedResource Include="Resources/facebook-scraper-bridge.js" />
+    <EmbeddedResource Include="Resources/facebook-photo-detail.js" />
+    <EmbeddedResource Include="Resources/facebook-photo-caption.js" />
     <Content
       Include="Resources/facebook-layouts.default.json"
       Link="layouts/facebook-layouts.json"
@@ -93,6 +95,11 @@
     <Content
       Include="../tools/voxcpm_tts.py"
       Link="tools/voxcpm_tts.py"
+      CopyToOutputDirectory="PreserveNewest"
+    />
+    <Content
+      Include="../tools/rvc/infer_cli.py;../tools/rvc/README.md"
+      Link="tools/rvc/%(Filename)%(Extension)"
       CopyToOutputDirectory="PreserveNewest"
     />
     <Content

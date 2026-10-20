@@ -18,7 +18,8 @@ public record VideoInfo(
     IVideo? YoutubeVideo = null,
     string? AuthorAvatarUrl = null,
     long? LikeCount = null,
-    int? PlaylistIndex = null
+    int? PlaylistIndex = null,
+    string? Caption = null
 )
 {
     public static VideoInfo FromYoutube(IVideo video) =>

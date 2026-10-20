@@ -177,6 +177,9 @@ public class App : Application, IDisposable
             // SettingsService handles corruption fallback internally
         }
 
+        _855Media.Core.Downloading.MediaCompatibility.MaxConcurrentConversions =
+            _settingsService.ConversionParallelLimit;
+
         var layoutRules = FacebookLayoutRegistry.InitializeConfiguration();
         System.Diagnostics.Debug.WriteLine(layoutRules.Message);
 

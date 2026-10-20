@@ -204,7 +204,7 @@ public sealed class PFlowSessionPreparation(
                     @"(?<![\w.])com\.facebook\.katana/"
                 )
             )
-                return await PFlowEmailUpdatePrompt.DismissAsync(
+                return await PFlowNavigationPrompts.DismissAsync(
                         ld,
                         binding.DeviceIndex,
                         await ld.DumpUiHierarchyAsync(binding.DeviceIndex, path, ct),

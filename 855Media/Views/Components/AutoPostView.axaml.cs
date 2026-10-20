@@ -3,6 +3,7 @@ using System.Linq;
 using _855Media.ViewModels.Components;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
@@ -27,6 +28,7 @@ public partial class AutoPostView : UserControl
                 _accountScrollViewModel.AccountScrollRequested += ScrollToDeviceAccounts;
         };
 
+        AddHandler(PointerPressedEvent, OnTargetRowPointerPressed, RoutingStrategies.Tunnel);
         AddHandler(PointerPressedEvent, OnTargetPagePointerPressed, RoutingStrategies.Tunnel);
 
         var manageGrid = this.FindControl<DataGrid>("ManageDeviceDataGrid");
@@ -117,20 +119,46 @@ public partial class AutoPostView : UserControl
         e.Handled = true;
     }
 
-    private void OnAccountDetailsCollapsed(object? sender, RoutedEventArgs e)
+    private void OnTargetRowPointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (sender is not Expander details || !ReferenceEquals(e.Source, details))
+        if (
+            !e.GetCurrentPoint(this).Properties.IsLeftButtonPressed
+            || e.KeyModifiers != KeyModifiers.None
+        )
             return;
-        var row = details.GetVisualAncestors().OfType<DataGridRow>().FirstOrDefault();
+        var source = e.Source as Control;
+        if (source == null)
+            return;
+        var controls = source.GetVisualAncestors().OfType<Control>().Prepend(source).ToArray();
+        // Checkboxes keep their posting-selection behavior; detail controls keep
+        // their own expand/collapse, text selection and button behavior.
+        if (
+            controls.Any(c =>
+                c
+                    is Button
+                        or ToggleButton
+                        or TextBox
+                        or SelectableTextBlock
+                        or Expander
+                        or Avalonia.Controls.ContextMenu
+            )
+        )
+            return;
+        var cell = controls.OfType<DataGridCell>().FirstOrDefault();
+        var row = cell?.GetVisualAncestors().OfType<DataGridRow>().FirstOrDefault();
         var grid = row?.GetVisualAncestors().OfType<DataGrid>().FirstOrDefault();
-        if (grid != null)
+        if (
+            grid?.RowDetailsTemplate == null
+            || row?.DataContext
+                is not (FacebookPageTargetViewModel or FacebookProfileGroupViewModel)
+        )
+            return;
+        if (ReferenceEquals(grid.SelectedItem, row.DataContext))
         {
-            // Row details are shown by row selection. Clear only that selection,
-            // leaving the Page's posting checkbox unchanged, to remove the whole panel.
             grid.SelectedItem = null;
-            details.IsExpanded = true;
             e.Handled = true;
         }
+        // A first click follows normal DataGrid selection and opens its details.
     }
 
     private void OnManageDevicePointerPressed(object? sender, PointerPressedEventArgs e)
