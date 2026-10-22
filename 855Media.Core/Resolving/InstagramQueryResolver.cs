@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Numerics;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -12,9 +13,17 @@ using _855Media.Core.Utils;
 
 namespace _855Media.Core.Resolving;
 
+public enum InstagramMediaKind
+{
+    All,
+    Photos,
+    Videos,
+}
+
 public class InstagramQueryResolver(
     IReadOnlyList<Cookie>? initialCookies = null,
-    HttpClient? client = null
+    HttpClient? client = null,
+    InstagramMediaKind mediaKind = InstagramMediaKind.All
 )
 {
     public static bool IsInstagramQuery(string query) =>
@@ -35,7 +44,7 @@ public class InstagramQueryResolver(
             ? uri
             : null;
 
-    internal static string? GetProfileUsername(string query)
+    public static string? GetProfileUsername(string query)
     {
         var uri = TryGetUri(query);
         if (uri is null || !IsInstagramQuery(query))
@@ -62,6 +71,15 @@ public class InstagramQueryResolver(
             : null;
     }
 
+    public static bool IsReelsQuery(string query)
+    {
+        if (!IsInstagramQuery(query))
+            return false;
+        var parts = TryGetUri(query)!.AbsolutePath.Trim('/').Split('/');
+        return GetProfileUsername(query) is not null && parts.Length == 2 && parts[1] == "reels"
+            || parts.Length >= 2 && parts[^2] is "reel" or "reels" or "tv";
+    }
+
     public async Task<QueryResult> ResolveAsync(
         string query,
         CancellationToken cancellationToken = default
@@ -71,8 +89,60 @@ public class InstagramQueryResolver(
             throw new InvalidOperationException("Invalid Instagram URL.");
         var username = GetProfileUsername(query);
         if (username is not null)
-            return await ResolveProfileAsync(username, cancellationToken);
+            return await ResolveProfileAsync(
+                username,
+                IsReelsQuery(query) && mediaKind != InstagramMediaKind.Photos,
+                cancellationToken
+            );
         var cookies = GetCookies();
+        var uri = TryGetUri(query)!;
+        var parts = uri.AbsolutePath.Trim('/').Split('/');
+        var postIndex =
+            parts.Length >= 2 && parts[^2] is "p" or "reel" or "reels" or "tv"
+                ? parts.Length - 1
+                : -1;
+        if (postIndex < 0)
+            throw new InvalidOperationException(
+                "Paste an Instagram post, Reel or profile URL. Stories and shared redirect links are not supported."
+            );
+        // yt-dlp skips photo-only posts. Read the same signed-in media detail used by its video extractor.
+        if (mediaKind != InstagramMediaKind.Videos && cookies.Any(c => c.Name == "sessionid"))
+        {
+            using var detail = await GetJsonAsync(
+                $"https://www.instagram.com/api/v1/media/{ShortcodeToMediaId(parts[postIndex])}/info/",
+                cancellationToken
+            );
+            var root = detail.RootElement;
+            if (
+                !root.TryGetProperty("items", out var items)
+                || items.ValueKind != JsonValueKind.Array
+                || items.GetArrayLength() != 1
+            )
+                throw new InvalidOperationException(
+                    "Instagram did not return this post. Refresh Instagram cookies and confirm access."
+                );
+            var item = items[0];
+            var ownerUsername = item.TryGetProperty("user", out var owner)
+                ? String(owner, "username") ?? "Instagram"
+                : "Instagram";
+            var author = item.TryGetProperty("user", out owner)
+                ? String(owner, "full_name") ?? ownerUsername
+                : ownerUsername;
+            var media = ParseFeedItem(item, ownerUsername, author, mediaKind).ToArray();
+            if (media.Length == 0)
+                throw new InvalidOperationException(
+                    "No accessible Instagram media matching the selected type was found in this post."
+                );
+            return new QueryResult(
+                media.Length > 1 ? QueryResultKind.Playlist : QueryResultKind.Video,
+                "Instagram: " + ownerUsername,
+                media
+            );
+        }
+        if (mediaKind == InstagramMediaKind.Photos)
+            throw new InvalidOperationException(
+                "Instagram photo downloads require login cookies. Apply Instagram cookies in Settings → General, then retry."
+            );
         var (path, temporary) = await YtDlp.TryCreateCookieFileAsync(cookies, cancellationToken);
         try
         {
@@ -104,6 +174,17 @@ public class InstagramQueryResolver(
         }
     }
 
+    internal static string ShortcodeToMediaId(string shortcode)
+    {
+        const string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+        if (shortcode.Length is < 1 or > 28 || shortcode.Any(c => !alphabet.Contains(c)))
+            throw new InvalidOperationException("Invalid Instagram post code.");
+        var value = BigInteger.Zero;
+        foreach (var character in shortcode)
+            value = value * 64 + alphabet.IndexOf(character);
+        return value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    }
+
     private IReadOnlyList<Cookie> GetCookies() => ResolveCookies(initialCookies);
 
     internal static IReadOnlyList<Cookie> ResolveCookies(IReadOnlyList<Cookie>? initialCookies)
@@ -125,13 +206,26 @@ public class InstagramQueryResolver(
         c.Domain.TrimStart('.').Equals("instagram.com", StringComparison.OrdinalIgnoreCase)
         || c.Domain.EndsWith(".instagram.com", StringComparison.OrdinalIgnoreCase);
 
-    private async Task<JsonDocument> GetJsonAsync(string url, CancellationToken ct)
+    private async Task<JsonDocument> GetJsonAsync(
+        string url,
+        CancellationToken ct,
+        Dictionary<string, string>? form = null
+    )
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        using var request = new HttpRequestMessage(
+            form is null ? HttpMethod.Get : HttpMethod.Post,
+            url
+        );
+        if (form is not null)
+            request.Content = new FormUrlEncodedContent(form);
         request.Headers.UserAgent.ParseAdd(
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
         );
         request.Headers.Add("X-IG-App-ID", "936619743392459");
+        request.Headers.TryAddWithoutValidation("X-IG-WWW-Claim", "0");
+        request.Headers.TryAddWithoutValidation("Origin", "https://www.instagram.com");
+        if (GetCookies().FirstOrDefault(c => c.Name == "csrftoken") is { } csrf)
+            request.Headers.TryAddWithoutValidation("X-CSRFToken", csrf.Value);
         request.Headers.Referrer = new Uri("https://www.instagram.com/");
         request.Headers.TryAddWithoutValidation(
             "Cookie",
@@ -160,7 +254,11 @@ public class InstagramQueryResolver(
         }
     }
 
-    private async Task<QueryResult> ResolveProfileAsync(string username, CancellationToken ct)
+    private async Task<QueryResult> ResolveProfileAsync(
+        string username,
+        bool reelsOnly,
+        CancellationToken ct
+    )
     {
         if (!GetCookies().Any(c => c.Name == "sessionid"))
             throw new InvalidOperationException(
@@ -184,6 +282,8 @@ public class InstagramQueryResolver(
             ?? throw new InvalidOperationException("Instagram did not return the profile ID.");
         var author = String(user, "full_name") ?? username;
         var avatar = String(user, "profile_pic_url_hd") ?? String(user, "profile_pic_url");
+        if (reelsOnly)
+            return await ResolveReelsAsync(id, username, author, avatar, ct);
         var videos = new Dictionary<string, VideoInfo>();
         var cursors = new HashSet<string>();
         string? cursor = null;
@@ -204,7 +304,7 @@ public class InstagramQueryResolver(
                     "Instagram did not return the profile feed. Refresh your cookies and check profile access."
                 );
             foreach (var item in items.EnumerateArray())
-            foreach (var video in ParseFeedItem(item, username, author))
+            foreach (var video in ParseFeedItem(item, username, author, mediaKind))
                 videos.TryAdd(video.Id, video);
             if (
                 !root.TryGetProperty("more_available", out var flag)
@@ -224,7 +324,7 @@ public class InstagramQueryResolver(
         } while (true);
         if (videos.Count == 0)
             throw new InvalidOperationException(
-                "No accessible videos found on this Instagram profile. Photo-only posts are skipped."
+                "No accessible Instagram media matching the selected type was found on this profile."
             );
         return new QueryResult(
             QueryResultKind.Channel,
@@ -235,10 +335,130 @@ public class InstagramQueryResolver(
         );
     }
 
+    private async Task<QueryResult> ResolveReelsAsync(
+        string id,
+        string username,
+        string author,
+        string? avatar,
+        CancellationToken ct
+    )
+    {
+        var videos = new Dictionary<string, VideoInfo>();
+        var codes = new HashSet<string>();
+        var cursors = new HashSet<string>();
+        string? cursor = null;
+        do
+        {
+            ct.ThrowIfCancellationRequested();
+            var variables = new Dictionary<string, object?>
+            {
+                ["data"] = new
+                {
+                    page_size = 12,
+                    include_feed_video = true,
+                    target_user_id = id,
+                },
+                ["__relay_internal__pv__PolarisFeedShareMenurelayprovider"] = false,
+            };
+            if (cursor is not null)
+            {
+                variables["after"] = cursor;
+                variables["before"] = null;
+                variables["first"] = 12;
+                variables["last"] = null;
+            }
+            using var page = await GetJsonAsync(
+                "https://www.instagram.com/graphql/query/",
+                ct,
+                new()
+                {
+                    ["doc_id"] = "7845543455542541",
+                    ["variables"] = JsonSerializer.Serialize(variables),
+                }
+            );
+            var root = page.RootElement;
+            if (
+                !root.TryGetProperty("data", out var data)
+                || data.ValueKind != JsonValueKind.Object
+                || !data.TryGetProperty(
+                    "xdt_api__v1__clips__user__connection_v2",
+                    out var connection
+                )
+                || connection.ValueKind != JsonValueKind.Object
+                || !connection.TryGetProperty("edges", out var edges)
+                || edges.ValueKind != JsonValueKind.Array
+            )
+                throw new InvalidOperationException(
+                    "Instagram did not return the Reels tab. Refresh cookies and retry; the Reels listing is incomplete."
+                );
+            foreach (var edge in edges.EnumerateArray())
+            {
+                ct.ThrowIfCancellationRequested();
+                if (
+                    !edge.TryGetProperty("node", out var node)
+                    || !node.TryGetProperty("media", out var media)
+                    || String(media, "code") is not { } code
+                )
+                    throw new InvalidOperationException(
+                        "Instagram returned an unsupported Reel. The listing is incomplete."
+                    );
+                if (!codes.Add(code))
+                    continue;
+                using var detail = await GetJsonAsync(
+                    $"https://www.instagram.com/api/v1/media/{ShortcodeToMediaId(code)}/info/",
+                    ct
+                );
+                if (
+                    !detail.RootElement.TryGetProperty("items", out var items)
+                    || items.ValueKind != JsonValueKind.Array
+                    || items.GetArrayLength() != 1
+                )
+                    throw new InvalidOperationException(
+                        "Instagram did not return a Reel's details. The listing is incomplete."
+                    );
+                var found = ParseFeedItem(items[0], username, author, InstagramMediaKind.Videos)
+                    .ToArray();
+                if (found.Length == 0)
+                    throw new InvalidOperationException(
+                        "Instagram did not return an accessible Reel video. The listing is incomplete."
+                    );
+                foreach (var video in found)
+                    videos.TryAdd(video.Id, video);
+            }
+            if (
+                !connection.TryGetProperty("page_info", out var info)
+                || !info.TryGetProperty("has_next_page", out var flag)
+                || flag.ValueKind is not (JsonValueKind.True or JsonValueKind.False)
+            )
+                throw new InvalidOperationException(
+                    "Instagram did not return Reels pagination status. The listing is incomplete."
+                );
+            if (!flag.GetBoolean())
+                break;
+            cursor = String(info, "end_cursor");
+            if (string.IsNullOrWhiteSpace(cursor) || !cursors.Add(cursor))
+                throw new InvalidOperationException(
+                    "Instagram stopped Reels pagination. Retry later; the listing is incomplete."
+                );
+        } while (true);
+        if (videos.Count == 0)
+            throw new InvalidOperationException(
+                "No accessible Reels found on this Instagram profile."
+            );
+        return new QueryResult(
+            QueryResultKind.Channel,
+            "Instagram Reels: " + username,
+            videos.Values.ToArray(),
+            avatar,
+            author
+        );
+    }
+
     internal static IEnumerable<VideoInfo> ParseFeedItem(
         JsonElement item,
         string username,
-        string author
+        string author,
+        InstagramMediaKind mediaKind = InstagramMediaKind.All
     )
     {
         var code = String(item, "code");
@@ -258,34 +478,52 @@ public class InstagramQueryResolver(
         for (var i = 0; i < children.Length; i++)
         {
             var media = children[i];
+            var isVideo =
+                media.TryGetProperty("video_versions", out var versions)
+                && versions.ValueKind == JsonValueKind.Array
+                && versions.GetArrayLength() > 0;
+            // Never mistake a Reel's cover image for a photo.
+            var isPhoto = Number(media, "media_type") == 1 && !isVideo;
             if (
-                !media.TryGetProperty("video_versions", out var versions)
-                || versions.ValueKind != JsonValueKind.Array
-                || versions.GetArrayLength() == 0
+                (!isVideo && !isPhoto)
+                || (isPhoto && mediaKind == InstagramMediaKind.Videos)
+                || (isVideo && mediaKind == InstagramMediaKind.Photos)
             )
                 continue;
             var thumbs = new List<string>();
             if (
                 media.TryGetProperty("image_versions2", out var images)
                 && images.TryGetProperty("candidates", out var candidates)
+                && candidates.ValueKind == JsonValueKind.Array
             )
-                foreach (var image in candidates.EnumerateArray())
+                foreach (
+                    var image in candidates
+                        .EnumerateArray()
+                        .OrderByDescending(image =>
+                            (Number(image, "width") ?? 0) * (Number(image, "height") ?? 0)
+                        )
+                )
                     if (String(image, "url") is { } thumb)
                         thumbs.Add(thumb);
+            if (isPhoto && thumbs.Count == 0)
+                throw new InvalidOperationException(
+                    "Instagram did not return the full image for a photo. Refresh cookies and retry; a thumbnail will not be substituted."
+                );
             yield return new VideoInfo(
-                VideoSource.Instagram,
+                isPhoto ? VideoSource.InstagramPhoto : VideoSource.Instagram,
                 String(media, "pk") ?? code + "_" + (i + 1),
                 url,
-                title ?? "Instagram video by " + username,
+                title ?? "Instagram " + (isPhoto ? "photo" : "video") + " by " + username,
                 author,
                 "https://www.instagram.com/" + username + "/",
                 Number(item, "view_count") is { } views ? (long)views : null,
                 Number(media, "video_duration") is { } duration
                     ? TimeSpan.FromSeconds(duration)
                     : null,
-                thumbs,
+                isPhoto ? thumbs.Take(1).ToArray() : thumbs,
                 LikeCount: Number(item, "like_count") is { } likes ? (long)likes : null,
-                PlaylistIndex: children.Length > 1 ? i + 1 : null
+                PlaylistIndex: children.Length > 1 ? i + 1 : null,
+                Caption: title ?? string.Empty
             );
         }
     }

@@ -124,6 +124,62 @@ public partial class PFlowAutoPostService
         return null;
     }
 
+    internal static string? SettingsViewportSignature(string xml, string[] publishLabels)
+    {
+        var (width, height) = ComposerViewport(xml);
+        if (width <= 0 || height <= 0)
+            return null;
+        var nodes = ScreenTimeHierarchy.Nodes(xml);
+        // Ignore the fixed title/footer and status/notification/toast overlays.
+        var rows = nodes
+            .Where(n =>
+                !n.AncestorsAndSelf("node")
+                    .Any(a =>
+                        (string?)a.Attribute("visible-to-user") == "false"
+                        || (string?)a.Attribute("package") is { Length: > 0 } p
+                            && p != "com.facebook.katana"
+                    )
+            )
+            .Select(n => new
+            {
+                Node = n,
+                Label = Regex
+                    .Replace(
+                        ((string?)n.Attribute("text") ?? "")
+                            + " "
+                            + ((string?)n.Attribute("content-desc") ?? ""),
+                        @"\s+",
+                        " "
+                    )
+                    .Trim(),
+                Bounds = Regex.Match(
+                    (string?)n.Attribute("bounds") ?? "",
+                    @"^\[(\d+),(\d+)\]\[(\d+),(\d+)\]$"
+                ),
+            })
+            .Where(r =>
+                r.Label.Length > 0
+                && r.Bounds.Success
+                && !publishLabels.Any(label =>
+                    r.Label.Equals(label, StringComparison.OrdinalIgnoreCase)
+                    || r.Label.Equals(label + " " + label, StringComparison.OrdinalIgnoreCase)
+                )
+                && !r.Label.Contains("Reel Settings", StringComparison.OrdinalIgnoreCase)
+            )
+            .Where(r =>
+                int.Parse(r.Bounds.Groups[2].Value) >= height / 8
+                && int.Parse(r.Bounds.Groups[4].Value) <= height * 9 / 10
+                && int.Parse(r.Bounds.Groups[1].Value) >= 0
+                && int.Parse(r.Bounds.Groups[3].Value) <= width
+                && int.Parse(r.Bounds.Groups[4].Value) > int.Parse(r.Bounds.Groups[2].Value)
+            )
+            .Select(r => r.Label + "|" + r.Bounds.Value)
+            .Distinct()
+            .OrderBy(s => s, StringComparer.Ordinal)
+            .ToArray();
+        return rows.Length > 0 ? string.Join("\n", rows) : null;
+    }
+
     internal async Task<string> PrepareComposerReadinessAsync(
         PFlowJob job,
         string xml,
@@ -203,32 +259,39 @@ public partial class PFlowAutoPostService
                 ct
             );
         }
-        // The fixed Share footer can be visible before the Reel settings list
-        // reaches its last row. Reveal the end marker before considering Share ready.
+        // A fixed Share footer is not the end of the list. Require two
+        // acknowledged downward swipes with unchanged visible settings rows.
+        async Task ScrollSettingsToEnd(DateTime deadline, string step)
+        {
+            var stable = 0;
+            for (var scroll = 0; scroll < 20 && now() < deadline; scroll++)
+            {
+                await CheckContext();
+                var before = SettingsViewportSignature(xml, publishLabels);
+                await Scroll(true, step);
+                await CheckContext();
+                var after = SettingsViewportSignature(xml, publishLabels);
+                stable = before != null && before == after ? stable + 1 : 0;
+                if (stable >= 2)
+                {
+                    await PFlowTrace.SessionAsync(
+                        job.DeviceIndex,
+                        "composer.settings.end-stable",
+                        "unchangedDownwardSwipes=2; noSettingsTap=true",
+                        ct
+                    );
+                    return;
+                }
+            }
+            throw new InvalidOperationException(
+                "Reel Settings did not reach a stable scroll end; no Share tap was made."
+            );
+        }
         if (
             Labels(xml)
                 .Any(label => label.Equals("Reel Settings", StringComparison.OrdinalIgnoreCase))
         )
-        {
-            var settingsUntil = now().AddSeconds(30);
-            for (var scroll = 0; ; scroll++)
-            {
-                await CheckContext();
-                if (FindVisiblePublishControl(xml, ["See more settings"], false, false) != null)
-                    break;
-                if (scroll >= 20 || now() >= settingsUntil)
-                    throw new InvalidOperationException(
-                        "Reel Settings did not reveal See more settings after scrolling; no Share tap was made."
-                    );
-                await Scroll(true, "composer.settings.scroll-to-end");
-            }
-            await PFlowTrace.SessionAsync(
-                job.DeviceIndex,
-                "composer.settings.end-visible",
-                "marker=See more settings; noSettingsTap=true",
-                ct
-            );
-        }
+            await ScrollSettingsToEnd(now().AddSeconds(30), "composer.settings.scroll-to-end");
         var discoveryUntil = now().AddSeconds(30);
         DateTime? disabledUntil = null;
         var disabledLogged = false;
@@ -278,19 +341,10 @@ public partial class PFlowAutoPostService
                             )
                     )
                     {
-                        for (
-                            var scroll = 0;
-                            FindVisiblePublishControl(xml, ["See more settings"], false, false)
-                                == null;
-                            scroll++
-                        )
-                        {
-                            if (scroll >= 20 || now() >= disabledUntil.Value)
-                                throw new InvalidOperationException(
-                                    "Reel Settings end could not be restored during Share retry; no Share tap was made."
-                                );
-                            await Scroll(true, "composer.publish.retry-down");
-                        }
+                        await ScrollSettingsToEnd(
+                            disabledUntil.Value,
+                            "composer.publish.retry-down"
+                        );
                     }
                     continue;
                 }

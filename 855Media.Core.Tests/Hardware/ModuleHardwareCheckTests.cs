@@ -69,7 +69,7 @@ public class ModuleHardwareCheckTests
     }
 
     [Fact]
-    public void CheckUpscaler_WhenRtxPresent_ReturnsOptimalTensorPipeline()
+    public void CheckEditor_WhenRtxPresent_ReturnsOptimalTensorPipeline()
     {
         var gpu = new GpuHardwareInfo(
             "NVIDIA GeForce RTX 4070",
@@ -81,16 +81,16 @@ public class ModuleHardwareCheckTests
             HasAmf: false
         );
 
-        var result = ModuleHardwareCheck.CheckUpscaler(gpu);
+        var result = ModuleHardwareCheck.CheckEditor(gpu);
 
-        Assert.Equal("Video Upscaler", result.ModuleName);
+        Assert.Equal("Video Editor", result.ModuleName);
         Assert.Equal(HardwareReadinessLevel.Optimal, result.Level);
         Assert.True(result.IsAccelerated);
         Assert.Contains("RTX Tensor", result.Summary);
     }
 
     [Fact]
-    public void CheckUpscaler_WhenLowVram_ReturnsLimitedMode()
+    public void CheckEditor_WhenLowVram_ReturnsLimitedMode()
     {
         var gpu = new GpuHardwareInfo(
             "Intel UHD 630",
@@ -102,7 +102,7 @@ public class ModuleHardwareCheckTests
             HasAmf: false
         );
 
-        var result = ModuleHardwareCheck.CheckUpscaler(gpu);
+        var result = ModuleHardwareCheck.CheckEditor(gpu);
 
         Assert.Equal(HardwareReadinessLevel.Limited, result.Level);
         Assert.False(result.IsAccelerated);
@@ -180,10 +180,10 @@ public class ModuleHardwareCheckTests
         var summary = ModuleHardwareCheck.GetGlobalCheck(gpu, liveMetrics);
 
         Assert.NotNull(summary.Downloader);
-        Assert.NotNull(summary.Upscaler);
+        Assert.NotNull(summary.Editor);
         Assert.NotNull(summary.Dubbing);
         Assert.Equal(HardwareReadinessLevel.Optimal, summary.Downloader.Level);
-        Assert.Equal(HardwareReadinessLevel.Optimal, summary.Upscaler.Level);
+        Assert.Equal(HardwareReadinessLevel.Optimal, summary.Editor.Level);
         Assert.Equal(HardwareReadinessLevel.Optimal, summary.Dubbing.Level);
         Assert.True(summary.Gpu.HasRtx);
         Assert.Contains("16", summary.Gpu.DedicatedVramGb.ToString("F0"));

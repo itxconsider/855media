@@ -61,6 +61,15 @@ public class ViewModelManager(IServiceProvider services)
         return viewModel;
     }
 
+    public InstagramDownloaderViewModel GetInstagramDownloaderViewModel(
+        DashboardViewModel dashboard
+    )
+    {
+        var viewModel = Licensed<InstagramDownloaderViewModel>();
+        viewModel.Initialize(dashboard);
+        return viewModel;
+    }
+
     public DramaBoxDownloaderViewModel GetDramaBoxDownloaderViewModel(
         DashboardViewModel dashboardViewModel
     )
@@ -77,7 +86,7 @@ public class ViewModelManager(IServiceProvider services)
         return viewModel;
     }
 
-    public VideoUpscalerViewModel GetVideoUpscalerViewModel() => Licensed<VideoUpscalerViewModel>();
+    public VideoEditorViewModel GetVideoEditorViewModel() => Licensed<VideoEditorViewModel>();
 
     public DubbingViewModel GetDubbingViewModel() => Licensed<DubbingViewModel>();
 
@@ -130,7 +139,7 @@ public class ViewModelManager(IServiceProvider services)
         string? authorName = null
     )
     {
-        var viewModel = services.GetRequiredService<DownloadMultipleSetupViewModel>();
+        var viewModel = Licensed<DownloadMultipleSetupViewModel>();
 
         viewModel.Title = title;
         viewModel.AvailableVideos = availableVideos;
@@ -150,7 +159,7 @@ public class ViewModelManager(IServiceProvider services)
         string? authorName = null
     )
     {
-        var viewModel = services.GetRequiredService<DownloadSingleSetupViewModel>();
+        var viewModel = Licensed<DownloadSingleSetupViewModel>();
 
         viewModel.Video = video;
         viewModel.AvailableDownloadOptions = availableDownloadOptions;

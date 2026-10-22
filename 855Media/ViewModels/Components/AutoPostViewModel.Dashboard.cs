@@ -96,8 +96,7 @@ public partial class AutoPostViewModel
             && !_networkLifetime.IsCancellationRequested
         )
         {
-            _networkInfoService ??= new(_ldPlayerService);
-            _ = startedRow.RefreshNetworkAsync(_networkInfoService, _networkLifetime.Token);
+            QueueNetworkRow(startedRow);
         }
         if (
             sender is LDInstanceItemViewModel

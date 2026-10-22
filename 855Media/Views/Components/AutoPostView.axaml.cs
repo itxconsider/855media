@@ -19,6 +19,8 @@ public partial class AutoPostView : UserControl
     public AutoPostView()
     {
         InitializeComponent();
+        SizeChanged += (_, _) => UpdateResponsiveLayout();
+        AttachedToVisualTree += (_, _) => UpdateResponsiveLayout();
         DataContextChanged += (_, _) =>
         {
             if (_accountScrollViewModel != null)
@@ -47,6 +49,47 @@ public partial class AutoPostView : UserControl
                 RoutingStrategies.Tunnel | RoutingStrategies.Bubble
             );
         }
+    }
+
+    private bool? _compactTables;
+    private bool? _compactToolbar;
+
+    private void UpdateResponsiveLayout()
+    {
+        if (Bounds.Width <= 0)
+            return;
+        var compactToolbar = Bounds.Width < 1250;
+        if (_compactToolbar != compactToolbar)
+        {
+            _compactToolbar = compactToolbar;
+            var toolbar = this.FindControl<Grid>("RunToolbar")!;
+            var actions = this.FindControl<StackPanel>("RunActionButtons")!;
+            toolbar.ColumnDefinitions = new ColumnDefinitions(compactToolbar ? "*" : "*,Auto");
+            toolbar.RowDefinitions = new RowDefinitions(compactToolbar ? "Auto,Auto" : "Auto");
+            Grid.SetColumn(actions, compactToolbar ? 0 : 1);
+            Grid.SetRow(actions, compactToolbar ? 1 : 0);
+            actions.HorizontalAlignment = compactToolbar
+                ? Avalonia.Layout.HorizontalAlignment.Left
+                : Avalonia.Layout.HorizontalAlignment.Right;
+            actions.Margin = new Thickness(compactToolbar ? 0 : 12, 0, 0, 4);
+        }
+        var compactTables = Bounds.Width < 1100;
+        if (_compactTables == compactTables)
+            return;
+        _compactTables = compactTables;
+        var tables = this.FindControl<Grid>("DashboardTables")!;
+        var queue = this.FindControl<Border>("QueuePanel")!;
+        var splitter = this.FindControl<GridSplitter>("DashboardTableSplitter")!;
+        tables.ColumnDefinitions = new ColumnDefinitions(compactTables ? "*" : "2*,6,3*");
+        tables.RowDefinitions = new RowDefinitions(compactTables ? "2*,6,3*" : "*");
+        Grid.SetColumn(queue, compactTables ? 0 : 2);
+        Grid.SetRow(queue, compactTables ? 2 : 0);
+        Grid.SetColumn(splitter, compactTables ? 0 : 1);
+        Grid.SetRow(splitter, compactTables ? 1 : 0);
+        splitter.ResizeDirection = compactTables
+            ? GridResizeDirection.Rows
+            : GridResizeDirection.Columns;
+        queue.Margin = compactTables ? default : new Thickness(6, 0, 0, 0);
     }
 
     private void ScrollToDeviceAccounts(int deviceIndex)

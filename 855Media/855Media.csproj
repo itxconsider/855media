@@ -78,6 +78,8 @@
     <EmbeddedResource Include="Resources/facebook-scraper-bridge.js" />
     <EmbeddedResource Include="Resources/facebook-photo-detail.js" />
     <EmbeddedResource Include="Resources/facebook-photo-caption.js" />
+    <EmbeddedResource Include="Resources/instagram-scraper-bridge.js" />
+    <EmbeddedResource Include="Resources/instagram-post-detail.js" />
     <Content
       Include="Resources/facebook-layouts.default.json"
       Link="layouts/facebook-layouts.json"

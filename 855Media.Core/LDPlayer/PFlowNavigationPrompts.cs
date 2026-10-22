@@ -120,8 +120,10 @@ internal static class PFlowNavigationPrompts
     )
     {
         delay ??= Task.Delay;
+        xml = await PFlowSurveyPrompt.DismissAsync(ld, index, xml, path, ct, delay);
         xml = await DismissStreakAsync(ld, index, xml, path, ct, delay);
         xml = await PFlowEmailUpdatePrompt.DismissAsync(ld, index, xml, path, ct, delay);
-        return await DismissStreakAsync(ld, index, xml, path, ct, delay);
+        xml = await DismissStreakAsync(ld, index, xml, path, ct, delay);
+        return await PFlowSurveyPrompt.DismissAsync(ld, index, xml, path, ct, delay);
     }
 }

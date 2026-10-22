@@ -1,0 +1,46 @@
+<UserControl x:Class="_855Media.Views.Components.InstagramDownloaderView"
+    xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:components="clr-namespace:_855Media.ViewModels.Components"
+    xmlns:icons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+    x:DataType="components:InstagramDownloaderViewModel">
+    <UserControl.Styles>
+        <Style Selector="Button">
+            <Setter Property="Theme" Value="{DynamicResource MaterialFlatButton}" />
+            <Setter Property="Foreground" Value="{DynamicResource AntigravityTextBrush}" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="FontSize" Value="13" />
+        </Style>
+    </UserControl.Styles>
+    <Grid RowDefinitions="Auto,Auto,*">
+        <Grid Margin="12,8" RowDefinitions="Auto,Auto" ColumnDefinitions="Auto,*,Auto">
+            <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                <Button Command="{Binding BackCommand}" ToolTip.Tip="Back"><icons:MaterialIcon Kind="ArrowLeft" Width="18" Height="18" /></Button>
+                <Button Command="{Binding ForwardCommand}" ToolTip.Tip="Forward"><icons:MaterialIcon Kind="ArrowRight" Width="18" Height="18" /></Button>
+                <Button Command="{Binding RefreshCommand}" ToolTip.Tip="Refresh"><icons:MaterialIcon Kind="Refresh" Width="18" Height="18" /></Button>
+            </StackPanel>
+            <TextBox Name="InstagramAddress" Grid.Column="1" Text="{Binding AddressInput}" KeyDown="Address_OnKeyDown" Margin="8,0" Watermark="https://www.instagram.com/nample/reels/" VerticalContentAlignment="Center" Height="36" FontSize="13" Theme="{DynamicResource SoloTextBox}" Background="{DynamicResource AntigravityPanelBrush}" />
+            <Button Grid.Column="2" Command="{Binding NavigateCommand}" Content="Go" />
+            <WrapPanel Grid.Row="1" Grid.ColumnSpan="3" Margin="0,8,0,0">
+                <Button Name="InstagramAutoScroll" Command="{Binding ToggleCollectionCommand}" Margin="0,0,8,4">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Text="Auto-Scroll" IsVisible="{Binding !IsCollecting}" />
+                        <TextBlock Text="Stop" IsVisible="{Binding IsCollecting}" />
+                    </StackPanel>
+                </Button>
+                <Button Name="InstagramImport" Classes="btn-primary" Command="{Binding ImportCommand}" Margin="0,0,8,4" Content="{Binding DetectedCount, StringFormat='Import ({0})'}" />
+                <Button Command="{Binding ClearCommand}" Content="Clear" Margin="0,0,12,4" />
+                <ComboBox Name="InstagramBrowserMediaSelector" SelectedIndex="{Binding SelectedMediaIndex, Mode=TwoWay}" MinWidth="200" Margin="0,0,0,4">
+                    <ComboBoxItem Content="Photos + videos &amp; Reels" />
+                    <ComboBoxItem Content="Photos only" />
+                    <ComboBoxItem Content="Videos &amp; Reels only" />
+                </ComboBox>
+            </WrapPanel>
+        </Grid>
+        <TextBlock Grid.Row="1" Margin="12,4,12,8" Text="{Binding CollectionStatus}" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" />
+        <Panel Grid.Row="2">
+            <TextBlock Text="Loading Instagram browser…" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            <WebView Name="InstagramWebBrowser" Loaded="Browser_OnLoaded" WebViewCreated="Browser_OnCreated" />
+        </Panel>
+    </Grid>
+</UserControl>

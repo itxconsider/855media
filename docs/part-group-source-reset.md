@@ -1,0 +1,7 @@
+# Reset unfinished series when Reel sources change
+
+Editing or clearing the main Reel path, additional Reel/video path or group Reel folder now resets PendingReelPartGroups for that target. New preparation can select groups from the new source instead of resuming paths under the old folder. Path comparisons normalize full paths, case and trailing separators so formatting-only edits do not reset plans. Initialization preserves saved groups, and photo/story/caption edits do not reset Reel groups.
+
+The reset replaces the list rather than clearing a potentially shared snapshot. Single-target editing uses its existing isolated draft, so Cancel leaves active state alone. Saving changed paths resets the active target; save failure restores original paths and unfinished plans for both single-target and bulk edits. Confirmed/uncertain publication history, existing queue jobs and source files are unchanged. Existing stale groups are not silently migrated during load; the reset applies to source changes made using this build.
+
+Validation (2026-10-23): actual view-model checks cover saved-plan initialization, equivalent paths, changed main/additional sources, clearing group Reel sources and non-Reel isolation. Save rollback paths were reviewed. All 39 focused Part-group/queue-media regressions passed. Main Debug build passed with zero warnings/errors after the user closed the app. Logs: artifacts/part-source-reset-build.log, artifacts/part-source-reset-check.log and artifacts/part-source-reset-regressions.log. No package or live data edits.

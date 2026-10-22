@@ -92,6 +92,7 @@
 
         <!--  Data grid  -->
         <Style Selector="DataGrid">
+            <Setter Property="ScrollViewer.AllowAutoHide" Value="False" />
             <Setter Property="BorderBrush" Value="{DynamicResource MaterialDividerBrush}" />
             <Setter Property="AutoGenerateColumns" Value="False" />
             <Setter Property="CanUserReorderColumns" Value="False" />
@@ -101,6 +102,18 @@
             <Setter Property="SelectionMode" Value="Single" />
         </Style>
 
+        <!-- Material's auto scrollbar dimensions are NaN. DataGrid needs explicit
+             dimensions to calculate overflow and reserve a usable scrollbar track. -->
+        <Style Selector="DataGrid /template/ ScrollBar#PART_VerticalScrollbar">
+            <Setter Property="Width" Value="14" />
+            <Setter Property="MinWidth" Value="14" />
+            <Setter Property="AllowAutoHide" Value="False" />
+        </Style>
+        <Style Selector="DataGrid /template/ ScrollBar#PART_HorizontalScrollbar">
+            <Setter Property="Height" Value="14" />
+            <Setter Property="MinHeight" Value="14" />
+            <Setter Property="AllowAutoHide" Value="False" />
+        </Style>
         <Style Selector="DataGridColumnHeader">
             <Setter Property="AreSeparatorsVisible" Value="False" />
         </Style>
@@ -520,6 +533,7 @@
 
         <!-- 5. Unified DataGrid Theme (Consistent 6px Radius, 11.5px Header) -->
         <Style Selector="DataGrid">
+            <Setter Property="ScrollViewer.AllowAutoHide" Value="False" />
             <Setter Property="BorderBrush" Value="{DynamicResource AntigravityBorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="6" />
@@ -586,7 +600,7 @@
 
     <Application.Resources>
         <ResourceDictionary>
-            <FontFamily x:Key="AppFontFamily">Franklin Gothic Medium, Franklin Gothic, Segoe UI, sans-serif</FontFamily>
+            <FontFamily x:Key="AppFontFamily">Segoe UI, sans-serif</FontFamily>
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Default">
                     <SolidColorBrush x:Key="ToggleBackgroundBrush" Color="#FFFFFF" />

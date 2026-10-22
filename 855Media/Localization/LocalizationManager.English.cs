@@ -37,7 +37,7 @@ public partial class LocalizationManager
             [nameof(TikTokTabTitle)] = "TikTok",
             [nameof(FacebookTabTitle)] = "Facebook",
             [nameof(DramaBoxTabTitle)] = "DramaBox",
-            [nameof(UpscalerTabTitle)] = "EDITOR",
+            [nameof(EditorTabTitle)] = "EDITOR",
             [nameof(YouTubePromptTitle)] = "Download YouTube Videos & Playlists",
             [nameof(TikTokPromptTitle)] = "Download TikTok Videos & Slideshows",
             [nameof(FacebookPromptTitle)] = "Download Facebook Photos & Videos",

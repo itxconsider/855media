@@ -47,8 +47,8 @@
         <Grid x:Name="DashboardLayout" Margin="20,16" RowDefinitions="Auto,*">
             <Border x:Name="RunOptionsCard" Grid.Row="0" Classes="card-panel" Padding="14,8" Margin="0,0,0,8">
                 <StackPanel Spacing="8">
-                    <Grid ColumnDefinitions="*,Auto">
-                    <WrapPanel Grid.Column="0">
+                    <Grid x:Name="RunToolbar" ColumnDefinitions="*,Auto">
+                    <WrapPanel x:Name="RunSummary" Grid.Column="0">
                         <TextBlock Text="{Binding PFlowDeviceSummary}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,22,4" />
                         <TextBlock Text="{Binding PFlowTargetSummary}" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,22,4" />
                         <CheckBox IsChecked="{Binding PFlowDryRun}" IsEnabled="{Binding !IsRunning}" Content="Preview without publishing" Margin="0,0,22,4" ToolTip.Tip="{Binding PFlowModeSummary}" />
@@ -86,7 +86,7 @@
 
 
             <Grid x:Name="DashboardTables" Grid.Row="1" ColumnDefinitions="2*,6,3*">
-                <Border Grid.Column="0" Classes="card-panel" Padding="14,10">
+                <Border x:Name="DevicePanel" Grid.Column="0" Classes="card-panel" Padding="14,10">
                     <Grid RowDefinitions="Auto,*">
                         <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,8">
                             <TextBlock Text="DEVICES · LIVE STEP STATUS" Classes="section-title" Margin="0" VerticalAlignment="Center" />
@@ -106,7 +106,7 @@
                             BorderThickness="1"
                             BorderBrush="{DynamicResource AntigravityBorderBrush}"
                             CornerRadius="8"
-                            VerticalScrollBarVisibility="Visible"
+                            VerticalScrollBarVisibility="Auto"
                             HorizontalScrollBarVisibility="Auto">
                             <DataGrid.Styles>
                                 <Style Selector="DataGridColumnHeader">
@@ -184,10 +184,10 @@
                     </Grid>
                 </Border>
                 <GridSplitter x:Name="DashboardTableSplitter" Grid.Column="1" ResizeDirection="Columns" ResizeBehavior="PreviousAndNext" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="Transparent" ToolTip.Tip="Drag to resize the LD and queue panels" />
-                <Border Grid.Column="2" Classes="card-panel" Padding="14,8" Margin="6,0,0,0">
+                <Border x:Name="QueuePanel" Grid.Column="2" Classes="card-panel" Padding="14,8" Margin="6,0,0,0">
                     <Expander x:Name="DashboardQueuePanel" IsExpanded="True" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" VerticalContentAlignment="Stretch">
                         <Expander.Header>
-                            <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Spacing="4">
                                 <WrapPanel VerticalAlignment="Center">
                                     <TextBlock Text="POST QUEUE &amp; OUTCOMES" FontWeight="SemiBold" Margin="0,0,20,4" VerticalAlignment="Center" />
                                     <TextBlock Text="{Binding PFlowQueuedCount, StringFormat='Queued  {0}'}" Margin="0,0,16,4" VerticalAlignment="Center" />
@@ -195,15 +195,16 @@
                                     <TextBlock Text="{Binding PFlowFailedCount, StringFormat='Failed  {0}'}" Foreground="#EF4444" Margin="0,0,16,4" VerticalAlignment="Center" />
                                     <TextBlock Text="{Binding PFlowReviewCount, StringFormat='Needs review  {0}'}" Foreground="#F59E0B" Margin="0,0,16,4" VerticalAlignment="Center" />
                                 </WrapPanel>
-                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                                    <Button Command="{Binding ShowPFlowHistoryCommand}" Classes="action-btn" Content="History &amp; review" Padding="8,4" FontSize="12" />
-                                    <Button Command="{Binding RetryQueueCommand}" Classes="action-btn" Content="Retry failed / cancelled" IsEnabled="{Binding !IsRunning}" Padding="8,4" FontSize="12" ToolTip.Tip="Requeue retryable jobs using the same files and targets. Unknown posts require History review before retrying those posts; other queued posts can continue." />
-                                    <Button Command="{Binding ClearTasksCommand}" Classes="action-btn" Content="Clear queue" IsEnabled="{Binding !IsRunning}" Padding="8,4" FontSize="12" />
-                                </StackPanel>
-                            </Grid>
+
+                            </StackPanel>
                         </Expander.Header>
                         <Grid RowDefinitions="Auto,*" Margin="0,8,0,0">
                             <StackPanel Spacing="6" Margin="0,0,0,8">
+                                <WrapPanel VerticalAlignment="Center">
+                                    <Button Command="{Binding ShowPFlowHistoryCommand}" Classes="action-btn" Content="History &amp; review" Padding="8,4" FontSize="12" Margin="0,0,8,4" />
+                                    <Button Command="{Binding RetryQueueCommand}" Classes="action-btn" Content="Retry failed / cancelled" IsEnabled="{Binding !IsRunning}" Padding="8,4" FontSize="12" Margin="0,0,8,4" ToolTip.Tip="Requeue retryable jobs using the same files and targets. Unknown posts require History review before retrying those posts; other queued posts can continue." />
+                                    <Button Command="{Binding ClearTasksCommand}" Classes="action-btn" Content="Clear queue" IsEnabled="{Binding !IsRunning}" Padding="8,4" FontSize="12" Margin="0,0,8,4" />
+                                </WrapPanel>
                                 <Border IsVisible="{Binding PFlowNeedsReview}" Background="{DynamicResource AntigravityElevatedBrush}" Padding="8" CornerRadius="6">
                                     <TextBlock Text="Publication could not be confirmed. Other queued posts can continue. Check this post and record its outcome in History; its files are retained and automatic reposting is blocked." TextWrapping="Wrap" Foreground="#F59E0B" />
                                 </Border>
@@ -311,7 +312,7 @@
                                     Name="ManageDeviceDataGrid"
                                     AutoGenerateColumns="False"
                                     GridLinesVisibility="Horizontal"
-                                    VerticalScrollBarVisibility="Visible"
+                                    VerticalScrollBarVisibility="Auto"
                                     HorizontalScrollBarVisibility="Auto"
                                     RowHeight="NaN"
                                     CanUserSortColumns="True"
@@ -665,7 +666,7 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
                                                                                     </DataTemplate>
                                                                                 </DataGridTemplateColumn.CellTemplate>
                                                                             </DataGridTemplateColumn>
-<DataGridTemplateColumn Header="Name" SortMemberPath="PageName" Width="*" MinWidth="240">
+<DataGridTemplateColumn Header="Name" SortMemberPath="PageName" Width="280" MinWidth="240">
     <DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding PageName}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding PageName}" /></DataTemplate></DataGridTemplateColumn.CellTemplate>
 </DataGridTemplateColumn>
 <DataGridTextColumn Header="Device" Binding="{Binding DeviceName}" Width="100" />
@@ -679,7 +680,7 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
 <DataGridTextColumn Header="Created" SortMemberPath="CreationDateSortKey" Binding="{Binding CreationDateDisplay}" Width="190" />
 <DataGridTextColumn Header="Maturity" SortMemberPath="Maturity" Binding="{Binding MaturityName}" Width="110" />
 <DataGridTextColumn Header="Daily posts / limit" SortMemberPath="PostsToday" Binding="{Binding DailyPostStatus}" Width="145" />
-<DataGridTemplateColumn Header="Status" SortMemberPath="TableStatus" Width="170">
+<DataGridTemplateColumn Header="Status" SortMemberPath="TableStatus" Width="*" MinWidth="170">
     <DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding TableStatus}" FontSize="13" VerticalAlignment="Center" ToolTip.Tip="{Binding AccessStatus}" /></DataTemplate></DataGridTemplateColumn.CellTemplate>
 </DataGridTemplateColumn>
 </DataGrid.Columns>
@@ -711,7 +712,7 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
     <Style Selector="DataGridRow:selected"><Setter Property="Background" Value="#263D58" /></Style>
 </DataGrid.Styles>
 <DataGrid.Columns><DataGridTemplateColumn Header="Select" Width="55"><DataGridTemplateColumn.CellTemplate><DataTemplate DataType="components:FacebookProfileGroupViewModel"><CheckBox IsChecked="{Binding Profile.IsSelected, Mode=TwoWay}" HorizontalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
-<DataGridTextColumn Header="Name" Binding="{Binding ProfileName}" Width="*" MinWidth="240" FontWeight="SemiBold" />
+<DataGridTextColumn Header="Name" Binding="{Binding ProfileName}" Width="280" MinWidth="240" FontWeight="SemiBold" />
 <DataGridTextColumn Header="Device" Binding="{Binding DeviceName}" Width="100" />
 <DataGridTextColumn Header="Type" Binding="{Binding Profile.Type}" Width="100" />
 <DataGridTemplateColumn Header="Reel files" SortMemberPath="Profile.ReelFilesSortKey" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookProfileGroupViewModel"><TextBlock Text="{Binding Profile.ReelFilesDisplay}" ToolTip.Tip="{Binding Profile.ReelFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
@@ -723,7 +724,7 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
 <DataGridTextColumn Header="Created" SortMemberPath="Profile.CreationDateSortKey" Binding="{Binding Profile.CreationDateDisplay}" Width="190" />
 <DataGridTextColumn Header="Maturity" SortMemberPath="Profile.Maturity" Binding="{Binding Profile.MaturityName}" Width="110" />
 <DataGridTextColumn Header="Daily posts / limit" SortMemberPath="Profile.PostsToday" Binding="{Binding Profile.DailyPostStatus}" Width="145" />
-<DataGridTextColumn Header="Status" Binding="{Binding Profile.TableStatus}" Width="170" /></DataGrid.Columns>
+<DataGridTextColumn Header="Status" Binding="{Binding Profile.TableStatus}" Width="*" MinWidth="170" /></DataGrid.Columns>
                                     </DataGrid>
 
                                     <!-- 2. FLAT TABLE VIEW: Visible when IsGroupedView is False -->
@@ -733,7 +734,7 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
                                         ItemsSource="{Binding DisplayedManagePages}"
                                         AutoGenerateColumns="False"
                                         GridLinesVisibility="Horizontal"
-                                        VerticalScrollBarVisibility="Visible"
+                                        VerticalScrollBarVisibility="Auto"
                                         HorizontalScrollBarVisibility="Visible"
                                         CanUserResizeColumns="True"
                                         CanUserSortColumns="True"
@@ -761,7 +762,7 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
                                                     </DataTemplate>
                                                 </DataGridTemplateColumn.CellTemplate>
                                             </DataGridTemplateColumn>
-<DataGridTemplateColumn Header="Name" SortMemberPath="PageName" Width="*" MinWidth="240">
+<DataGridTemplateColumn Header="Name" SortMemberPath="PageName" Width="280" MinWidth="240">
     <DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding PageName}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding PageName}" /></DataTemplate></DataGridTemplateColumn.CellTemplate>
 </DataGridTemplateColumn>
 <DataGridTextColumn Header="Device" Binding="{Binding DeviceName}" Width="100" />
@@ -775,7 +776,7 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
 <DataGridTextColumn Header="Created" SortMemberPath="CreationDateSortKey" Binding="{Binding CreationDateDisplay}" Width="190" />
 <DataGridTextColumn Header="Maturity" SortMemberPath="Maturity" Binding="{Binding MaturityName}" Width="110" />
 <DataGridTextColumn Header="Daily posts / limit" SortMemberPath="PostsToday" Binding="{Binding DailyPostStatus}" Width="145" />
-<DataGridTemplateColumn Header="Status" SortMemberPath="TableStatus" Width="170">
+<DataGridTemplateColumn Header="Status" SortMemberPath="TableStatus" Width="*" MinWidth="170">
     <DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding TableStatus}" FontSize="13" VerticalAlignment="Center" ToolTip.Tip="{Binding AccessStatus}" /></DataTemplate></DataGridTemplateColumn.CellTemplate>
 </DataGridTemplateColumn>
 </DataGrid.Columns>
@@ -808,36 +809,70 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
                         </Border></TabItem>
                             <TabItem Header="LD-Accounts">
                                 <Border BorderThickness="1" BorderBrush="{DynamicResource AntigravityBorderBrush}" CornerRadius="8" Padding="12" Background="{DynamicResource AntigravityCardBrush}">
-                                    <Grid RowDefinitions="Auto,Auto,Auto,Auto,*">
+                                    <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*">
                                         <TextBlock Text="{Binding LdAccountsHeading}" FontWeight="Bold" FontSize="16" />
-                                        <TextBlock Grid.Row="1" Text="{Binding LdAccountsSummary}" TextWrapping="Wrap" Margin="0,8" />
-                                        <WrapPanel Grid.Row="2" Margin="0,0,0,8">
+                                        <TextBlock Grid.Row="1" Text="{Binding LdAccountsSummary}" ToolTip.Tip="{Binding AccountMappingStatus}" TextWrapping="Wrap" Margin="0,8" />
+                                        <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
+                                            <TextBox Text="{Binding AccountSearchText, Mode=TwoWay}" Watermark="Search LD number, account name or UID" MinWidth="120" />
+                                            <ComboBox Grid.Column="1" ItemsSource="{Binding AccountFilters}" SelectedItem="{Binding AccountFilter, Mode=TwoWay}" Width="155" Margin="8,0,0,0" />
+                                        </Grid>
+                                        <WrapPanel Grid.Row="3" Margin="0,0,0,8">
                                             <Button Content="Refresh mappings" Classes="action-btn" Command="{Binding RefreshAccountMappingsCommand}" IsEnabled="{Binding CanEditAccountBulkSelection}" Margin="0,0,8,4" />
                                             <Button Content="Save all account options" Classes="action-btn" Command="{Binding SaveAccountSelectionsCommand}" IsEnabled="{Binding CanEditAccountBulkSelection}" Margin="0,0,8,4" />
-                                            <Button Content="Select all" Classes="action-btn" Command="{Binding SelectAllMappedAccountsCommand}" IsEnabled="{Binding CanEditAccountBulkSelection}" Margin="0,0,8,4" />
+                                            <Button Content="Select visible" Classes="action-btn" Command="{Binding SelectAllMappedAccountsCommand}" IsEnabled="{Binding CanEditAccountBulkSelection}" Margin="0,0,8,4" />
                                             <Button Content="Clear selection" Classes="action-btn" Command="{Binding ClearMappedAccountSelectionCommand}" IsEnabled="{Binding CanEditAccountBulkSelection}" Margin="0,0,8,4" />
                                             <TextBlock Text="{Binding BulkAccountSelectionSummary}" VerticalAlignment="Center" Margin="8,0,0,4" />
                                         </WrapPanel>
-                                        <StackPanel Grid.Row="3" Spacing="6" Margin="0,0,0,12">
+                                        <StackPanel Grid.Row="4" Spacing="6" Margin="0,0,0,12">
                                             <WrapPanel>
                                                 <TextBlock Text="Apply to selected:" VerticalAlignment="Center" Margin="0,0,12,4" />
-                                                <Button Content="Fetch on" Classes="action-btn" Command="{Binding ApplySelectedAccountOptionCommand}" CommandParameter="Fetch:on" IsEnabled="{Binding CanApplyAccountBulkSelection}" Margin="0,0,6,4" />
-                                                <Button Content="Fetch off" Classes="action-btn" Command="{Binding ApplySelectedAccountOptionCommand}" CommandParameter="Fetch:off" IsEnabled="{Binding CanApplyAccountBulkSelection}" Margin="0,0,12,4" />
-                                                <Button Content="ScreenTime on" Classes="action-btn" Command="{Binding ApplySelectedAccountOptionCommand}" CommandParameter="ScreenTime:on" IsEnabled="{Binding CanApplyAccountBulkSelection}" Margin="0,0,6,4" />
-                                                <Button Content="ScreenTime off" Classes="action-btn" Command="{Binding ApplySelectedAccountOptionCommand}" CommandParameter="ScreenTime:off" IsEnabled="{Binding CanApplyAccountBulkSelection}" Margin="0,0,12,4" />
-                                                <Button Content="Posting on" Classes="action-btn" Command="{Binding ApplySelectedAccountOptionCommand}" CommandParameter="Posting:on" IsEnabled="{Binding CanApplyAccountBulkSelection}" Margin="0,0,6,4" />
-                                                <Button Content="Posting off" Classes="action-btn" Command="{Binding ApplySelectedAccountOptionCommand}" CommandParameter="Posting:off" IsEnabled="{Binding CanApplyAccountBulkSelection}" Margin="0,0,12,4" />
+                                                <ToggleSwitch Content="Fetch" IsChecked="{Binding BulkFetchEnabled, Mode=TwoWay}" IsEnabled="{Binding CanApplyAccountBulkSelection}" Margin="0,0,16,4" ToolTip.Tip="On when all selected accounts have Fetch enabled. Off can also mean mixed values. Switching applies to all selected accounts; Save to keep changes." />
+                                                <ToggleSwitch Content="ScreenTime" IsChecked="{Binding BulkScreenTimeEnabled, Mode=TwoWay}" IsEnabled="{Binding CanApplyAccountBulkSelection}" Margin="0,0,16,4" ToolTip.Tip="On when all selected accounts have ScreenTime enabled. Off can also mean mixed values. Switching applies to all selected accounts; Save to keep changes." />
+                                                <ToggleSwitch Content="Posting" IsChecked="{Binding BulkPostingEnabled, Mode=TwoWay}" IsEnabled="{Binding CanApplyAccountBulkSelection}" Margin="0,0,16,4" ToolTip.Tip="On when all selected accounts have Posting enabled. Off can also mean mixed values. Switching applies to all selected accounts; Save to keep changes." />
                                                 <Button Content="Save selected accounts" Classes="action-btn btn-success" Command="{Binding SaveSelectedAccountOptionsCommand}" IsEnabled="{Binding CanApplyAccountBulkSelection}" Margin="0,0,0,4" />
                                             </WrapPanel>
                                             <TextBlock Text="{Binding BulkAccountSelectionStatus}" TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                         </StackPanel>
-                                        <ScrollViewer Grid.Row="4" HorizontalScrollBarVisibility="Disabled">
-                                            <ItemsControl x:Name="MappedAccountsList" ItemsSource="{Binding DisplayedMappedAccounts}" IsEnabled="{Binding CanEditAccountBulkSelection}">
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate DataType="components:PFlowAccountItemViewModel">
-                                                        <Border BorderThickness="1" BorderBrush="{DynamicResource AntigravityBorderBrush}" CornerRadius="8" Padding="12" Margin="0,0,0,8">
+                                        <DataGrid Grid.Row="5" x:Name="MappedAccountsList" ItemsSource="{Binding DisplayedMappedAccounts}"
+                                            IsEnabled="{Binding CanEditAccountBulkSelection}" AutoGenerateColumns="False" IsReadOnly="True"
+                                            RowHeight="40" GridLinesVisibility="Horizontal" FrozenColumnCount="2"
+                                            HorizontalScrollBarVisibility="Visible" VerticalScrollBarVisibility="Auto"
+                                            RowDetailsVisibilityMode="VisibleWhenSelected" AreRowDetailsFrozen="True">
+                                            <DataGrid.Columns>
+                                                <DataGridTemplateColumn Header="Select" Width="65">
+                                                    <DataGridTemplateColumn.CellTemplate><DataTemplate DataType="components:PFlowAccountItemViewModel">
+                                                        <CheckBox IsChecked="{Binding IsSelectedForBulk, Mode=TwoWay}" IsEnabled="{Binding IsMappingValid}" HorizontalAlignment="Center" />
+                                                    </DataTemplate></DataGridTemplateColumn.CellTemplate>
+                                                </DataGridTemplateColumn>
+                                                <DataGridTextColumn Header="LD" Binding="{Binding DeviceName}" SortMemberPath="DeviceIndex" Width="110" />
+                                                <DataGridTextColumn Header="Account" Binding="{Binding Name}" Width="180" />
+                                                <DataGridTextColumn Header="UID" Binding="{Binding OwnerUid}" Width="160" />
+                                                <DataGridTextColumn Header="Pages" Binding="{Binding PageCount}" Width="65" />
+                                                <DataGridTemplateColumn Header="Status" Width="185">
+                                                    <DataGridTemplateColumn.CellTemplate><DataTemplate DataType="components:PFlowAccountItemViewModel">
+                                                        <TextBlock Text="{Binding MappingLabel}" ToolTip.Tip="{Binding BindingStatus}" VerticalAlignment="Center" />
+                                                    </DataTemplate></DataGridTemplateColumn.CellTemplate>
+                                                </DataGridTemplateColumn>
+                                                <DataGridTemplateColumn Header="Fetch" Width="95">
+                                                    <DataGridTemplateColumn.CellTemplate><DataTemplate DataType="components:PFlowAccountItemViewModel">
+                                                        <CheckBox IsChecked="{Binding SelectedForDiscovery, Mode=TwoWay}" HorizontalAlignment="Center" />
+                                                    </DataTemplate></DataGridTemplateColumn.CellTemplate>
+                                                </DataGridTemplateColumn>
+                                                <DataGridTemplateColumn Header="ScreenTime" Width="95">
+                                                    <DataGridTemplateColumn.CellTemplate><DataTemplate DataType="components:PFlowAccountItemViewModel">
+                                                        <CheckBox IsChecked="{Binding SelectedForScreenTime, Mode=TwoWay}" HorizontalAlignment="Center" />
+                                                    </DataTemplate></DataGridTemplateColumn.CellTemplate>
+                                                </DataGridTemplateColumn>
+                                                <DataGridTemplateColumn Header="Posting" Width="95">
+                                                    <DataGridTemplateColumn.CellTemplate><DataTemplate DataType="components:PFlowAccountItemViewModel">
+                                                        <CheckBox IsChecked="{Binding SelectedForPosting, Mode=TwoWay}" HorizontalAlignment="Center" />
+                                                    </DataTemplate></DataGridTemplateColumn.CellTemplate>
+                                                </DataGridTemplateColumn>
+                                            </DataGrid.Columns>
+                                            <DataGrid.RowDetailsTemplate>
+                                                <DataTemplate DataType="components:PFlowAccountItemViewModel">
+<Border BorderThickness="1" BorderBrush="{DynamicResource AntigravityBorderBrush}" CornerRadius="8" Padding="12" Margin="0,0,0,8">
                                                             <StackPanel Spacing="6">
-                                                                <CheckBox Content="{Binding Name}" IsChecked="{Binding IsSelectedForBulk, Mode=TwoWay}" IsEnabled="{Binding IsMappingValid}" FontWeight="Bold" ToolTip.Tip="Select this account for bulk options. Selection alone does not enable any tasks." />
                                                                 <StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="{Binding DeviceName}" /><TextBlock Text="{Binding OwnerUid}" /><TextBlock Text="{Binding AppPackage}" /></StackPanel>
                                                                 <TextBlock Text="{Binding BindingStatus}" TextWrapping="Wrap" />
                                                                 <Button Content="{Binding CredentialButtonLabel}" IsEnabled="{Binding CanOpenCredentials}" Classes="action-btn" HorizontalAlignment="Left" Command="{Binding $parent[UserControl].((components:AutoPostViewModel)DataContext).OpenCredentialImportCommand}" CommandParameter="{Binding}" />
@@ -861,10 +896,9 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
                                                                 </WrapPanel>
                                                             </StackPanel>
                                                         </Border>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
-                                        </ScrollViewer>
+                                                </DataTemplate>
+                                            </DataGrid.RowDetailsTemplate>
+                                        </DataGrid>
                                     </Grid>
                                 </Border>
                             </TabItem>
@@ -900,7 +934,15 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
                                     <StackPanel Spacing="14">
                                         <TextBlock Text="PREPARE POST QUEUE" Classes="section-title" />
                                         <TextBlock Text="Choose targets and assign media first. Preparing the queue does not publish posts." TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                        <StackPanel Spacing="6"><TextBlock Text="Post type" FontWeight="SemiBold" /><ComboBox SelectedIndex="{Binding SelectedPostTypeIndex}" HorizontalAlignment="Stretch"><ComboBoxItem Content="Reel" /><ComboBoxItem Content="Photo" /><ComboBoxItem Content="Story" /></ComboBox></StackPanel>
+                                        <StackPanel Spacing="6">
+                                            <TextBlock Text="Post types · choose one or more" FontWeight="SemiBold" />
+                                            <WrapPanel IsEnabled="{Binding !IsPreparingPostQueue}">
+                                                <CheckBox Content="Reel" IsChecked="{Binding PrepareReels, Mode=TwoWay}" Margin="0,0,12,0" />
+                                                <CheckBox Content="Photo" IsChecked="{Binding PreparePhotos, Mode=TwoWay}" Margin="0,0,12,0" />
+                                                <CheckBox Content="Story" IsChecked="{Binding PrepareStories, Mode=TwoWay}" />
+                                            </WrapPanel>
+                                            <TextBlock Text="File / series limits apply per selected type; daily limits are shared." FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                        </StackPanel>
                                         <StackPanel Spacing="6"><TextBlock Text="File selection" FontWeight="SemiBold" /><ComboBox SelectedIndex="{Binding SelectedFileByIndex}" HorizontalAlignment="Stretch"><ComboBoxItem Content="Random" /><ComboBoxItem Content="Sequential" /></ComboBox></StackPanel>
                                         <StackPanel Spacing="6"><TextBlock Text="Files / series per target · min / max" FontWeight="SemiBold" ToolTip.Tip="Counts series for Pages with Keep video parts together enabled; otherwise counts individual files. Sequential uses the from/to selection range." /><Grid ColumnDefinitions="*,*"><NumericUpDown Value="{Binding PostFromCount}" Minimum="1" Maximum="50" FormatString="0" Margin="0,0,4,0" /><NumericUpDown Grid.Column="1" Value="{Binding PostToCount}" Minimum="1" Maximum="50" FormatString="0" Margin="4,0,0,0" /></Grid></StackPanel>
                                         <CheckBox Content="Use each file once across targets" IsChecked="{Binding UploadUniqueFile}" />

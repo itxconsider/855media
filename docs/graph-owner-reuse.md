@@ -1,0 +1,15 @@
+# Reuse verified owner identity before Page switches
+
+Posting and ScreenTime now retain a memory-only Graph activation proof for the current actor/account and reuse it for the observation before a Page switch. The proof is checked against the exact device/account/package binding, Facebook process and current authenticated token/owner digest. This does not reread Graph, inspect a profile link or navigate Page Settings.
+
+The proof can come from successful account startup or the last successful target activation. It selects no destination and never authorizes a new Page on its own. When target resolution switches actors, its second identity read always goes to Graph. The returned owner and target/Page-persona UID must match the mapping, then the existing exact own-profile UI/session checks must succeed before storing the next proof. An intentional actor switch may change the token; only its fresh destination Graph read can establish the replacement proof.
+
+Unexpected token/owner/process/binding/foreground changes reject and invalidate reuse. A fresh Graph read is then required by the ordinary activation path; contradictory identity still stops work. Process changes during a Graph read are rejected. Account/target invalidation, recovery, attention failures and batch reset clear the cache. No proof is persisted in history or restored after restart. The runtime one-use startup/UI-hash handoff is replaced by this session-bound proof; its historical Core helper/tests remain.
+
+On a successful run starting on the personal account: one startup Graph request plus one fresh request per Page activation. Thus two Pages with two consecutive Reels each use three requests total, while ten Page activations use eleven. Repeat posts on the same active Page and publication identity checks use zero Graph; final return to personal profile retains its existing no-Graph route. Revisiting a Page after switching away counts as another activation. Startup already on the requested target can reuse that result without an extra destination read. Account rotation, unavailable/invalidated proof, failures or restarts can add requests.
+
+Trace `identity.graph.owner-reused` marks successful pre-switch reuse. It is a proof event, not an HTTP request counter. Fetch is unchanged, and the stricter session/profile UI checks and uncertain-publication rules remain.
+
+Validation: HTTP-counting tests of actual Graph reading/target resolution verify 3 requests for two Pages and 11 for ten, including controlled actor-token changes and native repeat/publication scope checks. Wrong destination Graph UID and unexpected session/binding changes are rejected. All 356 focused identity/target/startup/publication/ScreenTime regressions passed; isolated desktop build passed with zero warnings/errors. Logs: `artifacts/graph-owner-reuse-tests.log`, `artifacts/graph-owner-reuse-build.log`.
+
+The existing diagnostic desktop output was reused: `artifacts/network-background-check/855Media.exe`. Live LD validation is pending. No running emulator/app or 3.1.7 ZIP was changed; this is one improvement credit toward 3.1.8.

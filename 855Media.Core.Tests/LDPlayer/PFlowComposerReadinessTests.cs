@@ -46,7 +46,7 @@ public class PFlowComposerReadinessTests
         var (service, device) = Harness("bottom");
         var ready = await Prepare(service, device);
         Assert.Equal(1, device.Up);
-        Assert.Equal(1, device.Down);
+        Assert.Equal(3, device.Down);
         Assert.NotNull(PFlowAutoPostService.FindVisiblePublishControl(ready, ["Share now"]));
         Assert.False(PFlowAutoPostService.CaptionTextMatches(ready, "Full caption"));
         Assert.Equal(0, device.Taps);
@@ -57,7 +57,7 @@ public class PFlowComposerReadinessTests
     {
         var (service, device) = Harness("top");
         await Prepare(service, device, "");
-        Assert.Equal(1, device.Down);
+        Assert.Equal(3, device.Down);
         Assert.Equal(0, device.Up);
         Assert.Equal(0, device.Taps);
     }
@@ -91,7 +91,7 @@ public class PFlowComposerReadinessTests
             PFlowAutoPostService.FindVisiblePublishControl(device.Xml(), ["Share now"], false)
         );
         var ready = await Prepare(service, device, "");
-        Assert.Equal(1, device.Down);
+        Assert.Equal(3, device.Down);
         Assert.NotNull(PFlowAutoPostService.FindVisiblePublishControl(ready, ["Share now"]));
         Assert.Equal(0, device.Taps);
     }
@@ -149,7 +149,7 @@ public class PFlowComposerReadinessTests
         var (service, device) = Harness("fixed-share");
         device.RequiredDown = 4;
         var ready = await Prepare(service, device, "");
-        Assert.Equal(4, device.Down);
+        Assert.Equal(6, device.Down);
         Assert.Contains("See more settings", ready);
         Assert.Equal(0, device.Taps);
     }
@@ -162,7 +162,7 @@ public class PFlowComposerReadinessTests
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             Prepare(service, device, "")
         );
-        Assert.Contains("See more settings", error.Message);
+        Assert.Contains("stable scroll end", error.Message);
         Assert.Equal(20, device.Down);
         Assert.Equal(0, device.Taps);
     }
@@ -188,7 +188,7 @@ public class PFlowComposerReadinessTests
         device.EnableAfter = enableAfter;
         var ready = await Prepare(service, device, "");
         Assert.Equal(enableAfter, device.Up);
-        Assert.Equal(enableAfter, device.Down);
+        Assert.Equal(2 + 3 * enableAfter, device.Down);
         Assert.NotNull(PFlowAutoPostService.FindVisiblePublishControl(ready, ["Share now"]));
         Assert.Equal(0, device.Taps);
     }
@@ -203,19 +203,94 @@ public class PFlowComposerReadinessTests
         );
         Assert.Contains("disabled", error.Message);
         Assert.Equal(3, device.Up);
-        Assert.Equal(3, device.Down);
+        Assert.Equal(11, device.Down);
         Assert.Equal(0, device.Taps);
     }
 
     [Fact]
-    public async Task IdentityChangeDuringDisabledRetryStopsBeforeScrollingBackDown()
+    public async Task IdentityChangeWhileReachingEndStopsBeforeRetry()
     {
         var (service, device) = Harness("bottom");
         device.DisabledShare = true;
         device.ChangeContext = true;
         await Assert.ThrowsAsync<InvalidOperationException>(() => Prepare(service, device, ""));
-        Assert.Equal(1, device.Up);
-        Assert.Equal(0, device.Down);
+        Assert.Equal(0, device.Up);
+        Assert.Equal(1, device.Down);
+        Assert.Equal(0, device.Taps);
+    }
+
+    [Fact]
+    public async Task BottomWithoutSeeMoreSettingsIsAcceptedAfterTwoStableSwipes()
+    {
+        var (service, device) = Harness("bottom");
+        device.NoMoreSettings = true;
+        var ready = await Prepare(service, device, "");
+        Assert.Equal(2, device.Down);
+        Assert.DoesNotContain("See more settings", ready);
+        Assert.NotNull(PFlowAutoPostService.FindVisiblePublishControl(ready, ["Share now"]));
+        Assert.Equal(0, device.Taps);
+    }
+
+    [Fact]
+    public void FixedFooterAndStatusBarAloneCannotProveScrollEnd()
+    {
+        var xml =
+            "<hierarchy><node package='com.facebook.katana' bounds='[0,0][720,1280]'><node text='Reel Settings' bounds='[100,70][500,110]'/><node text='Share now' bounds='[160,1176][688,1256]'/></node><node package='com.android.systemui' text='9:48' bounds='[0,0][100,45]'/></hierarchy>";
+        Assert.Null(PFlowAutoPostService.SettingsViewportSignature(xml, ["Share now"]));
+    }
+
+    [Fact]
+    public async Task OneUnchangedSwipeDoesNotStopBeforeLaterMovement()
+    {
+        var (service, device) = Harness("fixed-share");
+        device.RequiredDown = 2;
+        device.StallFirstSwipe = true;
+        await Prepare(service, device, "");
+        Assert.Equal(5, device.Down);
+        Assert.Equal(0, device.Taps);
+    }
+
+    [Fact]
+    public async Task CapturedLd13BottomNeedsNoSeeMoreSettingsMarker()
+    {
+        var (service, device) = Harness("bottom");
+        device.CapturedXml = File.ReadAllText(
+            Path.Combine(
+                AppContext.BaseDirectory,
+                "Fixtures",
+                "PFlowLayouts",
+                "ld13-reel-settings-bottom-no-more.xml"
+            )
+        );
+        var ready = await Prepare(service, device, "");
+        Assert.DoesNotContain("See more settings", ready);
+        Assert.Equal(2, device.Down);
+        Assert.NotNull(PFlowAutoPostService.FindVisiblePublishControl(ready, ["Share now"]));
+        Assert.Equal(0, device.Taps);
+    }
+
+    [Fact]
+    public async Task StopDuringEndDetectionNeverReturnsPublishReady()
+    {
+        var (service, device) = Harness("bottom");
+        using var stop = new CancellationTokenSource();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            service.PrepareComposerReadinessAsync(
+                new PFlowJob { PostType = "Reel", DeviceIndex = 997 },
+                device.Xml(),
+                ["Share now"],
+                _ => Task.FromResult(true),
+                null,
+                stop.Token,
+                (_, ct) =>
+                {
+                    stop.Cancel();
+                    ct.ThrowIfCancellationRequested();
+                    return Task.CompletedTask;
+                }
+            )
+        );
+        Assert.Equal(1, device.Down);
         Assert.Equal(0, device.Taps);
     }
 
@@ -223,6 +298,10 @@ public class PFlowComposerReadinessTests
     {
         public string State = "bottom";
         public bool ChangeContext;
+        public bool NoMoreSettings;
+        public bool StallFirstSwipe;
+        public int Position;
+        public string? CapturedXml;
         public bool DisabledShare;
         public int EnableAfter = int.MaxValue;
         public DateTime Now = new(2026, 10, 20);
@@ -234,21 +313,26 @@ public class PFlowComposerReadinessTests
         public string Xml() =>
             State == "other"
                 ? "<hierarchy><node text='Home'/></hierarchy>"
-                : "<hierarchy><node bounds='[0,0][720,1280]'><node text='Reel Settings'/>"
-                    + (
-                        State == "fixed-share"
-                            ? "<node text='Share now' enabled='true' clickable='true' bounds='[160,1176][688,1256]'/>"
-                        : State == "partial"
-                            ? "<node class='android.widget.Button' text='Share now' enabled='false' clickable='false' bounds='[160,1200][688,1340]'/>"
-                        : State is "top" or "wrong-caption"
-                            ? "<node class='android.widget.EditText' text='"
-                                + (State == "top" ? "Full caption" : "Wrong caption")
-                                + "' bounds='[10,140][690,300]'/>"
-                        : "<node text='See more settings' bounds='[20,1000][700,1090]'/><node text='Scheduling options'/><node text='Share now' enabled='"
-                            + (DisabledShare && Up < EnableAfter ? "false" : "true")
-                            + "' clickable='true' bounds='[160,1176][688,1256]'/>"
-                    )
-                    + "</node></hierarchy>";
+                : CapturedXml
+                    ?? "<hierarchy><node bounds='[0,0][720,1280]'><node text='Reel Settings'/>"
+                        + (
+                            State == "fixed-share"
+                                ? "<node text='Setting row "
+                                    + Position
+                                    + "' bounds='[20,400][700,450]'/><node text='Share now' enabled='true' clickable='true' bounds='[160,1176][688,1256]'/>"
+                            : State == "partial"
+                                ? "<node class='android.widget.Button' text='Share now' enabled='false' clickable='false' bounds='[160,1200][688,1340]'/>"
+                            : State is "top" or "wrong-caption"
+                                ? "<node class='android.widget.EditText' text='"
+                                    + (State == "top" ? "Full caption" : "Wrong caption")
+                                    + "' bounds='[10,140][690,300]'/>"
+                            : "<node text='"
+                                + (NoMoreSettings ? "Closed captions" : "See more settings")
+                                + "' bounds='[20,1000][700,1090]'/><node text='Scheduling options'/><node text='Share now' enabled='"
+                                + (DisabledShare && Up < EnableAfter ? "false" : "true")
+                                + "' clickable='true' bounds='[160,1176][688,1256]'/>"
+                        )
+                        + "</node></hierarchy>";
 
         protected override object? Invoke(MethodInfo? method, object?[]? args)
         {
@@ -265,9 +349,13 @@ public class PFlowComposerReadinessTests
                         Down++;
                     else
                         Up++;
+                    if (StallFirstSwipe && down && Down == 1)
+                        return Task.FromResult(true);
+                    if (down)
+                        Position++;
                     State =
                         ChangeContext ? "other"
-                        : down && Down < RequiredDown ? "fixed-share"
+                        : down && Position < RequiredDown ? "fixed-share"
                         : down ? "bottom"
                         : "top";
                     return Task.FromResult(true);

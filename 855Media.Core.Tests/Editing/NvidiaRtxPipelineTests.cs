@@ -1,0 +1,150 @@
+using System;
+using System.Reflection;
+using _855Media.Core.Editing;
+using Xunit;
+
+namespace _855Media.Core.Tests.Editing;
+
+public class NvidiaRtxPipelineTests
+{
+    [Theory]
+    [InlineData("NVIDIA GeForce RTX 5070 Ti", GpuVendor.Nvidia, true)]
+    [InlineData("NVIDIA GeForce RTX 4090", GpuVendor.Nvidia, true)]
+    [InlineData("NVIDIA GeForce RTX 3080", GpuVendor.Nvidia, true)]
+    [InlineData("NVIDIA TITAN RTX", GpuVendor.Nvidia, true)]
+    [InlineData("NVIDIA Quadro RTX 6000", GpuVendor.Nvidia, true)]
+    [InlineData("NVIDIA GeForce GTX 1080 Ti", GpuVendor.Nvidia, false)]
+    [InlineData("NVIDIA GeForce GTX 1660 Super", GpuVendor.Nvidia, false)]
+    [InlineData("AMD Radeon RX 7900 XTX", GpuVendor.Amd, false)]
+    [InlineData("Intel Arc A770", GpuVendor.Intel, false)]
+    public void GpuHardwareInfo_HasRtx_CorrectlyIdentifiesRtxGpus(
+        string gpuName,
+        GpuVendor vendor,
+        bool expectedHasRtx
+    )
+    {
+        var info = new GpuHardwareInfo(
+            gpuName,
+            vendor,
+            16L * 1024 * 1024 * 1024,
+            0,
+            HasNvenc: vendor == GpuVendor.Nvidia,
+            HasQsv: vendor == GpuVendor.Intel,
+            HasAmf: vendor == GpuVendor.Amd
+        );
+
+        Assert.Equal(expectedHasRtx, info.HasRtx);
+    }
+
+    [Fact]
+    public void EditModelType_ContainsNvidiaRtx()
+    {
+        var job = new EditJob();
+        job.ModelType = EditModelType.NvidiaRtx;
+        Assert.Equal(EditModelType.NvidiaRtx, job.ModelType);
+    }
+
+    [Theory]
+    [InlineData(
+        EditTargetResolution.Hd1080p,
+        "scale=-2:1080:flags=lanczos,unsharp=5:5:0.8:3:3:0.4,cas=0.5"
+    )]
+    [InlineData(
+        EditTargetResolution.Uhd4k,
+        "scale=-2:2160:flags=lanczos,unsharp=5:5:0.8:3:3:0.4,cas=0.5"
+    )]
+    [InlineData(
+        EditTargetResolution.Scale2x,
+        "scale=iw*2:ih*2:flags=lanczos,unsharp=5:5:0.8:3:3:0.4,cas=0.5"
+    )]
+    [InlineData(
+        EditTargetResolution.Scale4x,
+        "scale=iw*4:ih*4:flags=lanczos,unsharp=5:5:0.8:3:3:0.4,cas=0.5"
+    )]
+    public void GetRtxScaleFilter_ProducesLanczosCasFilter(
+        EditTargetResolution targetResolution,
+        string expectedFilter
+    )
+    {
+        var method = typeof(VideoEditorService).GetMethod(
+            "GetRtxScaleFilter",
+            BindingFlags.NonPublic | BindingFlags.Static
+        );
+        Assert.NotNull(method);
+
+        var filter = (string?)method.Invoke(null, [targetResolution]);
+        Assert.Equal(expectedFilter, filter);
+    }
+
+    [Fact]
+    public void GetRtxScaleFilter_Original1x_ReturnsNull()
+    {
+        var method = typeof(VideoEditorService).GetMethod(
+            "GetRtxScaleFilter",
+            BindingFlags.NonPublic | BindingFlags.Static
+        );
+        Assert.NotNull(method);
+
+        var filter = (string?)method.Invoke(null, [EditTargetResolution.Original1x]);
+        Assert.Null(filter);
+    }
+
+    [Fact]
+    public void GetRtxEncoderAndHwArgs_CpuSoftwareRequested_RespectsCpuSoftware()
+    {
+        var method = typeof(VideoEditorService).GetMethod(
+            "GetRtxEncoderAndHwArgs",
+            BindingFlags.NonPublic | BindingFlags.Static
+        );
+        Assert.NotNull(method);
+
+        var result = method.Invoke(
+            null,
+            [
+                EditVideoCodec.H264,
+                HardwareAccelerationMode.CpuSoftware,
+                "ffmpeg.exe",
+                RenderSpeedMode.Balanced,
+            ]
+        );
+        Assert.NotNull(result);
+
+        var isGpu = (bool)result.GetType().GetField("Item3")!.GetValue(result)!;
+        Assert.False(isGpu);
+    }
+
+    [Fact]
+    public void HardwareMonitorService_SampleMetrics_ReturnsValidMetrics()
+    {
+        using var monitor = new HardwareMonitorService();
+        var metrics = monitor.SampleMetrics();
+        Assert.NotNull(metrics);
+        Assert.InRange(metrics.CpuUsagePercent, 0, 100);
+        Assert.InRange(metrics.RamUsagePercent, 0, 100);
+        Assert.InRange(metrics.GpuUsagePercent, 0, 100);
+        Assert.InRange(metrics.VramUsagePercent, 0, 100);
+    }
+
+    [Theory]
+    [InlineData(TargetFramerate.Original, 0)]
+    [InlineData(TargetFramerate.Fps24, 24)]
+    [InlineData(TargetFramerate.Fps30, 30)]
+    [InlineData(TargetFramerate.Fps60, 60)]
+    [InlineData(TargetFramerate.Fps120, 120)]
+    public void TargetFramerate_EnumValues_MatchExpectedFrequencies(
+        TargetFramerate rate,
+        int expectedFps
+    )
+    {
+        Assert.Equal(expectedFps, (int)rate);
+    }
+
+    [Fact]
+    public void EditJob_TargetFramerate_DefaultsToOriginal()
+    {
+        var job = new EditJob();
+        Assert.Equal(TargetFramerate.Original, job.TargetFramerate);
+        job.TargetFramerate = TargetFramerate.Fps60;
+        Assert.Equal(TargetFramerate.Fps60, job.TargetFramerate);
+    }
+}

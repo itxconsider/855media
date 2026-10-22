@@ -1,0 +1,112 @@
+using _855Media.Core.Editing;
+using Xunit;
+
+namespace _855Media.Core.Tests.Editing;
+
+public class AspectRatioFilterBuilderTests
+{
+    [Fact]
+    public void BuildFilter_OriginalMode_ReturnsNull()
+    {
+        var filter = AspectRatioFilterBuilder.BuildFilter(
+            AspectRatioMode.Original,
+            EditTargetResolution.Hd1080p
+        );
+        Assert.Null(filter);
+    }
+
+    [Fact]
+    public void BuildFilter_Vertical916Crop_1080p_ReturnsCropScaleFilter()
+    {
+        var filter = AspectRatioFilterBuilder.BuildFilter(
+            AspectRatioMode.Vertical916Crop,
+            EditTargetResolution.Hd1080p
+        );
+        Assert.NotNull(filter);
+        Assert.Contains("crop=w='min(iw,ih*9/16)':h='min(ih,iw*16/9)'", filter);
+        Assert.Contains("scale=1080:1920:flags=lanczos", filter);
+    }
+
+    [Fact]
+    public void BuildFilter_Vertical916Crop_4k_Returns4kDimensions()
+    {
+        var filter = AspectRatioFilterBuilder.BuildFilter(
+            AspectRatioMode.Vertical916Crop,
+            EditTargetResolution.Uhd4k
+        );
+        Assert.NotNull(filter);
+        Assert.Contains("scale=2160:3840:flags=lanczos", filter);
+    }
+
+    [Fact]
+    public void BuildFilter_Vertical916BlurredCanvas_1080p_ReturnsSplitBlurOverlayFilter()
+    {
+        var filter = AspectRatioFilterBuilder.BuildFilter(
+            AspectRatioMode.Vertical916BlurredCanvas,
+            EditTargetResolution.Hd1080p
+        );
+        Assert.NotNull(filter);
+        Assert.Contains("format=yuv420p", filter);
+        Assert.Contains("split=2[bg][fg]", filter);
+        Assert.Contains("boxblur=10:2", filter);
+        Assert.Contains("overlay=(W-w)/2:(H-h)/2", filter);
+        Assert.Contains("setsar=1", filter);
+    }
+
+    [Fact]
+    public void BuildFilter_Square11_Returns1to1SquareFilter()
+    {
+        var filter = AspectRatioFilterBuilder.BuildFilter(
+            AspectRatioMode.Square11,
+            EditTargetResolution.Hd1080p
+        );
+        Assert.NotNull(filter);
+        Assert.Contains("crop=w='min(iw,ih)':h='min(iw,ih)'", filter);
+        Assert.Contains("scale=1080:1080:flags=lanczos", filter);
+    }
+
+    [Fact]
+    public void BuildFilter_Vertical916SquareBlur_1080p_Returns1to1CropWithBlurCanvas()
+    {
+        var filter = AspectRatioFilterBuilder.BuildFilter(
+            AspectRatioMode.Vertical916SquareBlur,
+            EditTargetResolution.Hd1080p
+        );
+        Assert.NotNull(filter);
+        Assert.Contains("format=yuv420p", filter);
+        Assert.Contains("split=2[bg][fg]", filter);
+        Assert.Contains("crop=w='min(iw,ih)':h='min(iw,ih)'", filter);
+        Assert.Contains("scale=1080:1080:flags=lanczos[scaled]", filter);
+        Assert.Contains("boxblur=10:2", filter);
+        Assert.Contains("overlay=(W-w)/2:(H-h)/2", filter);
+        Assert.Contains("setsar=1", filter);
+    }
+
+    [Fact]
+    public void BuildFilter_Square11BlurredCanvas_1080p_ReturnsSquareCanvasWithBlur()
+    {
+        var filter = AspectRatioFilterBuilder.BuildFilter(
+            AspectRatioMode.Square11BlurredCanvas,
+            EditTargetResolution.Hd1080p
+        );
+        Assert.NotNull(filter);
+        Assert.Contains("format=yuv420p", filter);
+        Assert.Contains("split=2[bg][fg]", filter);
+        Assert.Contains("scale=1080:1080:force_original_aspect_ratio=decrease", filter);
+        Assert.Contains("boxblur=10:2", filter);
+        Assert.Contains("overlay=(W-w)/2:(H-h)/2", filter);
+        Assert.Contains("setsar=1", filter);
+    }
+
+    [Fact]
+    public void BuildFilter_Cinematic219_ReturnsCinematicFilter()
+    {
+        var filter = AspectRatioFilterBuilder.BuildFilter(
+            AspectRatioMode.Cinematic219,
+            EditTargetResolution.Hd1080p
+        );
+        Assert.NotNull(filter);
+        Assert.Contains("crop=w=iw:h='min(ih,iw*9/21)'", filter);
+        Assert.Contains("scale=2560:1080:flags=lanczos", filter);
+    }
+}

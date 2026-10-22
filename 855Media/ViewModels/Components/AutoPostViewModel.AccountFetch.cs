@@ -134,6 +134,16 @@ public partial class AutoPostViewModel
             return true;
         }
         using var lease = await PFlowDeviceLease.AcquireAsync(worker.Index, ct);
+        using var graphSession = new PFlowFetchGraphSession(
+            _ldPlayerService,
+            worker.Index,
+            LdFolder
+        );
+        await using var keyboardSession = new PFlowKeyboardSession(
+            _ldPlayerService,
+            worker.Index,
+            LdFolder
+        );
         var wasRunning = (await _ldPlayerService.GetInstancesAsync(LdFolder, ct))
             .Single(i => i.Index == worker.Index)
             .IsRunning;
@@ -156,6 +166,7 @@ public partial class AutoPostViewModel
         try
         {
             await PrepareFetchStartupAsync(worker, ct);
+            await keyboardSession.CaptureAsync(ct);
             foreach (var account in selected)
             {
                 async Task Progress(string step) =>
@@ -300,6 +311,8 @@ public partial class AutoPostViewModel
         }
         finally
         {
+            if (!await keyboardSession.RestoreAsync())
+                worker.Status += " (keyboard restore pending)";
             // Keep authentication challenges and failed observations visible for user action.
             if (completed)
             {

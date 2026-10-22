@@ -110,7 +110,7 @@ public partial class LocalizationManager
     public string TikTokTabTitle => Get();
     public string FacebookTabTitle => Get();
     public string DramaBoxTabTitle => Get();
-    public string UpscalerTabTitle => Get();
+    public string EditorTabTitle => Get();
     public string YouTubePromptTitle => Get();
     public string TikTokPromptTitle => Get();
     public string FacebookPromptTitle => Get();

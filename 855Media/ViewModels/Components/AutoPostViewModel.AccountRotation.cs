@@ -101,13 +101,11 @@ public partial class AutoPostViewModel
                 && beforeProcess == afterProcess
                 && !string.IsNullOrWhiteSpace(afterProcess)
             )
-                _startupIdentities[worker.Index] = new(
-                    account.Binding,
-                    afterProcess,
-                    current,
-                    graph,
-                    DateTime.UtcNow
-                );
+            {
+                var proof = PFlowGraphActivationProof.Create(account.Binding, afterProcess, graph);
+                if (proof != null)
+                    _graphActivationProofs[worker.Index] = proof;
+            }
             _pFlowActiveBindings[worker.Index] = account.Binding;
             _pFlowAccountAttention.TryRemove(worker.Index, out _);
             await PFlowTrace.SessionAsync(
@@ -222,6 +220,26 @@ public partial class AutoPostViewModel
                     )
                     .OrderByDescending(p => p.IsProfile)
                     .ToArray();
+                // ScreenTime may have changed the actor since account preparation.
+                // Recheck the existing proof without adding a Graph request for ordering.
+                PFlowGraphIdentity? active = null;
+                if (
+                    _graphActivationProofs.TryGetValue(worker.Index, out var orderingProof)
+                    && _postProcessIds.TryGetValue(worker.Index, out var orderingProcess)
+                )
+                    active = await orderingProof.TryReuseAsync(
+                        account.Binding,
+                        orderingProcess,
+                        _ldPlayerService,
+                        LdFolder,
+                        c
+                    );
+                targets = PFlowTargetOrder.PreferActive(
+                    targets,
+                    p => p.Model,
+                    account.Binding,
+                    active
+                );
                 foreach (var page in targets)
                 {
                     foreach (var type in new[] { "Reel", "Picture", "Video", "Story" })

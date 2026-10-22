@@ -54,7 +54,8 @@ public sealed class PFlowPostTargetSession
         Func<CancellationToken, Task<string>> observe,
         CancellationToken ct,
         string? initialXml = null,
-        bool allowFeedAfterLiveUid = false
+        bool allowFeedAfterLiveUid = false,
+        Func<CancellationToken, Task>? verifyContinuationSession = null
     )
     {
         var target = Target.Read(job);
@@ -81,14 +82,27 @@ public sealed class PFlowPostTargetSession
             && Target.Read(job) == target
             && CanContinueFrom(xml, job.AppPackage);
         if (continued)
+        {
+            if (verifyContinuationSession != null)
+                await verifyContinuationSession(ct);
+            ct.ThrowIfCancellationRequested();
+            if (generation != _generation || Target.Read(job) != target)
+                throw new InvalidOperationException(
+                    "Target session changed during continuation verification."
+                );
             job.TargetContinuation = new(job.JobId, target, DateTime.UtcNow);
+        }
         else
         {
             var method = await verifyLiveUid(ct);
             ct.ThrowIfCancellationRequested();
-            if (method is not ("Graph UID" or "UI UID lookup"))
+            if (
+                method is not ("Graph UID" or "UI UID lookup" or "Session UI")
+                || method == "Session UI"
+                    && (job.NativeIdentityScope == null || !job.NativeIdentityScope.Matches(job))
+            )
                 throw new InvalidOperationException(
-                    "Fresh target UID verification was not confirmed."
+                    "Fresh target UID or Graph-bound session/UI verification was not confirmed."
                 );
             if (Target.Read(job) != target)
                 throw new InvalidOperationException(

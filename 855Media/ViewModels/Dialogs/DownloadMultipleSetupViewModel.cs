@@ -380,8 +380,10 @@ public partial class DownloadMultipleSetupViewModel(
     [RelayCommand(CanExecute = nameof(CanConfirm))]
     private async Task ConfirmAsync()
     {
+        if (!CanUseSubscription())
+            return;
         var dirPath = await dialogManager.PromptDirectoryPathAsync();
-        if (string.IsNullOrWhiteSpace(dirPath))
+        if (string.IsNullOrWhiteSpace(dirPath) || !CanUseSubscription())
             return;
 
         var selectedIds = SelectedVideos.Select(v => v.Id).ToHashSet();
@@ -428,16 +430,19 @@ public partial class DownloadMultipleSetupViewModel(
         var downloads = new List<DownloadViewModel>();
         foreach (var (i, video) in selected.Index())
         {
+            if (!CanUseSubscription())
+                break;
             var currentVideo = video;
             if (translationMap.TryGetValue(video.Id, out var translatedTitle))
             {
                 currentVideo = video with { Title = translatedTitle };
             }
 
+            var itemContainer = currentVideo.IsPhoto ? new Container("jpg") : SelectedContainer;
             var rawFileName = FileNameTemplate.Apply(
                 settingsService.FileNameTemplate,
                 currentVideo,
-                SelectedContainer,
+                itemContainer,
                 (i + 1).ToString().PadLeft(selected.Count.ToString().Length, '0')
             );
             var baseFilePath = _855Media.Core.Utils.FileUtils.SanitizeFilePath(
@@ -457,7 +462,7 @@ public partial class DownloadMultipleSetupViewModel(
                 viewModelManager.GetDownloadViewModel(
                     currentVideo,
                     new VideoDownloadPreference(
-                        SelectedContainer,
+                        itemContainer,
                         SelectedVideoQualityPreference,
                         ShouldTranslateCaptionsToEnglish,
                         ShouldTranslateTitleToEnglish

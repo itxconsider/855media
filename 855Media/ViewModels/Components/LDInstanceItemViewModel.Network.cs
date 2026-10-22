@@ -55,7 +55,11 @@ public partial class LDInstanceItemViewModel
             NetworkLocation = "Checking…";
         try
         {
-            var info = await service.ReadAsync(Index, _customLdPath, probe.Token);
+            var index = Index;
+            var path = _customLdPath;
+            var token = probe.Token;
+            // Even a slow synchronous ADB/ATX prefix must not run on the UI thread.
+            var info = await Task.Run(() => service.ReadAsync(index, path, token), token);
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
                 if (probe.IsCancellationRequested || !IsAndroidStarted || _networkProbe != probe)

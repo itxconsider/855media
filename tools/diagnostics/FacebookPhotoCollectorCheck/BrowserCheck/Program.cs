@@ -87,6 +87,7 @@ internal static class Program
         };
         try
         {
+            await InstagramChecks.RunAsync(environment, source);
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(40));
             var item = new MediaPayloadItem
             {

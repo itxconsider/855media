@@ -26,11 +26,33 @@ public partial class AutoPostViewModel
     public bool CanEditAccountBulkSelection =>
         !IsRunning && !IsBusy && !IsSavingSelectedAccountOptions;
     public int SelectedBulkAccountCount =>
-        DisplayedMappedAccounts.Count(a => a.IsMappingValid && a.IsSelectedForBulk);
+        MappedAccounts.Count(a => a.IsMappingValid && a.IsSelectedForBulk);
     public bool CanApplyAccountBulkSelection =>
         CanEditAccountBulkSelection && SelectedBulkAccountCount > 0;
     public string BulkAccountSelectionSummary =>
-        $"{SelectedBulkAccountCount} / {DisplayedMappedAccounts.Count(a => a.IsMappingValid)} selected";
+        $"{SelectedBulkAccountCount} selected • {DisplayedMappedAccounts.Count()} visible / {MappedAccounts.Count} total";
+
+    private bool AllSelectedAccountsEnabled(Func<PFlowAccountItemViewModel, bool> enabled)
+    {
+        var selected = MappedAccounts.Where(a => a.IsMappingValid && a.IsSelectedForBulk).ToArray();
+        return selected.Length > 0 && selected.All(enabled);
+    }
+
+    public bool BulkFetchEnabled
+    {
+        get => AllSelectedAccountsEnabled(a => a.SelectedForDiscovery);
+        set => ApplySelectedAccountOption(value ? "Fetch:on" : "Fetch:off");
+    }
+    public bool BulkScreenTimeEnabled
+    {
+        get => AllSelectedAccountsEnabled(a => a.SelectedForScreenTime);
+        set => ApplySelectedAccountOption(value ? "ScreenTime:on" : "ScreenTime:off");
+    }
+    public bool BulkPostingEnabled
+    {
+        get => AllSelectedAccountsEnabled(a => a.SelectedForPosting);
+        set => ApplySelectedAccountOption(value ? "Posting:on" : "Posting:off");
+    }
 
     private void InitializeAccountMultiSelect() =>
         MappedAccounts.CollectionChanged += BulkAccountRowsChanged;
@@ -60,6 +82,24 @@ public partial class AutoPostViewModel
     private void BulkAccountRowChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (
+            AccountFilter != "All"
+            && (
+                e.PropertyName
+                is nameof(PFlowAccountItemViewModel.SelectedForDiscovery)
+                    or nameof(PFlowAccountItemViewModel.SelectedForScreenTime)
+                    or nameof(PFlowAccountItemViewModel.SelectedForPosting)
+            )
+        )
+            RefreshLdAccountsSection();
+        if (
+            e.PropertyName
+            is nameof(PFlowAccountItemViewModel.SelectedForDiscovery)
+                or nameof(PFlowAccountItemViewModel.SelectedForScreenTime)
+                or nameof(PFlowAccountItemViewModel.SelectedForPosting)
+        )
+            NotifyBulkAccountSelection();
+
+        if (
             e.PropertyName == nameof(PFlowAccountItemViewModel.IsSelectedForBulk)
             && !_changingBulkAccountSelection
         )
@@ -68,6 +108,9 @@ public partial class AutoPostViewModel
 
     private void NotifyBulkAccountSelection()
     {
+        OnPropertyChanged(nameof(BulkFetchEnabled));
+        OnPropertyChanged(nameof(BulkScreenTimeEnabled));
+        OnPropertyChanged(nameof(BulkPostingEnabled));
         OnPropertyChanged(nameof(SelectedBulkAccountCount));
         OnPropertyChanged(nameof(CanApplyAccountBulkSelection));
         OnPropertyChanged(nameof(BulkAccountSelectionSummary));
@@ -130,9 +173,7 @@ public partial class AutoPostViewModel
             return;
         var parts = option.Split(':');
         var enabled = parts[1] == "on";
-        var selected = DisplayedMappedAccounts
-            .Where(a => a.IsMappingValid && a.IsSelectedForBulk)
-            .ToArray();
+        var selected = MappedAccounts.Where(a => a.IsMappingValid && a.IsSelectedForBulk).ToArray();
         foreach (var row in selected)
             switch (parts[0])
             {
@@ -155,7 +196,7 @@ public partial class AutoPostViewModel
     {
         if (!CanApplyAccountBulkSelection)
             return;
-        var bindings = DisplayedMappedAccounts
+        var bindings = MappedAccounts
             .Where(a => a.IsMappingValid && a.IsSelectedForBulk)
             .Select(a => a.Account.Binding)
             .ToArray();

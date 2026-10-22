@@ -1,0 +1,11 @@
+# Start posting on the verified active target
+
+Within each existing device/account batch, posting now promotes the currently verified actor to the front of the queued target list. It uses the existing memory-only Graph activation proof after checking the exact binding, process and authenticated session. Scheduling adds no Graph request, persona switch or Page Settings navigation. The ordinary target identity and own-profile UI checks remain required before work.
+
+Only one unambiguous queued mapping with matching owner, binding, name and canonical/Page-persona UID can be promoted. An active personal profile is also eligible. If the actor has no queued work, proof is unavailable/stale or mappings are ambiguous, the previous fallback ordering remains. Nonpreferred targets retain their relative order. Scheduling runs after ScreenTime; it cannot rely blindly on the earlier startup actor.
+
+This changes target order only. Existing job order, Part-group guards, media-type order, daily capacity, subscription checks, account rotation, submission review, cleanup and optional final personal-profile restoration remain in force. It never adds work for an unselected target or moves a target into another device/account batch. A later restart or recovery still follows the existing safety rules.
+
+Validation (2026-10-22): 87 focused scheduling, Graph-count, account-batch, Part-group and target-session tests passed. New HTTP-counting integration cases start on Page A with saved target order B/A: active-first performs one switch and two total Graph requests, compared with two switches and three requests using the previous order. Both paths retain fresh destination Graph and own-profile verification; scheduling itself performs zero Graph requests. Mapping/session fallback tests cover missing work, persona IDs, personal profiles, changed names/owners/devices and ambiguous mappings. Isolated desktop build passed with zero warnings/errors. Logs: `artifacts/active-target-order-tests.log` and `artifacts/active-target-order-build.log`.
+
+Live LD validation remains pending. Source/build only; running app and 3.1.7 ZIP unchanged. This is the eleventh improvement toward the next package; a verified package will consume ten credits and carry one forward.

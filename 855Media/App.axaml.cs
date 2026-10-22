@@ -1,7 +1,7 @@
 using System;
+using _855Media.Core.Editing;
 using _855Media.Core.LDPlayer;
 using _855Media.Core.Licensing;
-using _855Media.Core.Upscaling;
 using _855Media.Core.Utils;
 using _855Media.Framework;
 using _855Media.Localization;
@@ -51,11 +51,11 @@ public class App : Application, IDisposable
         services.AddSingleton<ExtensionInstallerService>();
         services.AddSingleton<LocalBridgeServer>();
         services.AddSingleton<PFlowBrowserLauncher>();
-        services.AddSingleton<VideoUpscaleService>();
+        services.AddSingleton<VideoEditorService>();
         services.AddSingleton<VideoQueueManager>(sp =>
         {
             var license = sp.GetRequiredService<ILicenseService>();
-            var queue = new VideoQueueManager(sp.GetRequiredService<VideoUpscaleService>())
+            var queue = new VideoQueueManager(sp.GetRequiredService<VideoEditorService>())
             {
                 CanStartJob = () => license.IsFeatureAllowed(LicenseFeature.All),
             };
@@ -84,9 +84,10 @@ public class App : Application, IDisposable
         services.AddTransient<YouTubeDownloaderViewModel>();
         services.AddTransient<TikTokDownloaderViewModel>();
         services.AddTransient<FacebookDownloaderViewModel>();
+        services.AddTransient<InstagramDownloaderViewModel>();
         services.AddTransient<DramaBoxDownloaderViewModel>();
         services.AddTransient<HistoryViewModel>();
-        services.AddTransient<VideoUpscalerViewModel>();
+        services.AddTransient<VideoEditorViewModel>();
         services.AddTransient<DubbingViewModel>();
         services.AddTransient<AutoPostViewModel>();
         services.AddTransient<DownloadViewModel>();

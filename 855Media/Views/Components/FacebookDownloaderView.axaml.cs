@@ -6,6 +6,7 @@ using System.Reflection;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using _855Media.Framework;
 using _855Media.Services;
 using _855Media.ViewModels.Components;
 using Avalonia.Controls;
@@ -25,18 +26,24 @@ public partial class FacebookDownloaderView : UserControl
     private CoreWebView2Controller? _coreWebView2Controller;
     private FacebookDownloaderViewModel? _boundViewModel;
     private CancellationTokenSource? _photoResolutionCts;
+    private readonly NativeBrowserDialogGuard _dialogGuard;
 
     public FacebookDownloaderView()
     {
         InitializeComponent();
+        _dialogGuard = new NativeBrowserDialogGuard(ApplyBrowserVisibility);
         DataContextChanged += OnDataContextChanged;
         DetachedFromVisualTree += (_, _) =>
         {
             _photoResolutionCts?.Cancel();
             UpdateBrowserVisibility(false);
+            _dialogGuard.Dispose();
         };
         AttachedToVisualTree += (_, _) =>
+        {
+            _dialogGuard.Attach(this);
             UpdateBrowserVisibility(_boundViewModel?.IsActiveTab ?? true);
+        };
     }
 
     private void OnActiveTabChanged(bool isActive)
@@ -64,7 +71,9 @@ public partial class FacebookDownloaderView : UserControl
         return null;
     }
 
-    private void UpdateBrowserVisibility(bool isVisible)
+    private void UpdateBrowserVisibility(bool isVisible) => _dialogGuard.SetActive(isVisible);
+
+    private void ApplyBrowserVisibility(bool isVisible)
     {
         FacebookWebBrowser.IsVisible = isVisible;
         try

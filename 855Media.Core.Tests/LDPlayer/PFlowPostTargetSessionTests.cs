@@ -6,6 +6,65 @@ namespace _855Media.Core.Tests.LDPlayer;
 
 public class PFlowPostTargetSessionTests
 {
+    [Fact]
+    public async Task ConsecutivePostUsesSessionGuardWithoutUidOrProfileNavigation()
+    {
+        var session = new PFlowPostTargetSession();
+        var previous = Job();
+        await session.VerifyAsync(
+            previous,
+            _ => Task.FromResult("Graph UID"),
+            _ => Task.FromResult(true),
+            _ => Task.FromResult(Own(previous)),
+            default
+        );
+        Confirm(previous);
+        var checkedSession = false;
+        Assert.True(
+            await session.VerifyAsync(
+                Job(),
+                _ => throw new Exception("Repeated UID check"),
+                _ => throw new Exception("Repeated profile navigation"),
+                _ => Task.FromResult(Feed),
+                default,
+                verifyContinuationSession: _ =>
+                {
+                    checkedSession = true;
+                    return Task.CompletedTask;
+                }
+            )
+        );
+        Assert.True(checkedSession);
+    }
+
+    [Fact]
+    public async Task FailedContinuationGuardCannotAuthorizeNextPost()
+    {
+        var session = new PFlowPostTargetSession();
+        var previous = Job();
+        await session.VerifyAsync(
+            previous,
+            _ => Task.FromResult("Graph UID"),
+            _ => Task.FromResult(true),
+            _ => Task.FromResult(Own(previous)),
+            default
+        );
+        Confirm(previous);
+        var next = Job();
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            session.VerifyAsync(
+                next,
+                _ => throw new Exception("Unexpected UID check"),
+                _ => throw new Exception("Unexpected navigation"),
+                _ => Task.FromResult(Feed),
+                default,
+                verifyContinuationSession: _ =>
+                    throw new InvalidOperationException("Changed session")
+            )
+        );
+        Assert.Null(next.TargetContinuation);
+    }
+
     [Theory]
     [InlineData("ld2-feed-after-john-ward-confirmed")]
     [InlineData("ld2-feed-after-kc-waterheaters-confirmed")]

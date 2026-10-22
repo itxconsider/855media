@@ -20,6 +20,7 @@ public class DialogManager : IDisposable
         await _dialogLock.WaitAsync();
         try
         {
+            using var browserPresentation = NativeBrowserDialogGuard.SuspendForDialog();
             await DialogHost.Show(
                 dialog,
                 // It's fine to await in a void method here because it's an event handler

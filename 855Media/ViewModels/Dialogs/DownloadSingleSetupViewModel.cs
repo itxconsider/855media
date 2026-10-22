@@ -142,7 +142,7 @@ public partial class DownloadSingleSetupViewModel(
     [RelayCommand]
     private async Task ConfirmAsync()
     {
-        if (Video is null || SelectedDownloadOption is null)
+        if (!CanUseSubscription() || Video is null || SelectedDownloadOption is null)
             return;
 
         settingsService.ShouldTranslateCaptionsToEnglish = ShouldTranslateCaptionsToEnglish;
@@ -165,11 +165,11 @@ public partial class DownloadSingleSetupViewModel(
             FileNameTemplate.Apply(settingsService.FileNameTemplate, Video, container)
         );
 
-        if (string.IsNullOrWhiteSpace(filePath))
+        if (string.IsNullOrWhiteSpace(filePath) || !CanUseSubscription())
             return;
 
         filePath = _855Media.Core.Utils.FileUtils.SanitizeFilePath(filePath);
-        if (!SelectedDownloadOption.IsAudioOnly && Video.Source != VideoSource.FacebookPhoto)
+        if (!SelectedDownloadOption.IsAudioOnly && !Video.IsPhoto)
             filePath = Path.ChangeExtension(filePath, ".mp4");
 
         // Download does not start immediately, so lock in the file path to avoid conflicts

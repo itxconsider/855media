@@ -1,0 +1,7 @@
+# Consecutive posts reuse target identity
+
+The posting identity callback no longer navigates to the own profile before every job. A successful in-memory target session may continue only after the preceding job is confirmed with publication evidence, on the same exact device/account/batch/target/name/persona and supported media type. The runtime supplies a continuation guard that checks the native Graph-bound scope, authenticated session, process, foreground app and safe noncontradictory UI. It performs no profile taps and no Graph requests. An invalid scope is permanently discarded and device work stops for fresh activation.
+
+Nonconsecutive work, target switches and invalidated/restarted sessions retain the existing activation route. This change removes the repeat pre-job navigation only; publication verification, pending-upload monitoring, composer identity checks, limits, cancellation, subscription and cleanup remain in place. No proof is restored from persisted history.
+
+Validation: 89 focused target-session/native-scope/Graph-count/navigation-recovery tests passed, including new checks for a guarded continuation with zero UID/profile callbacks and changed token/process/owner/target/foreground rejection without taps. Isolated desktop build passed with zero warnings/errors. Logs: `artifacts/continuation-session-tests.log`, `artifacts/continuation-session-build.log`. Live LD validation pending; running app and package unchanged.

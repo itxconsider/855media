@@ -1,0 +1,1698 @@
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
+using _855Media.Core.Downloading;
+using _855Media.Core.Utils;
+
+namespace _855Media.Core.Editing;
+
+public partial class VideoEditorService
+{
+    private static readonly Regex FfmpegFrameRegex = new(
+        @"frame=\s*(?<frame>\d+)\s+fps=\s*(?<fps>[\d\.]+)",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase
+    );
+
+    private static readonly Regex FfmpegTimeRegex = new(
+        @"time=(?<time>\d+:\d+:\d+\.\d+)",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase
+    );
+
+    private static readonly Regex FfmpegDurationRegex = new(
+        @"Duration:\s*(?<duration>\d+:\d+:\d+\.\d+)",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase
+    );
+
+    private static readonly Regex FfmpegResolutionRegex = new(
+        @"(?<width>\d{3,5})x(?<height>\d{3,5})",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase
+    );
+
+    private static readonly Regex FfmpegFpsRegex = new(
+        @"(?<fps>[\d\.]+)\s*fps",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase
+    );
+
+    public string? ScratchDirectory { get; set; }
+
+    public async Task ProbeVideoAsync(EditJob job, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        job.SourceVideoBitrate = 0;
+        job.SourceAudioBitrate = 0;
+        job.SourceVideoCodec = null;
+        var ffmpegPath = FFmpeg.TryGetCliFilePath();
+        if (string.IsNullOrWhiteSpace(ffmpegPath) || !File.Exists(job.FilePath))
+        {
+            job.InputResolution = "Unknown";
+            return;
+        }
+
+        try
+        {
+            using var process = new Process();
+            process.StartInfo.FileName = ffmpegPath;
+            process.StartInfo.ArgumentList.Add("-i");
+            process.StartInfo.ArgumentList.Add(job.FilePath);
+            process.StartInfo.UseShellExecute = false;
+            process.StartInfo.CreateNoWindow = true;
+            process.StartInfo.RedirectStandardError = true;
+
+            var stderrBuilder = new StringBuilder();
+            process.ErrorDataReceived += (_, args) =>
+            {
+                if (args.Data is not null)
+                    stderrBuilder.AppendLine(args.Data);
+            };
+
+            process.Start();
+            ChildProcessTracker.Track(process);
+            process.BeginErrorReadLine();
+            try
+            {
+                await process.WaitForExitAsync(cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                try
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+                catch { }
+                throw;
+            }
+
+            var output = stderrBuilder.ToString();
+
+            // Extract Resolution
+            var resMatch = FfmpegResolutionRegex.Match(output);
+            if (resMatch.Success)
+            {
+                var widthStr = resMatch.Groups["width"].Value;
+                var heightStr = resMatch.Groups["height"].Value;
+                job.InputResolution = $"{widthStr}x{heightStr}";
+                if (int.TryParse(widthStr, out var w) && int.TryParse(heightStr, out var h))
+                {
+                    job.InputWidth = w;
+                    job.InputHeight = h;
+                }
+            }
+
+            // Extract FPS and Duration to compute TotalFrames
+            double fps = 30.0;
+            var fpsMatch = FfmpegFpsRegex.Match(output);
+            if (
+                fpsMatch.Success
+                && double.TryParse(
+                    fpsMatch.Groups["fps"].Value,
+                    CultureInfo.InvariantCulture,
+                    out var parsedFps
+                )
+                && parsedFps > 0
+            )
+            {
+                fps = parsedFps;
+            }
+
+            job.VideoFps = fps;
+
+            double durationSeconds = 0;
+            var durationMatch = FfmpegDurationRegex.Match(output);
+            if (
+                durationMatch.Success
+                && TimeSpan.TryParse(
+                    durationMatch.Groups["duration"].Value,
+                    CultureInfo.InvariantCulture,
+                    out var duration
+                )
+            )
+            {
+                durationSeconds = duration.TotalSeconds;
+                job.TotalFrames = (long)Math.Max(1, Math.Round(duration.TotalSeconds * fps));
+            }
+            NativeExportPolicy.ReadSourceMetadata(job, output, durationSeconds);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            job.InputResolution = "Unknown";
+            job.DetailedLog = $"Probe error: {ex.Message}";
+        }
+    }
+
+    public async Task ProcessJobAsync(EditJob job, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (job.EnableSplitAndEdit)
+        {
+            var pipeline = new SplitAndEditPipeline(this);
+            await pipeline.ExecuteAsync(job, cancellationToken);
+            return;
+        }
+
+        var ffmpegPath = FFmpeg.TryGetCliFilePath();
+        if (string.IsNullOrWhiteSpace(ffmpegPath))
+            throw new FileNotFoundException("FFmpeg executable could not be found.");
+
+        if (!File.Exists(job.FilePath))
+            throw new FileNotFoundException($"Input video file does not exist: {job.FilePath}");
+
+        var scratchBase = !string.IsNullOrWhiteSpace(job.ScratchDirectory)
+            ? job.ScratchDirectory
+            : (
+                !string.IsNullOrWhiteSpace(ScratchDirectory) ? ScratchDirectory : Path.GetTempPath()
+            );
+
+        CleanupStaleTempDirectories(scratchBase, "855Media_Upscale");
+
+        var tempDir = Path.Combine(scratchBase, "855Media_Upscale", job.Id.ToString("N"));
+        Directory.CreateDirectory(tempDir);
+
+        job.StartTime = DateTimeOffset.Now;
+        job.Status = EditJobStatus.Processing;
+        job.Progress = 0;
+        job.CurrentFrame = 0;
+
+        var logBuilder = new StringBuilder();
+        void Log(string message)
+        {
+            var line = $"[{DateTime.Now:HH:mm:ss}] {message}";
+            logBuilder.AppendLine(line);
+            job.DetailedLog = logBuilder.ToString();
+        }
+
+        try
+        {
+            Log($"Starting edit pipeline for {job.FileName}");
+            Log($"Input file: {job.FilePath}");
+            Log($"Target resolution: {job.TargetResolution}, Codec: {job.Codec}");
+
+            // Ensure destination folder exists
+            var outputDir = Path.GetDirectoryName(job.OutputFilePath);
+            if (!string.IsNullOrWhiteSpace(outputDir) && !Directory.Exists(outputDir))
+            {
+                Directory.CreateDirectory(outputDir);
+            }
+
+            // Separate audio stems using neural AI Demucs if speech isolation or vocal removal is selected
+            string? isolatedAudioPath = null;
+            if (job.AudioMode is EditAudioMode.IsolateSpeech or EditAudioMode.RemoveVocals)
+            {
+                isolatedAudioPath = await PrepareProcessedAudioStemAsync(
+                    job,
+                    ffmpegPath,
+                    tempDir,
+                    Log,
+                    cancellationToken
+                );
+            }
+
+            Log(
+                job.ModelType == EditModelType.NvidiaRtx
+                    ? "[Pipeline] NVIDIA accelerated native filtering and encoding selected."
+                    : "[Pipeline] Fast Native filtering and encoding selected."
+            );
+            await RunNativeScalerPipelineAsync(
+                job,
+                ffmpegPath,
+                tempDir,
+                isolatedAudioPath,
+                Log,
+                cancellationToken
+            );
+
+            job.Progress = 100;
+            job.Status = EditJobStatus.Complete;
+            job.ElapsedTime = DateTimeOffset.Now - (job.StartTime ?? DateTimeOffset.Now);
+            Log($"Edit successfully finished. Output: {job.OutputFilePath}");
+
+            // Automatically save caption text file alongside the edited output if available
+            try
+            {
+                var captionToSave = job.Caption;
+                if (string.IsNullOrWhiteSpace(captionToSave))
+                {
+                    var sourceTxt = Path.ChangeExtension(job.FilePath, ".txt");
+                    if (File.Exists(sourceTxt))
+                    {
+                        captionToSave = await File.ReadAllTextAsync(
+                            sourceTxt,
+                            Encoding.UTF8,
+                            cancellationToken
+                        );
+                    }
+                }
+
+                if (!string.IsNullOrWhiteSpace(captionToSave))
+                {
+                    captionToSave = captionToSave.Trim();
+                    if (job.PartNumber.HasValue)
+                    {
+                        var prefix = $"Part {job.PartNumber.Value} -";
+                        if (!captionToSave.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                        {
+                            captionToSave = $"{prefix} {captionToSave}";
+                        }
+                    }
+                }
+
+                if (
+                    !string.IsNullOrWhiteSpace(captionToSave)
+                    && !string.IsNullOrWhiteSpace(job.OutputFilePath)
+                )
+                {
+                    var outTxtPath = Path.ChangeExtension(job.OutputFilePath, ".txt");
+                    await File.WriteAllTextAsync(
+                        outTxtPath,
+                        captionToSave.Trim(),
+                        new UTF8Encoding(false),
+                        cancellationToken
+                    );
+                    Log($"Caption saved to: {outTxtPath}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"Notice: Could not write caption text file: {ex.Message}");
+            }
+
+            // Clean up split part original video and intermediate caption after edit process completes
+            if (job.DeleteSourceAfterEdit || job.PartNumber.HasValue)
+            {
+                try
+                {
+                    if (
+                        File.Exists(job.OutputFilePath)
+                        && new FileInfo(job.OutputFilePath).Length > 0
+                    )
+                    {
+                        var fullSourceVideo = Path.GetFullPath(job.FilePath);
+                        var fullOutputVideo = Path.GetFullPath(job.OutputFilePath);
+
+                        if (
+                            File.Exists(fullSourceVideo)
+                            && !string.Equals(
+                                fullSourceVideo,
+                                fullOutputVideo,
+                                StringComparison.OrdinalIgnoreCase
+                            )
+                        )
+                        {
+                            File.Delete(fullSourceVideo);
+                            Log($"Deleted split part video original: {job.FilePath}");
+                        }
+
+                        var sourceTxt = Path.ChangeExtension(fullSourceVideo, ".txt");
+                        var outTxtPath = Path.ChangeExtension(fullOutputVideo, ".txt");
+                        if (
+                            File.Exists(sourceTxt)
+                            && !string.Equals(
+                                sourceTxt,
+                                outTxtPath,
+                                StringComparison.OrdinalIgnoreCase
+                            )
+                        )
+                        {
+                            File.Delete(sourceTxt);
+                            Log($"Deleted split part caption file: {sourceTxt}");
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log($"Warning: Could not delete split part original file: {ex.Message}");
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            job.Status = EditJobStatus.Canceled;
+            Log("Job was canceled by user.");
+            throw;
+        }
+        catch (Exception ex)
+        {
+            var isOom = IsOutOfMemoryError(ex.Message);
+            var isGpuCrash = IsGpuDriverCrash(ex.Message);
+
+            if (isOom)
+            {
+                job.ErrorMessage =
+                    "GPU / System Out of Memory (OOM). Try scaling to 1080p or reducing concurrency.";
+            }
+            else if (isGpuCrash)
+            {
+                job.ErrorMessage =
+                    "GPU driver crash / Device lost. Reverting to software fallback or lower resolution recommended.";
+            }
+            else
+            {
+                job.ErrorMessage = ex.Message;
+            }
+
+            job.Status = EditJobStatus.Failed;
+            Log($"Processing failed: {job.ErrorMessage}");
+            throw;
+        }
+        finally
+        {
+            // Cleanup temporary frames and working files only when job successfully finishes!
+            // When paused, canceled, or if the app was closed mid-edit, keep cache for checkpoint resumption.
+            if (job.Status == EditJobStatus.Complete)
+            {
+                try
+                {
+                    if (Directory.Exists(tempDir))
+                    {
+                        Directory.Delete(tempDir, recursive: true);
+                    }
+                }
+                catch
+                {
+                    // Non-fatal cleanup warning
+                }
+            }
+        }
+    }
+
+    private async Task RunNativeScalerPipelineAsync(
+        EditJob job,
+        string ffmpegPath,
+        string tempDir,
+        string? isolatedAudioPath,
+        Action<string> log,
+        CancellationToken cancellationToken
+    )
+    {
+        await ProbeVideoAsync(job, cancellationToken);
+        if (NativeExportPolicy.CanStreamCopy(job))
+        {
+            var copyArgs = new List<string>
+            {
+                "-y",
+                "-i",
+                job.FilePath,
+                "-map",
+                "0:v:0",
+                "-map",
+                "0:a?",
+                "-map",
+                "0:s?",
+                "-c",
+                "copy",
+            };
+            copyArgs.AddRange(
+                job.CameraMetadata?.BuildFfmpegMetadataArgs(
+                    Path.GetFileNameWithoutExtension(job.FilePath)
+                )
+                    ?? ["-map_metadata", "-1"]
+            );
+            if (job.OutputFilePath.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase))
+                copyArgs.AddRange(["-movflags", "+faststart"]);
+            copyArgs.Add(job.OutputFilePath);
+            log(
+                "[Stream Copy] No video/audio changes requested. Preserving compressed streams without re-encoding."
+            );
+            await ExecuteProcessWithProgressAsync(
+                ffmpegPath,
+                copyArgs,
+                job,
+                log,
+                cancellationToken
+            );
+            return;
+        }
+        var (hwArgs, encoderArgs, isGpu) =
+            job.ModelType == EditModelType.NvidiaRtx
+                ? GetRtxEncoderAndHwArgs(
+                    job.Codec,
+                    job.HardwareAcceleration,
+                    ffmpegPath,
+                    job.SpeedMode
+                )
+                : GetEncoderAndHwArgs(
+                    job.Codec,
+                    job.HardwareAcceleration,
+                    ffmpegPath,
+                    job.SpeedMode
+                );
+        encoderArgs = NativeExportPolicy.LimitVideoBitrate(encoderArgs, job.SourceVideoBitrate);
+        var audioBitrate = NativeExportPolicy.AudioBitrate(job);
+        log(
+            job.SourceVideoBitrate > 0
+                ? $"[File Size Control] Source-based video target/peak: {job.SourceVideoBitrate / 1000.0:0.#} kb/s; audio encode limit: {audioBitrate} b/s. Playback speed changes duration, not the bitrate budget."
+                : "[File Size Control] Source bitrate could not be determined; using encoder quality defaults."
+        );
+        if (
+            job.TrackingMode != SmartTrackingMode.StaticCenter
+            || (job.EnableMicroZoom && job.ZoomMode != SmartZoomMode.CenterCrop)
+        )
+        {
+            if (job.ActionCentroidX != 0.5 || job.ActionCentroidY != 0.5)
+            {
+                log(
+                    $"[Smart Action Tracking] Reusing pre-analyzed action centroid: X={job.ActionCentroidX:0.00}, Y={job.ActionCentroidY:0.00}"
+                );
+            }
+            else
+            {
+                log(
+                    $"[Smart Action Tracking] Analyzing video action points (Mode: {job.TrackingMode}, ZoomMode: {job.ZoomMode}, Speed: {job.SpeedMode})..."
+                );
+                try
+                {
+                    var analysisMode =
+                        job.TrackingMode == SmartTrackingMode.StaticCenter
+                            ? SmartTrackingMode.ObjectFocus
+                            : job.TrackingMode;
+
+                    var analysis = await SmartActionAnalyzer.AnalyzeVideoAsync(
+                        job.FilePath,
+                        analysisMode,
+                        ffmpegPath,
+                        speedMode: job.SpeedMode,
+                        cancellationToken: cancellationToken
+                    );
+                    job.ActionCentroidX = analysis.OverallCentroidX;
+                    job.ActionCentroidY = analysis.OverallCentroidY;
+                    log(
+                        $"[Smart Action Tracking] Detected action centroid: X={job.ActionCentroidX:0.00}, Y={job.ActionCentroidY:0.00} (Scene cuts: {analysis.DetectedSceneCuts})"
+                    );
+                }
+                catch (Exception ex)
+                {
+                    log($"[Smart Action Tracking] Warning: Action analysis fallback: {ex.Message}");
+                }
+            }
+        }
+
+        double zoomPercent = job.EnableMicroZoom ? job.MicroZoomPercent : 0.0;
+        var arFilter = AspectRatioFilterBuilder.BuildFilter(
+            job.TargetAspectRatio,
+            job.TargetResolution,
+            job.TrackingMode,
+            job.ActionCentroidX,
+            job.ActionCentroidY,
+            zoomPercent: (job.TargetAspectRatio != AspectRatioMode.Original) ? zoomPercent : 0.0
+        );
+        string? scaleFilter = null;
+        if (arFilter != null)
+        {
+            scaleFilter = arFilter;
+        }
+        else if (job.ModelType == EditModelType.NvidiaRtx)
+        {
+            scaleFilter = GetRtxScaleFilter(job.TargetResolution);
+        }
+        else
+        {
+            scaleFilter = GetScaleFilter(job.TargetResolution, isGpu);
+        }
+        var colorFilter = job.ColorGrading?.BuildFilterString();
+
+        var filterParts = new List<string>();
+        if (job.EnableDeinterlace)
+        {
+            filterParts.Add("yadif=mode=1");
+            log("[Pre-Processing] Enabled Deinterlacing (yadif=mode=1)");
+        }
+        if (job.EnableDenoise)
+        {
+            filterParts.Add("hqdn3d=4:3:6:4.5");
+            log("[Pre-Processing] Enabled Denoise / Deblock (hqdn3d=4:3:6:4.5)");
+        }
+        // Micro zoom is applied here only if AspectRatioMode.Original (otherwise it was already combined in arFilter)
+        if (job.EnableMicroZoom && job.MicroZoomPercent > 0 && arFilter == null)
+        {
+            var zoomFilter = AspectRatioFilterBuilder.BuildMicroZoomFilter(
+                job.MicroZoomPercent,
+                job.ZoomMode,
+                job.ActionCentroidX,
+                job.ActionCentroidY
+            );
+            if (!string.IsNullOrWhiteSpace(zoomFilter))
+            {
+                filterParts.Add(zoomFilter);
+                log(
+                    $"[Micro-Zoom] Applied {job.MicroZoomPercent:0.#}% micro-zoom ({job.ZoomMode}): {zoomFilter}"
+                );
+            }
+        }
+        if (!string.IsNullOrWhiteSpace(scaleFilter))
+        {
+            filterParts.Add(scaleFilter);
+        }
+        if (arFilter != null)
+        {
+            log($"[Aspect Ratio Re-Framing] Applied mode {job.TargetAspectRatio}: {arFilter}");
+            if (job.ModelType == EditModelType.NvidiaRtx)
+            {
+                filterParts.Add("unsharp=5:5:0.8:3:3:0.4,cas=0.5");
+                log(
+                    "[NVIDIA RTX AI] Applied Tensor-Optimized Neural Edge Reconstruction & Contrast-Adaptive Sharpening (unsharp+cas)"
+                );
+            }
+        }
+        else if (job.ModelType == EditModelType.NvidiaRtx)
+        {
+            if (job.TargetResolution == EditTargetResolution.Original1x)
+            {
+                filterParts.Add("unsharp=5:5:0.8:3:3:0.4,cas=0.5");
+                log(
+                    "[NVIDIA RTX AI] Applied 1x Neural Clarity Enhancement & Contrast-Adaptive Sharpening (unsharp+cas)"
+                );
+            }
+            else
+            {
+                log(
+                    $"[NVIDIA RTX AI] Applied Tensor-Optimized Super Resolution ({job.TargetResolution}): {scaleFilter}"
+                );
+            }
+        }
+        if (job.EnableFacialClarity)
+        {
+            if (job.ModelType != EditModelType.NvidiaRtx)
+            {
+                filterParts.Add("unsharp=lx=5:ly=5:la=0.75:cx=3:cy=3:ca=0.3");
+            }
+            filterParts.Add("noise=c1s=5:c0f=u");
+            log("[Face Enhancement] Applied Facial Clarity & Edge Restoration (noise=c1s=5:c0f=u)");
+        }
+        if (!string.IsNullOrWhiteSpace(colorFilter))
+        {
+            filterParts.Add(colorFilter);
+            log($"[Color Grading] Applying filters: {colorFilter}");
+        }
+
+        if (Math.Abs(job.PlaybackSpeed - 1.0) >= 0.001)
+        {
+            double ptsMultiplier = 1.0 / job.PlaybackSpeed;
+            string ptsStr = ptsMultiplier.ToString("0.####", CultureInfo.InvariantCulture);
+            filterParts.Add($"setpts={ptsStr}*PTS");
+            log(
+                $"[Playback Speed] Applied video tempo factor {job.PlaybackSpeed:0.##}x (setpts={ptsStr}*PTS)"
+            );
+        }
+
+        if (job.TargetFramerate != TargetFramerate.Original)
+        {
+            int targetFps = (int)job.TargetFramerate;
+            filterParts.Add($"fps={targetFps}");
+            log(
+                $"[Target Framerate] Converted output framerate to {targetFps} FPS (fps={targetFps})"
+            );
+        }
+
+        var videoFilter = string.Join(",", filterParts);
+
+        log(
+            isGpu
+                ? $"[Hardware Acceleration] Enabled GPU acceleration (-hwaccel, {encoderArgs[1]})"
+                : "[Hardware Acceleration] Using CPU software encoder"
+        );
+
+        // Multithread Safety: allocate a balanced thread count per worker based on total logical cores
+        // On low-profile CPUs (<= 4-8 cores), avoid starving the OS/UI; on high-core CPUs, allow rich throughput
+        int totalLogicalCores = Environment.ProcessorCount;
+        int safeThreads = totalLogicalCores switch
+        {
+            <= 4 => Math.Max(2, totalLogicalCores - 1), // 2-4 core: reserve at least 1 core for OS
+            <= 8 => Math.Max(3, totalLogicalCores - 2), // 6-8 core: reserve 2 cores
+            <= 16 => Math.Min(totalLogicalCores - 2, 12), // 12-16 core: up to 12 threads
+            _ => Math.Min(totalLogicalCores - 4, 24), // 20-32+ core (Ultra 7, Ryzen 9): up to 24 threads
+        };
+
+        bool hasIsolatedAudio =
+            !string.IsNullOrWhiteSpace(isolatedAudioPath) && File.Exists(isolatedAudioPath);
+
+        var arguments = new List<string> { "-y" };
+        arguments.AddRange(hwArgs);
+        arguments.AddRange(["-threads", safeThreads.ToString(CultureInfo.InvariantCulture)]);
+        arguments.AddRange(["-i", job.FilePath]);
+        if (hasIsolatedAudio)
+        {
+            arguments.AddRange(["-i", isolatedAudioPath!]);
+        }
+        if (!string.IsNullOrWhiteSpace(videoFilter))
+            arguments.AddRange(["-vf", videoFilter]);
+        arguments.AddRange(encoderArgs);
+
+        var (audioFilter, reencodeAac, isMuted) = BuildAudioPipeline(
+            job.AudioMode,
+            job.PlaybackSpeed
+        );
+
+        if (isMuted)
+        {
+            log("[Audio Pipeline] Audio stream muted (silent video output).");
+            arguments.AddRange(["-map", "0:v:0", "-an", "-map", "0:s?", "-c:s", "copy"]);
+        }
+        else if (hasIsolatedAudio)
+        {
+            string speedFilter = BuildAudioSpeedFilter(job.PlaybackSpeed);
+            arguments.AddRange(["-map", "0:v:0", "-map", "1:a:0"]);
+            if (!string.IsNullOrWhiteSpace(speedFilter))
+            {
+                log(
+                    $"[Audio Pipeline] Applied tempo adjustment ({job.PlaybackSpeed:0.##}x) to isolated stem: {speedFilter}"
+                );
+                arguments.AddRange(["-filter:a", speedFilter]);
+            }
+            log(
+                $"[Audio Pipeline] Muxing neural isolated stem ({job.AudioMode}) as primary audio."
+            );
+            arguments.AddRange([
+                "-c:a",
+                "aac",
+                "-b:a",
+                audioBitrate,
+                "-map",
+                "0:s?",
+                "-c:s",
+                "copy",
+            ]);
+        }
+        else if (reencodeAac)
+        {
+            if (!string.IsNullOrWhiteSpace(audioFilter))
+            {
+                log($"[Audio Pipeline] Applied filter ({job.AudioMode}): {audioFilter}");
+                arguments.AddRange([
+                    "-map",
+                    "0:v:0",
+                    "-map",
+                    "0:a?",
+                    "-filter:a",
+                    audioFilter,
+                    "-c:a",
+                    "aac",
+                    "-b:a",
+                    audioBitrate,
+                    "-map",
+                    "0:s?",
+                    "-c:s",
+                    "copy",
+                ]);
+            }
+            else
+            {
+                arguments.AddRange([
+                    "-map",
+                    "0:v:0",
+                    "-map",
+                    "0:a?",
+                    "-c:a",
+                    "aac",
+                    "-b:a",
+                    audioBitrate,
+                    "-map",
+                    "0:s?",
+                    "-c:s",
+                    "copy",
+                ]);
+            }
+        }
+        else
+        {
+            // Full stream preservation for native pipeline
+            arguments.AddRange([
+                "-map",
+                "0:v:0",
+                "-map",
+                "0:a?",
+                "-c:a",
+                "copy",
+                "-map",
+                "0:s?",
+                "-c:s",
+                "copy",
+            ]);
+        }
+
+        var metaArgs =
+            job.CameraMetadata?.BuildFfmpegMetadataArgs(
+                Path.GetFileNameWithoutExtension(job.FilePath)
+            )
+            ?? ["-map_metadata", "-1"];
+        arguments.AddRange(metaArgs);
+        log(
+            $"[Metadata Normalization] Applied profile: {job.CameraMetadata?.ProfileType.ToString() ?? "CleanNormalized"}"
+        );
+
+        arguments.Add(job.OutputFilePath);
+
+        log($"Executing FFmpeg pipeline: {string.Join(" ", arguments)}");
+
+        try
+        {
+            var gpuScaleArgs = GpuScalePolicy.BuildArguments(job, arguments);
+            if (gpuScaleArgs is not null)
+            {
+                if (await GpuScaleCapabilities.SupportsAsync(ffmpegPath, cancellationToken))
+                {
+                    try
+                    {
+                        log(
+                            "[GPU Resize] CUDA decode → bicubic GPU resize → H.264 NVENC; frames remain on the GPU."
+                        );
+                        await ExecuteProcessWithProgressAsync(
+                            ffmpegPath,
+                            gpuScaleArgs,
+                            job,
+                            log,
+                            cancellationToken
+                        );
+                        return;
+                    }
+                    catch (Exception ex)
+                        when (ex is not OperationCanceledException
+                            && !cancellationToken.IsCancellationRequested
+                        )
+                    {
+                        log(
+                            $"[GPU Resize] Unavailable for this input/device: {ex.Message}. Retrying the original native filter pipeline."
+                        );
+                    }
+                }
+                else
+                    log(
+                        "[GPU Resize] FFmpeg has no scale_cuda filter; retaining the native filter pipeline."
+                    );
+            }
+            await ExecuteProcessWithProgressAsync(
+                ffmpegPath,
+                arguments,
+                job,
+                log,
+                cancellationToken
+            );
+        }
+        catch (Exception ex) when (isGpu && !cancellationToken.IsCancellationRequested)
+        {
+            log(
+                $"[Fallback] GPU encoding encountered an issue: {ex.Message}. Falling back to CPU software encoder..."
+            );
+            var (_, cpuArgs, _) = GetEncoderAndHwArgs(
+                job.Codec,
+                HardwareAccelerationMode.CpuSoftware,
+                ffmpegPath,
+                job.SpeedMode
+            );
+            cpuArgs = NativeExportPolicy.LimitVideoBitrate(cpuArgs, job.SourceVideoBitrate);
+            var fallbackArgs = new List<string> { "-y", "-i", job.FilePath };
+            if (hasIsolatedAudio)
+            {
+                fallbackArgs.AddRange(["-i", isolatedAudioPath!]);
+            }
+            if (!string.IsNullOrWhiteSpace(videoFilter))
+                fallbackArgs.AddRange(["-vf", videoFilter]);
+            fallbackArgs.AddRange(cpuArgs);
+
+            if (isMuted)
+            {
+                fallbackArgs.AddRange(["-map", "0:v:0", "-an", "-map", "0:s?", "-c:s", "copy"]);
+            }
+            else if (hasIsolatedAudio)
+            {
+                string speedFilter = BuildAudioSpeedFilter(job.PlaybackSpeed);
+                fallbackArgs.AddRange(["-map", "0:v:0", "-map", "1:a:0"]);
+                if (!string.IsNullOrWhiteSpace(speedFilter))
+                {
+                    fallbackArgs.AddRange(["-filter:a", speedFilter]);
+                }
+                fallbackArgs.AddRange([
+                    "-c:a",
+                    "aac",
+                    "-b:a",
+                    audioBitrate,
+                    "-map",
+                    "0:s?",
+                    "-c:s",
+                    "copy",
+                ]);
+            }
+            else if (!string.IsNullOrWhiteSpace(audioFilter))
+            {
+                fallbackArgs.AddRange([
+                    "-map",
+                    "0:v:0",
+                    "-map",
+                    "0:a?",
+                    "-filter:a",
+                    audioFilter,
+                    "-c:a",
+                    "aac",
+                    "-b:a",
+                    audioBitrate,
+                    "-map",
+                    "0:s?",
+                    "-c:s",
+                    "copy",
+                ]);
+            }
+            else
+            {
+                fallbackArgs.AddRange([
+                    "-map",
+                    "0:v:0",
+                    "-map",
+                    "0:a?",
+                    "-c:a",
+                    "aac",
+                    "-b:a",
+                    audioBitrate,
+                    "-map",
+                    "0:s?",
+                    "-c:s",
+                    "copy",
+                ]);
+            }
+            fallbackArgs.AddRange(metaArgs);
+            fallbackArgs.Add(job.OutputFilePath);
+
+            await ExecuteProcessWithProgressAsync(
+                ffmpegPath,
+                fallbackArgs,
+                job,
+                log,
+                cancellationToken
+            );
+        }
+    }
+
+    private static string? GetScaleFilter(EditTargetResolution target, bool isGpu)
+    {
+        if (target == EditTargetResolution.Original1x)
+            return null;
+
+        if (isGpu)
+        {
+            return target switch
+            {
+                EditTargetResolution.Hd1080p => "scale=-2:1080:flags=bicubic",
+                EditTargetResolution.Uhd4k => "scale=-2:2160:flags=bicubic",
+                EditTargetResolution.Scale2x => "scale=iw*2:ih*2:flags=bicubic",
+                EditTargetResolution.Scale4x => "scale=iw*4:ih*4:flags=bicubic",
+                _ => "scale=-2:1080:flags=bicubic",
+            };
+        }
+
+        return target switch
+        {
+            EditTargetResolution.Hd1080p => "scale=-2:1080:flags=lanczos,unsharp=3:3:0.5:3:3:0.0",
+            EditTargetResolution.Uhd4k => "scale=-2:2160:flags=lanczos,unsharp=3:3:0.5:3:3:0.0",
+            EditTargetResolution.Scale2x => "scale=iw*2:ih*2:flags=lanczos,unsharp=3:3:0.5:3:3:0.0",
+            EditTargetResolution.Scale4x => "scale=iw*4:ih*4:flags=lanczos,unsharp=3:3:0.5:3:3:0.0",
+            _ => "scale=-2:1080:flags=lanczos,unsharp=3:3:0.5:3:3:0.0",
+        };
+    }
+
+    private static string? GetRtxScaleFilter(EditTargetResolution target)
+    {
+        return target switch
+        {
+            EditTargetResolution.Original1x => null,
+            EditTargetResolution.Hd1080p =>
+                "scale=-2:1080:flags=lanczos,unsharp=5:5:0.8:3:3:0.4,cas=0.5",
+            EditTargetResolution.Uhd4k =>
+                "scale=-2:2160:flags=lanczos,unsharp=5:5:0.8:3:3:0.4,cas=0.5",
+            EditTargetResolution.Scale2x =>
+                "scale=iw*2:ih*2:flags=lanczos,unsharp=5:5:0.8:3:3:0.4,cas=0.5",
+            EditTargetResolution.Scale4x =>
+                "scale=iw*4:ih*4:flags=lanczos,unsharp=5:5:0.8:3:3:0.4,cas=0.5",
+            _ => "scale=-2:1080:flags=lanczos,unsharp=5:5:0.8:3:3:0.4,cas=0.5",
+        };
+    }
+
+    private static bool? _hasNvencSupport;
+
+    public static bool CheckNvencSupport(string ffmpegPath)
+    {
+        if (_hasNvencSupport.HasValue)
+            return _hasNvencSupport.Value;
+
+        try
+        {
+            using var proc = new Process();
+            proc.StartInfo.FileName = ffmpegPath;
+            proc.StartInfo.ArgumentList.Add("-f");
+            proc.StartInfo.ArgumentList.Add("lavfi");
+            proc.StartInfo.ArgumentList.Add("-i");
+            proc.StartInfo.ArgumentList.Add("color=c=black:s=128x128:d=1");
+            proc.StartInfo.ArgumentList.Add("-c:v");
+            proc.StartInfo.ArgumentList.Add("h264_nvenc");
+            proc.StartInfo.ArgumentList.Add("-f");
+            proc.StartInfo.ArgumentList.Add("null");
+            proc.StartInfo.ArgumentList.Add("-");
+            proc.StartInfo.UseShellExecute = false;
+            proc.StartInfo.CreateNoWindow = true;
+            proc.Start();
+            ChildProcessTracker.Track(proc);
+            proc.WaitForExit(3000);
+            _hasNvencSupport = proc.ExitCode == 0;
+        }
+        catch
+        {
+            _hasNvencSupport = false;
+        }
+
+        return _hasNvencSupport.Value;
+    }
+
+    private static (string[] HwArgs, string[] EncoderArgs, bool IsGpu) GetRtxEncoderAndHwArgs(
+        EditVideoCodec codec,
+        HardwareAccelerationMode hwMode,
+        string ffmpegPath,
+        RenderSpeedMode speedMode = RenderSpeedMode.Balanced
+    )
+    {
+        // If user explicitly requested CPU Software mode, respect it
+        if (hwMode == HardwareAccelerationMode.CpuSoftware)
+        {
+            return GetEncoderAndHwArgs(codec, hwMode, ffmpegPath, speedMode);
+        }
+
+        var gpu = HardwareDetector.GetGpuInfo(ffmpegPath);
+        if (!gpu.HasNvenc)
+        {
+            // If NVENC is not available on this GPU, fall back to standard hardware acceleration (QSV/AMF/Auto)
+            return GetEncoderAndHwArgs(codec, hwMode, ffmpegPath, speedMode);
+        }
+
+        // Hardware CUDA decoding and pipeline acceleration
+        var hwArgs = new[] { "-hwaccel", "cuda" };
+
+        string nvencPreset = speedMode switch
+        {
+            RenderSpeedMode.TurboFast => "p2",
+            RenderSpeedMode.Quality => "p6",
+            _ => "p4",
+        };
+
+        string lookahead = speedMode switch
+        {
+            RenderSpeedMode.TurboFast => "10",
+            RenderSpeedMode.Quality => "32",
+            _ => "20",
+        };
+
+        string cq = codec switch
+        {
+            EditVideoCodec.H265 => "22",
+            EditVideoCodec.Av1 => "24",
+            _ => "23",
+        };
+
+        string encoder = codec switch
+        {
+            EditVideoCodec.H265 => "hevc_nvenc",
+            EditVideoCodec.Av1 => "av1_nvenc",
+            _ => "h264_nvenc",
+        };
+
+        var encArgsList = new List<string> { "-c:v", encoder, "-preset", nvencPreset };
+
+        if (codec == EditVideoCodec.H264)
+        {
+            encArgsList.AddRange(["-profile:v", "high"]);
+        }
+
+        encArgsList.AddRange([
+            "-cq",
+            cq,
+            "-spatial-aq",
+            "1",
+            "-temporal-aq",
+            "1",
+            "-rc-lookahead",
+            lookahead,
+        ]);
+
+        if (codec == EditVideoCodec.H264)
+        {
+            encArgsList.AddRange(["-b_ref_mode", "middle", "-multipass", "qres"]);
+        }
+
+        encArgsList.AddRange(["-pix_fmt", "yuv420p"]);
+        var encArgs = encArgsList.ToArray();
+
+        return (hwArgs, encArgs, true);
+    }
+
+    private static (string[] HwArgs, string[] EncoderArgs, bool IsGpu) GetEncoderAndHwArgs(
+        EditVideoCodec codec,
+        HardwareAccelerationMode hwMode,
+        string ffmpegPath,
+        RenderSpeedMode speedMode = RenderSpeedMode.Balanced
+    )
+    {
+        var gpu = HardwareDetector.GetGpuInfo(ffmpegPath);
+
+        bool useNvenc =
+            hwMode == HardwareAccelerationMode.NvidiaNvenc
+            || (hwMode == HardwareAccelerationMode.Auto && gpu.HasNvenc);
+
+        bool useQsv =
+            !useNvenc
+            && (
+                hwMode == HardwareAccelerationMode.IntelQsv
+                || (hwMode == HardwareAccelerationMode.Auto && gpu.HasQsv)
+            );
+
+        bool useAmf =
+            !useNvenc
+            && !useQsv
+            && (
+                hwMode == HardwareAccelerationMode.AmdAmf
+                || (hwMode == HardwareAccelerationMode.Auto && gpu.HasAmf)
+            );
+
+        if (useNvenc)
+        {
+            var hwArgs = new[] { "-hwaccel", "cuda" };
+            string nvencPreset = speedMode switch
+            {
+                RenderSpeedMode.TurboFast => "p2",
+                RenderSpeedMode.Quality => "p6",
+                _ => "p4",
+            };
+            string lookahead = speedMode switch
+            {
+                RenderSpeedMode.TurboFast => "10",
+                RenderSpeedMode.Quality => "32",
+                _ => "20",
+            };
+            var encArgs = codec switch
+            {
+                EditVideoCodec.H264 => new[]
+                {
+                    "-c:v",
+                    "h264_nvenc",
+                    "-preset",
+                    nvencPreset,
+                    "-profile:v",
+                    "high",
+                    "-cq",
+                    "23",
+                    "-spatial-aq",
+                    "1",
+                    "-temporal-aq",
+                    "1",
+                    "-rc-lookahead",
+                    lookahead,
+                    "-b_ref_mode",
+                    "middle",
+                    "-multipass",
+                    "qres",
+                    "-pix_fmt",
+                    "yuv420p",
+                },
+                EditVideoCodec.H265 => new[]
+                {
+                    "-c:v",
+                    "hevc_nvenc",
+                    "-preset",
+                    nvencPreset,
+                    "-cq",
+                    "22",
+                    "-spatial-aq",
+                    "1",
+                    "-temporal-aq",
+                    "1",
+                    "-pix_fmt",
+                    "yuv420p",
+                },
+                EditVideoCodec.Av1 => new[]
+                {
+                    "-c:v",
+                    "av1_nvenc",
+                    "-preset",
+                    nvencPreset,
+                    "-cq",
+                    "24",
+                    "-spatial-aq",
+                    "1",
+                    "-temporal-aq",
+                    "1",
+                    "-pix_fmt",
+                    "yuv420p",
+                },
+                _ => new[]
+                {
+                    "-c:v",
+                    "h264_nvenc",
+                    "-preset",
+                    nvencPreset,
+                    "-profile:v",
+                    "high",
+                    "-cq",
+                    "23",
+                    "-spatial-aq",
+                    "1",
+                    "-temporal-aq",
+                    "1",
+                    "-rc-lookahead",
+                    lookahead,
+                    "-b_ref_mode",
+                    "middle",
+                    "-multipass",
+                    "qres",
+                    "-pix_fmt",
+                    "yuv420p",
+                },
+            };
+            return (hwArgs, encArgs, true);
+        }
+
+        if (useQsv)
+        {
+            var hwArgs = new[] { "-hwaccel", "qsv" };
+            string qsvPreset = speedMode switch
+            {
+                RenderSpeedMode.TurboFast => "veryfast",
+                RenderSpeedMode.Quality => "medium",
+                _ => "fast",
+            };
+            var encArgs = codec switch
+            {
+                EditVideoCodec.H264 => new[]
+                {
+                    "-c:v",
+                    "h264_qsv",
+                    "-preset",
+                    qsvPreset,
+                    "-global_quality",
+                    "21",
+                    "-pix_fmt",
+                    "nv12",
+                },
+                EditVideoCodec.H265 => new[]
+                {
+                    "-c:v",
+                    "hevc_qsv",
+                    "-preset",
+                    qsvPreset,
+                    "-global_quality",
+                    "21",
+                    "-pix_fmt",
+                    "nv12",
+                },
+                EditVideoCodec.Av1 => new[]
+                {
+                    "-c:v",
+                    "av1_qsv",
+                    "-preset",
+                    qsvPreset,
+                    "-global_quality",
+                    "23",
+                    "-pix_fmt",
+                    "nv12",
+                },
+                _ => new[]
+                {
+                    "-c:v",
+                    "h264_qsv",
+                    "-preset",
+                    qsvPreset,
+                    "-global_quality",
+                    "21",
+                    "-pix_fmt",
+                    "nv12",
+                },
+            };
+            return (hwArgs, encArgs, true);
+        }
+
+        if (useAmf)
+        {
+            var hwArgs = new[] { "-hwaccel", "auto" };
+            string amfQuality = speedMode switch
+            {
+                RenderSpeedMode.TurboFast => "speed",
+                RenderSpeedMode.Quality => "quality",
+                _ => "balanced",
+            };
+            var encArgs = codec switch
+            {
+                EditVideoCodec.H264 => new[]
+                {
+                    "-c:v",
+                    "h264_amf",
+                    "-quality",
+                    amfQuality,
+                    "-rc",
+                    "cqp",
+                    "-qp_p",
+                    "19",
+                    "-qp_i",
+                    "19",
+                    "-pix_fmt",
+                    "yuv420p",
+                },
+                EditVideoCodec.H265 => new[]
+                {
+                    "-c:v",
+                    "hevc_amf",
+                    "-quality",
+                    amfQuality,
+                    "-rc",
+                    "cqp",
+                    "-qp_p",
+                    "19",
+                    "-qp_i",
+                    "19",
+                    "-pix_fmt",
+                    "yuv420p",
+                },
+                EditVideoCodec.Av1 => new[]
+                {
+                    "-c:v",
+                    "av1_amf",
+                    "-quality",
+                    amfQuality,
+                    "-rc",
+                    "cqp",
+                    "-qp_p",
+                    "21",
+                    "-qp_i",
+                    "21",
+                    "-pix_fmt",
+                    "yuv420p",
+                },
+                _ => new[]
+                {
+                    "-c:v",
+                    "h264_amf",
+                    "-quality",
+                    amfQuality,
+                    "-rc",
+                    "cqp",
+                    "-qp_p",
+                    "19",
+                    "-qp_i",
+                    "19",
+                    "-pix_fmt",
+                    "yuv420p",
+                },
+            };
+            return (hwArgs, encArgs, true);
+        }
+
+        string cpuPreset = speedMode switch
+        {
+            RenderSpeedMode.TurboFast => "veryfast",
+            RenderSpeedMode.Quality => "medium",
+            _ => "fast",
+        };
+        string svtPreset = speedMode switch
+        {
+            RenderSpeedMode.TurboFast => "8",
+            RenderSpeedMode.Quality => "5",
+            _ => "6",
+        };
+
+        string[] cpuArgs = codec switch
+        {
+            EditVideoCodec.H264 =>
+            [
+                "-c:v",
+                "libx264",
+                "-preset",
+                cpuPreset,
+                "-profile:v",
+                "high",
+                "-crf",
+                "22",
+                "-pix_fmt",
+                "yuv420p",
+            ],
+            EditVideoCodec.H265 =>
+            [
+                "-c:v",
+                "libx265",
+                "-preset",
+                cpuPreset,
+                "-crf",
+                "20",
+                "-pix_fmt",
+                "yuv420p",
+            ],
+            EditVideoCodec.Av1 =>
+            [
+                "-c:v",
+                "libsvtav1",
+                "-preset",
+                svtPreset,
+                "-crf",
+                "24",
+                "-pix_fmt",
+                "yuv420p10le",
+            ],
+            _ =>
+            [
+                "-c:v",
+                "libx264",
+                "-preset",
+                cpuPreset,
+                "-profile:v",
+                "high",
+                "-crf",
+                "22",
+                "-pix_fmt",
+                "yuv420p",
+            ],
+        };
+
+        return (Array.Empty<string>(), cpuArgs, false);
+    }
+
+    /// <summary>
+    /// Builds chained 'atempo' audio filters for pitch-preserving tempo adjustment in FFmpeg.
+    /// FFmpeg's atempo filter accepts values between 0.5 and 2.0. Values outside that range must be chained.
+    /// </summary>
+    public static string BuildAudioSpeedFilter(double speed)
+    {
+        double s = Math.Clamp(speed, 0.25, 4.0);
+        if (Math.Abs(s - 1.0) < 0.001)
+        {
+            return string.Empty;
+        }
+
+        var filters = new List<string>();
+        double remaining = s;
+
+        // Handle speed > 2.0 (e.g. 2.5x -> atempo=2.0,atempo=1.25)
+        while (remaining > 2.0)
+        {
+            filters.Add("atempo=2.0");
+            remaining /= 2.0;
+        }
+
+        // Handle speed < 0.5 (e.g. 0.25x -> atempo=0.5,atempo=0.5)
+        while (remaining < 0.5)
+        {
+            filters.Add("atempo=0.5");
+            remaining /= 0.5;
+        }
+
+        if (Math.Abs(remaining - 1.0) >= 0.001)
+        {
+            filters.Add($"atempo={remaining.ToString("0.###", CultureInfo.InvariantCulture)}");
+        }
+
+        return string.Join(",", filters);
+    }
+
+    /// <summary>
+    /// Builds the audio filter and codec pipeline for FFmpeg based on the selected EditAudioMode and playback speed.
+    /// </summary>
+    public static (string? Filter, bool ReencodeAac, bool Mute) BuildAudioPipeline(
+        EditAudioMode mode,
+        double playbackSpeed
+    )
+    {
+        if (mode == EditAudioMode.Mute)
+        {
+            return (null, false, true);
+        }
+
+        string speedFilter = BuildAudioSpeedFilter(playbackSpeed);
+
+        switch (mode)
+        {
+            case EditAudioMode.IsolateSpeech:
+                string speechFilter =
+                    _855Media.Core.Audio.AudioProcessor.GetSpeechIsolationFilter();
+                string combinedSpeech = string.IsNullOrWhiteSpace(speedFilter)
+                    ? speechFilter
+                    : $"{speechFilter},{speedFilter}";
+                return (combinedSpeech, true, false);
+
+            case EditAudioMode.RemoveVocals:
+                string karaokeFilter = _855Media.Core.Audio.AudioProcessor.GetKaraokeFilter();
+                string combinedKaraoke = string.IsNullOrWhiteSpace(speedFilter)
+                    ? karaokeFilter
+                    : $"{karaokeFilter},{speedFilter}";
+                return (combinedKaraoke, true, false);
+
+            case EditAudioMode.AntiCopyrightPitch:
+                // Shifts sample rate up by +4% (shifts harmonics to disrupt acoustic fingerprinting / Content ID),
+                // then compensates duration with atempo so audio remains in sync with the video,
+                // and resamples back to pristine 48kHz.
+                double effectiveTempo = playbackSpeed / 1.04;
+                string tempoFilter = BuildAudioSpeedFilter(effectiveTempo);
+                string pitchFilter = string.IsNullOrWhiteSpace(tempoFilter)
+                    ? "aformat=sample_rates=48000,asetrate=49920,aresample=48000"
+                    : $"aformat=sample_rates=48000,asetrate=49920,{tempoFilter},aresample=48000";
+                return (pitchFilter, true, false);
+
+            case EditAudioMode.CopyOriginal:
+            default:
+                if (!string.IsNullOrWhiteSpace(speedFilter))
+                {
+                    return (speedFilter, true, false);
+                }
+                return (null, false, false);
+        }
+    }
+
+    private async Task ExecuteProcessWithProgressAsync(
+        string fileName,
+        IReadOnlyList<string> arguments,
+        EditJob job,
+        Action<string> log,
+        CancellationToken cancellationToken
+    )
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        using var process = new Process();
+        process.StartInfo.FileName = fileName;
+        process.StartInfo.UseShellExecute = false;
+        process.StartInfo.CreateNoWindow = true;
+        process.StartInfo.RedirectStandardError = true;
+        process.StartInfo.RedirectStandardOutput = true;
+
+        foreach (var arg in arguments)
+        {
+            process.StartInfo.ArgumentList.Add(arg);
+        }
+
+        var errorOutput = new List<string>();
+
+        process.ErrorDataReceived += (_, e) =>
+        {
+            if (string.IsNullOrWhiteSpace(e.Data))
+                return;
+
+            errorOutput.Add(e.Data);
+
+            // Real-time progress parsing
+            var frameMatch = FfmpegFrameRegex.Match(e.Data);
+            if (
+                frameMatch.Success && long.TryParse(frameMatch.Groups["frame"].Value, out var frame)
+            )
+            {
+                job.CurrentFrame = frame;
+
+                if (
+                    double.TryParse(
+                        frameMatch.Groups["fps"].Value,
+                        CultureInfo.InvariantCulture,
+                        out var fps
+                    )
+                )
+                {
+                    job.Fps = fps;
+                }
+
+                if (job.TotalFrames > 0)
+                {
+                    job.Progress = Math.Min(
+                        99.0,
+                        Math.Round((double)frame / job.TotalFrames * 100.0, 1)
+                    );
+                }
+
+                if (job.StartTime.HasValue)
+                {
+                    job.ElapsedTime = DateTimeOffset.Now - job.StartTime.Value;
+                }
+            }
+        };
+
+        try
+        {
+            process.Start();
+            ChildProcessTracker.Track(process);
+            job.ActiveProcess = process;
+
+            // Multithread Safety: Set background priority so low-profile CPUs never freeze the Windows UI or mouse
+            try
+            {
+                process.PriorityClass = ProcessPriorityClass.BelowNormal;
+            }
+            catch
+            {
+                // Non-fatal if OS security denies priority adjustment
+            }
+
+            process.BeginErrorReadLine();
+            process.BeginOutputReadLine();
+
+            await process.WaitForExitAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            if (!process.HasExited)
+            {
+                try
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+                catch { }
+            }
+            throw;
+        }
+        finally
+        {
+            job.ActiveProcess = null;
+        }
+
+        if (process.ExitCode != 0)
+        {
+            var combinedErr = string.Join(Environment.NewLine, errorOutput.TakeLast(30));
+            throw new InvalidOperationException(
+                $"FFmpeg process exited with code {process.ExitCode}: {combinedErr}"
+            );
+        }
+    }
+
+    private static bool IsOutOfMemoryError(string message) =>
+        message.Contains("out of memory", StringComparison.OrdinalIgnoreCase)
+        || message.Contains("CUDA out of memory", StringComparison.OrdinalIgnoreCase)
+        || message.Contains("vkAllocateMemory", StringComparison.OrdinalIgnoreCase)
+        || message.Contains("cannot allocate memory", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsGpuDriverCrash(string message) =>
+        message.Contains("device lost", StringComparison.OrdinalIgnoreCase)
+        || message.Contains("hardware acceleration failed", StringComparison.OrdinalIgnoreCase)
+        || message.Contains("vkQueueSubmit failed", StringComparison.OrdinalIgnoreCase)
+        || message.Contains("VK_ERROR_DEVICE_LOST", StringComparison.OrdinalIgnoreCase);
+
+    private static async Task<string?> PrepareProcessedAudioStemAsync(
+        EditJob job,
+        string ffmpegPath,
+        string tempDir,
+        Action<string> log,
+        CancellationToken cancellationToken
+    )
+    {
+        var extractedAudioPath = Path.Combine(tempDir, "source_audio.wav");
+        var vocalsPath = Path.Combine(tempDir, "isolated_speech.wav");
+        var bgmPath = Path.Combine(tempDir, "isolated_bgm.wav");
+
+        string targetStemPath = job.AudioMode == EditAudioMode.RemoveVocals ? bgmPath : vocalsPath;
+        if (File.Exists(targetStemPath) && new FileInfo(targetStemPath).Length > 1024)
+        {
+            log(
+                $"[Audio Stem Separation] Found pre-separated stem: {Path.GetFileName(targetStemPath)}"
+            );
+            return targetStemPath;
+        }
+
+        try
+        {
+            var stemService = new _855Media.Core.Dubbing.AudioStemSeparationService();
+
+            log(
+                $"[Audio Stem Separation] Extracting audio track from {Path.GetFileName(job.FilePath)} for neural stem separation ({job.AudioMode})..."
+            );
+            await stemService.ExtractFullAudioAsync(
+                ffmpegPath,
+                job.FilePath,
+                extractedAudioPath,
+                cancellationToken
+            );
+
+            if (!File.Exists(extractedAudioPath) || new FileInfo(extractedAudioPath).Length == 0)
+            {
+                log(
+                    "[Audio Stem Separation] Source video contains no audio stream. Skipping stem separation."
+                );
+                return null;
+            }
+
+            log(
+                "[Audio Stem Separation] Executing Meta HDEMUCS neural model on GPU to separate stems..."
+            );
+            await stemService.SeparateStemsAsync(
+                ffmpegPath,
+                extractedAudioPath,
+                vocalsPath,
+                bgmPath,
+                useAiDemucs: true,
+                progressLogger: log,
+                cancellationToken: cancellationToken
+            );
+
+            if (File.Exists(targetStemPath) && new FileInfo(targetStemPath).Length > 1024)
+            {
+                log(
+                    $"[Audio Stem Separation] Successfully extracted neural {(job.AudioMode == EditAudioMode.RemoveVocals ? "BGM/Karaoke" : "Speech/Dialogue")} stem ({new FileInfo(targetStemPath).Length / 1024} KB)."
+                );
+                return targetStemPath;
+            }
+
+            log(
+                "[Audio Stem Separation] Notice: Stem output was empty. Falling back to real-time audio filter."
+            );
+            return null;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            log(
+                $"[Audio Stem Separation] Stem separation failed ({ex.Message}). Falling back to real-time audio filter."
+            );
+            return null;
+        }
+    }
+
+    private static void CleanupStaleTempDirectories(string scratchBase, string subFolder)
+    {
+        try
+        {
+            var root = Path.Combine(scratchBase, subFolder);
+            if (Directory.Exists(root))
+            {
+                var cutoff = DateTime.Now.AddHours(-12);
+                foreach (var dir in Directory.GetDirectories(root))
+                {
+                    try
+                    {
+                        var dirInfo = new DirectoryInfo(dir);
+                        if (dirInfo.LastWriteTime < cutoff)
+                        {
+                            Directory.Delete(dir, recursive: true);
+                        }
+                    }
+                    catch { }
+                }
+            }
+        }
+        catch { }
+    }
+}

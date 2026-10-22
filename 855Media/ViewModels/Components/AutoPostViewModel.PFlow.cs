@@ -58,7 +58,8 @@ public partial class AutoPostViewModel
         _pFlowTasks.Clear();
         _pFlowOwners.Clear();
         _postTargetSessions.Clear();
-        _startupIdentities.Clear();
+        _nativeIdentityScopes.Clear();
+        _graphActivationProofs.Clear();
         _postProcessIds.Clear();
         _pFlowBatchDryRun = PFlowDryRun;
         var uniqueAcrossTargets = UploadUniqueFile;
@@ -580,20 +581,77 @@ public partial class AutoPostViewModel
         }
         // Both ScreenTime's startup callback and every PFlow job enter here.
         // Posting can reuse a confirmed target session; other callers verify fresh UID.
+        var navigationRecoveryAttempted = false;
         try
         {
-            return await VerifyLiveTargetUidAsync(
-                worker,
-                page,
-                plannedTarget,
-                account,
-                ct,
-                postingJob: expectedJob,
-                initialXml: initialXml
+            return await PFlowTargetNavigationRecovery.RunAsync(
+                expectedJob,
+                () =>
+                    VerifyLiveTargetUidAsync(
+                        worker,
+                        page,
+                        plannedTarget,
+                        account,
+                        ct,
+                        postingJob: expectedJob,
+                        initialXml: initialXml
+                    ),
+                async () =>
+                {
+                    navigationRecoveryAttempted = true;
+                    RequireSubscription();
+                    if (
+                        PFlowJobStartRecovery.HasPendingPublication(
+                            (await _pFlowHistory.ReadAsync(ct)).Concat(_pFlowJobs),
+                            worker.Index
+                        )
+                    )
+                        throw new InvalidOperationException(
+                            "Pending publication blocks navigation recovery."
+                        );
+                    await RequireAccountTransitionIdleAsync(worker.Index, ct);
+                    var recoveryXml =
+                        await _ldPlayerService.DumpUiHierarchyAsync(worker.Index, LdFolder, ct)
+                        ?? "";
+                    if (!PFlowTargetNavigationRecovery.IsSafeFeed(recoveryXml, plannedTarget))
+                        throw new InvalidOperationException(
+                            "Navigation recovery requires a safe Facebook Feed."
+                        );
+                    worker.Status = "P-Flow: restarting navigation and verifying account";
+                    InvalidatePostTargetSession(worker.Index);
+                    _pFlowOwners.TryRemove(worker.Index, out _);
+                    _pFlowActiveBindings.TryRemove(worker.Index, out _);
+                    await PFlowTrace.SessionAsync(
+                        worker.Index,
+                        "identity.navigation.recovery",
+                        "attempt=1; submitted=false; freshGraphRequired=true",
+                        ct
+                    );
+                    await _ldPlayerService.StopFacebookAppAsync(worker.Index, LdFolder, ct);
+                    await _ldPlayerService.LaunchAppAsync(
+                        worker.Index,
+                        "com.facebook.katana",
+                        LdFolder,
+                        ct
+                    );
+                    initialXml = null;
+                    try
+                    {
+                        await EnsureRunAccountAsync(worker, account, ct);
+                    }
+                    catch
+                    {
+                        _pFlowAccountAttention[worker.Index] = 0;
+                        throw;
+                    }
+                },
+                ct
             );
         }
         catch
         {
+            if (navigationRecoveryAttempted)
+                _pFlowAccountAttention[worker.Index] = 0;
             InvalidatePostTargetSession(worker.Index);
             _pFlowOwners.TryRemove(worker.Index, out _);
             _pFlowActiveBindings.TryRemove(worker.Index, out _);

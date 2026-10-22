@@ -6,6 +6,19 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../../../../855Media.Core/855Media.Core.csproj" />
+    <Compile
+      Include="../../../../855Media/Services/InstagramPostDetailReader.cs"
+      Link="InstagramPostDetailReader.cs"
+    />
+    <EmbeddedResource
+      Include="../../../../855Media/Resources/instagram-scraper-bridge.js"
+      Link="instagram-scraper-bridge.js"
+    />
+    <EmbeddedResource
+      Include="../../../../855Media/Resources/instagram-post-detail.js"
+      Link="instagram-post-detail.js"
+    />
     <PackageReference Include="WebView.Avalonia.Desktop" />
     <Compile
       Include="../../../../855Media/Services/FacebookPhotoDetailReader.cs"

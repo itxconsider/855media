@@ -13,6 +13,10 @@ public partial class PFlowAccountItemViewModel : ObservableObject
     public string AppPackage => Account.Binding.AppPackage;
     public bool IsMappingValid { get; }
     public string BindingStatus { get; }
+    public int DeviceIndex => Account.Binding.DeviceIndex;
+    public int PageCount => Account.Pages.Count;
+    public string MappingLabel => IsMappingValid ? "Mapped · verify at run" : "Needs attention";
+
     public string AccessSummary =>
         $"{Account.Pages.Count} cached Pages • current access requires live verification";
 

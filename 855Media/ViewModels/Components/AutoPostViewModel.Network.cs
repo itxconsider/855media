@@ -56,7 +56,7 @@ public partial class AutoPostViewModel
                 if (!IsRunning && !row.IsBusy)
                     row.Status = live.IsAndroidStarted ? "Running" : "Stopped";
             }
-            await RefreshNetworkRowsAsync();
+            QueueNetworkRows();
         }
         catch (Exception)
         { /* A failed scan must not turn all devices into stopped rows. */
@@ -67,19 +67,38 @@ public partial class AutoPostViewModel
         }
     }
 
-    private Task RefreshNetworkRowsAsync(bool force = false)
+    private void QueueNetworkRows(bool force = false)
     {
         if (_networkLifetime.IsCancellationRequested)
-            return Task.CompletedTask;
+            return;
+        foreach (var row in Instances.Where(i => i.IsAndroidStarted).ToArray())
+            QueueNetworkRow(row, force);
+    }
+
+    private void QueueNetworkRow(LDInstanceItemViewModel row, bool force = false)
+    {
+        if (_networkLifetime.IsCancellationRequested)
+            return;
         _networkInfoService ??= new(_ldPlayerService);
-        return Task.WhenAll(
-            Instances
-                .Where(i => i.IsAndroidStarted)
-                .ToArray()
-                .Select(row =>
-                    row.RefreshNetworkAsync(_networkInfoService, _networkLifetime.Token, force)
-                )
-        );
+        _ = ObserveNetworkRefreshAsync(row, _networkInfoService, _networkLifetime.Token, force);
+    }
+
+    private static async Task ObserveNetworkRefreshAsync(
+        LDInstanceItemViewModel row,
+        LDNetworkInfoService service,
+        CancellationToken lifetime,
+        bool force
+    )
+    {
+        try
+        {
+            await row.RefreshNetworkAsync(service, lifetime, force);
+        }
+        catch (Exception ex)
+        {
+            // Observe shutdown/dispatcher failures too; no unobserved background task faults.
+            System.Diagnostics.Debug.WriteLine("Background network refresh: " + ex.GetType().Name);
+        }
     }
 
     private void DisposeNetworkMonitor()

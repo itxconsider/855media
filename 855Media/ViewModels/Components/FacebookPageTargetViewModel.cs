@@ -24,7 +24,7 @@ public partial class FacebookPageTargetViewModel : ObservableObject
 
     public string TableStatus =>
         IsProfile
-            ? "Personal profile"
+            ? "Verified"
             : Model.LivePageAccessVerified switch
             {
                 true => "Verified",
@@ -395,6 +395,43 @@ public partial class FacebookPageTargetViewModel : ObservableObject
 
     [ObservableProperty]
     private string _videoReelPath = string.Empty;
+
+    private void ResetPartGroupsForSourceChange(string? previous, string current)
+    {
+        if (_initializing)
+            return;
+        static string NormalizeSource(string? path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return "";
+            try
+            {
+                return Path.GetFullPath(PageMediaPathEdit.Normalize(path))
+                    .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            }
+            catch
+            {
+                return path.Trim().TrimEnd('\\', '/');
+            }
+        }
+        if (
+            !string.Equals(
+                NormalizeSource(previous),
+                NormalizeSource(current),
+                StringComparison.OrdinalIgnoreCase
+            )
+        )
+            Model.PendingReelPartGroups = [];
+    }
+
+    partial void OnVideoReelPathChanged(string? oldValue, string newValue) =>
+        ResetPartGroupsForSourceChange(oldValue, newValue);
+
+    partial void OnVideoLongPathChanged(string? oldValue, string newValue) =>
+        ResetPartGroupsForSourceChange(oldValue, newValue);
+
+    partial void OnGroupReelPathChanged(string? oldValue, string newValue) =>
+        ResetPartGroupsForSourceChange(oldValue, newValue);
 
     partial void OnVideoReelPathChanged(string value)
     {

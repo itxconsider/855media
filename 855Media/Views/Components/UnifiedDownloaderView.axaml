@@ -69,7 +69,7 @@
             Background="{DynamicResource AntigravityRailBrush}"
             BorderBrush="{DynamicResource AntigravityBorderBrush}"
             BorderThickness="0,0,0,1">
-            <Grid ColumnDefinitions="Auto,*,Auto">
+            <Grid RowDefinitions="Auto,Auto">
                 <!-- Mode Switcher Pills -->
                 <Border
                     Grid.Column="0"
@@ -82,10 +82,16 @@
                         <Button
                             Command="{Binding SwitchToDirectModeCommand}"
                             Classes="mode-btn"
-                            Classes.active="{Binding !IsBrowserMode}">
+                            Classes.active="{Binding !IsAnyBrowserMode}">
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <materialIcons:MaterialIcon Kind="CloudDownload" Width="16" Height="16" />
                                 <TextBlock Text="Universal Downloader" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                        <Button Command="{Binding SwitchToInstagramBrowserModeCommand}" Classes="mode-btn" Classes.active="{Binding IsInstagramBrowserMode}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <materialIcons:MaterialIcon Kind="Instagram" Width="16" Height="16" />
+                                <TextBlock Text="Instagram Web Browser" VerticalAlignment="Center" />
                             </StackPanel>
                         </Button>
 
@@ -105,8 +111,8 @@
 
                 <!-- Input Type Switch (Single / Batch) -->
                 <Border
-                    Grid.Column="2"
-                    IsVisible="{Binding !IsBrowserMode}"
+                    Grid.Row="1" HorizontalAlignment="Right" Margin="0,6,0,0"
+                    IsVisible="{Binding !IsAnyBrowserMode}"
                     Background="#10FFFFFF"
                     BorderBrush="{DynamicResource AntigravityBorderBrush}"
                     BorderThickness="1"
@@ -143,20 +149,20 @@
         <!-- Main Body: Direct / Batch Downloader Mode -->
         <ScrollViewer
             Grid.Row="1"
-            IsVisible="{Binding !IsBrowserMode}"
+            IsVisible="{Binding !IsAnyBrowserMode}"
             HorizontalScrollBarVisibility="Disabled"
             VerticalScrollBarVisibility="Auto">
             <StackPanel
                 MaxWidth="920"
-                Margin="36,28,36,24"
-                HorizontalAlignment="Center"
+                Margin="24,28,24,24"
+                HorizontalAlignment="Stretch"
                 Spacing="20">
 
 
                 <!-- Profile Detected Callout (When a creator profile is typed/pasted) -->
                 <Border
-                    IsVisible="{Binding IsProfileQuery}"
-                    Width="740"
+                    IsVisible="{Binding ShowProfileCallout}"
+                    MaxWidth="740" HorizontalAlignment="Stretch"
                     Padding="14,10"
                     Background="{DynamicResource AntigravityElevatedBrush}"
                     BorderBrush="{DynamicResource AntigravityBorderBrush}"
@@ -205,9 +211,9 @@
                 </Border>
 
                 <!-- SINGLE URL INPUT CONTAINER -->
-                <StackPanel IsVisible="{Binding !IsBatchMode}" Spacing="10" HorizontalAlignment="Center">
+                <StackPanel IsVisible="{Binding !IsBatchMode}" Spacing="10" HorizontalAlignment="Stretch">
                     <Border
-                        Width="740"
+                        MaxWidth="740" HorizontalAlignment="Stretch"
                         Height="54"
                         ClipToBounds="True"
                         Background="{DynamicResource AntigravityPanelBrush}"
@@ -238,6 +244,13 @@
                                         Foreground="{DynamicResource AntigravityTextBrush}"
                                         IsVisible="{Binding DetectedPlatform, Converter={x:Static converters:EqualityConverter.IsEqual}, ConverterParameter={x:Static components:DetectedPlatformKind.Facebook}}" />
                                     <materialIcons:MaterialIcon
+                                        Kind="Instagram"
+                                        Name="InstagramInputIcon"
+                                        Width="22"
+                                        Height="22"
+                                        Foreground="{DynamicResource AntigravityTextBrush}"
+                                        IsVisible="{Binding IsInstagramDetected}" />
+                                    <materialIcons:MaterialIcon
                                         Kind="MoviePlay"
                                         Width="22"
                                         Height="22"
@@ -264,7 +277,7 @@
                                 Foreground="{DynamicResource AntigravityTextBrush}"
                                 Text="{Binding Query}"
                                 Theme="{DynamicResource SoloTextBox}"
-                                Watermark="Paste any video, playlist, or user profile URL (YouTube, TikTok, Facebook, DramaBox)..." />
+                                Watermark="Paste a video, Reel or profile URL (YouTube, TikTok, Facebook, Instagram, DramaBox)..." />
 
                             <!-- Paste Clipboard Button -->
                             <Button
@@ -312,12 +325,27 @@
                             </Button>
                         </Grid>
                     </Border>
+                    <Border
+                        Name="InstagramGuidance"
+                        IsVisible="{Binding IsInstagramDetected}"
+                        MaxWidth="740" HorizontalAlignment="Stretch"
+                        Padding="14,10"
+                        Background="{DynamicResource AntigravityElevatedBrush}"
+                        CornerRadius="8">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="Instagram photos, videos &amp; Reels" FontWeight="SemiBold" FontSize="13" />
+                            <TextBlock Text="Paste instagram.com/p/… for a photo or carousel, instagram.com/reel/… for a Reel, or a profile URL for its accessible posts. Choose the media type below."
+                                       TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                            <TextBlock Text="Download opens Instagram Web Browser. Sign in there, choose Auto-Scroll, then Import. Instagram may still ask for verification or limit activity. Stories are not included."
+                                       TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
 
                 <!-- BATCH MULTI-LINE INPUT CONTAINER -->
                 <StackPanel IsVisible="{Binding IsBatchMode}" Spacing="12" HorizontalAlignment="Center">
                     <Border
-                        Width="740"
+                        MaxWidth="740" HorizontalAlignment="Stretch"
                         MinHeight="230"
                         Background="{DynamicResource AntigravityPanelBrush}"
                         BorderBrush="{DynamicResource AntigravityBorderBrush}"
@@ -335,7 +363,7 @@
                                 Foreground="{DynamicResource AntigravityTextBrush}"
                                 Padding="12"
                                 Text="{Binding BatchInput}"
-                                Watermark="Paste multiple media URLs here (one URL per line)&#x0a;Supports YouTube, TikTok, Facebook, DramaBox links mixed together..."
+                                Watermark="Paste multiple media URLs here (one URL per line)&#x0a;Supports YouTube, TikTok, Facebook, Instagram photos/Reels/posts, DramaBox links mixed together..."
                                 Theme="{DynamicResource SoloTextBox}"
                                 MinHeight="180"
                                 VerticalAlignment="Stretch"
@@ -410,7 +438,15 @@
                 </StackPanel>
 
                 <!-- Platform Capabilities & Feature Cards -->
-                <UniformGrid Columns="4" Width="760" Margin="0,10,0,0">
+                <WrapPanel IsVisible="{Binding ShowInstagramOptions}" MaxWidth="740" HorizontalAlignment="Stretch">
+                    <TextBlock Text="Instagram download type" VerticalAlignment="Center" Margin="0,0,12,8" />
+                    <ComboBox Name="InstagramMediaSelector" SelectedIndex="{Binding SelectedInstagramMediaIndex, Mode=TwoWay}" MinWidth="220" Margin="0,0,0,8">
+                        <ComboBoxItem Content="Photos + videos &amp; Reels" />
+                        <ComboBoxItem Content="Photos only" />
+                        <ComboBoxItem Content="Videos &amp; Reels only" />
+                    </ComboBox>
+                </WrapPanel>
+                <WrapPanel ItemWidth="250" MaxWidth="760" HorizontalAlignment="Center" Margin="0,10,0,0">
                     <!-- YouTube Feature Card -->
                     <Border Classes="feature-card">
                         <StackPanel Spacing="8">
@@ -438,6 +474,15 @@
                         </StackPanel>
                     </Border>
 
+                    <Border Classes="feature-card" Name="InstagramFeatureCard">
+                        <StackPanel Spacing="8">
+                            <materialIcons:MaterialIcon Kind="Instagram" Width="26" Height="26" Foreground="{DynamicResource AntigravityAccentBrush}" />
+                            <TextBlock Text="Instagram" FontWeight="Bold" FontSize="13" Foreground="{DynamicResource AntigravityTextBrush}" />
+                            <TextBlock Text="Photos, carousels, videos &amp; Reels. Sign in using Instagram Web Browser, then Auto-Scroll and Import."
+                                       FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" TextWrapping="Wrap" LineHeight="16" />
+                        </StackPanel>
+                    </Border>
+
                     <!-- DramaBox Feature Card -->
                     <Border Classes="feature-card">
                         <StackPanel Spacing="8">
@@ -446,11 +491,11 @@
                             <TextBlock Text="Full mini-drama series, fast HLS stream copy, 1080p episodes &amp; series posters." FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" TextWrapping="Wrap" LineHeight="16" />
                         </StackPanel>
                     </Border>
-                </UniformGrid>
+                </WrapPanel>
 
                 <!-- Profile Picture & Archival Notice -->
                 <Border
-                    Width="760"
+                    MaxWidth="760" HorizontalAlignment="Stretch"
                     Padding="16,12"
                     Background="{DynamicResource AntigravityElevatedBrush}"
                     BorderBrush="{DynamicResource AntigravityBorderBrush}"
@@ -486,6 +531,9 @@
         <!-- Main Body: Facebook Web Browser & Album Scraper Mode -->
         <Panel Grid.Row="1" IsVisible="{Binding IsBrowserMode}">
             <ContentControl Content="{Binding FacebookDownloader}" />
+        </Panel>
+        <Panel Grid.Row="1" IsVisible="{Binding IsInstagramBrowserMode}">
+            <ContentControl Content="{Binding InstagramBrowserContent}" />
         </Panel>
     </Grid>
 </UserControl>

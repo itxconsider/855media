@@ -81,7 +81,8 @@ internal static class PFlowOwnProfileNavigation
         CancellationToken ct,
         Func<string, Task>? progress = null,
         Func<TimeSpan, CancellationToken, Task>? delay = null,
-        bool navigateCurrentActor = false
+        bool navigateCurrentActor = false,
+        Func<string, bool>? canNavigate = null
     )
     {
         if (string.IsNullOrWhiteSpace(expectedName))
@@ -101,6 +102,8 @@ internal static class PFlowOwnProfileNavigation
             var xml = await ld.DumpUiHierarchyAsync(index, path, ct);
             xml = await PFlowNavigationPrompts.DismissAsync(ld, index, xml, path, ct, delay);
             var screen = AtxAgentClient.ParseBloksHierarchy(xml);
+            if (canNavigate != null && !canNavigate(xml ?? ""))
+                return false;
             if (
                 PFlowLoginScreen.RequiresAuthentication(PFlowLoginScreen.Classify(xml))
                 || PFlowIdentitySwitchLayout.IsSwitching(xml)

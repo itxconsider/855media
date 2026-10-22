@@ -1,0 +1,9 @@
+# Pre-submit own-profile navigation recovery
+
+When Graph has matched the queued target but own-profile navigation fails, posting may restart Facebook once if the authenticated process/session remains unchanged and the current screen is a recognized, safe Facebook Feed. Missing Graph scope, mapping/name/UID contradictions, changed sessions, authentication prompts, editors and foreign screens remain failures requiring attention.
+
+Recovery runs inside the identity callback while the job is Reserved, before media transfer or submission. It clears job continuation/native proof and device target/Graph/owner/account caches, checks subscription access, persisted and live pending publication, ScreenTime review and ongoing uploads, then force-stops and launches Facebook. It does not erase app data. Account preparation performs fresh Graph verification before target verification runs again. Ordinary successful runs retain the reduced Graph flow; recovery needs fresh activation calls.
+
+One successful retry allows the current job and following queue jobs to proceed. A second failure stops this LD for attention. Stop/cancellation, submitted timestamps, uncertain/confirmed states and target-identity restrictions cannot enter this retry. ScreenTime is unchanged. Keyboard restoration remains at the enclosing worker lifecycle boundary.
+
+Validation (2026-10-22): 152 focused navigation, identity scope, Graph request-count, startup recovery, target-session, publication and runner regressions passed. Thirteen new cases cover restart order, one-attempt limit, unsafe stages, submission/restriction, ordinary identity failure, cancellation, ScreenTime and safe-feed classification. Isolated desktop build passed with zero warnings/errors. Logs: `artifacts/navigation-recovery-regressions.log` and `artifacts/navigation-recovery-build.log`. Live LD-2 validation remains pending. Source/build only; the running app and 3.1.7 ZIP were not replaced.

@@ -288,6 +288,10 @@ public partial class AutoPostViewModel
             .Select(e => e.Key)
             .Concat(captionEdits.Select(e => e.CaptionProperty!))
             .ToArray();
+        var originalPartGroups = _bulkPathTargets.ToDictionary(
+            p => p,
+            p => p.Model.PendingReelPartGroups.ToList()
+        );
         var originals = _bulkPathTargets
             .SelectMany(p =>
                 keys.Select(key =>
@@ -325,6 +329,8 @@ public partial class AutoPostViewModel
                 item.Property.SetValue(item.Page, item.Value);
                 item.Page.SyncToModel();
             }
+            foreach (var pair in originalPartGroups)
+                pair.Key.Model.PendingReelPartGroups = pair.Value;
             BulkPathsError = $"Could not save media paths: {ex.Message}";
         }
         finally

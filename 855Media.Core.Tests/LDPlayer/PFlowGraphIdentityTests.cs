@@ -32,6 +32,7 @@ public class PFlowGraphIdentityTests
         Assert.Equal(Owner, identity.Id);
         Assert.Equal(Owner, identity.UnderlyingUid);
         Assert.Null(identity.PictureUrl);
+        Assert.NotEmpty(identity.AuthenticationFingerprint);
         Assert.Equal(1, reads);
         Assert.Equal(2, device.AuthReads);
     }

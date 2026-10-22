@@ -19,9 +19,12 @@ public record VideoInfo(
     string? AuthorAvatarUrl = null,
     long? LikeCount = null,
     int? PlaylistIndex = null,
-    string? Caption = null
+    string? Caption = null,
+    string? DirectMediaUrl = null
 )
 {
+    public bool IsPhoto => Source is VideoSource.FacebookPhoto or VideoSource.InstagramPhoto;
+
     public static VideoInfo FromYoutube(IVideo video) =>
         new(
             VideoSource.YouTube,

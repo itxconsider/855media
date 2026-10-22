@@ -16,9 +16,46 @@ public partial class AutoPostViewModel
     private readonly System.Threading.SemaphoreSlim _accountMappingRefreshGate = new(1, 1);
     private List<PFlowPersonalAccount> _mappedAccounts = [];
     public ObservableCollection<PFlowAccountItemViewModel> MappedAccounts { get; } = [];
-    public IEnumerable<PFlowAccountItemViewModel> DisplayedMappedAccounts => MappedAccounts;
+
+    [ObservableProperty]
+    private string _accountSearchText = "";
+
+    [ObservableProperty]
+    private string _accountFilter = "All";
+    public string[] AccountFilters { get; } =
+    ["All", "Needs attention", "Fetch", "ScreenTime", "Posting"];
+    public IEnumerable<PFlowAccountItemViewModel> DisplayedMappedAccounts =>
+        MappedAccounts
+            .Where(a =>
+                (
+                    string.IsNullOrWhiteSpace(AccountSearchText)
+                    || $"{a.DeviceName} {a.Name} {a.OwnerUid} LD-{a.Account.Binding.DeviceIndex}".Contains(
+                        AccountSearchText.Trim(),
+                        StringComparison.OrdinalIgnoreCase
+                    )
+                )
+                && (
+                    AccountFilter switch
+                    {
+                        "Needs attention" => !a.IsMappingValid,
+                        "Fetch" => a.SelectedForDiscovery,
+                        "ScreenTime" => a.SelectedForScreenTime,
+                        "Posting" => a.SelectedForPosting,
+                        _ => true,
+                    }
+                )
+            )
+            .OrderBy(a => a.Account.Binding.DeviceIndex)
+            .ThenBy(a => a.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(a => a.OwnerUid, StringComparer.Ordinal);
+
+    partial void OnAccountSearchTextChanged(string value) => RefreshLdAccountsSection();
+
+    partial void OnAccountFilterChanged(string value) => RefreshLdAccountsSection();
+
     public string LdAccountsHeading => "LD-Accounts";
-    public string LdAccountsSummary => AccountMappingStatus;
+    public string LdAccountsSummary =>
+        $"{DisplayedMappedAccounts.Count()} / {MappedAccounts.Count} accounts • {MappedAccounts.Count(a => !a.IsMappingValid)} need attention • Select a row for details. Changes require Save.";
 
     private void RefreshLdAccountsSection()
     {

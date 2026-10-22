@@ -41,49 +41,101 @@ var runningRow = new LDInstanceItemViewModel(
 var stoppedRow = new LDInstanceItemViewModel(new() { Index = 4, Name = "LD-4" }, fake);
 vm.Instances.Add(runningRow);
 vm.Instances.Add(stoppedRow);
-var first = vm.RefreshNetworkInfoCommand.ExecuteAsync(null);
-Require(fixture.IpCalls == 1, "Only running rows are probed");
+void Queue(bool force = true) =>
+    typeof(AutoPostViewModel)
+        .GetMethod("QueueNetworkRows", BindingFlags.Instance | BindingFlags.NonPublic)!
+        .Invoke(vm, [force]);
+
+var watch = System.Diagnostics.Stopwatch.StartNew();
+Queue();
+Require(
+    watch.Elapsed < TimeSpan.FromSeconds(1),
+    "Queue returns without waiting for a blocked synchronous ADB call"
+);
+PumpUntil(() => fixture.Active == 1);
+Require(!vm.IsBusy, "IP work does not mark the module busy");
+Require(
+    fixture.CommandThread != Environment.CurrentManagedThreadId,
+    "ADB work starts off the UI thread"
+);
+Queue();
+Require(fixture.IpCalls == 1, "Repeated requests coalesce while a row is checking");
+var uiRan = false;
+Dispatcher.UIThread.Post(() => uiRan = true);
+Dispatcher.UIThread.RunJobs();
+Require(uiRan, "UI work runs while a probe is blocked");
 runningRow.IsAndroidStarted = false;
 Require(
     runningRow.PublicIp == "—" && runningRow.NetworkLocation == "—",
     "Stopped rows clear immediately"
 );
 fixture.Pending.SetResult("{\"ip\":\"8.8.8.8\"}");
-Pump(first);
+PumpUntil(() => fixture.Active == 0);
 Require(runningRow.PublicIp == "—", "A late response cannot repopulate a stopped row");
 fixture.Pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
 runningRow.IsAndroidStarted = true;
-var second = vm.RefreshNetworkInfoCommand.ExecuteAsync(null);
+Queue();
+PumpUntil(() => fixture.IpCalls == 2);
 fixture.Pending.SetResult("{\"ip\":\"1.1.1.1\"}");
-Pump(second);
+PumpUntil(() => runningRow.PublicIp == "1.1.1.1");
 Require(
-    runningRow.PublicIp == "1.1.1.1" && runningRow.NetworkLocation == "New York",
-    "Restart checks fresh guest IP"
+    runningRow.NetworkLocation == "New York",
+    "Restart checks fresh guest IP and publishes the location"
 );
-Require(stoppedRow.PublicIp == "—" && fixture.IpCalls == 2, "Stopped rows are never probed");
-vm.Dispose();
-Require(runningRow.PublicIp == "—", "Disposal clears live network data");
-Console.WriteLine(
-    "PASS: running-only probes, late-response cancellation, restart IP refresh, disposal."
+Queue(false);
+Require(fixture.IpCalls == 2, "Unforced refresh preserves the row cache interval");
+Require(
+    stoppedRow.PublicIp == "—" && !fixture.Indices.Contains(4),
+    "Stopped rows are never probed"
 );
 
-static void Pump(Task task)
+fixture.Pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+for (var i = 10; i < 20; i++)
+    vm.Instances.Add(
+        new LDInstanceItemViewModel(
+            new()
+            {
+                Index = i,
+                Name = "LD-" + i,
+                IsAndroidStarted = true,
+            },
+            fake
+        )
+    );
+Queue();
+PumpUntil(() => fixture.Active == 3);
+Require(fixture.MaxActive <= 3, "At most three probes execute concurrently");
+Queue();
+Require(
+    fixture.MaxActive <= 3 && !vm.IsBusy,
+    "Bulk refresh does not block task controls or duplicate active rows"
+);
+vm.Dispose();
+Require(runningRow.PublicIp == "—", "Disposal clears live data and cancels queued probes");
+fixture.Pending.SetResult("{\"ip\":\"1.1.1.1\"}");
+PumpUntil(() => fixture.Active == 0);
+Require(runningRow.PublicIp == "—", "Disposal rejects late responses");
+Console.WriteLine(
+    "PASS: background scheduling, synchronous ADB isolation, responsive UI, busy state, coalescing, stopped rows, restart, TTL, concurrency, disposal and late responses."
+);
+
+static void PumpUntil(Func<bool> ready)
 {
     var until = DateTime.UtcNow.AddSeconds(10);
-    while (!task.IsCompleted && DateTime.UtcNow < until)
+    while (!ready() && DateTime.UtcNow < until)
     {
         Dispatcher.UIThread.RunJobs();
         Thread.Sleep(5);
     }
     Dispatcher.UIThread.RunJobs();
-    if (!task.IsCompleted)
+    if (!ready())
         throw new TimeoutException("Synthetic UI update did not finish.");
-    task.GetAwaiter().GetResult();
 }
 static void Require(bool condition, string label)
 {
     if (!condition)
         throw new InvalidOperationException(label);
+    Console.WriteLine("PASS: " + label);
 }
 
 public class NetworkFixture : DispatchProxy
@@ -91,22 +143,46 @@ public class NetworkFixture : DispatchProxy
     public TaskCompletionSource<string> Pending = new(
         TaskCreationOptions.RunContinuationsAsynchronously
     );
-    public int IpCalls;
+    public int IpCalls,
+        Active,
+        MaxActive,
+        CommandThread;
+    public System.Collections.Concurrent.ConcurrentBag<int> Indices = [];
 
     protected override object? Invoke(MethodInfo? method, object?[]? args)
     {
         if (method?.Name != nameof(ILDPlayerService.ExecuteAdbAsync))
             throw new InvalidOperationException("Unexpected device command: " + method?.Name);
-        if ((int)args![0]! != 3)
-            throw new InvalidOperationException("A stopped LD was probed.");
+        Indices.Add((int)args![0]!);
         var command = (string)args[1]!;
         if (command.Contains("ipify.org"))
         {
-            IpCalls++;
-            return Pending.Task;
+            Interlocked.Increment(ref IpCalls);
+            CommandThread = Environment.CurrentManagedThreadId;
+            var active = Interlocked.Increment(ref Active);
+            InterlockedExtensionsMax(active);
+            try
+            {
+                return Task.FromResult(Pending.Task.GetAwaiter().GetResult());
+            }
+            finally
+            {
+                Interlocked.Decrement(ref Active);
+            }
         }
         return Task.FromResult(
             "{\"success\":true,\"ip\":\"1.1.1.1\",\"city\":\"New York\",\"country\":\"United States\"}"
         );
+    }
+
+    private void InterlockedExtensionsMax(int value)
+    {
+        int old;
+        do
+        {
+            old = MaxActive;
+            if (old >= value)
+                return;
+        } while (Interlocked.CompareExchange(ref MaxActive, value, old) != old);
     }
 }

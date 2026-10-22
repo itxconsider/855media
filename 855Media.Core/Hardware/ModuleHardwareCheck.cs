@@ -53,7 +53,7 @@ public record GlobalHardwareSummary(
     GpuHardwareInfo Gpu,
     HardwareMetrics LiveMetrics,
     ModuleReadiness Downloader,
-    ModuleReadiness Upscaler,
+    ModuleReadiness Editor,
     ModuleReadiness Dubbing,
     string CpuSummary,
     string RamSummary
@@ -78,8 +78,8 @@ public record GlobalHardwareSummary(
         sb.AppendLine($"[Media Downloader] - [{Downloader.LevelBadgeText}]: {Downloader.Summary}");
         sb.AppendLine($"  {Downloader.Details}");
         sb.AppendLine();
-        sb.AppendLine($"[Video Upscaler] - [{Upscaler.LevelBadgeText}]: {Upscaler.Summary}");
-        sb.AppendLine($"  {Upscaler.Details}");
+        sb.AppendLine($"[Video Editor] - [{Editor.LevelBadgeText}]: {Editor.Summary}");
+        sb.AppendLine($"  {Editor.Details}");
         sb.AppendLine();
         sb.AppendLine($"[Khmer Dubbing & Voice] - [{Dubbing.LevelBadgeText}]: {Dubbing.Summary}");
         sb.AppendLine($"  {Dubbing.Details}");
@@ -107,7 +107,7 @@ public static class ModuleHardwareCheck
         var metrics = liveMetrics ?? HardwareMetrics.Empty;
 
         var downloader = CheckDownloader(gpu);
-        var upscaler = CheckUpscaler(gpu);
+        var editor = CheckEditor(gpu);
         var dubbing = CheckDubbing(gpu);
 
         string cpuSummary =
@@ -121,7 +121,7 @@ public static class ModuleHardwareCheck
             gpu,
             metrics,
             downloader,
-            upscaler,
+            editor,
             dubbing,
             cpuSummary,
             ramSummary
@@ -172,12 +172,12 @@ public static class ModuleHardwareCheck
         );
     }
 
-    public static ModuleReadiness CheckUpscaler(GpuHardwareInfo gpu)
+    public static ModuleReadiness CheckEditor(GpuHardwareInfo gpu)
     {
         if (gpu.HasRtx)
         {
             return new ModuleReadiness(
-                "Video Upscaler",
+                "Video Editor",
                 HardwareReadinessLevel.Optimal,
                 "NVIDIA RTX Tensor Super-Resolution Ready",
                 $"{gpu.Name} ({gpu.DedicatedVramGb:F1} GB VRAM) - 60-120+ FPS Tensor Core Pipeline & NVENC P4/P6.",
@@ -188,7 +188,7 @@ public static class ModuleHardwareCheck
         if (gpu.HasNvenc)
         {
             return new ModuleReadiness(
-                "Video Upscaler",
+                "Video Editor",
                 HardwareReadinessLevel.Optimal,
                 "NVIDIA NVENC Hardware Active",
                 $"{gpu.Name} ({gpu.DedicatedVramGb:F1} GB VRAM) - Tile: {gpu.SafeTileSize}.",
@@ -199,7 +199,7 @@ public static class ModuleHardwareCheck
         if (gpu.DedicatedVramGb >= 4.0)
         {
             return new ModuleReadiness(
-                "Video Upscaler",
+                "Video Editor",
                 HardwareReadinessLevel.Supported,
                 $"{gpu.Name} ({gpu.DedicatedVramGb:F1} GB VRAM)",
                 $"GPU Vulkan & Native Pipeline available. Tile: {gpu.SafeTileSize}.",
@@ -208,7 +208,7 @@ public static class ModuleHardwareCheck
         }
 
         return new ModuleReadiness(
-            "Video Upscaler",
+            "Video Editor",
             HardwareReadinessLevel.Limited,
             "Low VRAM / Software Mode",
             "Tiled rendering or CPU fallback will be utilized to protect system memory.",

@@ -1188,11 +1188,10 @@ public partial class AutoPostViewModel : ViewModelBase
             OnPropertyChanged(nameof(ManagePagesHeaderTitle));
             RefreshDisplayedManagePages();
             StartNetworkMonitor();
-            StatusSummary = "Refreshing device IP information...";
-            await RefreshNetworkRowsAsync(force: true);
+            QueueNetworkRows(force: true);
             StatusSummary = $"Detected {Instances.Count} LDPlayer instances.";
             _snackbarManager.Notify(
-                $"Loaded {Instances.Count} LDPlayer instances and refreshed IP information."
+                $"Loaded {Instances.Count} LDPlayer instances. IP information updates in the background."
             );
         }
         catch (Exception ex)
@@ -1509,6 +1508,11 @@ public partial class AutoPostViewModel : ViewModelBase
     {
         RequireSubscription();
         using var deviceLease = await PFlowDeviceLease.AcquireAsync(worker.Index, ct);
+        await using var keyboardSession = new PFlowKeyboardSession(
+            _ldPlayerService,
+            worker.Index,
+            LdFolder
+        );
         bool appsCleared = false;
         try
         {
@@ -1581,6 +1585,7 @@ public partial class AutoPostViewModel : ViewModelBase
                         "Facebook cache clear was not acknowledged."
                     );
             }
+            await keyboardSession.CaptureAsync(ct);
             await ExecuteAccountBatchAsync(worker, config, ct);
 
             if (_pFlowJobs.Any(j => j.DeviceIndex == worker.Index && j.State == PFlowState.Unknown))
@@ -1601,6 +1606,7 @@ public partial class AutoPostViewModel : ViewModelBase
                 worker.Status = $"Delay Before Close LD {config.DelayBeforeClose} seconds";
                 await Task.Delay(TimeSpan.FromSeconds(Math.Max(1, config.DelayBeforeClose)), ct);
 
+                await keyboardSession.RestoreAsync();
                 await _ldPlayerService.QuitInstanceAsync(worker.Index, LdFolder, ct);
                 worker.IsAndroidStarted = false;
                 worker.Status = config.ScreenTime.HasActions
@@ -1624,6 +1630,8 @@ public partial class AutoPostViewModel : ViewModelBase
         }
         finally
         {
+            if (!await keyboardSession.RestoreAsync())
+                worker.Status += " (keyboard restore pending)";
             if (
                 !appsCleared
                 && config.ClearRecent
@@ -2121,6 +2129,7 @@ public partial class AutoPostViewModel : ViewModelBase
             .Select(k => typeof(FacebookPageTargetViewModel).GetProperty(k)!)
             .ToList();
         var originals = properties.Select(p => p.GetValue(_pageConfigTarget)).ToList();
+        var originalPartGroups = _pageConfigTarget.Model.PendingReelPartGroups.ToList();
         IsSavingBulkPaths = true;
         IsBusy = true;
         try
@@ -2138,6 +2147,7 @@ public partial class AutoPostViewModel : ViewModelBase
             for (var i = 0; i < properties.Count; i++)
                 properties[i].SetValue(_pageConfigTarget, originals[i]);
             _pageConfigTarget.SyncToModel();
+            _pageConfigTarget.Model.PendingReelPartGroups = originalPartGroups;
             PageConfigError = $"Could not save configuration: {ex.Message}";
         }
         finally
@@ -3136,9 +3146,26 @@ public partial class AutoPostViewModel : ViewModelBase
                 && a.Binding.AppPackage == "com.facebook.katana"
             )
             .ToArray();
-        if (mapped.Length > 0)
+        if (mapped.Any(account => account.SelectedForDiscovery))
             return await FetchMappedAccountsAsync(target, mapped, autoCloseIfBooted, ct);
+        // Existing unchecked mappings must not block discovery of a new signed-in account.
+        // With no explicit account selection, use the current-account discovery route.
+        await ReportFetchProgressAsync(
+            target,
+            "Discovering current account",
+            $"{target.Name}: no Fetch accounts selected; discovering the currently signed-in Facebook account."
+        );
         using var deviceLease = await PFlowDeviceLease.AcquireAsync(target.Index, ct);
+        using var graphSession = new PFlowFetchGraphSession(
+            _ldPlayerService,
+            target.Index,
+            LdFolder
+        );
+        await using var keyboardSession = new PFlowKeyboardSession(
+            _ldPlayerService,
+            target.Index,
+            LdFolder
+        );
         target.Status = "Checking Status...";
         bool wasRunning = false;
         try
@@ -3198,6 +3225,7 @@ public partial class AutoPostViewModel : ViewModelBase
                 await FetchDelayAsync(target, DelayAfterOpenLD, "After LD opens", ct);
             }
 
+            await keyboardSession.CaptureAsync(ct);
             await PrepareFetchFacebookAsync(target, ct);
             await FetchDelayAsync(target, DelayOpenApp, "Before opening Facebook", ct);
             ct.ThrowIfCancellationRequested();
@@ -3455,6 +3483,7 @@ public partial class AutoPostViewModel : ViewModelBase
                     target.Status = "Closing...";
                     try
                     {
+                        await keyboardSession.RestoreAsync();
                         await _ldPlayerService.QuitInstanceAsync(
                             target.Index,
                             LdFolder,
@@ -3484,6 +3513,7 @@ public partial class AutoPostViewModel : ViewModelBase
                 {
                     try
                     {
+                        await keyboardSession.RestoreAsync();
                         await _ldPlayerService.QuitInstanceAsync(
                             target.Index,
                             LdFolder,
@@ -3502,6 +3532,7 @@ public partial class AutoPostViewModel : ViewModelBase
             {
                 try
                 {
+                    await keyboardSession.RestoreAsync();
                     await _ldPlayerService.QuitInstanceAsync(
                         target.Index,
                         LdFolder,
@@ -3520,6 +3551,7 @@ public partial class AutoPostViewModel : ViewModelBase
             {
                 try
                 {
+                    await keyboardSession.RestoreAsync();
                     await _ldPlayerService.QuitInstanceAsync(
                         target.Index,
                         LdFolder,
@@ -3529,6 +3561,11 @@ public partial class AutoPostViewModel : ViewModelBase
                 catch { }
             }
             return false;
+        }
+        finally
+        {
+            if (!await keyboardSession.RestoreAsync())
+                target.Status += " (keyboard restore pending)";
         }
     }
 
@@ -4072,7 +4109,42 @@ public partial class AutoPostViewModel : ViewModelBase
         }
     }
 
+    [ObservableProperty]
+    private bool _prepareReels = true;
+
+    [ObservableProperty]
+    private bool _preparePhotos;
+
+    [ObservableProperty]
+    private bool _prepareStories;
+
+    partial void OnSelectedPostTypeIndexChanged(int value)
+    {
+        PrepareReels = value == 0;
+        PreparePhotos = value == 1;
+        PrepareStories = value == 2;
+    }
+
     private async Task PrepareSelectedFilesAsync()
+    {
+        // Snapshot choices so changing a checkbox during preparation cannot change the batch.
+        var types = new List<string>();
+        if (PrepareReels)
+            types.Add("Reel");
+        if (PreparePhotos)
+            types.Add("Picture");
+        if (PrepareStories)
+            types.Add("Story");
+        if (types.Count == 0)
+        {
+            _snackbarManager.Notify("Choose at least one post type: Reel, Photo or Story.");
+            return;
+        }
+        foreach (var postType in types)
+            await PrepareSelectedFilesForTypeAsync(postType);
+    }
+
+    private async Task PrepareSelectedFilesForTypeAsync(string postType)
     {
         // 1. Identify target pages from selection
         var selectedPages = DisplayedManagePages.Where(p => p.IsSelected).ToList();
@@ -4088,13 +4160,6 @@ public partial class AutoPostViewModel : ViewModelBase
             );
             return;
         }
-
-        string postType = SelectedPostTypeIndex switch
-        {
-            1 => "Picture",
-            2 => "Story",
-            _ => "Reel",
-        };
 
         QueuePreparationStatus = "Checking media availability…";
         await RefreshMediaCountsForPagesAsync(selectedPages.ToArray());

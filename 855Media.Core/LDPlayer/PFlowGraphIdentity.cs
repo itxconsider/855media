@@ -2,6 +2,8 @@ using System;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -16,6 +18,9 @@ public sealed record PFlowGraphIdentity(
     string? PictureUrl
 )
 {
+    [System.Text.Json.Serialization.JsonIgnore]
+    internal string AuthenticationFingerprint { get; init; } = "";
+
     // No verified Graph field corresponds to the Page Transparency creation date.
     // In particular, business founding dates and content creation times are not it.
     public string? PageCreationDate => null;
@@ -52,14 +57,28 @@ public sealed class PFlowGraphIdentityReader(HttpClient? client = null)
         int index,
         string? path,
         CancellationToken ct
-    ) => ReadAsync(ld, index, path, ct, includePicture: true);
+    ) => ReadWithFetchSessionAsync(ld, index, path, ct, includePicture: true);
 
     public Task<PFlowGraphIdentity?> TryReadUidAsync(
         ILDPlayerService ld,
         int index,
         string? path,
         CancellationToken ct
-    ) => ReadAsync(ld, index, path, ct, includePicture: false);
+    ) => ReadWithFetchSessionAsync(ld, index, path, ct, includePicture: false);
+
+    private Task<PFlowGraphIdentity?> ReadWithFetchSessionAsync(
+        ILDPlayerService ld,
+        int index,
+        string? path,
+        CancellationToken ct,
+        bool includePicture
+    )
+    {
+        var session = PFlowFetchGraphSession.Current;
+        return session != null && session.Applies(ld, index, path)
+            ? session.ReadAsync(() => ReadAsync(ld, index, path, ct, includePicture: true), ct)
+            : ReadAsync(ld, index, path, ct, includePicture);
+    }
 
     private async Task<PFlowGraphIdentity?> ReadAsync(
         ILDPlayerService ld,
@@ -150,7 +169,10 @@ public sealed class PFlowGraphIdentityReader(HttpClient? client = null)
                 var after = await ReadSession();
                 if (Token(after.Auth) != accessToken || after.Owner != before.Owner)
                     return null;
-                return new(uid, display.Trim(), before.Owner, picture);
+                return new(uid, display.Trim(), before.Owner, picture)
+                {
+                    AuthenticationFingerprint = Fingerprint(accessToken, before.Owner),
+                };
             }
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested) { }
@@ -169,4 +191,7 @@ public sealed class PFlowGraphIdentityReader(HttpClient? client = null)
             ) { }
         return null;
     }
+
+    internal static string Fingerprint(string token, string owner) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token + "\0" + owner)));
 }

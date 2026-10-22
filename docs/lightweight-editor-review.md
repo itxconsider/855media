@@ -18,31 +18,31 @@ The Dubbing module already has timeline interaction code. Reuse interaction idea
 
 ### [P1] Metadata probes are not bounded by export concurrency
 
-`855Media.Core/Upscaling/VideoQueueManager.cs:225–245` starts a separate fire-and-forget probe for every enqueued file. `MaxConcurrency` limits export workers, not those probes. A large import can launch many FFmpeg processes concurrently on a four-core PC, even with export concurrency set to one.
+`855Media.Core/Editing/VideoQueueManager.cs:225–245` starts a separate fire-and-forget probe for every enqueued file. `MaxConcurrency` limits export workers, not those probes. A large import can launch many FFmpeg processes concurrently on a four-core PC, even with export concurrency set to one.
 
 Add a bounded media-import queue, initially one probe worker in the minimum profile and at most two in the recommended profile. Cache metadata by source identity. Coalesce identical probes, cancel removed imports, and await process termination before releasing the worker slot. Interactive preview should outrank background import/proxy work.
 
 ### [P2] Preview bitmaps do not have deterministic disposal
 
-`855Media/ViewModels/Components/VideoUpscalerViewModel.cs:2403–2406` creates a new Avalonia Bitmap and replaces `PreviewImage`. The clear path and `Dispose(bool)` also do not dispose the displayed bitmap. Repeated seeking/settings changes have no explicit bound on the lifetime of old native image resources.
+`855Media/ViewModels/Components/VideoEditorViewModel.cs:2403–2406` creates a new Avalonia Bitmap and replaces `PreviewImage`. The clear path and `Dispose(bool)` also do not dispose the displayed bitmap. Repeated seeking/settings changes have no explicit bound on the lifetime of old native image resources.
 
 Swap image ownership on the UI thread and release the retired image at a safe render boundary. Dispose any generated bitmap that becomes stale before display, and release the final bitmap when the view/model closes. Avalonia explicitly exposes disposal for these resources. [Avalonia Bitmap.Dispose](https://api-docs.avaloniaui.net/docs/M_Avalonia_Media_Imaging_Bitmap_Dispose)
 
 ### [P2] Preview effects can use export-sized intermediate frames
 
-`855Media/ViewModels/Components/VideoUpscalerViewModel.cs:2349–2360` builds the aspect-ratio filter using the selected export resolution. `855Media.Core/Upscaling/AspectRatioMode.cs:49–52` chooses 1080/2160-wide output canvases. Although `VideoPreviewService` first scales the source down, the supplied crop/blur/reframe graph can enlarge it again before final comparison scaling.
+`855Media/ViewModels/Components/VideoEditorViewModel.cs:2349–2360` builds the aspect-ratio filter using the selected export resolution. `855Media.Core/Editing/AspectRatioMode.cs:49–52` chooses 1080/2160-wide output canvases. Although `VideoPreviewService` first scales the source down, the supplied crop/blur/reframe graph can enlarge it again before final comparison scaling.
 
 Build the same normalized edit decisions at preview dimensions, rather than passing export dimensions into the preview graph. For minimum hardware, use a 540p preview with a 360p fallback; export resolution should not change preview work into a 4K filter pass.
 
 ### [P2] Histogram work runs even when the histogram is hidden
 
-`855Media/ViewModels/Components/VideoUpscalerViewModel.cs:2409–2417` calculates all histogram bins and path strings for every successful preview, regardless of `ShowHistogram`. From the UI entry path, the awaited method resumes on the UI context, so this also adds work to slider responsiveness.
+`855Media/ViewModels/Components/VideoEditorViewModel.cs:2409–2417` calculates all histogram bins and path strings for every successful preview, regardless of `ShowHistogram`. From the UI entry path, the awaited method resumes on the UI context, so this also adds work to slider responsiveness.
 
 Skip hidden histograms. When visible, calculate sampled histogram data in a background worker and publish only the latest result. Refresh on settled frames or at a low independent frequency during playback, not on every displayed frame.
 
 ### [P2] The CPU limit does not budget the whole pipeline
 
-`855Media.Core/Upscaling/VideoUpscaleService.cs:627–640` places `-threads` before `-i`, which scopes that option to the input. Output encoding and filter pools are not explicitly budgeted by that setting. `SmartActionAnalyzer.cs:131–132` also requests automatic threading; `VideoPreviewService` has no explicit decode/filter budget. Default export concurrency is two.
+`855Media.Core/Editing/VideoEditorService.cs:627–640` places `-threads` before `-i`, which scopes that option to the input. Output encoding and filter pools are not explicitly budgeted by that setting. `SmartActionAnalyzer.cs:131–132` also requests automatic threading; `VideoPreviewService` has no explicit decode/filter budget. Default export concurrency is two.
 
 Use one central resource profile across decoding, filtering, encoding, preview, analysis, and proxy creation. Set input and output thread limits in their proper scopes and control both simple and complex filter pools. FFmpeg documents separate filter thread settings and file-scoped option ordering. [FFmpeg options and threading](https://ffmpeg.org/ffmpeg.html)
 
@@ -50,7 +50,7 @@ Below-normal process priority is helpful but does not impose a RAM limit or a to
 
 ### [P2] Preview cancellation does not serialize process retirement
 
-`855Media/ViewModels/Components/VideoUpscalerViewModel.cs:2301–2306` cancels the old request and immediately starts another. `VideoPreviewService.cs:249–260` kills on cancellation but does not await full termination. Rapid scrubbing can overlap retiring and replacement processes. Closing the grading panel does not explicitly retire outstanding preview work.
+`855Media/ViewModels/Components/VideoEditorViewModel.cs:2301–2306` cancels the old request and immediately starts another. `VideoPreviewService.cs:249–260` kills on cancellation but does not await full termination. Rapid scrubbing can overlap retiring and replacement processes. Closing the grading panel does not explicitly retire outstanding preview work.
 
 Use one latest-request-wins preview worker: one active operation, one replaceable pending request, generation IDs to reject stale results, cancellation followed by awaited process exit, and cancellation on close or media removal. Cache nearby frames so slider movement does not always restart decoding.
 

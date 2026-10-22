@@ -13,7 +13,10 @@ using YoutubeExplode.Videos;
 
 namespace _855Media.Core.Resolving;
 
-public class QueryResolver(IReadOnlyList<Cookie>? initialCookies = null) : IDisposable
+public class QueryResolver(
+    IReadOnlyList<Cookie>? initialCookies = null,
+    InstagramMediaKind instagramMediaKind = InstagramMediaKind.All
+) : IDisposable
 {
     private readonly YoutubeClient _youtube = new(
         Http.Client,
@@ -21,7 +24,10 @@ public class QueryResolver(IReadOnlyList<Cookie>? initialCookies = null) : IDisp
     );
     private readonly YouTubeQueryResolver _youTubeResolver = new(initialCookies);
     private readonly TikTokQueryResolver _tikTok = new(initialCookies);
-    private readonly InstagramQueryResolver _instagram = new(initialCookies);
+    private readonly InstagramQueryResolver _instagram = new(
+        initialCookies,
+        mediaKind: instagramMediaKind
+    );
     private readonly FacebookQueryResolver _facebook = new();
     private readonly DramaBoxQueryResolver _dramaBox = new(initialCookies);
     private readonly bool _isAuthenticated =

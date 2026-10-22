@@ -6,7 +6,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using _855Media.Core.Audio;
 using _855Media.Core.Downloading;
-using _855Media.Core.Upscaling;
+using _855Media.Core.Editing;
 using _855Media.Framework;
 using _855Media.Localization;
 using _855Media.ViewModels.Components;
@@ -133,220 +133,284 @@ public partial class SettingsService()
     [ObservableProperty]
     public partial string GeminiModel { get; set; } = "gemini-2.0-flash";
 
-    // Work / Upscaler State Persistence
+    // Work / Editor State Persistence
     [ObservableProperty]
-    public partial string? UpscalerOutputDirectory { get; set; }
+    [JsonPropertyName("UpscalerOutputDirectory")]
+    public partial string? EditorOutputDirectory { get; set; }
 
     [ObservableProperty]
-    public partial string? UpscalerScratchDirectory { get; set; }
+    [JsonPropertyName("UpscalerScratchDirectory")]
+    public partial string? EditorScratchDirectory { get; set; }
 
     [ObservableProperty]
-    public partial UpscaleTargetResolution UpscalerTargetResolution { get; set; } =
-        UpscaleTargetResolution.Hd1080p;
+    [JsonPropertyName("UpscalerTargetResolution")]
+    public partial EditTargetResolution EditorTargetResolution { get; set; } =
+        EditTargetResolution.Hd1080p;
 
     [ObservableProperty]
-    public partial AspectRatioMode UpscalerTargetAspectRatio { get; set; } =
-        AspectRatioMode.Original;
+    [JsonPropertyName("UpscalerTargetAspectRatio")]
+    public partial AspectRatioMode EditorTargetAspectRatio { get; set; } = AspectRatioMode.Original;
 
     [ObservableProperty]
-    public partial SmartTrackingMode UpscalerTrackingMode { get; set; } =
+    [JsonPropertyName("UpscalerTrackingMode")]
+    public partial SmartTrackingMode EditorTrackingMode { get; set; } =
         SmartTrackingMode.StaticCenter;
 
     [ObservableProperty]
-    public partial UpscaleVideoCodec UpscalerCodec { get; set; } = UpscaleVideoCodec.H264;
+    [JsonPropertyName("UpscalerCodec")]
+    public partial EditVideoCodec EditorCodec { get; set; } = EditVideoCodec.H264;
 
     [ObservableProperty]
-    public partial HardwareAccelerationMode UpscalerHardwareAcceleration { get; set; } =
+    [JsonPropertyName("UpscalerHardwareAcceleration")]
+    public partial HardwareAccelerationMode EditorHardwareAcceleration { get; set; } =
         HardwareAccelerationMode.Auto;
 
     [ObservableProperty]
-    public partial TargetFramerate UpscalerTargetFramerate { get; set; } = TargetFramerate.Original;
+    [JsonPropertyName("UpscalerTargetFramerate")]
+    public partial TargetFramerate EditorTargetFramerate { get; set; } = TargetFramerate.Original;
 
     [ObservableProperty]
-    public partial int UpscalerMaxConcurrency { get; set; } = 2;
+    [JsonPropertyName("UpscalerMaxConcurrency")]
+    public partial int EditorMaxConcurrency { get; set; } = 2;
 
     [ObservableProperty]
-    public partial UpscaleModelType UpscalerModelType { get; set; } = UpscaleModelType.FastNative;
+    [JsonPropertyName("UpscalerModelType")]
+    public partial EditModelType EditorModelType { get; set; } = EditModelType.FastNative;
 
     [ObservableProperty]
-    public partial bool UpscalerHasConfiguredModelType { get; set; } = false;
+    [JsonPropertyName("UpscalerHasConfiguredModelType")]
+    public partial bool EditorHasConfiguredModelType { get; set; } = false;
 
     [ObservableProperty]
-    public partial string UpscalerPresetName { get; set; } = "Default / Neutral";
+    [JsonPropertyName("UpscalerPresetName")]
+    public partial string EditorPresetName { get; set; } = "Default / Neutral";
 
     [ObservableProperty]
-    public partial PostBatchAction UpscalerPostBatchAction { get; set; } =
-        PostBatchAction.DoNothing;
+    [JsonPropertyName("UpscalerPostBatchAction")]
+    public partial PostBatchAction EditorPostBatchAction { get; set; } = PostBatchAction.DoNothing;
 
     // Enhance Settings
     [ObservableProperty]
-    public partial bool UpscalerEnableFacialClarity { get; set; } = true;
+    [JsonPropertyName("UpscalerEnableFacialClarity")]
+    public partial bool EditorEnableFacialClarity { get; set; } = true;
 
     [ObservableProperty]
-    public partial bool UpscalerEnableDenoise { get; set; } = false;
+    [JsonPropertyName("UpscalerEnableDenoise")]
+    public partial bool EditorEnableDenoise { get; set; } = false;
 
     [ObservableProperty]
-    public partial bool UpscalerEnableDeinterlace { get; set; } = false;
+    [JsonPropertyName("UpscalerEnableDeinterlace")]
+    public partial bool EditorEnableDeinterlace { get; set; } = false;
 
     [ObservableProperty]
-    public partial bool UpscalerEnableMicroZoom { get; set; } = false;
+    [JsonPropertyName("UpscalerEnableMicroZoom")]
+    public partial bool EditorEnableMicroZoom { get; set; } = false;
 
     [ObservableProperty]
-    public partial double UpscalerMicroZoomPercent { get; set; } = 3.0;
+    [JsonPropertyName("UpscalerMicroZoomPercent")]
+    public partial double EditorMicroZoomPercent { get; set; } = 3.0;
 
     [ObservableProperty]
-    public partial SmartZoomMode UpscalerZoomMode { get; set; } = SmartZoomMode.ActionAnchored;
+    [JsonPropertyName("UpscalerZoomMode")]
+    public partial SmartZoomMode EditorZoomMode { get; set; } = SmartZoomMode.ActionAnchored;
 
     [ObservableProperty]
-    public partial RenderSpeedMode UpscalerSpeedMode { get; set; } = RenderSpeedMode.Balanced;
+    [JsonPropertyName("UpscalerSpeedMode")]
+    public partial RenderSpeedMode EditorSpeedMode { get; set; } = RenderSpeedMode.Balanced;
 
     [ObservableProperty]
-    public partial double UpscalerPlaybackSpeed { get; set; } = 1.0;
+    [JsonPropertyName("UpscalerPlaybackSpeed")]
+    public partial double EditorPlaybackSpeed { get; set; } = 1.0;
 
     [ObservableProperty]
-    public partial _855Media.Core.Upscaling.UpscaleAudioMode UpscalerAudioMode { get; set; } =
-        _855Media.Core.Upscaling.UpscaleAudioMode.CopyOriginal;
+    [JsonPropertyName("UpscalerAudioMode")]
+    public partial _855Media.Core.Editing.EditAudioMode EditorAudioMode { get; set; } =
+        _855Media.Core.Editing.EditAudioMode.CopyOriginal;
 
     // Split Settings
     [ObservableProperty]
-    public partial bool UpscalerEnableSplitAndUpscale { get; set; } = false;
+    [JsonPropertyName("UpscalerEnableSplitAndUpscale")]
+    public partial bool EditorEnableSplitAndEdit { get; set; } = false;
 
     [ObservableProperty]
-    public partial bool UpscalerMergeAfterUpscale { get; set; } = true;
+    [JsonPropertyName("UpscalerMergeAfterUpscale")]
+    public partial bool EditorMergeAfterEdit { get; set; } = true;
 
     [ObservableProperty]
-    public partial SplitMode UpscalerSplitMode { get; set; } = SplitMode.InHalf;
+    [JsonPropertyName("UpscalerSplitMode")]
+    public partial SplitMode EditorSplitMode { get; set; } = SplitMode.InHalf;
 
     [ObservableProperty]
-    public partial int UpscalerCustomSplitPartCount { get; set; } = 2;
+    [JsonPropertyName("UpscalerCustomSplitPartCount")]
+    public partial int EditorCustomSplitPartCount { get; set; } = 2;
 
     [ObservableProperty]
-    public partial double UpscalerCustomSplitSegmentDurationSeconds { get; set; } = 60.0;
+    [JsonPropertyName("UpscalerCustomSplitSegmentDurationSeconds")]
+    public partial double EditorCustomSplitSegmentDurationSeconds { get; set; } = 60.0;
 
     // Camera & Metadata Normalization Settings
     [ObservableProperty]
-    public partial CameraProfileType UpscalerCameraProfileType { get; set; } =
+    [JsonPropertyName("UpscalerCameraProfileType")]
+    public partial CameraProfileType EditorCameraProfileType { get; set; } =
         CameraProfileType.CleanNormalized;
 
     [ObservableProperty]
-    public partial string? UpscalerCameraMake { get; set; }
+    [JsonPropertyName("UpscalerCameraMake")]
+    public partial string? EditorCameraMake { get; set; }
 
     [ObservableProperty]
-    public partial string? UpscalerCameraModel { get; set; }
+    [JsonPropertyName("UpscalerCameraModel")]
+    public partial string? EditorCameraModel { get; set; }
 
     [ObservableProperty]
-    public partial string? UpscalerCameraSoftware { get; set; }
+    [JsonPropertyName("UpscalerCameraSoftware")]
+    public partial string? EditorCameraSoftware { get; set; }
 
     [ObservableProperty]
-    public partial string? UpscalerCameraLensModel { get; set; }
+    [JsonPropertyName("UpscalerCameraLensModel")]
+    public partial string? EditorCameraLensModel { get; set; }
 
     [ObservableProperty]
-    public partial string? UpscalerCameraFocalLength { get; set; }
+    [JsonPropertyName("UpscalerCameraFocalLength")]
+    public partial string? EditorCameraFocalLength { get; set; }
 
     [ObservableProperty]
-    public partial string? UpscalerCameraFNumber { get; set; }
+    [JsonPropertyName("UpscalerCameraFNumber")]
+    public partial string? EditorCameraFNumber { get; set; }
 
     [ObservableProperty]
-    public partial string? UpscalerCameraArtist { get; set; }
+    [JsonPropertyName("UpscalerCameraArtist")]
+    public partial string? EditorCameraArtist { get; set; }
 
     [ObservableProperty]
-    public partial string? UpscalerCameraCopyright { get; set; }
+    [JsonPropertyName("UpscalerCameraCopyright")]
+    public partial string? EditorCameraCopyright { get; set; }
 
     [ObservableProperty]
-    public partial bool UpscalerCameraInjectTimestamp { get; set; } = true;
+    [JsonPropertyName("UpscalerCameraInjectTimestamp")]
+    public partial bool EditorCameraInjectTimestamp { get; set; } = true;
 
     // Color Grading & Preview Settings
     [ObservableProperty]
-    public partial string UpscalerColorPresetName { get; set; } = "Neutral / Custom";
+    [JsonPropertyName("UpscalerColorPresetName")]
+    public partial string EditorColorPresetName { get; set; } = "Neutral / Custom";
 
     [ObservableProperty]
-    public partial bool UpscalerIsColorGradingPanelOpen { get; set; } = false;
+    [JsonPropertyName("UpscalerIsColorGradingPanelOpen")]
+    public partial bool EditorIsColorGradingPanelOpen { get; set; } = false;
 
     [ObservableProperty]
-    public partial double UpscalerSplitDividerRatio { get; set; } = 0.50;
+    [JsonPropertyName("UpscalerSplitDividerRatio")]
+    public partial double EditorSplitDividerRatio { get; set; } = 0.50;
 
     [ObservableProperty]
-    public partial double UpscalerZoomScale { get; set; } = 1.0;
+    [JsonPropertyName("UpscalerZoomScale")]
+    public partial double EditorZoomScale { get; set; } = 1.0;
 
     [ObservableProperty]
-    public partial bool UpscalerIsBasicExposureExpanded { get; set; } = true;
+    [JsonPropertyName("UpscalerIsBasicExposureExpanded")]
+    public partial bool EditorIsBasicExposureExpanded { get; set; } = true;
 
     [ObservableProperty]
-    public partial bool UpscalerIsColorWheelsExpanded { get; set; } = true;
+    [JsonPropertyName("UpscalerIsColorWheelsExpanded")]
+    public partial bool EditorIsColorWheelsExpanded { get; set; } = true;
 
     [ObservableProperty]
-    public partial bool UpscalerIsFilmEmulationExpanded { get; set; } = true;
+    [JsonPropertyName("UpscalerIsFilmEmulationExpanded")]
+    public partial bool EditorIsFilmEmulationExpanded { get; set; } = true;
 
     // Persisted Baseline Color Grading Values
     [ObservableProperty]
-    public partial double UpscalerColorBrightness { get; set; } = 0.0;
+    [JsonPropertyName("UpscalerColorBrightness")]
+    public partial double EditorColorBrightness { get; set; } = 0.0;
 
     [ObservableProperty]
-    public partial double UpscalerColorContrast { get; set; } = 1.0;
+    [JsonPropertyName("UpscalerColorContrast")]
+    public partial double EditorColorContrast { get; set; } = 1.0;
 
     [ObservableProperty]
-    public partial double UpscalerColorSaturation { get; set; } = 1.0;
+    [JsonPropertyName("UpscalerColorSaturation")]
+    public partial double EditorColorSaturation { get; set; } = 1.0;
 
     [ObservableProperty]
-    public partial double UpscalerColorGamma { get; set; } = 1.0;
+    [JsonPropertyName("UpscalerColorGamma")]
+    public partial double EditorColorGamma { get; set; } = 1.0;
 
     [ObservableProperty]
-    public partial double UpscalerColorVibrance { get; set; } = 0.0;
+    [JsonPropertyName("UpscalerColorVibrance")]
+    public partial double EditorColorVibrance { get; set; } = 0.0;
 
     [ObservableProperty]
-    public partial bool UpscalerShowHistogram { get; set; } = true;
+    [JsonPropertyName("UpscalerShowHistogram")]
+    public partial bool EditorShowHistogram { get; set; } = true;
 
     [ObservableProperty]
-    public partial bool UpscalerColorAutoNormalize { get; set; } = false;
+    [JsonPropertyName("UpscalerColorAutoNormalize")]
+    public partial bool EditorColorAutoNormalize { get; set; } = false;
 
     [ObservableProperty]
-    public partial int UpscalerColorTemperature { get; set; } = 6500;
+    [JsonPropertyName("UpscalerColorTemperature")]
+    public partial int EditorColorTemperature { get; set; } = 6500;
 
     [ObservableProperty]
-    public partial double UpscalerColorShadowRed { get; set; } = 0.0;
+    [JsonPropertyName("UpscalerColorShadowRed")]
+    public partial double EditorColorShadowRed { get; set; } = 0.0;
 
     [ObservableProperty]
-    public partial double UpscalerColorShadowGreen { get; set; } = 0.0;
+    [JsonPropertyName("UpscalerColorShadowGreen")]
+    public partial double EditorColorShadowGreen { get; set; } = 0.0;
 
     [ObservableProperty]
-    public partial double UpscalerColorShadowBlue { get; set; } = 0.0;
+    [JsonPropertyName("UpscalerColorShadowBlue")]
+    public partial double EditorColorShadowBlue { get; set; } = 0.0;
 
     [ObservableProperty]
-    public partial double UpscalerColorMidtoneRed { get; set; } = 0.0;
+    [JsonPropertyName("UpscalerColorMidtoneRed")]
+    public partial double EditorColorMidtoneRed { get; set; } = 0.0;
 
     [ObservableProperty]
-    public partial double UpscalerColorMidtoneGreen { get; set; } = 0.0;
+    [JsonPropertyName("UpscalerColorMidtoneGreen")]
+    public partial double EditorColorMidtoneGreen { get; set; } = 0.0;
 
     [ObservableProperty]
-    public partial double UpscalerColorMidtoneBlue { get; set; } = 0.0;
+    [JsonPropertyName("UpscalerColorMidtoneBlue")]
+    public partial double EditorColorMidtoneBlue { get; set; } = 0.0;
 
     [ObservableProperty]
-    public partial double UpscalerColorHighlightRed { get; set; } = 0.0;
+    [JsonPropertyName("UpscalerColorHighlightRed")]
+    public partial double EditorColorHighlightRed { get; set; } = 0.0;
 
     [ObservableProperty]
-    public partial double UpscalerColorHighlightGreen { get; set; } = 0.0;
+    [JsonPropertyName("UpscalerColorHighlightGreen")]
+    public partial double EditorColorHighlightGreen { get; set; } = 0.0;
 
     [ObservableProperty]
-    public partial double UpscalerColorHighlightBlue { get; set; } = 0.0;
+    [JsonPropertyName("UpscalerColorHighlightBlue")]
+    public partial double EditorColorHighlightBlue { get; set; } = 0.0;
 
     [ObservableProperty]
-    public partial string UpscalerColorToneCurve { get; set; } = "None";
+    [JsonPropertyName("UpscalerColorToneCurve")]
+    public partial string EditorColorToneCurve { get; set; } = "None";
 
     [ObservableProperty]
-    public partial int UpscalerColorFilmGrain { get; set; } = 0;
+    [JsonPropertyName("UpscalerColorFilmGrain")]
+    public partial int EditorColorFilmGrain { get; set; } = 0;
 
     [ObservableProperty]
-    public partial double UpscalerColorVignette { get; set; } = 0.0;
+    [JsonPropertyName("UpscalerColorVignette")]
+    public partial double EditorColorVignette { get; set; } = 0.0;
 
     [ObservableProperty]
-    public partial string? UpscalerColorLutPath { get; set; }
+    [JsonPropertyName("UpscalerColorLutPath")]
+    public partial string? EditorColorLutPath { get; set; }
 
     [ObservableProperty]
-    public partial double UpscalerColorLutOpacity { get; set; } = 1.0;
+    [JsonPropertyName("UpscalerColorLutOpacity")]
+    public partial double EditorColorLutOpacity { get; set; } = 1.0;
 
     // Selected Dashboard Tab
     [ObservableProperty]
-    public partial DashboardTab LastSelectedDashboardTab { get; set; } = DashboardTab.Upscaler;
+    public partial DashboardTab LastSelectedDashboardTab { get; set; } = DashboardTab.Editor;
 
     public override bool Load()
     {
@@ -449,10 +513,10 @@ public partial class SettingsService
 public partial class SettingsService
 {
     [JsonSerializable(typeof(SettingsService))]
-    [JsonSerializable(typeof(UpscaleTargetResolution))]
-    [JsonSerializable(typeof(UpscaleVideoCodec))]
+    [JsonSerializable(typeof(EditTargetResolution))]
+    [JsonSerializable(typeof(EditVideoCodec))]
     [JsonSerializable(typeof(HardwareAccelerationMode))]
-    [JsonSerializable(typeof(UpscaleModelType))]
+    [JsonSerializable(typeof(EditModelType))]
     [JsonSerializable(typeof(PostBatchAction))]
     [JsonSerializable(typeof(SplitMode))]
     [JsonSerializable(typeof(CameraProfileType))]

@@ -100,7 +100,9 @@ public class LicenseService : ILicenseService
             && _payload != null
             && (
                 _payload.AllowedFeatures.Contains("All")
-                || _payload.AllowedFeatures.Contains(feature.ToString())
+                || _payload.AllowedFeatures.Contains(
+                    feature == LicenseFeature.Editing ? "Upscaling" : feature.ToString()
+                )
             );
     }
 

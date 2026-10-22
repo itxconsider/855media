@@ -46,19 +46,20 @@ internal sealed class PFlowProfilePublicationVerifier(ILDPlayerService ld)
             return await VerifyIdentityOverride(job, path, ct);
         try
         {
-            await PFlowLiveUidVerification.RequireAsync(
-                Target(job),
-                c => new PFlowGraphIdentityReader().TryReadUidAsync(ld, job.DeviceIndex, path, c),
-                _ => Task.FromResult(false),
-                (persona, page, c) =>
-                    PFlowLiveUidVerification.VerifyPagePersonaAsync(
-                        ld,
-                        job.DeviceIndex,
-                        path,
-                        persona,
-                        page,
-                        c
-                    ),
+            if (job.NativeIdentityScope == null || !job.NativeIdentityScope.Matches(job))
+            {
+                FailureReason = "missing-native-identity-session";
+                return false;
+            }
+            if (!await job.NativeIdentityScope.VerifyAsync(ld, path, ct))
+            {
+                FailureReason = "native-identity-not-confirmed";
+                return false;
+            }
+            await PFlowTrace.SessionAsync(
+                job.DeviceIndex,
+                "publication.session-ui",
+                "Graph-bound authenticated session and exact own-profile UI verified; Graph not called; settings lookup=0.",
                 ct
             );
             return true;
@@ -161,6 +162,7 @@ internal sealed class PFlowProfilePublicationVerifier(ILDPlayerService ld)
             return false;
         if (!await Identity(job, path, ct))
             return false;
+        initial = await Observe(job, path, ct); // Session/UI verification can navigate to the current actor's own profile.
         if (
             !PFlowPostTargetSession.HasOwnProfile(job, initial)
             && (

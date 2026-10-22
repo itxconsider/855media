@@ -34,12 +34,16 @@ public sealed class MediaTextFileTests : IDisposable
             Caption: caption
         );
 
-    [Fact]
-    public async Task PostCaption_IsSavedBesideImage_WithExactLineBreaksUnicodeAndLinks()
+    [Theory]
+    [InlineData(VideoSource.FacebookPhoto)]
+    [InlineData(VideoSource.InstagramPhoto)]
+    public async Task PostCaption_IsSavedBesideImage_WithExactLineBreaksUnicodeAndLinks(
+        VideoSource source
+    )
     {
         const string caption =
             "No hot water. Not even luke warm\nA full post, not image alt text.\nខ្មែរ 😊 https://example.test/?a=1&b=2";
-        await MediaTextFile.SaveAsync(MediaPath, Photo(caption));
+        await MediaTextFile.SaveAsync(MediaPath, Photo(caption) with { Source = source });
         Assert.Equal(caption, await File.ReadAllTextAsync(TextPath));
         Assert.Equal(Encoding.UTF8.GetBytes(caption), await File.ReadAllBytesAsync(TextPath));
     }
@@ -55,10 +59,14 @@ public sealed class MediaTextFileTests : IDisposable
         Assert.Equal("Original post caption", await File.ReadAllTextAsync(TextPath));
     }
 
-    [Fact]
-    public async Task CaptionlessPhoto_DoesNotSaveImageAltOrGeneratedFilenameAsCaption()
+    [Theory]
+    [InlineData(VideoSource.FacebookPhoto)]
+    [InlineData(VideoSource.InstagramPhoto)]
+    public async Task CaptionlessPhoto_DoesNotSaveImageAltOrGeneratedFilenameAsCaption(
+        VideoSource source
+    )
     {
-        await MediaTextFile.SaveAsync(MediaPath, Photo(string.Empty));
+        await MediaTextFile.SaveAsync(MediaPath, Photo(string.Empty) with { Source = source });
         Assert.False(File.Exists(TextPath));
     }
 

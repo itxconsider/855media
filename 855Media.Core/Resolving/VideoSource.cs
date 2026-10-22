@@ -7,4 +7,5 @@ public enum VideoSource
     FacebookPhoto,
     DramaBox,
     Instagram,
+    InstagramPhoto,
 }

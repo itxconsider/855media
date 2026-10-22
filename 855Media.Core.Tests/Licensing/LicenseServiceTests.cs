@@ -37,6 +37,22 @@ public class LicenseServiceTests
         LicenseCrypto.CreateSignedToken(payload, Keys.PrivateKeyBase64);
 
     [Fact]
+    public void EditorRetainsSignedLegacyFeatureWithoutRewritingToken()
+    {
+        var clock = new Clock();
+        var payload = Payload(clock);
+        payload.AllowedFeatures = ["Upscaling"];
+        var token = Sign(payload);
+        var service = Service(clock);
+        Assert.True(service.ActivateWithToken(token).Success);
+        Assert.True(service.IsFeatureAllowed(LicenseFeature.Editing));
+        Assert.False(service.IsFeatureAllowed(LicenseFeature.AutoPost));
+        Assert.Equal(token, service.ActivateWithToken(token).SignedToken);
+        clock.Now = clock.Now.AddDays(30);
+        Assert.False(service.IsFeatureAllowed(LicenseFeature.Editing));
+    }
+
+    [Fact]
     public void FreshInstallHasNoFreeTrialOrFreeModules()
     {
         var clock = new Clock();

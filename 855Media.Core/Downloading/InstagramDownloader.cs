@@ -25,6 +25,13 @@ public class InstagramDownloader(IReadOnlyList<Cookie>? initialCookies = null)
     )
     {
         filePath = FileUtils.SanitizeFilePath(filePath);
+        if (
+            video.DirectMediaUrl is not null
+            && !InstagramBrowserCollection.IsMediaUrl(video.DirectMediaUrl)
+        )
+            throw new InvalidOperationException(
+                "Invalid Instagram browser media URL. Collect the post again."
+            );
         var audio = container.IsAudioOnly || option?.IsAudioOnly == true;
         if (!audio)
             ffmpegPath = MediaCompatibility.RequireVideoFFmpeg(filePath, ffmpegPath);
@@ -33,7 +40,9 @@ public class InstagramDownloader(IReadOnlyList<Cookie>? initialCookies = null)
         var directory = Path.GetDirectoryName(filePath);
         if (!string.IsNullOrEmpty(directory))
             Directory.CreateDirectory(directory);
-        var cookies = InstagramQueryResolver.ResolveCookies(initialCookies);
+        var cookies = video.DirectMediaUrl is null
+            ? InstagramQueryResolver.ResolveCookies(initialCookies)
+            : [];
         var (path, temporary) = await YtDlp.TryCreateCookieFileAsync(cookies, cancellationToken);
         try
         {
@@ -76,7 +85,7 @@ public class InstagramDownloader(IReadOnlyList<Cookie>? initialCookies = null)
             "--referer",
             "https://www.instagram.com/",
         };
-        if (video.PlaylistIndex is { } index)
+        if (video.DirectMediaUrl is null && video.PlaylistIndex is { } index)
             args.AddRange([
                 "--playlist-items",
                 index.ToString(System.Globalization.CultureInfo.InvariantCulture),
@@ -116,7 +125,7 @@ public class InstagramDownloader(IReadOnlyList<Cookie>? initialCookies = null)
             else if (preference?.PreferredVideoQuality == VideoQualityPreference.Lowest)
                 args.AddRange(["--format-sort", "+res"]);
         }
-        args.Add(video.Url);
+        args.Add(video.DirectMediaUrl ?? video.Url);
         return args;
     }
 }

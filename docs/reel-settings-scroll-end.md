@@ -1,0 +1,11 @@
+# Reel Settings scroll-end readiness
+
+The LD-13 job on 2026-10-21 stopped before Share because its Reel Settings variant ended with Closed captions and an enabled Share now footer, without See more settings. The previous readiness rule incorrectly required that label as an end marker.
+
+Readiness now scrolls downward until two consecutive acknowledged swipes leave the visible settings-row labels and bounds unchanged. A fixed Share footer or title/status bar alone cannot prove the end: at least one usable settings row must be observable. Whitespace is normalized and system/foreign/hidden nodes, fixed title/footer and offscreen rows are excluded from the viewport signature. An intermediate unchanged swipe followed by movement resets the stability count. See more settings is treated as ordinary content and is never tapped or required.
+
+The search remains bounded by twenty swipes and thirty seconds, rechecking composer identity, authentication and cancellation before/after observations. After reaching a stable end, the existing visible/enabled/unobscured publish-control checks still apply. Caption verification and bounded disabled-Share retry/wait behavior remain; disabled retries use the same end detection after their up/down navigation. Readiness itself never taps Share or changes Reel settings.
+
+Tests include a sanitized captured LD-13 XML fixture, fixed footer while the list continues moving, no-marker bottom, transient nonmovement, unbounded movement, wrong caption, context changes, cancellation and disabled Share. The captured XML strips account/content metadata and keeps only whitelisted UI labels and structural attributes.
+
+Validation: 131 focused readiness/native-Reel/identity/target/publication tests passed. Logs: `artifacts/reel-scroll-end-focused.log`, `artifacts/reel-scroll-end-tests.log`, and `artifacts/reel-scroll-end-build.log`. The combined readiness/recovery run retained four previously documented baseline recovery assertion failures (swipe counts/timing); those assertions were not changed to claim a clean recovery suite. The isolated desktop build passed with zero warnings/errors. Live posting remains untested; the running app and existing 3.1.7 ZIP are unchanged. Test executable: `artifacts/reel-scroll-end-build/855Media.exe`. This is one improvement toward 3.1.8; no distribution package was produced.

@@ -24,6 +24,8 @@ public enum PFlowState
 
 public sealed class PFlowJob
 {
+    [System.Text.Json.Serialization.JsonIgnore]
+    public PFlowNativeIdentityScope? NativeIdentityScope { get; set; }
     public PFlowAccountBinding? AccountBinding { get; set; }
     public string JobId { get; set; } = Guid.NewGuid().ToString("N");
     public string BatchId { get; set; } = "";

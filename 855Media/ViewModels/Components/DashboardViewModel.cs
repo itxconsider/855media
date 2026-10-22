@@ -4,14 +4,15 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using _855Media.Core.Audio;
 using _855Media.Core.Downloading;
 using _855Media.Core.Dubbing;
+using _855Media.Core.Editing;
 using _855Media.Core.Licensing;
 using _855Media.Core.Resolving;
 using _855Media.Core.Tagging;
-using _855Media.Core.Upscaling;
 using _855Media.Framework;
 using _855Media.Localization;
 using _855Media.Services;
@@ -43,6 +44,7 @@ public partial class DashboardViewModel : ViewModelBase
     };
     private readonly ResizableSemaphore _downloadSemaphore = new();
     private readonly AutoResetProgressMuxer _progressMuxer;
+    private readonly DownloadFilterView _downloadFilterView;
 
     private readonly HistoryService _historyService;
     private readonly ILicenseService _licenseService;
@@ -122,6 +124,8 @@ public partial class DashboardViewModel : ViewModelBase
             OnPropertyChanged(nameof(LicenseBadgeText));
             if (HasSubscriptionAccess && AutoPost != null)
                 Dispatcher.UIThread.Post(() => _ = InitializeActivatedModulesAsync());
+            else if (!HasSubscriptionAccess)
+                Dispatcher.UIThread.Post(() => InstagramDownloader?.StopPendingWork());
         };
 
         _subscriptionBadgeTimer.Tick += (_, _) => OnPropertyChanged(nameof(LicenseBadgeText));
@@ -133,9 +137,10 @@ public partial class DashboardViewModel : ViewModelBase
         YouTubeDownloader = _viewModelManager.GetYouTubeDownloaderViewModel(this);
         TikTokDownloader = _viewModelManager.GetTikTokDownloaderViewModel(this);
         FacebookDownloader = _viewModelManager.GetFacebookDownloaderViewModel(this);
+        InstagramDownloader = _viewModelManager.GetInstagramDownloaderViewModel(this);
         DramaBoxDownloader = _viewModelManager.GetDramaBoxDownloaderViewModel(this);
         History = _viewModelManager.GetHistoryViewModel(this);
-        VideoUpscaler = _viewModelManager.GetVideoUpscalerViewModel();
+        VideoEditor = _viewModelManager.GetVideoEditorViewModel();
         Dubbing = _viewModelManager.GetDubbingViewModel();
         AutoPost = _viewModelManager.GetAutoPostViewModel();
 
@@ -151,31 +156,19 @@ public partial class DashboardViewModel : ViewModelBase
             )
         );
 
-        Downloads.CollectionChanged += (sender, args) =>
-        {
-            if (args.NewItems is not null)
-            {
-                foreach (DownloadViewModel item in args.NewItems)
-                    item.PropertyChanged += OnDownloadItemPropertyChanged;
-            }
-            if (args.OldItems is not null)
-            {
-                foreach (DownloadViewModel item in args.OldItems)
-                    item.PropertyChanged -= OnDownloadItemPropertyChanged;
-            }
-            NotifyDownloadsChanged();
-        };
+        _downloadFilterView = new DownloadFilterView(
+            Downloads,
+            refresh => Dispatcher.UIThread.Post(refresh)
+        );
+        _downloadFilterView.Refreshed += OnDownloadFilterRefreshed;
 
         SelectedTab = _settingsService.LastSelectedDashboardTab;
     }
 
-    private void OnDownloadItemPropertyChanged(
-        object? sender,
-        System.ComponentModel.PropertyChangedEventArgs e
-    )
+    private void OnDownloadFilterRefreshed()
     {
-        if (e.PropertyName == nameof(DownloadViewModel.Status))
-            NotifyDownloadsChanged();
+        OnPropertyChanged(nameof(ActiveDownloadsCount));
+        OnPropertyChanged(nameof(TotalDownloadsCount));
     }
 
     public LocalizationManager LocalizationManager { get; }
@@ -185,9 +178,10 @@ public partial class DashboardViewModel : ViewModelBase
     public YouTubeDownloaderViewModel YouTubeDownloader { get; }
     public TikTokDownloaderViewModel TikTokDownloader { get; }
     public FacebookDownloaderViewModel FacebookDownloader { get; }
+    public InstagramDownloaderViewModel InstagramDownloader { get; }
     public DramaBoxDownloaderViewModel DramaBoxDownloader { get; }
     public HistoryViewModel History { get; }
-    public VideoUpscalerViewModel VideoUpscaler { get; }
+    public VideoEditorViewModel VideoEditor { get; }
     public DubbingViewModel Dubbing { get; }
     public AutoPostViewModel AutoPost { get; }
 
@@ -221,7 +215,7 @@ public partial class DashboardViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsFacebookTab))]
     [NotifyPropertyChangedFor(nameof(IsDramaBoxTab))]
     [NotifyPropertyChangedFor(nameof(IsBatchTab))]
-    [NotifyPropertyChangedFor(nameof(IsUpscalerTab))]
+    [NotifyPropertyChangedFor(nameof(IsEditorTab))]
     [NotifyPropertyChangedFor(nameof(IsDubbingTab))]
     [NotifyPropertyChangedFor(nameof(IsAutoPostTab))]
     [NotifyPropertyChangedFor(nameof(IsManagerTab))]
@@ -231,6 +225,7 @@ public partial class DashboardViewModel : ViewModelBase
     partial void OnSelectedTabChanged(DashboardTab value)
     {
         FacebookDownloader?.NotifyTabChanged();
+        InstagramDownloader?.NotifyTabChanged();
         _settingsService.LastSelectedDashboardTab = value;
         _settingsService.Save();
     }
@@ -249,7 +244,7 @@ public partial class DashboardViewModel : ViewModelBase
     public bool IsFacebookTab => SelectedTab == DashboardTab.Facebook;
     public bool IsDramaBoxTab => SelectedTab == DashboardTab.DramaBox;
     public bool IsBatchTab => SelectedTab == DashboardTab.Batch;
-    public bool IsUpscalerTab => SelectedTab == DashboardTab.Upscaler;
+    public bool IsEditorTab => SelectedTab == DashboardTab.Editor;
     public bool IsDubbingTab => SelectedTab == DashboardTab.Dubbing;
     public bool IsAutoPostTab => SelectedTab == DashboardTab.AutoPost;
     public bool IsManagerTab => SelectedTab == DashboardTab.Manager;
@@ -274,7 +269,7 @@ public partial class DashboardViewModel : ViewModelBase
     private void SelectBatchTab() => SelectedTab = DashboardTab.Batch;
 
     [RelayCommand]
-    private void SelectUpscalerTab() => SelectedTab = DashboardTab.Upscaler;
+    private void SelectEditorTab() => SelectedTab = DashboardTab.Editor;
 
     [RelayCommand]
     private void SelectDubbingTab() => SelectedTab = DashboardTab.Dubbing;
@@ -307,9 +302,11 @@ public partial class DashboardViewModel : ViewModelBase
     }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(FilteredDownloads))]
     public partial DownloadStatusFilter SelectedStatusFilter { get; set; } =
         DownloadStatusFilter.All;
+
+    partial void OnSelectedStatusFilterChanged(DownloadStatusFilter value) =>
+        _downloadFilterView.Filter = value;
 
     [RelayCommand]
     private void SelectStatusFilter(DownloadStatusFilter filter) => SelectedStatusFilter = filter;
@@ -326,30 +323,19 @@ public partial class DashboardViewModel : ViewModelBase
     [RelayCommand]
     private void SelectFilterFailed() => SelectedStatusFilter = DownloadStatusFilter.Failed;
 
-    public IEnumerable<DownloadViewModel> FilteredDownloads =>
-        SelectedStatusFilter switch
-        {
-            DownloadStatusFilter.Active => Downloads.Where(d =>
-                d.Status is DownloadStatus.Enqueued or DownloadStatus.Started
-            ),
-            DownloadStatusFilter.Completed => Downloads.Where(d =>
-                d.Status == DownloadStatus.Completed
-            ),
-            DownloadStatusFilter.Failed => Downloads.Where(d =>
-                d.Status is DownloadStatus.Failed or DownloadStatus.Canceled
-            ),
-            _ => Downloads,
-        };
+    public ReadOnlyObservableCollection<DownloadViewModel> FilteredDownloads =>
+        _downloadFilterView.Rows;
+    public IEnumerable<DownloadViewModel>? ListDownloadsSource =>
+        IsDownloadsListView ? FilteredDownloads : null;
+    public IEnumerable<DownloadViewModel>? GridDownloadsSource =>
+        IsDownloadsGridView ? FilteredDownloads : null;
 
-    public int ActiveDownloadsCount =>
-        Downloads.Count(d => d.Status is DownloadStatus.Enqueued or DownloadStatus.Started);
+    public int ActiveDownloadsCount => _downloadFilterView.ActiveCount;
     public int TotalDownloadsCount => Downloads.Count;
 
     public void NotifyDownloadsChanged()
     {
-        OnPropertyChanged(nameof(FilteredDownloads));
-        OnPropertyChanged(nameof(ActiveDownloadsCount));
-        OnPropertyChanged(nameof(TotalDownloadsCount));
+        _downloadFilterView.RequestRefresh();
     }
 
     [ObservableProperty]
@@ -359,6 +345,8 @@ public partial class DashboardViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsDownloadsListView))]
     [NotifyPropertyChangedFor(nameof(IsDownloadsGridView))]
+    [NotifyPropertyChangedFor(nameof(ListDownloadsSource))]
+    [NotifyPropertyChangedFor(nameof(GridDownloadsSource))]
     public partial DownloadsViewMode SelectedDownloadsViewMode { get; set; } =
         DownloadsViewMode.List;
 
@@ -653,9 +641,9 @@ public partial class DashboardViewModel : ViewModelBase
                     download.DownloadPreference
                 );
             }
-            else if (download.Video?.Source == VideoSource.FacebookPhoto)
+            else if (download.Video?.IsPhoto == true)
             {
-                await new FacebookPhotoDownloader().DownloadPhotoAsync(
+                await new PhotoDownloader().DownloadPhotoAsync(
                     download.FilePath!,
                     download.Video,
                     download.Progress.Merge(progress),
@@ -692,6 +680,7 @@ public partial class DashboardViewModel : ViewModelBase
 
             if (
                 translateCaptions
+                && download.Video?.IsPhoto != true
                 && !string.IsNullOrWhiteSpace(download.FilePath)
                 && File.Exists(download.FilePath)
             )
@@ -739,7 +728,7 @@ public partial class DashboardViewModel : ViewModelBase
                 }
             }
 
-            if (_settingsService.ShouldInjectTags)
+            if (_settingsService.ShouldInjectTags && download.Video?.IsPhoto != true)
             {
                 try
                 {
@@ -766,6 +755,7 @@ public partial class DashboardViewModel : ViewModelBase
 
             if (
                 audioMode != AudioProcessingMode.None
+                && download.Video?.IsPhoto != true
                 && !string.IsNullOrWhiteSpace(download.FilePath)
                 && File.Exists(download.FilePath)
             )
@@ -925,6 +915,8 @@ public partial class DashboardViewModel : ViewModelBase
 
     private bool CanProcessQuery() => !IsBusy && !string.IsNullOrWhiteSpace(Query);
 
+    public InstagramMediaKind InstagramMediaKind { get; set; } = InstagramMediaKind.All;
+
     [RelayCommand(CanExecute = nameof(CanProcessQuery))]
     private async Task ProcessQueryAsync()
     {
@@ -940,13 +932,24 @@ public partial class DashboardViewModel : ViewModelBase
 
         try
         {
-            using var resolver = new QueryResolver(_settingsService.LastAuthCookies);
+            using var resolver = new QueryResolver(
+                _settingsService.LastAuthCookies,
+                InstagramMediaKind
+            );
 
             // Split queries by newlines
             var queries = Query.Split(
                 '\n',
                 StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries
             );
+
+            if (queries.Length == 1 && InstagramQueryResolver.IsInstagramQuery(queries[0]))
+            {
+                UnifiedDownloader.OpenInstagramBrowser(queries[0]);
+                SelectedTab = DashboardTab.Downloader;
+                Query = string.Empty;
+                return;
+            }
 
             if (
                 queries.Length == 1
@@ -1017,9 +1020,9 @@ public partial class DashboardViewModel : ViewModelBase
                     return;
                 }
 
-                if (queryResult.Videos.All(v => v.Source == VideoSource.FacebookPhoto))
+                if (queryResult.Videos.All(v => v.IsPhoto))
                 {
-                    await QueueFacebookPhotosAsync(queryResult);
+                    await QueuePhotosAsync(queryResult);
                     Query = "";
                     return;
                 }
@@ -1077,7 +1080,7 @@ public partial class DashboardViewModel : ViewModelBase
 
     private async Task<IReadOnlyList<VideoDownloadOption>> GetDownloadOptionsAsync(VideoInfo video)
     {
-        if (video.Source == VideoSource.FacebookPhoto)
+        if (video.IsPhoto)
             return
             [
                 new VideoDownloadOption(
@@ -1103,7 +1106,45 @@ public partial class DashboardViewModel : ViewModelBase
         return await YtDlp.ResolveDownloadOptionsAsync(video.Url, _settingsService.LastAuthCookies);
     }
 
-    public async Task QueueFacebookPhotosAsync(QueryResult queryResult)
+    public Task QueueFacebookPhotosAsync(QueryResult queryResult) => QueuePhotosAsync(queryResult);
+
+    public async Task QueueBrowserMediaAsync(
+        QueryResult queryResult,
+        CancellationToken cancellationToken = default
+    )
+    {
+        RequireSubscription();
+        if (queryResult.Videos.Count == 0)
+            return;
+        if (!_licenseService.IsProActive)
+        {
+            await ShowSubscriptionSettingsAsync();
+            return;
+        }
+        if (queryResult.Videos.All(v => v.IsPhoto))
+            await QueuePhotosAsync(queryResult, cancellationToken);
+        else
+        {
+            var downloads = await _dialogManager.ShowDialogAsync(
+                _viewModelManager.GetDownloadMultipleSetupViewModel(
+                    queryResult.Title,
+                    queryResult.Videos
+                )
+            );
+            RequireSubscription();
+            if (downloads is null)
+                return;
+            cancellationToken.ThrowIfCancellationRequested();
+            foreach (var download in downloads)
+                EnqueueDownload(download);
+        }
+        SelectedTab = DashboardTab.Manager;
+    }
+
+    public async Task QueuePhotosAsync(
+        QueryResult queryResult,
+        CancellationToken cancellationToken = default
+    )
     {
         if (!CanUseSubscription())
             return;
@@ -1115,10 +1156,11 @@ public partial class DashboardViewModel : ViewModelBase
         }
 
         var dirPath = await _dialogManager.PromptDirectoryPathAsync();
+        cancellationToken.ThrowIfCancellationRequested();
         if (string.IsNullOrWhiteSpace(dirPath))
             return;
 
-        var photos = queryResult.Videos.Where(v => v.Source == VideoSource.FacebookPhoto).ToArray();
+        var photos = queryResult.Videos.Where(v => v.IsPhoto).ToArray();
         var translationMap = new Dictionary<string, string>();
         if (_settingsService.ShouldTranslateTitleToEnglish && photos.Length > 0)
         {
@@ -1152,6 +1194,8 @@ public partial class DashboardViewModel : ViewModelBase
 
         foreach (var (i, photo) in photos.Index())
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            RequireSubscription();
             var currentPhoto = photo;
             if (translationMap.TryGetValue(photo.Id, out var translatedTitle))
             {
@@ -1269,7 +1313,8 @@ public partial class DashboardViewModel : ViewModelBase
     private void StopSubscriptionWork()
     {
         CancelAllDownloads();
-        VideoUpscaler.CancelAll();
+        InstagramDownloader.StopPendingWork();
+        VideoEditor.CancelAll();
         Dubbing.CancelDubbing();
         Dubbing.CancelBatchDubbing();
         _ = AutoPost.StopAutomationAsync();
@@ -1331,9 +1376,13 @@ public partial class DashboardViewModel : ViewModelBase
         {
             CancelAllDownloads();
 
+            _downloadFilterView.Refreshed -= OnDownloadFilterRefreshed;
+            _downloadFilterView.Dispose();
+
             _subscriptionBadgeTimer.Stop();
             _eventSubscription.Dispose();
             _downloadSemaphore.Dispose();
+            InstagramDownloader.Dispose();
         }
 
         base.Dispose(disposing);
@@ -1350,7 +1399,9 @@ public enum DashboardTab
     Batch,
     Manager,
     History,
-    Upscaler,
+
+    [System.Text.Json.Serialization.JsonStringEnumMemberName("Upscaler")]
+    Editor,
     Dubbing,
     AutoPost,
 }

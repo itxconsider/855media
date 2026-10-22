@@ -22,6 +22,7 @@ public enum PlatformFilter
     TikTok,
     Facebook,
     DramaBox,
+    Instagram,
 }
 
 public enum DetectedPlatformKind
@@ -32,6 +33,7 @@ public enum DetectedPlatformKind
     Facebook,
     DramaBox,
     Batch,
+    Instagram,
 }
 
 public partial class UnifiedDownloaderViewModel : ViewModelBase
@@ -62,12 +64,56 @@ public partial class UnifiedDownloaderViewModel : ViewModelBase
     public FacebookDownloaderViewModel? FacebookDownloader =>
         _dashboardViewModel?.FacebookDownloader;
 
+    public InstagramDownloaderViewModel? InstagramBrowserContent =>
+        HasOpenedInstagramBrowser ? _dashboardViewModel?.InstagramDownloader : null;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(InstagramBrowserContent))]
+    public partial bool HasOpenedInstagramBrowser { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsAnyBrowserMode))]
+    public partial bool IsInstagramBrowserMode { get; set; }
+
+    public bool IsAnyBrowserMode => IsBrowserMode || IsInstagramBrowserMode;
+
+    partial void OnIsInstagramBrowserModeChanged(bool value)
+    {
+        if (value)
+        {
+            HasOpenedInstagramBrowser = true;
+            IsBrowserMode = false;
+        }
+        _dashboardViewModel?.FacebookDownloader?.NotifyTabChanged();
+        _dashboardViewModel?.InstagramDownloader?.NotifyTabChanged();
+    }
+
+    partial void OnIsBrowserModeChanged(bool value)
+    {
+        if (value)
+            IsInstagramBrowserMode = false;
+        _dashboardViewModel?.FacebookDownloader?.NotifyTabChanged();
+        _dashboardViewModel?.InstagramDownloader?.NotifyTabChanged();
+    }
+
+    public void OpenInstagramBrowser(string url)
+    {
+        _dashboardViewModel?.InstagramDownloader.OpenCollection(url);
+        if (_dashboardViewModel is not null)
+            _dashboardViewModel.InstagramDownloader.SelectedMediaIndex =
+                SelectedInstagramMediaIndex;
+        IsInstagramBrowserMode = true;
+    }
+
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(ProcessQueryCommand))]
     [NotifyCanExecuteChangedFor(nameof(DownloadProfilePictureImmediatelyCommand))]
     [NotifyPropertyChangedFor(nameof(DetectedPlatform))]
     [NotifyPropertyChangedFor(nameof(DetectedPlatformName))]
+    [NotifyPropertyChangedFor(nameof(IsInstagramDetected))]
+    [NotifyPropertyChangedFor(nameof(ShowInstagramOptions))]
     [NotifyPropertyChangedFor(nameof(IsProfileQuery))]
+    [NotifyPropertyChangedFor(nameof(ShowProfileCallout))]
     [NotifyPropertyChangedFor(nameof(ProfileHandleDisplay))]
     public partial string? Query { get; set; }
 
@@ -78,11 +124,13 @@ public partial class UnifiedDownloaderViewModel : ViewModelBase
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsDirectMode))]
+    [NotifyPropertyChangedFor(nameof(ShowInstagramOptions))]
     public partial bool IsBatchMode { get; set; }
 
     public bool IsDirectMode => !IsBatchMode;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsAnyBrowserMode))]
     public partial bool IsBrowserMode { get; set; }
 
     [ObservableProperty]
@@ -110,6 +158,9 @@ public partial class UnifiedDownloaderViewModel : ViewModelBase
 
             if (q.Contains('\n') || q.Contains('\r'))
                 return DetectedPlatformKind.Batch;
+
+            if (InstagramQueryResolver.IsInstagramQuery(q))
+                return DetectedPlatformKind.Instagram;
 
             if (
                 q.Contains("youtube.com", StringComparison.OrdinalIgnoreCase)
@@ -140,9 +191,23 @@ public partial class UnifiedDownloaderViewModel : ViewModelBase
             DetectedPlatformKind.TikTok => "TikTok",
             DetectedPlatformKind.Facebook => "Facebook",
             DetectedPlatformKind.DramaBox => "DramaBox",
+            DetectedPlatformKind.Instagram => "Instagram",
             DetectedPlatformKind.Batch => "Batch URLs",
             _ => "Auto-Detect Platform",
         };
+
+    public bool IsInstagramDetected => DetectedPlatform == DetectedPlatformKind.Instagram;
+
+    public bool ShowInstagramOptions => IsInstagramDetected || IsBatchMode;
+
+    [ObservableProperty]
+    public partial int SelectedInstagramMediaIndex { get; set; } = 1;
+
+    partial void OnQueryChanged(string? value)
+    {
+        if (value is not null && InstagramQueryResolver.IsInstagramQuery(value))
+            SelectedInstagramMediaIndex = InstagramQueryResolver.IsReelsQuery(value) ? 2 : 1;
+    }
 
     public bool IsProfileQuery
     {
@@ -151,6 +216,9 @@ public partial class UnifiedDownloaderViewModel : ViewModelBase
             var q = Query?.Trim();
             if (string.IsNullOrWhiteSpace(q))
                 return false;
+
+            if (InstagramQueryResolver.IsInstagramQuery(q))
+                return InstagramQueryResolver.GetProfileUsername(q) is not null;
 
             return q.Contains("/@", StringComparison.OrdinalIgnoreCase)
                 || q.Contains("tiktok.com/@", StringComparison.OrdinalIgnoreCase)
@@ -162,12 +230,17 @@ public partial class UnifiedDownloaderViewModel : ViewModelBase
         }
     }
 
+    public bool ShowProfileCallout => IsProfileQuery && !IsInstagramDetected;
+
     public string? ProfileHandleDisplay
     {
         get
         {
             if (!IsProfileQuery || string.IsNullOrWhiteSpace(Query))
                 return null;
+
+            if (InstagramQueryResolver.GetProfileUsername(Query) is { } username)
+                return $"@{username}";
 
             var match = Regex.Match(Query, @"@([A-Za-z0-9._]+)");
             if (match.Success)
@@ -193,6 +266,13 @@ public partial class UnifiedDownloaderViewModel : ViewModelBase
         if (_dashboardViewModel is null)
             return;
 
+        _dashboardViewModel.InstagramMediaKind = SelectedInstagramMediaIndex switch
+        {
+            1 => InstagramMediaKind.Photos,
+            2 => InstagramMediaKind.Videos,
+            _ => InstagramMediaKind.All,
+        };
+
         if (IsBatchMode)
         {
             if (string.IsNullOrWhiteSpace(BatchInput))
@@ -202,7 +282,8 @@ public partial class UnifiedDownloaderViewModel : ViewModelBase
             BatchInput = string.Empty;
             _dashboardViewModel.Query = input;
             await _dashboardViewModel.ProcessQueryCommand.ExecuteAsync(null);
-            _dashboardViewModel.SelectedTab = DashboardTab.Manager;
+            if (!IsAnyBrowserMode)
+                _dashboardViewModel.SelectedTab = DashboardTab.Manager;
         }
         else
         {
@@ -213,7 +294,8 @@ public partial class UnifiedDownloaderViewModel : ViewModelBase
             Query = string.Empty;
             _dashboardViewModel.Query = input;
             await _dashboardViewModel.ProcessQueryCommand.ExecuteAsync(null);
-            _dashboardViewModel.SelectedTab = DashboardTab.Manager;
+            if (!IsAnyBrowserMode)
+                _dashboardViewModel.SelectedTab = DashboardTab.Manager;
         }
     }
 
@@ -223,7 +305,11 @@ public partial class UnifiedDownloaderViewModel : ViewModelBase
     [RelayCommand(CanExecute = nameof(CanDownloadProfilePictureImmediately))]
     private async Task DownloadProfilePictureImmediatelyAsync()
     {
-        if (string.IsNullOrWhiteSpace(Query) || _dashboardViewModel is null)
+        if (
+            !CanUseSubscription()
+            || string.IsNullOrWhiteSpace(Query)
+            || _dashboardViewModel is null
+        )
             return;
 
         var query = Query.Trim();
@@ -233,6 +319,7 @@ public partial class UnifiedDownloaderViewModel : ViewModelBase
 
         try
         {
+            RequireSubscription();
             _snackbarManager.Notify("Resolving profile picture...");
             string? avatarUrl = null;
             string? authorName = ProfileHandleDisplay ?? "profile";
@@ -270,7 +357,9 @@ public partial class UnifiedDownloaderViewModel : ViewModelBase
             var targetPath = Path.Combine(dirPath, $"{safeName}_avatar{ext}");
             targetPath = Path.EnsureUniqueFilePath(targetPath);
 
+            RequireSubscription();
             var bytes = await Http.Client.GetByteArrayAsync(avatarUrl);
+            RequireSubscription();
             await File.WriteAllBytesAsync(targetPath, bytes);
 
             _snackbarManager.Notify($"Profile picture saved to {Path.GetFileName(targetPath)}!");
@@ -328,6 +417,7 @@ public partial class UnifiedDownloaderViewModel : ViewModelBase
     private void SwitchToDirectMode()
     {
         IsBrowserMode = false;
+        IsInstagramBrowserMode = false;
     }
 
     [RelayCommand]
@@ -335,4 +425,7 @@ public partial class UnifiedDownloaderViewModel : ViewModelBase
     {
         IsBrowserMode = true;
     }
+
+    [RelayCommand]
+    private void SwitchToInstagramBrowserMode() => IsInstagramBrowserMode = true;
 }

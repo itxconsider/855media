@@ -29,7 +29,9 @@ public enum LicenseFeature
     BatchDownloads,
     AudioProcessing,
     HighParallelDownloads,
-    Upscaling,
+
+    [System.Text.Json.Serialization.JsonStringEnumMemberName("Upscaling")]
+    Editing,
     Dubbing,
     AutoPost,
 }

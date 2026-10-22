@@ -229,7 +229,8 @@ public static class PFlowLiveUidVerification
         int index,
         string? path,
         FacebookPageTarget target,
-        CancellationToken ct
+        CancellationToken ct,
+        bool restoreTargetPersona = true
     )
     {
         var xml = await ld.DumpUiHierarchyAsync(index, path, ct) ?? "";
@@ -272,7 +273,8 @@ public static class PFlowLiveUidVerification
                 if (!matches || !await ld.PressBackAsync(index, path, ct))
                     return false;
                 // Restore and verify the actual current Page, never a public deep link.
-                return await ld.SwitchToPersonaAsync(index, target, path, ct);
+                return !restoreTargetPersona
+                    || await ld.SwitchToPersonaAsync(index, target, path, ct);
             }
             if (
                 PFlowLoginScreen.RequiresAuthentication(PFlowLoginScreen.Classify(xml))

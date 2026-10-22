@@ -15,6 +15,6 @@ Local package: `dist/855Media-v3.1.1-win-x64/855Media.exe`.
 9. Refresh LD-Accounts immediately after root profile/Page rows are saved, serialize mapping refreshes during parallel fetch, and expose mapping errors when the selected LD has no accounts.
 10. Open Facebook and verify its foreground activity before personal UI enrichment; retry launch once instead of attempting identity navigation on the Android launcher. Root discovery remains saved if UI startup fails.
 
-Validation: 51 account-mapping and foreground recovery tests passed; desktop Debug build and self-contained win-x64 Release publish passed. The eight upscaling improvements have their validation recorded in [upscaling improvements](upscaling-improvements.md).
+Validation: 51 account-mapping and foreground recovery tests passed; desktop Debug build and self-contained win-x64 Release publish passed. The eight upscaling improvements have their validation recorded in [upscaling improvements](editing-improvements.md).
 
 No live fetch, posting, or emulator operation was run on the user's new PC during verification.
