@@ -8,6 +8,34 @@ namespace _855Media.Core.LDPlayer;
 
 public static class PFlowDiagnostics
 {
+    // Save the last observed frame without another device read or an uncancellable
+    // screenshot pass. This also covers failures before a posting job is reserved.
+    internal static async Task CaptureHierarchyAsync(
+        int index,
+        string step,
+        string xml,
+        CancellationToken ct
+    )
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromSeconds(2));
+        try
+        {
+            var directory = Path.Combine(Path.GetDirectoryName(PFlowTrace.PathName)!, "p-flow-ui");
+            Directory.CreateDirectory(directory);
+            var safeStep = string.Concat(step.Where(c => char.IsLetterOrDigit(c) || c == '-'));
+            var name = $"{DateTime.UtcNow:yyyyMMdd-HHmmssfff}-LD-{index}-{safeStep}.xml";
+            await File.WriteAllTextAsync(
+                Path.Combine(directory, name),
+                PFlowUiPrivacy.RedactForDiagnostics(xml),
+                timeout.Token
+            );
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested) { }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+    }
+
     public static async Task CaptureAsync(ILDPlayerService ld, int index, string step, string? path)
     {
         // A failed diagnostic must never replace the original posting/navigation error.

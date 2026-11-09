@@ -412,13 +412,11 @@ public partial class VideoEditorService
                 "copy",
             };
             copyArgs.AddRange(
-                job.CameraMetadata?.BuildFfmpegMetadataArgs(
-                    Path.GetFileNameWithoutExtension(job.FilePath)
+                (job.CameraMetadata ?? new CameraMetadataSettings()).BuildOutputMetadataArgs(
+                    job.OutputFilePath,
+                    job.MetadataTitle
                 )
-                    ?? ["-map_metadata", "-1"]
             );
-            if (job.OutputFilePath.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase))
-                copyArgs.AddRange(["-movflags", "+faststart"]);
             copyArgs.Add(job.OutputFilePath);
             log(
                 "[Stream Copy] No video/audio changes requested. Preserving compressed streams without re-encoding."
@@ -453,46 +451,39 @@ public partial class VideoEditorService
                 ? $"[File Size Control] Source-based video target/peak: {job.SourceVideoBitrate / 1000.0:0.#} kb/s; audio encode limit: {audioBitrate} b/s. Playback speed changes duration, not the bitrate budget."
                 : "[File Size Control] Source bitrate could not be determined; using encoder quality defaults."
         );
+        ActionAnalysisResult? trackingAnalysis = null;
         if (
             job.TrackingMode != SmartTrackingMode.StaticCenter
             || (job.EnableMicroZoom && job.ZoomMode != SmartZoomMode.CenterCrop)
         )
         {
-            if (job.ActionCentroidX != 0.5 || job.ActionCentroidY != 0.5)
+            try
             {
+                var mode =
+                    job.TrackingMode == SmartTrackingMode.StaticCenter
+                        ? SmartTrackingMode.ObjectFocus
+                        : job.TrackingMode;
+                trackingAnalysis = await SmartActionAnalyzer.AnalyzeVideoAsync(
+                    job.FilePath,
+                    mode,
+                    ffmpegPath,
+                    speedMode: job.SpeedMode,
+                    cancellationToken: cancellationToken,
+                    durationSeconds: job.VideoFps > 0 ? job.TotalFrames / job.VideoFps : null
+                );
+                job.ActionCentroidX = trackingAnalysis.OverallCentroidX;
+                job.ActionCentroidY = trackingAnalysis.OverallCentroidY;
                 log(
-                    $"[Smart Action Tracking] Reusing pre-analyzed action centroid: X={job.ActionCentroidX:0.00}, Y={job.ActionCentroidY:0.00}"
+                    $"[Smart Tracking] {trackingAnalysis.Trajectory.Count} timed samples; {trackingAnalysis.DetectedSceneCuts} scene cuts. Crop follows the sampled path."
                 );
             }
-            else
+            catch (Exception ex)
+                when (ex is not OperationCanceledException
+                    && !cancellationToken.IsCancellationRequested
+                )
             {
-                log(
-                    $"[Smart Action Tracking] Analyzing video action points (Mode: {job.TrackingMode}, ZoomMode: {job.ZoomMode}, Speed: {job.SpeedMode})..."
-                );
-                try
-                {
-                    var analysisMode =
-                        job.TrackingMode == SmartTrackingMode.StaticCenter
-                            ? SmartTrackingMode.ObjectFocus
-                            : job.TrackingMode;
-
-                    var analysis = await SmartActionAnalyzer.AnalyzeVideoAsync(
-                        job.FilePath,
-                        analysisMode,
-                        ffmpegPath,
-                        speedMode: job.SpeedMode,
-                        cancellationToken: cancellationToken
-                    );
-                    job.ActionCentroidX = analysis.OverallCentroidX;
-                    job.ActionCentroidY = analysis.OverallCentroidY;
-                    log(
-                        $"[Smart Action Tracking] Detected action centroid: X={job.ActionCentroidX:0.00}, Y={job.ActionCentroidY:0.00} (Scene cuts: {analysis.DetectedSceneCuts})"
-                    );
-                }
-                catch (Exception ex)
-                {
-                    log($"[Smart Action Tracking] Warning: Action analysis fallback: {ex.Message}");
-                }
+                job.ActionCentroidX = job.ActionCentroidY = 0.5;
+                log($"[Smart Tracking] Analysis unavailable; using center: {ex.Message}");
             }
         }
 
@@ -503,7 +494,8 @@ public partial class VideoEditorService
             job.TrackingMode,
             job.ActionCentroidX,
             job.ActionCentroidY,
-            zoomPercent: (job.TargetAspectRatio != AspectRatioMode.Original) ? zoomPercent : 0.0
+            zoomPercent: (job.TargetAspectRatio != AspectRatioMode.Original) ? zoomPercent : 0.0,
+            trajectory: trackingAnalysis
         );
         string? scaleFilter = null;
         if (arFilter != null)
@@ -538,7 +530,8 @@ public partial class VideoEditorService
                 job.MicroZoomPercent,
                 job.ZoomMode,
                 job.ActionCentroidX,
-                job.ActionCentroidY
+                job.ActionCentroidY,
+                trajectory: trackingAnalysis
             );
             if (!string.IsNullOrWhiteSpace(zoomFilter))
             {
@@ -614,6 +607,12 @@ public partial class VideoEditorService
         }
 
         var videoFilter = string.Join(",", filterParts);
+        // Large trajectories can exceed Windows' command-line limit. Keep the
+        // exact graph in this job's scratch folder, shared with CPU fallback.
+        var filterScript =
+            videoFilter.Length > 8000 ? Path.Combine(tempDir, "tracking.ffscript") : null;
+        if (filterScript is not null)
+            await File.WriteAllTextAsync(filterScript, videoFilter, cancellationToken);
 
         log(
             isGpu
@@ -636,6 +635,10 @@ public partial class VideoEditorService
             !string.IsNullOrWhiteSpace(isolatedAudioPath) && File.Exists(isolatedAudioPath);
 
         var arguments = new List<string> { "-y" };
+        arguments.AddRange(EditorThreadPolicy.FilterArguments(totalLogicalCores));
+        log(
+            $"[CPU Budget] Filter pools limited to {EditorThreadPolicy.FilterThreads(totalLogicalCores)} threads per job; video effects are unchanged."
+        );
         arguments.AddRange(hwArgs);
         arguments.AddRange(["-threads", safeThreads.ToString(CultureInfo.InvariantCulture)]);
         arguments.AddRange(["-i", job.FilePath]);
@@ -644,7 +647,10 @@ public partial class VideoEditorService
             arguments.AddRange(["-i", isolatedAudioPath!]);
         }
         if (!string.IsNullOrWhiteSpace(videoFilter))
-            arguments.AddRange(["-vf", videoFilter]);
+            arguments.AddRange([
+                filterScript is null ? "-vf" : "-/filter:v",
+                filterScript ?? videoFilter,
+            ]);
         arguments.AddRange(encoderArgs);
 
         var (audioFilter, reencodeAac, isMuted) = BuildAudioPipeline(
@@ -739,11 +745,10 @@ public partial class VideoEditorService
             ]);
         }
 
-        var metaArgs =
-            job.CameraMetadata?.BuildFfmpegMetadataArgs(
-                Path.GetFileNameWithoutExtension(job.FilePath)
-            )
-            ?? ["-map_metadata", "-1"];
+        var metaArgs = (job.CameraMetadata ?? new CameraMetadataSettings()).BuildOutputMetadataArgs(
+            job.OutputFilePath,
+            job.MetadataTitle
+        );
         arguments.AddRange(metaArgs);
         log(
             $"[Metadata Normalization] Applied profile: {job.CameraMetadata?.ProfileType.ToString() ?? "CleanNormalized"}"
@@ -810,12 +815,16 @@ public partial class VideoEditorService
             );
             cpuArgs = NativeExportPolicy.LimitVideoBitrate(cpuArgs, job.SourceVideoBitrate);
             var fallbackArgs = new List<string> { "-y", "-i", job.FilePath };
+            fallbackArgs.AddRange(EditorThreadPolicy.FilterArguments(totalLogicalCores));
             if (hasIsolatedAudio)
             {
                 fallbackArgs.AddRange(["-i", isolatedAudioPath!]);
             }
             if (!string.IsNullOrWhiteSpace(videoFilter))
-                fallbackArgs.AddRange(["-vf", videoFilter]);
+                fallbackArgs.AddRange([
+                    filterScript is null ? "-vf" : "-/filter:v",
+                    filterScript ?? videoFilter,
+                ]);
             fallbackArgs.AddRange(cpuArgs);
 
             if (isMuted)

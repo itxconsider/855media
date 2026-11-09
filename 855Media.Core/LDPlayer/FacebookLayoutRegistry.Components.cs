@@ -27,6 +27,88 @@ public static partial class FacebookLayoutRegistry
     private static IEnumerable<FacebookLayoutDefinition> ComponentDefinitions()
     {
         yield return new(
+            "profile.details-entry.v1",
+            FacebookScreenKind.ProfileDetailsEntry,
+            [],
+            [
+                Rule(
+                    "own-profile-name-entry",
+                    "Exact own-profile header in a classic layout",
+                    o =>
+                        o.Context.TargetName is { } name
+                        && o.Context.PostType is "Page" or "Profile"
+                        && PFlowProfileDetailsRouting.Header(
+                            o.Xml,
+                            name,
+                            o.Context.PostType == "Profile"
+                        ) != null
+                ),
+            ],
+            [Authentication, SwitcherOverlay, ComposerOverlay],
+            [FacebookControlRole.OpenProfileDetails]
+        );
+        yield return new(
+            "profile.page-about-entry.v1",
+            FacebookScreenKind.PageAboutEntry,
+            [],
+            [
+                Rule(
+                    "own-page-about-tab",
+                    "Expected own Page with explicit Posts/About/Photos strip",
+                    o =>
+                        !string.IsNullOrWhiteSpace(o.Context.TargetName)
+                        && PFlowPageAboutTransparency.AboutEntry(o.Xml, o.Context.TargetName)
+                            != null
+                ),
+            ],
+            [Authentication, SwitcherOverlay, ComposerOverlay],
+            [FacebookControlRole.About]
+        );
+        yield return new(
+            "profile.page-about-transparency.v1",
+            FacebookScreenKind.PageAbout,
+            [],
+            [
+                Rule(
+                    "selected-page-about",
+                    "Read-only selected About tab; actor proof remains with caller",
+                    o =>
+                        !string.IsNullOrWhiteSpace(o.Context.TargetName)
+                        && PFlowPageAboutTransparency.IsAbout(o.Xml)
+                ),
+            ],
+            [Authentication, SwitcherOverlay, ComposerOverlay],
+            [FacebookControlRole.PageTransparency]
+        );
+        yield return new(
+            "permission.media-access.v1",
+            FacebookScreenKind.MediaPermissionPrompt,
+            [],
+            [
+                Rule(
+                    "media-access-prompt",
+                    "Exact supported media permission prompt; recognition grants no action",
+                    o => o.Test(MediaPermissionOverlay)
+                ),
+            ],
+            [Authentication, SwitcherOverlay],
+            []
+        );
+        yield return new(
+            "identity.page-restriction.v1",
+            FacebookScreenKind.PageIdentityRestriction,
+            [],
+            [
+                Rule(
+                    "page-identity-restriction",
+                    "Explicit Page identity challenge; no publication or verification action",
+                    o => o.Test(PageRestrictionOverlay)
+                ),
+            ],
+            [],
+            []
+        );
+        yield return new(
             "settings.meta-birthday-details.v1",
             FacebookScreenKind.MetaBirthdayDetails,
             [],
@@ -514,11 +596,7 @@ public static partial class FacebookLayoutRegistry
 
     private static bool MatchesMenuName(BloksElement element, string label) =>
         new[] { element.Text, element.ContentDesc }.Any(value =>
-            string.Equals(
-                Regex.Replace(Regex.Replace(value ?? "", @"\s+", " ").Trim(), @"\s+,", ","),
-                Regex.Replace(Regex.Replace(label, @"\s+", " ").Trim(), @"\s+,", ","),
-                StringComparison.OrdinalIgnoreCase
-            )
+            PFlowNameMatch.Same(value ?? "", label)
         );
 
     private static IEnumerable<(int X, int Y)> FindComponentControls(
@@ -527,6 +605,57 @@ public static partial class FacebookLayoutRegistry
         FacebookScreenKind screen
     )
     {
+        if (
+            screen == FacebookScreenKind.ProfileDetailsEntry
+            && role == FacebookControlRole.OpenProfileDetails
+            && o.Context.TargetName is { } detailsName
+            && o.Context.PostType is "Page" or "Profile"
+        )
+        {
+            if (
+                PFlowProfileDetailsRouting.Header(
+                    o.Xml,
+                    detailsName,
+                    o.Context.PostType == "Profile"
+                ) is
+                { } point
+            )
+                yield return point;
+            yield break;
+        }
+        if (
+            screen == FacebookScreenKind.PageAboutEntry
+            && role == FacebookControlRole.About
+            && o.Context.TargetName is { } name
+        )
+        {
+            if (PFlowPageAboutTransparency.AboutEntry(o.Xml, name) is { } p)
+                yield return p;
+            yield break;
+        }
+        if (screen == FacebookScreenKind.PageAbout && role == FacebookControlRole.PageTransparency)
+        {
+            if (PFlowPageAboutTransparency.TransparencyEntry(o.Xml) is { } p)
+                yield return p;
+            yield break;
+        }
+        if (
+            screen == FacebookScreenKind.SwitcherSelection
+            && role == FacebookControlRole.SelectedActor
+        )
+        {
+            var node = SelectedActorNode(o);
+            if (node != null && UsableCenter(node, readOnlyList: true) is { } point)
+                yield return point;
+            yield break;
+        }
+        if (screen == FacebookScreenKind.ReelPicker && role == FacebookControlRole.Albums)
+        {
+            var node = PFlowReelLayout.AlbumsTab(o.Xml);
+            if (node != null && PFlowStoryLayout.ControlCenter(node) is { } point)
+                yield return point;
+            yield break;
+        }
         if (screen == FacebookScreenKind.Menu && role == FacebookControlRole.ActiveProfile)
         {
             if (MenuProfileTarget(o) is { } target)
@@ -671,9 +800,15 @@ public static partial class FacebookLayoutRegistry
             .Where(node =>
             {
                 var package = (string?)node.Attribute("package") ?? "";
+                var ldQuickstep =
+                    package == "com.ldmnq.launcher3"
+                    && (string?)node.Attribute("resource-id") == "com.ldmnq.launcher3:id/clear_all"
+                    && (string?)node.Attribute("class") == "android.widget.Button"
+                    && node.Ancestors().Any(PFlowRecentAppsNavigation.IsLdQuickstepOverview);
                 if (
                     package != "com.android.systemui"
                     && !package.StartsWith("com.android.launcher", StringComparison.Ordinal)
+                    && !ldQuickstep
                 )
                     return false;
                 if (

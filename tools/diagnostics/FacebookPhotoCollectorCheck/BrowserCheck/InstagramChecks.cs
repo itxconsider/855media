@@ -33,9 +33,22 @@ internal static class InstagramChecks
         const string thumb = "https://scontent.fixture.cdninstagram.com/thumb.jpg";
         const string video = "https://video.fixture.fbcdn.net/clip.mp4?token=signed";
         var html = "<main></main>";
+        var pageStatus = 200;
         browser.AddWebResourceRequestedFilter("*", CoreWebView2WebResourceContext.All);
-        browser.WebResourceRequested += (_, e) =>
+        browser.WebResourceRequested += async (_, e) =>
         {
+            if (e.Request.Uri.Contains("slow-unrelated", StringComparison.Ordinal))
+            {
+                using var deferral = e.GetDeferral();
+                await Task.Delay(5000);
+                e.Response = environment.CreateWebResourceResponse(
+                    new MemoryStream([]),
+                    200,
+                    "OK",
+                    "Content-Type: image/png"
+                );
+                return;
+            }
             var page = new Uri(e.Request.Uri).Host == "www.instagram.com";
             var size = e.Request.Uri.Contains("thumb") ? (206, 206) : (1536, 2048);
             var content = page
@@ -43,7 +56,7 @@ internal static class InstagramChecks
                 : $"<svg xmlns='http://www.w3.org/2000/svg' width='{size.Item1}' height='{size.Item2}'></svg>";
             e.Response = environment.CreateWebResourceResponse(
                 new MemoryStream(Encoding.UTF8.GetBytes(content)),
-                200,
+                page ? pageStatus : 200,
                 "OK",
                 "Content-Type: " + (page ? "text/html; charset=utf-8" : "image/svg+xml")
             );
@@ -219,6 +232,19 @@ internal static class InstagramChecks
             photos.Count == 2 && photos.All(p => p.IsPhoto),
             "Photos only excludes video covers and video items"
         );
+        html += "<img src='https://scontent.fixture.cdninstagram.com/slow-unrelated.png'>";
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        media = await reader.ResolveAsync(
+            "https://www.instagram.com/p/ABC/",
+            InstagramMediaKind.All,
+            timeout.Token
+        );
+        Check(
+            watch.Elapsed < TimeSpan.FromSeconds(4)
+                && media.Count == 3
+                && media.All(m => m.Caption == "Original caption\nខ្មែរ 😊"),
+            "imports complete media/captions before unrelated five-second resource finishes"
+        );
         html =
             $"<main><article><header><img width=32 height=32 src='{thumb}'></header><h1>Carousel caption</h1><img id=photo style='width:500px;height:650px' src='{full}'><button aria-label=Next onclick=\"document.getElementById('photo').src='{second}';this.remove();\">Next</button><ul><li>Unrelated comment</li></ul></article></main>";
         media = await reader.ResolveAsync(
@@ -288,6 +314,70 @@ internal static class InstagramChecks
                 && await browser.ExecuteScriptAsync("window.commentClicked === true") == "false",
             "expands only post-caption More and leaves comments untouched"
         );
+        html =
+            $"<script>Object.defineProperty(navigator,'onLine',{{get:()=>false}});</script><main><article><h1>Valid cached caption</h1><img style='width:500px;height:650px' src='{full}'></article></main>";
+        media = await reader.ResolveAsync(
+            "https://www.instagram.com/p/ABC/",
+            InstagramMediaKind.Photos,
+            timeout.Token
+        );
+        Check(
+            media.Single().Caption == "Valid cached caption",
+            "usable exact post is accepted despite an unreliable offline flag"
+        );
+        html =
+            "<script>Object.defineProperty(navigator,'onLine',{get:()=>false});</script><main></main>";
+        try
+        {
+            await reader.ResolveAsync(
+                "https://www.instagram.com/p/ABC/",
+                InstagramMediaKind.Photos,
+                timeout.Token
+            );
+            throw new Exception("Offline page was accepted");
+        }
+        catch (InvalidOperationException e) when (e.Message.Contains("reports offline"))
+        {
+            Console.WriteLine(
+                "PASS Instagram: offline empty page reports the import browser connection state"
+            );
+        }
+        html = "<input name=password>";
+        try
+        {
+            await reader.ResolveAsync(
+                "https://www.instagram.com/p/ABC/",
+                InstagramMediaKind.Photos,
+                timeout.Token
+            );
+            throw new Exception("Sign-in page was accepted");
+        }
+        catch (InvalidOperationException e) when (e.Message.Contains("sign-in screen"))
+        {
+            Console.WriteLine("PASS Instagram: actual sign-in remains distinct from offline");
+        }
+        pageStatus = 403;
+        html = "";
+        try
+        {
+            await reader.ResolveAsync(
+                "https://www.instagram.com/p/ABC/",
+                InstagramMediaKind.Photos,
+                timeout.Token
+            );
+            throw new Exception("HTTP failure was accepted");
+        }
+        catch (InvalidOperationException e)
+            when (e.Message.Contains("HTTP 403") && !e.Message.Contains("Unknown"))
+        {
+            Console.WriteLine(
+                "PASS Instagram: failed browser navigation reports HTTP status instead of Unknown or global disconnection"
+            );
+        }
+        finally
+        {
+            pageStatus = 200;
+        }
         html = "<div role=dialog>Try again later</div>";
         try
         {

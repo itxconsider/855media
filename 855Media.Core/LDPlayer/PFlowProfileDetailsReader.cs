@@ -16,11 +16,20 @@ internal static class PFlowProfileDetailsReader
         bool profile,
         string? path,
         CancellationToken ct,
-        Func<TimeSpan, CancellationToken, Task>? delay = null
+        Func<TimeSpan, CancellationToken, Task>? delay = null,
+        bool alreadyOpen = false,
+        Func<CancellationToken, Task>? requireFresh = null
     )
     {
         delay ??= PFlowFetchPacing.DelayAsync;
         if (!PFlowProfileDates.MatchesName(details, name))
+            return string.Empty;
+        if (
+            alreadyOpen
+            && !details.AllElements.Any(e =>
+                e.Matches(profile ? "Profile transparency" : "Page transparency", false)
+            )
+        )
             return string.Empty;
         (int X, int Y)? FindEntry(BloksScreenInfo current)
         {
@@ -50,7 +59,7 @@ internal static class PFlowProfileDetailsReader
         }
         var target = FindEntry(details);
         // The join-date text can render before the transparency link.
-        for (var wait = 0; target == null && wait < 4; wait++)
+        for (var wait = 0; !alreadyOpen && target == null && wait < 4; wait++)
         {
             await delay(TimeSpan.FromMilliseconds(400), ct);
             var xml = await ld.DumpUiHierarchyAsync(index, path, ct);
@@ -62,7 +71,13 @@ internal static class PFlowProfileDetailsReader
                 return string.Empty;
             target = FindEntry(current);
         }
-        if (target == null || !await ld.TapAsync(index, target.Value.X, target.Value.Y, path, ct))
+        if (
+            !alreadyOpen
+            && (
+                target == null
+                || !await ld.TapAsync(index, target.Value.X, target.Value.Y, path, ct)
+            )
+        )
             return string.Empty;
         try
         {
@@ -73,6 +88,8 @@ internal static class PFlowProfileDetailsReader
             for (var attempt = 0; attempt < 24; attempt++)
             {
                 await delay(TimeSpan.FromMilliseconds(400), ct);
+                if (requireFresh != null)
+                    await requireFresh(ct);
                 var xml = await ld.DumpUiHierarchyAsync(index, path, ct);
                 if (PFlowLoginScreen.RequiresAuthentication(PFlowLoginScreen.Classify(xml)))
                     return string.Empty;
@@ -105,6 +122,8 @@ internal static class PFlowProfileDetailsReader
                 previous = fingerprint;
                 if (unchanged >= 2 || scrolls >= 12)
                     return string.Empty;
+                if (requireFresh != null)
+                    await requireFresh(ct);
                 if (!await ScrollAsync(ld, index, screen, path, ct))
                     return string.Empty;
                 scrolls++;
@@ -119,6 +138,8 @@ internal static class PFlowProfileDetailsReader
             {
                 try
                 {
+                    if (requireFresh != null)
+                        await requireFresh(ct);
                     await ld.PressBackAsync(index, path, ct);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
@@ -144,6 +165,53 @@ internal static class PFlowProfileDetailsReader
     {
         delay ??= PFlowFetchPacing.DelayAsync;
         var result = new FacebookAccountDetails();
+        string? process = null;
+        async Task<string> ReadPage(CancellationToken token)
+        {
+            token.ThrowIfCancellationRequested();
+            var activity = await ld.GetCurrentFocusedActivityAsync(index, path, token) ?? "";
+            var pid = PFlowProcessIdentity.Normalize(
+                await ld.ExecuteAdbAsync(index, "shell pidof com.facebook.katana", path, token)
+            );
+            var current = await ld.DumpUiHierarchyAsync(index, path, token) ?? "";
+            if (
+                !activity.StartsWith("com.facebook.katana/", StringComparison.Ordinal)
+                || pid == null
+                || process != null && pid != process
+                || !PFlowPageAboutTransparency.Safe(current)
+            )
+                throw new InvalidOperationException(
+                    "Facebook changed during Page profile details lookup."
+                );
+            process ??= pid;
+            return current;
+        }
+        Task TraceDecision(PFlowProfileDetailsDecision decision, bool fallback) =>
+            PFlowFetchTrace.WriteAsync(
+                index,
+                "profile.details.route",
+                $"flow={decision.Flow}; reason={decision.Reason}; variant={decision.Variant ?? "none"}; fallback={fallback}",
+                ct
+            );
+        async Task<string> TryAboutFallback()
+        {
+            var current = await ReadPage(ct);
+            var next = PFlowProfileDetailsRouting.Decide(current, name, false);
+            await TraceDecision(next, true);
+            // Exactly one alternate route, freshly proven on the same actor/process.
+            // Never retry the failed name tap or press Back on an unknown screen.
+            return next.Flow == PFlowProfileDetailsFlow.About
+                ? await PFlowPageAboutTransparency.ReadAsync(
+                    ld,
+                    index,
+                    name,
+                    path,
+                    ct,
+                    delay,
+                    ReadPage
+                )
+                : string.Empty;
+        }
         var xml = await ld.DumpUiHierarchyAsync(index, path, ct);
         var screen = AtxAgentClient.ParseBloksHierarchy(xml);
         var own = profile
@@ -151,6 +219,7 @@ internal static class PFlowProfileDetailsReader
             : PFlowOwnProfileNavigation.IsOwnPageProfile(screen, name);
         if (
             !own
+            || !PFlowPageAboutTransparency.Safe(xml ?? "")
             || AtxAgentClient.IsMenuPageInBloks(screen)
             || PFlowPersonaSwitcherService.IsNativeSwitcherSheetOpen(xml)
             || !PFlowProfileDates.MatchesName(screen, name)
@@ -167,7 +236,25 @@ internal static class PFlowProfileDetailsReader
         result.Birthdate = profile
             ? PFlowProfileDates.Birthdate(screen, confirmedProfileContext: true)
             : string.Empty;
-        var title = PFlowPageDetailsNavigation.FindHeaderName(screen, name);
+        // Rebind from a fresh guarded observation before making the first Page decision.
+        if (!profile)
+            xml = await ReadPage(ct);
+        var route = PFlowProfileDetailsRouting.Decide(xml ?? "", name, profile);
+        await TraceDecision(route, false);
+        if (route.Flow == PFlowProfileDetailsFlow.About)
+        {
+            result.CreationDate = await PFlowPageAboutTransparency.ReadAsync(
+                ld,
+                index,
+                name,
+                path,
+                ct,
+                delay,
+                ReadPage
+            );
+            return result;
+        }
+        var title = route.Control;
         if (title == null)
             await PFlowFetchTrace.WriteAsync(
                 index,
@@ -175,14 +262,15 @@ internal static class PFlowProfileDetailsReader
                 "Name tap unavailable; Transparency was not opened, so date availability is unknown.",
                 ct
             );
-        if (title != null && await ld.TapAsync(index, title.CenterX, title.CenterY, path, ct))
+        if (title != null && await ld.TapAsync(index, title.X, title.Y, path, ct))
         {
             BloksScreenInfo? details = null;
+            var alternateFrames = 0;
             for (var wait = 0; wait < 12; wait++)
             {
                 await delay(TimeSpan.FromMilliseconds(400), ct);
                 var candidate = AtxAgentClient.ParseBloksHierarchy(
-                    await ld.DumpUiHierarchyAsync(index, path, ct)
+                    profile ? await ld.DumpUiHierarchyAsync(index, path, ct) : await ReadPage(ct)
                 );
                 if (
                     PFlowProfileDates.MatchesName(candidate, name)
@@ -199,11 +287,27 @@ internal static class PFlowProfileDetailsReader
                     details = candidate;
                     break;
                 }
+                // Two fresh own-Page tabbed frames can end the name-sheet wait
+                // early. The alternate action is still rebound by TryAboutFallback.
+                if (!profile)
+                {
+                    alternateFrames =
+                        PFlowProfileDetailsRouting.Decide(candidate.RawXml ?? "", name, false).Flow
+                        == PFlowProfileDetailsFlow.About
+                            ? alternateFrames + 1
+                            : 0;
+                    if (alternateFrames >= 2)
+                        break;
+                }
             }
             // Do not press Back or scroll an unrelated screen when the tap did
             // not expose the expected name-details sheet.
             if (details == null)
+            {
+                if (!profile)
+                    result.CreationDate = await TryAboutFallback();
                 return result;
+            }
             if (PFlowProfileDates.MatchesName(details, name))
             {
                 var joined = details
@@ -220,13 +324,29 @@ internal static class PFlowProfileDetailsReader
                     profile,
                     path,
                     ct,
-                    delay
+                    delay,
+                    requireFresh: profile
+                        ? null
+                        : async token =>
+                        {
+                            await ReadPage(token);
+                        }
                 );
                 if (exact.Length > 0)
                     result.CreationDate = exact;
             }
+            if (!profile)
+                await ReadPage(ct);
             await ld.PressBackAsync(index, path, ct);
             await delay(TimeSpan.FromMilliseconds(400), ct);
+            if (!profile)
+                await ReadPage(ct);
+            if (!profile && !PFlowProfileDates.HasFullDate(result.CreationDate))
+            {
+                var alternate = await TryAboutFallback();
+                if (alternate.Length > 0)
+                    result.CreationDate = alternate;
+            }
         }
         for (var attempt = 0; profile && result.Birthdate.Length == 0 && attempt < 16; attempt++)
         {
@@ -235,7 +355,10 @@ internal static class PFlowProfileDetailsReader
             if (PFlowLoginScreen.RequiresAuthentication(PFlowLoginScreen.Classify(xml)))
                 break;
             result.Birthdate = PFlowProfileDates.Birthdate(screen, confirmedProfileContext: true);
-            if (result.Birthdate.Length > 0 || PFlowProfileDates.ReachedProfileFeed(screen))
+            if (
+                result.Birthdate.Length > 0
+                || PFlowProfileDates.ReachedProfileFeed(screen, stopAtFriends: false)
+            )
                 break;
             // Vertical navigation only: never tap Add/Add friend or a suggestion's X.
             if (!await ScrollAsync(ld, index, screen, path, ct))

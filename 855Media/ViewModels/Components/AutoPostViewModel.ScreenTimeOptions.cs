@@ -136,7 +136,7 @@ public partial class AutoPostViewModel
     [RelayCommand]
     private void ShowScreenTimeHistory()
     {
-        var store = new ScreenTimeHistoryStore();
+        var store = CreateScreenTimeHistoryStore();
         var list = new ListBox { ItemsSource = store.ReadActions() };
         var report = new TextBox
         {
@@ -197,7 +197,8 @@ public partial class AutoPostViewModel
                     );
                 using var lease = await PFlowDeviceLease.AcquireAsync(
                     entry.Device,
-                    CancellationToken.None
+                    CancellationToken.None,
+                    LdFolder
                 );
                 await store.ResolveAsync(entry.Id, applied, evidence.Text);
                 Reload();

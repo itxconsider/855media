@@ -259,6 +259,25 @@ public sealed class PFlowAutomaticSessionTests
     }
 
     [Fact]
+    public async Task UnavailableNameVerificationReportsOwnerSwitchFailureInsteadOfDatabaseMismatch()
+    {
+        var nav = new Navigator { State = PFlowAuthenticationState.Unavailable };
+        var store = new Credentials();
+        var account = Account();
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            new PFlowAutomaticSessionService(
+                nav,
+                store,
+                _ => Task.CompletedTask,
+                postingNameOnly: true
+            ).EnsureAsync(account, Progress, default, true)
+        );
+        Assert.Contains("Could not switch to saved account " + account.Name, error.Message);
+        Assert.DoesNotContain("database", error.Message);
+        Assert.Equal(0, store.Loads + nav.Logins + nav.Opens);
+    }
+
+    [Fact]
     public async Task UncertainLoginIsNeverRetriedInSameBatch()
     {
         var nav = new Navigator { ThrowOnLogin = true };

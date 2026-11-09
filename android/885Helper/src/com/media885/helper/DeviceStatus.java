@@ -20,7 +20,11 @@ final class DeviceStatus {
         JSONObject data = new JSONObject();
         try {
             data.put("protocolVersion", 1);
-            data.put("helperVersion", "1.0.0");
+            data.put("helperVersion", context.getPackageManager().getPackageInfo(context.getPackageName(), 0).versionName);
+            data.put("networkProtocolVersion", 1);
+            data.put("clipboardProtocolVersion", 1);
+            data.put("clockProtocolVersion", 1);
+            data.put("clock", ClockStatus.read());
             data.put("heartbeat", true);
             data.put("sampleUtcMillis", System.currentTimeMillis());
             data.put("elapsedRealtimeMillis", SystemClock.elapsedRealtime());

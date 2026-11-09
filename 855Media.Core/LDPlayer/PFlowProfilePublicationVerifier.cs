@@ -59,7 +59,9 @@ internal sealed class PFlowProfilePublicationVerifier(ILDPlayerService ld)
             await PFlowTrace.SessionAsync(
                 job.DeviceIndex,
                 "publication.session-ui",
-                "Graph-bound authenticated session and exact own-profile UI verified; Graph not called; settings lookup=0.",
+                job.NativeIdentityScope.UsesDatabaseName
+                    ? "Database target name/type and bound native actor session verified; Graph calls=0; live UID lookup=0."
+                    : "Graph-bound authenticated session and exact own-profile UI verified; Graph not called; settings lookup=0.",
                 ct
             );
             return true;

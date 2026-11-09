@@ -12,9 +12,7 @@ public static class PFlowSessionProfileUi
     private static string Normal(string value) => Regex.Replace(value.Trim(), @"\s+", " ");
 
     internal static bool SameName(string first, string second) =>
-        !string.IsNullOrWhiteSpace(first)
-        && !string.IsNullOrWhiteSpace(second)
-        && Normal(first).Equals(Normal(second), StringComparison.OrdinalIgnoreCase);
+        PFlowNameMatch.Same(first, second);
 
     public static bool UnambiguousMapping(
         FacebookPageTarget target,
@@ -60,7 +58,11 @@ public static class PFlowSessionProfileUi
         && !PFlowAutoPostService.HasComposerLayoutEvidence(xml, "Reel")
         && !PFlowConfirmation.HasPendingPublication(xml);
 
-    internal static bool Contradicts(string xml, FacebookPageTarget target)
+    internal static bool Contradicts(
+        string xml,
+        FacebookPageTarget target,
+        bool requireOwnControls = true
+    )
     {
         var labels = Labels(xml);
         foreach (var label in labels)
@@ -89,12 +91,20 @@ public static class PFlowSessionProfileUi
         var profilePicture = labels.Contains("Profile picture", StringComparer.OrdinalIgnoreCase);
         return profilePicture
             && (ownControls || labels.Contains("Cover Photo", StringComparer.OrdinalIgnoreCase))
-            && (!labels.Any(s => SameName(s, target.PageName)) || !HasOwnControls(labels, target));
+            && (
+                !labels.Any(s => SameName(s, target.PageName))
+                || requireOwnControls && !HasOwnControls(labels, target)
+            );
     }
 
     private static bool HasOwnControls(string[] labels, FacebookPageTarget target) =>
         target.IsPrimaryProfile
             ? labels.Contains("Edit profile", StringComparer.OrdinalIgnoreCase)
+                || labels.Contains("Edit profile picture", StringComparer.OrdinalIgnoreCase)
+                    && labels.Any(s =>
+                        s.Equals("Edit cover photo", StringComparison.OrdinalIgnoreCase)
+                        || s.Equals("Edit cover photo button", StringComparison.OrdinalIgnoreCase)
+                    )
             : labels.Any(s =>
                 s.Equals("Professional dashboard", StringComparison.OrdinalIgnoreCase)
                 || s.Equals("Business Dashboard", StringComparison.OrdinalIgnoreCase)

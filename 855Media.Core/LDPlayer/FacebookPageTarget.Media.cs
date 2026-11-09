@@ -101,13 +101,37 @@ public partial class FacebookPageTarget
     public IReadOnlyList<string> GetUploadMediaFiles(string type) =>
         ReadUploadMediaSnapshot(type).Files;
 
-    public FacebookMediaSnapshot ReadUploadMediaSnapshot(string type) =>
-        ReadMediaFiles(
+    public FacebookMediaSnapshot ReadUploadMediaSnapshot(string type)
+    {
+        if (type == "Picture" && GroupPhotosWithSameCaption)
+        {
+            var source = ImagePath.Trim().Trim('"', '\'');
+            if (File.Exists(source))
+            {
+                var siblings = ReadMediaFiles(
+                    [Path.GetDirectoryName(Path.GetFullPath(source))!],
+                    PhotoExtensions
+                );
+                var text = PhotoTitleFromTextFile ?? UseTitleFromTextFile;
+                var caption = PFlowPhotoGroups.CaptionKey(PFlowMediaCaption.Resolve(source, text));
+                return new(
+                    siblings
+                        .Files.Where(f =>
+                            PFlowPhotoGroups.CaptionKey(PFlowMediaCaption.Resolve(f, text))
+                            == caption
+                        )
+                        .ToArray(),
+                    siblings.Error
+                );
+            }
+        }
+        return ReadMediaFiles(
             GetUploadMediaPaths(type),
             type == "Story" ? StoryExtensions
                 : type == "Picture" ? PhotoExtensions
                 : ReelExtensions
         );
+    }
 
     public string GetReelCaptionForFile(string file)
     {

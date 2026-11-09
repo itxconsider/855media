@@ -28,9 +28,14 @@ public class PFlowBloksService : IPFlowBloksService
         CancellationToken cancellationToken = default
     )
     {
-        if (_atxClient != null && await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (
+            _atxClient != null
+            && await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken)
+        )
         {
-            return await _atxClient.IsBloksNativeShellActiveAsync(index, cancellationToken);
+            return await _atxClient
+                .ForInstallation(customPath)
+                .IsBloksNativeShellActiveAsync(index, cancellationToken);
         }
 
         var focus = await _ldPlayer.GetCurrentFocusedActivityAsync(
@@ -55,15 +60,20 @@ public class PFlowBloksService : IPFlowBloksService
         CancellationToken cancellationToken = default
     )
     {
-        if (_atxClient != null && await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (
+            _atxClient != null
+            && await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken)
+        )
         {
-            return await _atxClient.OpenBloksNativeShellAsync(
-                index,
-                bloksAppId,
-                parameters,
-                packageName,
-                cancellationToken
-            );
+            return await _atxClient
+                .ForInstallation(customPath)
+                .OpenBloksNativeShellAsync(
+                    index,
+                    bloksAppId,
+                    parameters,
+                    packageName,
+                    cancellationToken
+                );
         }
 
         var uri = BloksConstants.CreateBloksScreenQueryUri(bloksAppId, parameters);
@@ -83,13 +93,14 @@ public class PFlowBloksService : IPFlowBloksService
         CancellationToken cancellationToken = default
     )
     {
-        if (_atxClient != null && await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (
+            _atxClient != null
+            && await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken)
+        )
         {
-            return await _atxClient.OpenBloksAccountsCenterAsync(
-                index,
-                packageName,
-                cancellationToken
-            );
+            return await _atxClient
+                .ForInstallation(customPath)
+                .OpenBloksAccountsCenterAsync(index, packageName, cancellationToken);
         }
 
         var ok = await _ldPlayer.OpenDeepLinkAsync(
@@ -122,13 +133,14 @@ public class PFlowBloksService : IPFlowBloksService
         CancellationToken cancellationToken = default
     )
     {
-        if (_atxClient != null && await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (
+            _atxClient != null
+            && await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken)
+        )
         {
-            return await _atxClient.OpenBloksProfileSwitcherAsync(
-                index,
-                packageName,
-                cancellationToken
-            );
+            return await _atxClient
+                .ForInstallation(customPath)
+                .OpenBloksProfileSwitcherAsync(index, packageName, cancellationToken);
         }
 
         return await _ldPlayer.OpenDeepLinkAsync(
@@ -146,9 +158,14 @@ public class PFlowBloksService : IPFlowBloksService
         CancellationToken cancellationToken = default
     )
     {
-        if (_atxClient != null && await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (
+            _atxClient != null
+            && await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken)
+        )
         {
-            return await _atxClient.DumpBloksScreenAsync(index, cancellationToken);
+            return await _atxClient
+                .ForInstallation(customPath)
+                .DumpBloksScreenAsync(index, cancellationToken);
         }
 
         var xml = await _ldPlayer.DumpUiHierarchyAsync(index, customPath, cancellationToken);
@@ -169,15 +186,20 @@ public class PFlowBloksService : IPFlowBloksService
         CancellationToken cancellationToken = default
     )
     {
-        if (_atxClient != null && await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (
+            _atxClient != null
+            && await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken)
+        )
         {
-            return await _atxClient.ClickBloksElementAsync(
-                index,
-                textOrDesc,
-                partialMatch,
-                caseInsensitive,
-                cancellationToken
-            );
+            return await _atxClient
+                .ForInstallation(customPath)
+                .ClickBloksElementAsync(
+                    index,
+                    textOrDesc,
+                    partialMatch,
+                    caseInsensitive,
+                    cancellationToken
+                );
         }
 
         var screen = await DumpBloksScreenAsync(index, customPath, cancellationToken);
@@ -263,13 +285,14 @@ public class PFlowBloksService : IPFlowBloksService
         CancellationToken cancellationToken = default
     )
     {
-        if (_atxClient != null && await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (
+            _atxClient != null
+            && await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken)
+        )
         {
-            return await _atxClient.ExtractBloksFieldValueAsync(
-                index,
-                fieldLabel,
-                cancellationToken
-            );
+            return await _atxClient
+                .ForInstallation(customPath)
+                .ExtractBloksFieldValueAsync(index, fieldLabel, cancellationToken);
         }
 
         var screen = await DumpBloksScreenAsync(index, customPath, cancellationToken);
@@ -282,9 +305,14 @@ public class PFlowBloksService : IPFlowBloksService
         CancellationToken cancellationToken = default
     )
     {
-        if (_atxClient != null && await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (
+            _atxClient != null
+            && await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken)
+        )
         {
-            return await _atxClient.ExtractBloksAccountInfoAsync(index, cancellationToken);
+            return await _atxClient
+                .ForInstallation(customPath)
+                .ExtractBloksAccountInfoAsync(index, cancellationToken);
         }
 
         var screen = await DumpBloksScreenAsync(index, customPath, cancellationToken);

@@ -14,7 +14,7 @@ public class FacebookStackedCreateLayoutTests
         var xml = FacebookLayoutRegistryTests.Fixture(fixture);
         var match = FacebookLayoutRegistry.Match(xml, FacebookScreenKind.NewsFeed);
         Assert.True(match.IsMatch, match.Diagnostic);
-        Assert.Equal("feed.stacked-create.v1", match.VariantId);
+        Assert.Equal("feed.stacked-create.v2", match.VariantId);
         Assert.NotNull(match.Control(FacebookControlRole.Reel));
         Assert.NotNull(match.Control(FacebookControlRole.Story));
         Assert.NotNull(PFlowReelLayout.CreateEntry(xml));
@@ -87,7 +87,7 @@ public class FacebookStackedCreateLayoutTests
         );
         var match = FacebookLayoutRegistry.Match(doc.ToString(), FacebookScreenKind.NewsFeed);
         Assert.True(match.IsMatch, match.Diagnostic);
-        Assert.Equal("feed.stacked-create.v1", match.VariantId);
+        Assert.Equal("feed.stacked-create.v2", match.VariantId);
         Assert.Single(match.Controls, c => c.Role == FacebookControlRole.Story);
         Assert.Single(match.Controls, c => c.Role == FacebookControlRole.Reel);
         Assert.False(

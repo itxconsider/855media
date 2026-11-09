@@ -93,10 +93,14 @@ public partial class AutoPostViewModel
                 .Distinct()
                 .OrderBy(i => i)
                 .ToArray();
-            using var first = await PFlowDeviceLease.AcquireAsync(indices[0], timeout.Token);
+            using var first = await PFlowDeviceLease.AcquireAsync(
+                indices[0],
+                timeout.Token,
+                LdFolder
+            );
             using var second =
                 indices.Length > 1
-                    ? await PFlowDeviceLease.AcquireAsync(indices[1], timeout.Token)
+                    ? await PFlowDeviceLease.AcquireAsync(indices[1], timeout.Token, LdFolder)
                     : null;
             var accounts = await _accountStore.LoadAsync(timeout.Token);
             var account = accounts.Single(a => a.Binding == expected);
@@ -209,7 +213,10 @@ public partial class AutoPostViewModel
                 }
             }
             RefreshDisplayedManagePages();
-            await PFlowPageStorage.SavePagesAsync(Pages.Select(p => p.Model.CreateSnapshot()));
+            await PFlowPageStorage.SavePagesAsync(
+                Pages.Select(p => p.Model.CreateSnapshot()),
+                _pagesStoragePath
+            );
             foreach (var index in indices)
             {
                 InvalidatePostTargetSession(index);
@@ -220,7 +227,7 @@ public partial class AutoPostViewModel
             {
                 try
                 {
-                    new PFlowCredentialStore().Delete(credential);
+                    CreateCredentialStore().Delete(credential);
                 }
                 catch { }
             }

@@ -8,7 +8,10 @@ namespace _855Media.Core.LDPlayer;
 /// <summary>Only explicit details labels may open the read-only Page details route.</summary>
 internal static class PFlowPageDetailsNavigation
 {
-    internal static BloksElement? FindHeaderName(BloksScreenInfo screen, string name)
+    internal static BloksElement? FindHeaderName(BloksScreenInfo screen, string name) =>
+        FindHeaderNames(screen, name).FirstOrDefault();
+
+    internal static BloksElement[] FindHeaderNames(BloksScreenInfo screen, string name)
     {
         var controls = screen
             .AllElements.Where(e =>
@@ -26,7 +29,7 @@ internal static class PFlowPageDetailsNavigation
             )
             .ToArray();
         if (controls.Length == 0)
-            return null;
+            return [];
         // Page layouts can put an Edit profile pencil above the cover photo.
         // The dashboard/manage control below the name bounds the Page header;
         // that toolbar pencil must not hide the name from the details route.
@@ -49,7 +52,7 @@ internal static class PFlowPageDetailsNavigation
             )
             .OrderBy(e => e.Bounds.Top)
             .ThenBy(e => e.Width * e.Height)
-            .FirstOrDefault();
+            .ToArray();
     }
 
     private static string Normalize(string text) => Regex.Replace(text.Trim(), @"\s+", " ");

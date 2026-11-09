@@ -9,6 +9,93 @@ namespace _855Media.Core.Tests.Downloading;
 public class FileUtilsTests
 {
     [Fact]
+    public void DownloadPathBudgetReservesNativeToolSuffixesAndIsIdempotent()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+        var root = @"D:\repos\855Media\artifacts\instagram-import-live-20261109\downloads";
+        var path = FileUtils.SanitizeFilePath(
+            Path.Combine(root, "[0001] " + new string('x', 220) + ".mp4")
+        );
+        Assert.InRange(path.Length, 1, FileUtils.MaximumDownloadPathLength);
+        Assert.True((path + ".transcoded.mp4").Length < 260);
+        Assert.True((path + ".f137.mp4.part").Length < 260);
+        Assert.EndsWith(".mp4", path);
+        Assert.StartsWith("[0001]", Path.GetFileName(path));
+        Assert.Equal(path, FileUtils.SanitizeFilePath(path));
+    }
+
+    [Fact]
+    public void TruncatedLongCaptionsRemainDistinctAndUnicodeSafe()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+        var root = @"D:\repos\855Media\artifacts\instagram-import-live-20261109\downloads";
+        var first = FileUtils.SanitizeFilePath(
+            Path.Combine(root, new string('x', 210) + "first.mp4")
+        );
+        var second = FileUtils.SanitizeFilePath(
+            Path.Combine(root, new string('x', 210) + "second.mp4")
+        );
+        Assert.NotEqual(first, second);
+        var emojis = FileUtils.SanitizeFilePath(
+            Path.Combine(root, string.Concat(Enumerable.Repeat("💪", 120)) + ".mp4")
+        );
+        Assert.DoesNotContain(
+            "\uFFFD",
+            System.Text.Encoding.UTF8.GetString(System.Text.Encoding.UTF8.GetBytes(emojis))
+        );
+        Assert.False(
+            char.IsHighSurrogate(FileUtils.SanitizeFileName(new string('x', 199) + "💪")[^1])
+        );
+    }
+
+    [Fact]
+    public void DeepDestinationFailsClearlyButShortFileThatFitsIsAllowed()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+        var deep = @"D:\" + new string('d', 220);
+        Assert.Throws<PathTooLongException>(() =>
+            FileUtils.SanitizeFilePath(Path.Combine(deep, "too-long-name.mp4"))
+        );
+        var shortPath = FileUtils.SanitizeFilePath(
+            Path.Combine(@"D:\" + new string('d', 215), "v.mp4")
+        );
+        Assert.EndsWith("v.mp4", shortPath);
+    }
+
+    [Fact]
+    public void CollisionReservationsKeepSafeStablePathsAndExistingBytes()
+    {
+        var root = Path.Combine(
+            Path.GetTempPath(),
+            "855-path-budget-" + Guid.NewGuid().ToString("N")
+        );
+        Directory.CreateDirectory(root);
+        try
+        {
+            var requested = Path.Combine(root, new string('x', 200) + ".mp4");
+            var reserved = FileUtils.GetAvailableDownloadFilePath(requested);
+            File.WriteAllText(reserved, "keep-existing");
+            var next = FileUtils.GetAvailableDownloadFilePath(requested);
+            Assert.NotEqual(reserved, next);
+            Assert.Equal(next, FileUtils.SanitizeFilePath(next));
+            File.WriteAllText(next, "keep-second");
+            var third = FileUtils.GetAvailableDownloadFilePath(requested);
+            Assert.NotEqual(next, third);
+            Assert.Equal("keep-existing", File.ReadAllText(reserved));
+            Assert.Equal("keep-second", File.ReadAllText(next));
+            if (OperatingSystem.IsWindows())
+                Assert.True((third + ".transcoded.mp4").Length < 260);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
     public async Task ReplaceFileWithRetryAsync_AtomicallyOverwritesExistingDestination()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));

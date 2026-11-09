@@ -30,14 +30,14 @@ public class AdbKeyboardService : IAdbKeyboardService
         CancellationToken cancellationToken = default
     )
     {
-        if (_atxClient != null && await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (
+            _atxClient != null
+            && await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken)
+        )
         {
-            return await _atxClient.InputTextAdbKeyboardAsync(
-                index,
-                text,
-                clearFirst,
-                cancellationToken
-            );
+            return await _atxClient
+                .ForInstallation(customPath)
+                .InputTextAdbKeyboardAsync(index, text, clearFirst, cancellationToken);
         }
 
         // Ensure ADB Keyboard is active IME before broadcasting
@@ -68,9 +68,14 @@ public class AdbKeyboardService : IAdbKeyboardService
         CancellationToken cancellationToken = default
     )
     {
-        if (_atxClient != null && await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (
+            _atxClient != null
+            && await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken)
+        )
         {
-            return await _atxClient.ClearTextAdbKeyboardAsync(index, cancellationToken);
+            return await _atxClient
+                .ForInstallation(customPath)
+                .ClearTextAdbKeyboardAsync(index, cancellationToken);
         }
 
         var output = await _ldPlayer.ExecuteAdbAsync(
@@ -89,13 +94,14 @@ public class AdbKeyboardService : IAdbKeyboardService
         CancellationToken cancellationToken = default
     )
     {
-        if (_atxClient != null && await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (
+            _atxClient != null
+            && await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken)
+        )
         {
-            return await _atxClient.SendAdbKeyboardEditorActionAsync(
-                index,
-                action,
-                cancellationToken
-            );
+            return await _atxClient
+                .ForInstallation(customPath)
+                .SendAdbKeyboardEditorActionAsync(index, action, cancellationToken);
         }
 
         var output = await _ldPlayer.ExecuteAdbAsync(
@@ -114,9 +120,14 @@ public class AdbKeyboardService : IAdbKeyboardService
         CancellationToken cancellationToken = default
     )
     {
-        if (_atxClient != null && await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (
+            _atxClient != null
+            && await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken)
+        )
         {
-            return await _atxClient.SendAdbKeyboardCodeAsync(index, keyCode, cancellationToken);
+            return await _atxClient
+                .ForInstallation(customPath)
+                .SendAdbKeyboardCodeAsync(index, keyCode, cancellationToken);
         }
 
         var output = await _ldPlayer.ExecuteAdbAsync(
@@ -134,9 +145,14 @@ public class AdbKeyboardService : IAdbKeyboardService
         CancellationToken cancellationToken = default
     )
     {
-        if (_atxClient != null && await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (
+            _atxClient != null
+            && await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken)
+        )
         {
-            return await _atxClient.IsAdbKeyboardInstalledAsync(index, cancellationToken);
+            return await _atxClient
+                .ForInstallation(customPath)
+                .IsAdbKeyboardInstalledAsync(index, cancellationToken);
         }
 
         var output = await _ldPlayer.ExecuteAdbAsync(
@@ -155,9 +171,14 @@ public class AdbKeyboardService : IAdbKeyboardService
         CancellationToken cancellationToken = default
     )
     {
-        if (_atxClient != null && await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (
+            _atxClient != null
+            && await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken)
+        )
         {
-            return await _atxClient.IsAdbKeyboardActiveAsync(index, cancellationToken);
+            return await _atxClient
+                .ForInstallation(customPath)
+                .IsAdbKeyboardActiveAsync(index, cancellationToken);
         }
 
         var output = await _ldPlayer.ExecuteAdbAsync(
@@ -166,8 +187,7 @@ public class AdbKeyboardService : IAdbKeyboardService
             customPath,
             cancellationToken
         );
-        return !string.IsNullOrWhiteSpace(output)
-            && output.Contains(AdbKeyboardConstants.ImeComponent);
+        return AndroidKeyboardActivator.IsHelper(output);
     }
 
     public async Task<bool> EnableAdbKeyboardAsync(
@@ -176,18 +196,33 @@ public class AdbKeyboardService : IAdbKeyboardService
         CancellationToken cancellationToken = default
     )
     {
-        if (_atxClient != null && await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (
+            _atxClient != null
+            && await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken)
+        )
         {
-            return await _atxClient.EnableAdbKeyboardAsync(index, cancellationToken);
+            return await _atxClient
+                .ForInstallation(customPath)
+                .EnableAdbKeyboardAsync(index, cancellationToken);
         }
 
-        var output = await _ldPlayer.ExecuteAdbAsync(
-            index,
-            $"shell ime enable {AdbKeyboardConstants.ImeComponent} && ime set {AdbKeyboardConstants.ImeComponent} && settings put secure default_input_method {AdbKeyboardConstants.ImeComponent}",
-            customPath,
-            cancellationToken
+        return await AndroidKeyboardActivator.EnableAsync(
+            async (command, ct) =>
+            {
+                var output = await _ldPlayer.ExecuteAdbAsync(
+                    index,
+                    "shell " + command,
+                    customPath,
+                    ct
+                );
+                return (
+                    !string.IsNullOrWhiteSpace(output) || command.StartsWith("settings put "),
+                    output ?? string.Empty
+                );
+            },
+            cancellationToken,
+            (detail, ct) => PFlowTrace.SessionAsync(index, "keyboard.activation", detail, ct)
         );
-        return !string.IsNullOrWhiteSpace(output);
     }
 
     public async Task<bool> InstallAdbKeyboardAsync(

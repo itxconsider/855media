@@ -9,10 +9,20 @@ namespace _855Media.Core.Tests.LDPlayer;
 
 public class AdbKeyboardServiceTests
 {
+    [Theory]
+    [InlineData("com.android.adbkeyboard/com.android.adbkeyboard.AdbIME", true)]
+    [InlineData("com.android.adbkeyboard/.AdbIME.extra", false)]
+    public async Task ActiveKeyboardRequiresExactCanonicalComponent(string response, bool expected)
+    {
+        var service = new AdbKeyboardService(new FakeLdPlayerService { AdbResponse = response });
+        Assert.Equal(expected, await service.IsAdbKeyboardActiveAsync(11));
+    }
+
     private class FakeLdPlayerService : LDPlayerService
     {
         public List<string> ExecutedCommands { get; } = new();
         public string AdbResponse { get; set; } = "OK";
+        public Func<string, string>? ResponseForCommand { get; set; }
 
         public override Task<string> ExecuteAdbAsync(
             int index,
@@ -22,7 +32,7 @@ public class AdbKeyboardServiceTests
         )
         {
             ExecutedCommands.Add(adbCommand);
-            return Task.FromResult(AdbResponse);
+            return Task.FromResult(ResponseForCommand?.Invoke(adbCommand) ?? AdbResponse);
         }
     }
 
@@ -98,12 +108,28 @@ public class AdbKeyboardServiceTests
     [Fact]
     public async Task EnableAdbKeyboardAsync_EnablesAndSetsIme()
     {
-        var fake = new FakeLdPlayerService();
+        var fake = new FakeLdPlayerService
+        {
+            ResponseForCommand = command =>
+                command switch
+                {
+                    "shell ime list -a -s" => AdbKeyboardConstants.ImeComponent,
+                    "shell settings get secure default_input_method" =>
+                        AdbKeyboardConstants.ImeComponent,
+                    _ => "OK",
+                },
+        };
         var service = new AdbKeyboardService(fake);
 
         var result = await service.EnableAdbKeyboardAsync(0);
 
         Assert.True(result);
+        Assert.Equal("shell ime list -a -s", fake.ExecutedCommands[0]);
+        Assert.Equal("shell settings get secure default_input_method", fake.ExecutedCommands[^1]);
+        Assert.Contains(
+            "shell ime set " + AdbKeyboardConstants.ImeComponent,
+            fake.ExecutedCommands
+        );
         Assert.Contains(
             fake.ExecutedCommands,
             cmd => cmd.Contains("ime enable") && cmd.Contains(AdbKeyboardConstants.ImeComponent)

@@ -28,7 +28,7 @@ public class FacebookTabbedReelLayoutTests
         var xml = FacebookLayoutRegistryTests.Fixture("reel-picker-tabbed-screenshot");
         var match = FacebookLayoutRegistry.Match(xml, FacebookScreenKind.ReelPicker);
         Assert.True(match.IsMatch, match.Diagnostic);
-        Assert.Equal("reel.picker-tabbed.v1", match.VariantId);
+        Assert.Equal("reel.picker-tabbed.v2", match.VariantId);
         Assert.Empty(match.Controls);
         Assert.False(FacebookLayoutRegistry.Match(xml, FacebookScreenKind.StoryPicker).IsMatch);
         Assert.False(FacebookLayoutRegistry.Match(xml, FacebookScreenKind.ReelEditor).IsMatch);

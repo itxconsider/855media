@@ -1,0 +1,9 @@
+# Groups = 0
+
+Validated implementation (2026-10-29): Groups selector accepts 0–5 independently of Files (1–5), preserves explicit zero in configuration reload and uses six keypad columns. With Reel Part grouping enabled, zero excludes every Part-marked filename, applies reservations and selects standalone videos using Files count and the existing Random/name/date order. Saved unfinished Part plans remain untouched and are not resumed by zero-group preparation. With photo grouping enabled, zero selects only single-photo caption groups using Files count. Ordinary ungrouped targets are unchanged. Daily capacity still caps selected posts.
+
+Example: Files=3, Groups=0 selects up to three standalone videos, without selecting or separating Part series.
+
+Core validation: 79 focused file/Part/photo-group checks passed, including three new standalone/reservation/order cases in artifacts/zero-groups/focused.trx. Updated the desktop queue diagnostic to cover six keys, zero reload, mixed standalone/Part/photo fixtures, unchanged pending plans and repeat reservations; all these desktop checks passed with isolated synthetic stores. The six-key selector and selected zero were rendered at 1280/900px; both layouts were visually checked.
+
+Main Debug 3.2.3 and diagnostic builds passed with zero warnings/errors after the user explicitly closed the app and fresh process checks verified absence. The earlier request to keep the app running was honored. Desktop evidence: artifacts/zero-groups/desktop-validation.txt and artifacts/queue-selection/selection-900.png / selection-1280.png. No alternate desktop build, process termination, live device action, publication, production data edit or package was performed. One improvement credited once; release counter is 9/10 toward 3.2.4. Existing ZIPs unchanged.

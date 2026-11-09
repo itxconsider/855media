@@ -12,7 +12,9 @@ public static class PFlowQueueRetry
             job == null
             || !job.CanRetry
             || history.Any(j =>
-                j.JobId != job.JobId && j.DuplicateKey == job.DuplicateKey && !j.CanRetry
+                j.JobId != job.JobId
+                && (j.DuplicateKey == job.DuplicateKey || j.OverlapsMedia(job))
+                && !j.CanRetry
             )
         )
             return false;

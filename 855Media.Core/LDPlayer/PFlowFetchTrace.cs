@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 namespace _855Media.Core.LDPlayer;
 
 /// <summary>
-/// Small persistent trace for Facebook root-shell and UI discovery. Values such
+/// Small persistent trace for Facebook native UI discovery. Values such
 /// as email addresses, long account IDs, and full dates are redacted before
 /// writing so the log explains the route without duplicating account data.
 /// </summary>

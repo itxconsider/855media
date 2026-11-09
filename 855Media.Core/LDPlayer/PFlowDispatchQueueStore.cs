@@ -147,6 +147,8 @@ public sealed class PFlowDispatchQueueStore(string? path = null)
 
     public static string HistoryStatus(PFlowJob job)
     {
+        if (job.ScheduledVerified)
+            return "Scheduled: " + job.Schedule!.Display;
         if (
             job.TargetIdentityConfirmationRequired
             && job.State != PFlowState.CancelledBeforeSubmission
@@ -163,7 +165,9 @@ public sealed class PFlowDispatchQueueStore(string? path = null)
         if (job.HasFacebookPublicationFailure)
             return "Failed: " + job.Error;
         if (job.RequiresPublicationReviewBeforeCleanup)
-            return "Unknown (Publication needs review)";
+            return job.Schedule != null
+                ? "Unknown (Schedule needs review; do not resubmit)"
+                : "Unknown (Publication needs review)";
         if (
             job.State
             is PFlowState.Confirmed

@@ -46,6 +46,102 @@ public class PFlowMediaAccessTests
             Node("Allow", true)
         );
 
+    private static string CameraRollDialog() =>
+        Xml(
+            Node("Allow Facebook to access your camera roll?"),
+            Node(
+                "This lets you share from your camera roll, and enables other features for photos and videos."
+            ),
+            Node("Deny", true),
+            Node("Allow", true)
+        );
+
+    [Fact]
+    public void CapturedLd14DialogSelectsItsExactAllowControl()
+    {
+        var xml = FacebookLayoutRegistryTests.Fixture("ld14-camera-roll-dialog");
+        var control = PFlowMediaAccess.FindControl(xml, Facebook);
+        Assert.NotNull(control);
+        Assert.Equal("facebook-camera-roll", control.Kind);
+        Assert.InRange(control.X, 529, 646);
+        Assert.InRange(control.Y, 759, 855);
+    }
+
+    [Fact]
+    public void CameraRollDialogIsDistinctFromTheUnderlyingAccessButton()
+    {
+        var combined = new XElement(
+            "hierarchy",
+            XElement.Parse(Intro()).Elements(),
+            XElement.Parse(CameraRollDialog()).Elements()
+        ).ToString();
+        Assert.Equal(
+            "facebook-camera-roll",
+            PFlowMediaAccess.FindControl(combined, Facebook)?.Kind
+        );
+        Assert.Null(
+            PFlowMediaAccess.FindControl(
+                CameraRollDialog().Replace("camera roll", "microphone"),
+                Facebook
+            )
+        );
+        Assert.Null(
+            PFlowMediaAccess.FindControl(
+                CameraRollDialog().Replace(Facebook, "another.app"),
+                Facebook
+            )
+        );
+    }
+
+    [Fact]
+    public async Task Android14SequenceHandlesAllThreePrompts()
+    {
+        var package = "com.android.permissioncontroller";
+        var permission = Xml(
+            Node("Allow Facebook to access photos and videos on this device?", package: package),
+            Node(
+                "SELECT PHOTOS AND VIDEOS",
+                true,
+                package,
+                package + ":id/permission_allow_selected_button"
+            ),
+            Node("ALLOW ALL", true, package, package + ":id/permission_allow_all_button"),
+            Node("DON’T ALLOW", true, package, package + ":id/permission_deny_button")
+        );
+        Assert.Equal("android-media", PFlowMediaAccess.FindControl(permission, Facebook)?.Kind);
+        var ld = DispatchProxy.Create<ILDPlayerService, PermissionDevice>();
+        var device = (PermissionDevice)(object)ld;
+        device.Screens = new Queue<string>(
+            new[] { CameraRollDialog(), permission, "<hierarchy/>" }
+        );
+        await PFlowMediaAccess.CompleteAsync(
+            ld,
+            5,
+            Facebook,
+            null,
+            Intro(),
+            default,
+            (_, _) => Task.CompletedTask
+        );
+        Assert.Equal(3, device.Taps);
+    }
+
+    [Fact]
+    public void CameraRollDialogRejectsDisabledOrAmbiguousAllow()
+    {
+        Assert.Null(
+            PFlowMediaAccess.FindControl(
+                CameraRollDialog().Replace("enabled=\"true\"", "enabled=\"false\""),
+                Facebook
+            )
+        );
+        var xml = XElement.Parse(CameraRollDialog());
+        var other = Node("Allow", true);
+        other.SetAttributeValue("bounds", "[20,200][200,260]");
+        xml.Add(other);
+        Assert.Null(PFlowMediaAccess.FindControl(xml.ToString(), Facebook));
+    }
+
     internal static string Permission(
         string message = "Allow Facebook to access photos, media, and files on your device?"
     ) =>

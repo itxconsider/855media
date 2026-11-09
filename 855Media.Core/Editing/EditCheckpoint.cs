@@ -27,7 +27,7 @@ internal static class EditCheckpoint
 
     internal static string RenderKey(EditJob job) =>
         Key(
-            "source-limited-native-export-v1",
+            "source-limited-native-export-metadata-v3",
             SourceKey(job.FilePath),
             job.TargetResolution,
             job.TargetAspectRatio,
@@ -35,6 +35,7 @@ internal static class EditCheckpoint
             job.HardwareAcceleration,
             job.ColorGrading?.BuildFilterString(),
             job.CameraMetadata,
+            job.MetadataTitle,
             job.EnableDenoise,
             job.EnableDeinterlace,
             job.EnableMicroZoom,

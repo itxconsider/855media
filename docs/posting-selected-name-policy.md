@@ -1,0 +1,11 @@
+# Posting identity from selected switcher name/type
+
+2026-10-25. User explicitly removed the own-profile button requirement from posting identity.
+
+Posting selection now skips the old Edit profile/Dashboard destination gate, reopens the native switcher and scans its complete Facebook list. A uniquely selected actor must have the exact complete normalized database name and expected inferred Page/Profile type. Runtime proof retains the database account/install/device binding and Facebook process; stored numeric IDs are routing/history keys, not live UID evidence. Fresh selected-row verification is also used by repeat/publication identity checks. Consecutive confirmed jobs retain the existing safe process-bound continuation.
+
+Personal startup/login/rotation recovery in posting mode uses selected personal switcher evidence without asserting own-profile controls or a live UID. An already-active Page can still be retained when its complete switcher identifies the saved personal owner. After activation, a safe surface grants posting continuation without a second own-profile-button check. Ambiguous names, wrong types, unsafe/auth/input/foreign screens, changed process/bindings and incomplete switcher evidence remain rejected. Graph-bound/default account, Fetch and ScreenTime policies and publication content/count/upload proof remain unchanged.
+
+Validation: six new cases cover buttonless posting entry, complete selected-name/type rejection and captured unbadged selected Page proof. Updated native simulations use real captured switcher XML; ten consecutive Reel identity checks and target changes perform no Graph/UID/authentication reads. All 288 focused tests passed, zero skipped. Main Debug build Version=3.1.9 passed with zero warnings/errors; a fresh process check found the app already closed before building. No app was killed/restarted and no live post/package was made. Live Facebook publication with this revised policy is still unvalidated.
+
+Reports: `artifacts/posting-switcher-name/focused-final.trx`. Early offline simulations logged LD-55 labels, but used only DispatchProxy fake devices; final simulations use synthetic LD-900755 to distinguish them from device runs.

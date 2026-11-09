@@ -45,7 +45,7 @@ public class PFlowFetchForegroundTests
             )
         );
         Assert.Equal(2, fake.Launches);
-        Assert.Contains("Root account data is saved", error.Message);
+        Assert.Contains("Saved account data was retained", error.Message);
     }
 
     [Fact]

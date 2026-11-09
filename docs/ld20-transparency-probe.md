@@ -1,0 +1,11 @@
+# LD-20 Page Transparency investigation — 2026-10-27
+
+Latest desktop run at 13:08:59–13:09:09 confirmed Caprani Plumbing+ own profile but returned no creation date from the header/transparency route. Analytics still completed. That run did not record the intermediate hierarchy or individual tap outcome, so its exact failed UI state cannot be determined from the log.
+
+User-authorized production reader probe at 13:13:47–13:13:50 succeeded: header tap (334,644), name details sheet exposing Transparency and privacy policy, tap (360,915), then Page transparency with the expected name and Created - 885media / September 20, 2026. Both owned sheets closed and original actor restoration passed. Managed Graph requests zero. This demonstrates the existing route can tap the control in this layout; no consistent missing-label mismatch was reproduced.
+
+Code weakness: `ReadTransparencyAsync` uses the first available entry bounds without a final fresh resolution, attempts one tap, and waits eight 400ms confirmation polls before returning unavailable. It does not retry an acknowledged tap that leaves the same confirmed details sheet visible. Slow rendering/animation or stale bounds is a plausible explanation for the earlier intermittent failure, not proven without its failed-frame capture. Fresh control resolution, a longer bounded transition wait and one guarded retry on the same details sheet would address that race without repeating unrelated actions.
+
+Additional identity observation: the native Page transparency screen explicitly shows `Page ID 1356708460856148`. The copied own profile link resolves `61594246817570`. These are distinct canonical Page and profile/persona IDs; the current fetched row uses the profile-link number for both. This investigation does not change stored IDs or implement canonical reconciliation.
+
+Evidence: `artifacts/ld20-transparency-probe/probe.log`, `frame-01.xml` through `frame-03.xml`, result/final captures. Diagnostic-only `--transparency-probe` executes the production own-profile details reader through a forwarding observation proxy. Build zero warnings/errors; no main rebuild, production fix/data edit, post, LD-56 action, package or release credit. Counter remains 30/10.

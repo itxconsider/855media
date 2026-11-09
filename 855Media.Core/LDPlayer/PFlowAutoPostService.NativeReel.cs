@@ -51,6 +51,8 @@ public partial class PFlowAutoPostService
             "shell content query --uri content://media/external/file --projection _id:_data:_display_name:_size:mime_type:bucket_display_name:media_type:duration --where "
             + ShellQuote("bucket_display_name='" + album + "'");
         var awaitingMediaAccess = false;
+        var mediaSelectionAttempted = false;
+        string? selectedTabbedAlbum = null;
         async Task<string> Observe()
         {
             var xml = await _ldPlayer.DumpUiHierarchyAsync(job.DeviceIndex, path, ct) ?? "";
@@ -63,8 +65,13 @@ public partial class PFlowAutoPostService
                     xml,
                     ct
                 );
+            for (var retry = 0; !ScreenTimeHierarchy.Nodes(xml).Any() && retry < 3; retry++)
+            {
+                await Task.Delay(400, ct);
+                xml = await _ldPlayer.DumpUiHierarchyAsync(job.DeviceIndex, path, ct) ?? "";
+            }
             if (!ScreenTimeHierarchy.Nodes(xml).Any())
-                throw new NativeReelUnavailable("Empty UI hierarchy");
+                throw new NativeReelUnavailable("Empty UI hierarchy after bounded retries");
             if (
                 PFlowLoginScreen.RequiresAuthentication(PFlowLoginScreen.Classify(xml))
                 || ScreenTimeHierarchy
@@ -81,13 +88,25 @@ public partial class PFlowAutoPostService
                 .Distinct()
                 .ToArray();
             if (packages.Any(p => p != job.AppPackage))
+            {
+                await PFlowDiagnostics.CaptureAsync(
+                    _ldPlayer,
+                    job.DeviceIndex,
+                    "native-reel-foreign-screen",
+                    path
+                );
                 throw new InvalidOperationException(
                     "Native Reel navigation reached another app; no fallback attempted."
                 );
+            }
             return xml;
         }
-        async Task Tap(XElement? node)
+        async Task Tap(Func<string, XElement?> resolve)
         {
+            var fresh = await Observe();
+            if (IsComposer(fresh, job.PostType))
+                throw new NativeReelUnavailable("Composer replaced a native navigation control");
+            var node = resolve(fresh);
             var point = node == null ? null : PFlowStoryLayout.ControlCenter(node);
             if (
                 point == null
@@ -193,9 +212,7 @@ public partial class PFlowAutoPostService
             // Never continue a previous job's existing draft/editor.
             if (
                 !PFlowPostTargetSession.HasOwnProfile(job, xml)
-                && !(
-                    continuedSession && PFlowPostTargetSession.CanContinueFrom(xml, job.AppPackage)
-                )
+                && !(continuedSession && PFlowPostTargetSession.CanContinueForJob(job, xml))
             )
                 throw new InvalidOperationException(
                     "Native Reel initial target profile was not confirmed."
@@ -228,7 +245,10 @@ public partial class PFlowAutoPostService
                 entry = feedEntry.Reel;
                 if (entry == null)
                 {
-                    var create = feedEntry.Create;
+                    var freshFeed = await Observe();
+                    var create = FacebookLayoutRegistry
+                        .Match(freshFeed, FacebookScreenKind.NewsFeed)
+                        .Control(FacebookControlRole.Create);
                     if (
                         create == null
                         || !await _ldPlayer.TapAsync(job.DeviceIndex, create.X, create.Y, path, ct)
@@ -241,7 +261,7 @@ public partial class PFlowAutoPostService
                 }
             }
             navigated = true;
-            await Tap(entry);
+            await Tap(PFlowReelLayout.CreateEntry);
             awaitingMediaAccess = true;
             try
             {
@@ -251,7 +271,38 @@ public partial class PFlowAutoPostService
             {
                 awaitingMediaAccess = false;
             }
-            await Tap(PFlowStoryLayout.Dropdown(xml));
+            var tabbedPicker = PFlowReelLayout.IsTabbedPicker(new FacebookLayoutObservation(xml));
+            if (tabbedPicker)
+            {
+                // Select can overlap Albums until the horizontal tab strip is revealed.
+                var freshTabs = await Observe();
+                var strip =
+                    PFlowReelLayout.AlbumTabsBounds(freshTabs)
+                    ?? throw new NativeReelUnavailable("Reel album tab strip unavailable");
+                if (
+                    !await _ldPlayer.SwipeAsync(
+                        job.DeviceIndex,
+                        strip.Left + (strip.Right - strip.Left) * 2 / 3,
+                        (strip.Top + strip.Bottom) / 2,
+                        strip.Left + (strip.Right - strip.Left) / 6,
+                        (strip.Top + strip.Bottom) / 2,
+                        400,
+                        path,
+                        ct
+                    )
+                )
+                    throw new NativeReelUnavailable("Reel album tab reveal not acknowledged");
+                await Task.Delay(500, ct);
+                await Tap(fresh =>
+                    FacebookLayoutRegistry
+                        .Match(fresh, FacebookScreenKind.ReelPicker)
+                        .Control(FacebookControlRole.Albums) != null
+                        ? PFlowReelLayout.AlbumsTab(fresh)
+                        : null
+                );
+            }
+            else
+                await Tap(PFlowStoryLayout.Dropdown);
             xml = await WaitFor(FacebookScreenKind.StoryAlbums);
             var albumFound = false;
             for (var attempt = 0; attempt < 12; attempt++)
@@ -259,7 +310,17 @@ public partial class PFlowAutoPostService
                 var row = PFlowStoryLayout.Album(xml, album);
                 if (row != null)
                 {
-                    await Tap(row);
+                    await Tap(fresh =>
+                    {
+                        var exact = PFlowStoryLayout.Album(fresh, album);
+                        return
+                            !tabbedPicker
+                            || exact?.Attribute("content-desc")?.Value == album + ", 1, Media"
+                            ? exact
+                            : null;
+                    });
+                    if (tabbedPicker)
+                        selectedTabbedAlbum = album;
                     albumFound = true;
                     break;
                 }
@@ -290,7 +351,7 @@ public partial class PFlowAutoPostService
             {
                 xml = await WaitFor(FacebookScreenKind.ReelPicker);
                 indexed = await Index();
-                if (PFlowReelLayout.Media(xml, indexed) == null)
+                if (PFlowReelLayout.Media(xml, indexed, selectedTabbedAlbum) == null)
                     throw new NativeReelUnavailable(
                         "Native Reel picker did not expose exactly the verified job media"
                     );
@@ -301,7 +362,9 @@ public partial class PFlowAutoPostService
             xml = await Observe();
             if (!FacebookLayoutRegistry.Match(xml, FacebookScreenKind.ReelPicker).IsMatch)
                 throw new NativeReelUnavailable("Reel picker changed before selection");
-            await Tap(PFlowReelLayout.Media(xml, indexed));
+            job.MediaSelectionEvidence = "";
+            mediaSelectionAttempted = true;
+            await Tap(fresh => PFlowReelLayout.Media(fresh, indexed, selectedTabbedAlbum));
             job.MediaSelectionEvidence =
                 $"Bloks Reel picker; album={album}; mediaId={indexed.MediaId}; size={indexed.Size}; sha256={job.Sha256}";
             var editorWait = Stopwatch.StartNew();
@@ -341,7 +404,44 @@ public partial class PFlowAutoPostService
                 var next = match.Control(FacebookControlRole.Continue);
                 if (match.IsMatch && next != null)
                 {
-                    if (!await _ldPlayer.TapAsync(job.DeviceIndex, next.X, next.Y, path, ct))
+                    // Bloks may replace Next with Share between frames. Never reuse
+                    // coordinates from the previous editor observation.
+                    var fresh = await Observe();
+                    if (IsComposer(fresh, job.PostType))
+                        return fresh;
+                    if (
+                        FindVisiblePublishControl(
+                            fresh,
+                            ["Share now", "Share", "Publish"],
+                            requireEnabled: false
+                        ) != null
+                    )
+                        throw new NativeReelUnavailable(
+                            "Publish control appeared during native editor navigation"
+                        );
+                    var freshEditor = FacebookLayoutRegistry.Match(
+                        fresh,
+                        FacebookScreenKind.ReelEditor
+                    );
+                    var freshNext = freshEditor.Control(FacebookControlRole.Continue);
+                    if (
+                        !freshEditor.IsMatch
+                        || freshNext == null
+                        || IsReelEditorProcessing(fresh, job.AppPackage)
+                    )
+                    {
+                        await Task.Delay(400, ct);
+                        continue;
+                    }
+                    if (
+                        !await _ldPlayer.TapAsync(
+                            job.DeviceIndex,
+                            freshNext.X,
+                            freshNext.Y,
+                            path,
+                            ct
+                        )
+                    )
                         throw new NativeReelUnavailable("Native Reel Next tap not acknowledged");
                 }
                 if (!processingSeen && editorWait.Elapsed >= TimeSpan.FromSeconds(20))
@@ -415,17 +515,58 @@ public partial class PFlowAutoPostService
                 "native-reel-unavailable",
                 path
             );
-            job.MediaSelectionEvidence = "";
             if (job.MayHaveSubmitted)
                 throw new InvalidOperationException(
                     "Reel fallback is prohibited after submission."
                 );
+            if (mediaSelectionAttempted)
+            {
+                // A transient accessibility failure must not open a second share intent
+                // after selecting this job's media. Reuse only its verified composer.
+                string recovered;
+                try
+                {
+                    recovered = await Observe();
+                }
+                catch (NativeReelUnavailable)
+                {
+                    recovered = "";
+                }
+                if (
+                    !string.IsNullOrEmpty(job.MediaSelectionEvidence)
+                    && IsComposer(recovered, job.PostType)
+                )
+                {
+                    await PFlowJobBindingGuard.RequireAsync(_ldPlayer, job, path, ct);
+                    await VerifyBytes();
+                    await PFlowTrace.SessionAsync(
+                        job.DeviceIndex,
+                        "reel.route",
+                        "route=Bloks; recoveredComposer=true; secondIntent=false",
+                        ct
+                    );
+                    return recovered;
+                }
+                job.State = PFlowState.Unknown;
+                PFlowPublicationTracking.Transition(
+                    job,
+                    PFlowPublicationStage.Unconfirmed,
+                    "Native media selected; navigation outcome uncertain; second share intent prohibited"
+                );
+                job.Error =
+                    "Native Reel navigation became uncertain after media selection. No Android fallback was opened; review Facebook before retrying.";
+                job.RemoteCleanupState = "Held for publication review";
+                job.LocalDeleteState = "Held for publication review";
+                await checkpoint(job);
+                throw new InvalidOperationException(job.Error, failure);
+            }
+            job.MediaSelectionEvidence = "";
             // Do not open a second composer until the previous navigation is closed
             // and the same target's own profile is freshly observed again.
             bool ContinuedFeed(string xml) =>
                 continuedSession
                 && !navigated
-                && PFlowPostTargetSession.CanContinueFrom(xml, job.AppPackage);
+                && PFlowPostTargetSession.CanContinueForJob(job, xml);
             var fallbackStart = await Observe();
             if (
                 navigated

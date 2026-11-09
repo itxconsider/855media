@@ -258,8 +258,11 @@ public class AtxAgentClientTests
         await client.OpenDeepLinkAsync(0, "fb://feed", "com.facebook.katana");
         Assert.Contains("am+start+-a+android.intent.action.VIEW+-d", lastCommand);
 
-        await client.ClearAppCacheAsync(0, "com.facebook.katana");
-        Assert.Contains("rm+-rf", lastCommand);
+        var previous = lastCommand;
+        await Assert.ThrowsAsync<NotSupportedException>(() =>
+            client.ClearAppCacheAsync(0, "com.facebook.katana")
+        );
+        Assert.Equal(previous, lastCommand);
     }
 
     [Fact]

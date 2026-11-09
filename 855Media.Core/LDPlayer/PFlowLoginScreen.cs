@@ -73,6 +73,33 @@ public static class PFlowLoginScreen
                         )
                     )
                 );
+            bool VisibleLabel(string label) =>
+                nodes.Any(n =>
+                    !n.AncestorsAndSelf("node")
+                        .Any(a => (string?)a.Attribute("visible-to-user") == "false")
+                    && (
+                        (string?)n.Attribute("text") == label
+                        || (string?)n.Attribute("content-desc") == label
+                    )
+                );
+            if (
+                VisibleLabel("Confirm you're a real person with a video selfie")
+                && VisibleLabel("We need more info to make sure you're human.")
+                && nodes.Any(n =>
+                    (string?)n.Attribute("clickable") == "true"
+                    && (string?)n.Attribute("enabled") == "true"
+                    && (
+                        (string?)n.Attribute("text") == "Start video selfie"
+                        || (string?)n.Attribute("content-desc") == "Start video selfie"
+                    )
+                    && !n.AncestorsAndSelf("node")
+                        .Any(a =>
+                            (string?)a.Attribute("visible-to-user") == "false"
+                            || (string?)a.Attribute("enabled") == "false"
+                        )
+                )
+            )
+                return PFlowLoginScreenKind.Checkpoint;
             if (
                 nodes.Any(n =>
                     (

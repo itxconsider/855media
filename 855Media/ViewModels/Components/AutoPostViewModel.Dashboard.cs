@@ -13,19 +13,44 @@ public partial class AutoPostViewModel
 {
     private readonly HashSet<INotifyPropertyChanged> _dashboardRows = [];
     private CoalescedAction? _dashboardRefresh;
-    public int PFlowQueuedCount => Tasks.Count(t => t.Status == "Queued");
-    public int PFlowConfirmedCount =>
-        Tasks.Count(t => t.Status.StartsWith("Confirmed", StringComparison.OrdinalIgnoreCase));
-    public int PFlowReviewCount =>
-        Tasks.Count(t =>
-            t.Status.StartsWith("Unknown", StringComparison.OrdinalIgnoreCase)
-            || t.Status.StartsWith(
-                "Blocked: Page phone verification",
-                StringComparison.OrdinalIgnoreCase
-            )
-        );
-    public int PFlowFailedCount =>
-        Tasks.Count(t => t.Status.StartsWith("Failed", StringComparison.OrdinalIgnoreCase));
+    private bool _queueCountsDirty = true;
+    private (int Queued, int Confirmed, int Review, int Failed) _queueCounts;
+    private (int Queued, int Confirmed, int Review, int Failed) QueueCounts
+    {
+        get
+        {
+            if (!_queueCountsDirty)
+                return _queueCounts;
+            var queued = 0;
+            var confirmed = 0;
+            var review = 0;
+            var failed = 0;
+            foreach (var task in Tasks)
+            {
+                var status = task.Status;
+                if (status == "Queued")
+                    queued++;
+                if (status.StartsWith("Confirmed", StringComparison.OrdinalIgnoreCase))
+                    confirmed++;
+                if (status.StartsWith("Failed", StringComparison.OrdinalIgnoreCase))
+                    failed++;
+                if (
+                    status.StartsWith("Unknown", StringComparison.OrdinalIgnoreCase)
+                    || status.StartsWith(
+                        "Blocked: Page phone verification",
+                        StringComparison.OrdinalIgnoreCase
+                    )
+                )
+                    review++;
+            }
+            _queueCountsDirty = false;
+            return _queueCounts = (queued, confirmed, review, failed);
+        }
+    }
+    public int PFlowQueuedCount => QueueCounts.Queued;
+    public int PFlowConfirmedCount => QueueCounts.Confirmed;
+    public int PFlowReviewCount => QueueCounts.Review;
+    public int PFlowFailedCount => QueueCounts.Failed;
     public string PFlowDeviceSummary =>
         $"{Instances.Count(w => w.IsSelected && (!ShowOnlyOpen || w.IsAndroidStarted))} selected devices";
     public string PFlowTargetSummary =>
@@ -61,9 +86,25 @@ public partial class AutoPostViewModel
 
     private void DashboardCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
+        if (ReferenceEquals(sender, Tasks))
+            _queueCountsDirty = true;
+        if (ReferenceEquals(sender, Instances))
+            RefreshDisplayedInstances();
         if (IsPreparingPostQueue)
             return; // Rebuild subscriptions once after bulk selection, not after every row.
-        SynchronizeDashboardRows();
+        if (e.Action == NotifyCollectionChangedAction.Reset)
+            SynchronizeDashboardRows();
+        else if (e.Action != NotifyCollectionChangedAction.Move)
+        {
+            if (e.OldItems != null)
+                foreach (INotifyPropertyChanged row in e.OldItems)
+                    if (_dashboardRows.Remove(row))
+                        row.PropertyChanged -= DashboardRowChanged;
+            if (e.NewItems != null)
+                foreach (INotifyPropertyChanged row in e.NewItems)
+                    if (_dashboardRows.Add(row))
+                        row.PropertyChanged += DashboardRowChanged;
+        }
         RefreshPFlowDashboard();
     }
 
@@ -89,6 +130,14 @@ public partial class AutoPostViewModel
     private void DashboardRowChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (
+            sender is AutoPostTaskItem
+            && (
+                string.IsNullOrEmpty(e.PropertyName)
+                || e.PropertyName == nameof(AutoPostTaskItem.Status)
+            )
+        )
+            _queueCountsDirty = true;
+        if (
             sender is LDInstanceItemViewModel startedRow
             && e.PropertyName == nameof(LDInstanceItemViewModel.IsAndroidStarted)
             && startedRow.IsAndroidStarted
@@ -104,7 +153,7 @@ public partial class AutoPostViewModel
             && ShowOnlyOpen
         )
         {
-            OnPropertyChanged(nameof(DisplayedInstances));
+            RefreshDisplayedInstances();
             RequestManageSelectionRefresh();
         }
         if (

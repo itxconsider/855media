@@ -89,7 +89,24 @@ internal static class PFlowStoryLayout
                     && Visible(n)
                     && (n.Attribute("content-desc")?.Value is "Add new story" or "Add new")
                     && ControlCenter(n) != null
-                ) && (o.Has("Share as post") || HasPendingUpload(o.Xml))
+                )
+                && (
+                    o.Has("Share as post")
+                    || HasPendingUpload(o.Xml)
+                    || (
+                        o.Nodes.Any(n =>
+                            Visible(n)
+                            && n.Attribute("content-desc")?.Value == "Highlights current story"
+                            && ControlCenter(n) != null
+                        )
+                        && o.Nodes.Any(n =>
+                            Visible(n)
+                            && n.Attribute("content-desc")?.Value == "Share"
+                            && n.Attribute("clickable")?.Value == "true"
+                            && ControlCenter(n) != null
+                        )
+                    )
+                )
             ) || (o.Has("Closes the list of viewers") && o.Has("Story preview, selected"))
         );
 
@@ -136,7 +153,7 @@ internal static class PFlowStoryLayout
                 xml,
                 n =>
                     n.Attribute("clickable")?.Value == "true"
-                    && n.Attribute("content-desc")?.Value == "Create story"
+                    && (n.Attribute("content-desc")?.Value is "Create story" or "Create a story")
                     && n.Ancestors("node")
                         .Any(p => p.Attribute("content-desc")?.Value == "Story tray")
                     && ScreenTimeHierarchy.Center(n) is { X: >= 30 }
@@ -173,7 +190,7 @@ internal static class PFlowStoryLayout
             n.Attribute("content-desc")?.Value == "Story tray"
             && n.Descendants("node")
                 .Any(c =>
-                    c.Attribute("content-desc")?.Value == "Create story"
+                    (c.Attribute("content-desc")?.Value is "Create story" or "Create a story")
                     && c.Attribute("clickable")?.Value == "true"
                     && ControlCenter(c) != null
                 )
@@ -250,7 +267,7 @@ internal static class PFlowStoryLayout
     {
         var match = Regex.Match(
             row.Attribute("content-desc")?.Value ?? "",
-            @"^(?<name>.+), (?<count>\d+), Media$"
+            @"^(?<name>.+), (?<count>-?\d+), Media$"
         );
         if (
             !match.Success
@@ -261,6 +278,11 @@ internal static class PFlowStoryLayout
         )
             return null;
         var name = match.Groups["name"].Value;
+        if (
+            match.Groups["count"].Value.StartsWith("-", StringComparison.Ordinal)
+            && !(name is "Favorites" or "Facebook" && match.Groups["count"].Value == "-1")
+        )
+            return null;
         return row.Descendants("node").Any(n => Visible(n) && n.Attribute("text")?.Value == name)
             ? name
             : null;
@@ -278,7 +300,10 @@ internal static class PFlowStoryLayout
                     || n.Attribute("content-desc")?.Value == "Create reel"
                 )
             )
-            || Dropdown(xml) == null
+            || (
+                Dropdown(xml) == null
+                && PFlowReelLayout.AlbumsTab(xml)?.Attribute("selected")?.Value != "true"
+            )
         )
             return [];
         var lists = nodes
@@ -393,6 +418,15 @@ internal static class PFlowStoryLayout
             readOnlyList: node.Attribute("package")?.Value == "com.facebook.katana"
                 && (
                     (
+                        node.Attribute("class")?.Value == "android.widget.Button"
+                        && node.Attribute("content-desc")?.Value == "Albums"
+                        && node.Ancestors("node")
+                            .Any(n =>
+                                n.Attribute("class")?.Value == "android.widget.HorizontalScrollView"
+                                && n.Attribute("package")?.Value == "com.facebook.katana"
+                            )
+                    )
+                    || (
                         node.Attribute("class")?.Value == "android.widget.Spinner"
                         && (node.Attribute("content-desc")?.Value ?? "").StartsWith(
                             "Select album, ",
@@ -403,7 +437,7 @@ internal static class PFlowStoryLayout
                         node.Attribute("class")?.Value == "android.view.ViewGroup"
                         && Regex.IsMatch(
                             node.Attribute("content-desc")?.Value ?? "",
-                            @"^.+, \d+, Media$"
+                            @"^(?:.+, \d+|(?:Favorites|Facebook), -1), Media$"
                         )
                     )
                 )

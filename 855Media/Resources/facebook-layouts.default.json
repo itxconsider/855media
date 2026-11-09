@@ -31,6 +31,15 @@
       "controlAliases": {}
     },
     {
+      "id": "switcher.selection-confirmation.v1",
+      "baseId": "switcher.selection-confirmation.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
       "id": "profile.own.v1",
       "baseId": "profile.own.v1",
       "version": 1,
@@ -49,27 +58,27 @@
       "controlAliases": {}
     },
     {
-      "id": "dashboard.analytics-tab.v1",
+      "id": "dashboard.analytics-tab.v2",
       "baseId": "dashboard.analytics-tab.v1",
-      "version": 1,
+      "version": 2,
       "enabled": true,
       "requiredLabels": [],
       "excludedLabels": [],
       "controlAliases": {}
     },
     {
-      "id": "dashboard.analytics-section.v1",
+      "id": "dashboard.analytics-section.v2",
       "baseId": "dashboard.analytics-section.v1",
-      "version": 1,
+      "version": 2,
       "enabled": true,
       "requiredLabels": [],
       "excludedLabels": [],
       "controlAliases": {}
     },
     {
-      "id": "dashboard.analytics-dual-entry.v1",
+      "id": "dashboard.analytics-dual-entry.v2",
       "baseId": "dashboard.analytics-dual-entry.v1",
-      "version": 1,
+      "version": 2,
       "enabled": true,
       "requiredLabels": [],
       "excludedLabels": [],
@@ -112,45 +121,45 @@
       "controlAliases": {}
     },
     {
-      "id": "feed.home.v1",
+      "id": "feed.home.v2",
       "baseId": "feed.home.v1",
-      "version": 1,
+      "version": 2,
       "enabled": true,
       "requiredLabels": [],
       "excludedLabels": [],
       "controlAliases": {}
     },
     {
-      "id": "feed.stacked-create.v1",
+      "id": "feed.stacked-create.v2",
       "baseId": "feed.stacked-create.v1",
-      "version": 1,
+      "version": 2,
       "enabled": true,
       "requiredLabels": [],
       "excludedLabels": [],
       "controlAliases": {}
     },
     {
-      "id": "feed.scrolled.v1",
+      "id": "feed.scrolled.v2",
       "baseId": "feed.scrolled.v1",
-      "version": 1,
+      "version": 2,
       "enabled": true,
       "requiredLabels": [],
       "excludedLabels": [],
       "controlAliases": {}
     },
     {
-      "id": "reels.tabbed.v1",
+      "id": "reels.tabbed.v2",
       "baseId": "reels.tabbed.v1",
-      "version": 1,
+      "version": 2,
       "enabled": true,
       "requiredLabels": [],
       "excludedLabels": [],
       "controlAliases": {}
     },
     {
-      "id": "reels.fullscreen.v1",
+      "id": "reels.fullscreen.v2",
       "baseId": "reels.fullscreen.v1",
-      "version": 1,
+      "version": 2,
       "enabled": true,
       "requiredLabels": [],
       "excludedLabels": [],
@@ -166,18 +175,18 @@
       "controlAliases": {}
     },
     {
-      "id": "reel.picker.v1",
+      "id": "reel.picker.v2",
       "baseId": "reel.picker.v1",
-      "version": 1,
+      "version": 2,
       "enabled": true,
       "requiredLabels": [],
       "excludedLabels": [],
       "controlAliases": {}
     },
     {
-      "id": "reel.picker-tabbed.v1",
+      "id": "reel.picker-tabbed.v2",
       "baseId": "reel.picker-tabbed.v1",
-      "version": 1,
+      "version": 2,
       "enabled": true,
       "requiredLabels": [],
       "excludedLabels": [],
@@ -202,9 +211,18 @@
       "controlAliases": {}
     },
     {
-      "id": "story.albums.v1",
-      "baseId": "story.albums.v1",
+      "id": "photo.picker-multi.v1",
+      "baseId": "photo.picker-multi.v1",
       "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "story.albums.v2",
+      "baseId": "story.albums.v1",
+      "version": 2,
       "enabled": true,
       "requiredLabels": [],
       "excludedLabels": [],
@@ -231,6 +249,87 @@
     {
       "id": "composer.photo.v1",
       "baseId": "composer.photo.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "photo.post-entry-gallery.v1",
+      "baseId": "photo.post-entry-gallery.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "composer.photo-native.v1",
+      "baseId": "composer.photo-native.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "composer.photo-review.v1",
+      "baseId": "composer.photo-review.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "composer.photo-settings.v1",
+      "baseId": "composer.photo-settings.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "profile.details-entry.v1",
+      "baseId": "profile.details-entry.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "profile.page-about-entry.v1",
+      "baseId": "profile.page-about-entry.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "profile.page-about-transparency.v1",
+      "baseId": "profile.page-about-transparency.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "permission.media-access.v1",
+      "baseId": "permission.media-access.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "identity.page-restriction.v1",
+      "baseId": "identity.page-restriction.v1",
       "version": 1,
       "enabled": true,
       "requiredLabels": [],
@@ -463,9 +562,9 @@
       "controlAliases": {}
     },
     {
-      "id": "authentication.checkpoint.v1",
+      "id": "authentication.checkpoint.v2",
       "baseId": "authentication.checkpoint.v1",
-      "version": 1,
+      "version": 2,
       "enabled": true,
       "requiredLabels": [],
       "excludedLabels": [],
@@ -492,6 +591,51 @@
     {
       "id": "authentication.languagesuggestion.v1",
       "baseId": "authentication.languagesuggestion.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "reel.scheduling-entry.v1",
+      "baseId": "reel.scheduling-entry.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "reel.scheduling-options.v1",
+      "baseId": "reel.scheduling-options.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "reel.schedule-date-picker.v1",
+      "baseId": "reel.schedule-date-picker.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "reel.schedule-time-picker.v1",
+      "baseId": "reel.schedule-time-picker.v1",
+      "version": 1,
+      "enabled": true,
+      "requiredLabels": [],
+      "excludedLabels": [],
+      "controlAliases": {}
+    },
+    {
+      "id": "reel.scheduled-settings.v1",
+      "baseId": "reel.scheduled-settings.v1",
       "version": 1,
       "enabled": true,
       "requiredLabels": [],

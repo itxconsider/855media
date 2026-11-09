@@ -120,14 +120,42 @@ internal sealed partial class ScreenTimeInteractions
         {
             ct.ThrowIfCancellationRequested();
             var tray = await Dump(ct);
+            for (var ready = 0; ready < 5 && string.IsNullOrWhiteSpace(tray); ready++)
+            {
+                await Wait(TimeSpan.FromMilliseconds(400), ct);
+                tray = await Dump(ct);
+            }
+            tray = await PFlowNavigationPrompts.DismissAsync(_ld, _index, tray, _path, ct, Wait);
             var entry = ScreenTimeHierarchy.StoryEntry(tray, _settings.OwnerName, opened);
+            for (var scroll = 0; entry == null && scroll < 2; scroll++)
+            {
+                var swipe = ScreenTimeHierarchy.StoryTraySwipe(tray);
+                if (swipe == null)
+                    break;
+                if (
+                    !await _ld.SwipeAsync(
+                        _index,
+                        swipe.Value.FromX,
+                        swipe.Value.Y,
+                        swipe.Value.ToX,
+                        swipe.Value.Y,
+                        300,
+                        _path,
+                        ct
+                    )
+                )
+                    throw new InvalidOperationException("Story tray swipe was not acknowledged.");
+                await Wait(TimeSpan.FromMilliseconds(500), ct);
+                tray = await Dump(ct);
+                entry = ScreenTimeHierarchy.StoryEntry(tray, _settings.OwnerName, opened);
+            }
             if (entry == null)
             {
                 Skipped++;
                 await Evidence("stories-unrecognized-tray", tray);
                 break;
             }
-            opened.Add(ScreenTimeHierarchy.Label(entry));
+            opened.Add(ScreenTimeHierarchy.StoryEntryKey(entry));
             if (!await Tap(entry, ct))
                 throw new InvalidOperationException("Story control was not acknowledged.");
             var failed = false;
@@ -135,7 +163,13 @@ internal sealed partial class ScreenTimeInteractions
             {
                 await Wait(TimeSpan.FromMilliseconds(500), ct);
                 var xml = await Dump(ct);
-                var id = ScreenTimeHierarchy.StoryId(xml);
+                var id = ScreenTimeHierarchy.StoryPlaybackKey(xml);
+                for (var ready = 0; ready < 5 && id == null; ready++)
+                {
+                    await Wait(TimeSpan.FromMilliseconds(400), ct);
+                    xml = await Dump(ct);
+                    id = ScreenTimeHierarchy.StoryPlaybackKey(xml);
+                }
                 if (id == null || !seen.Add(id))
                 {
                     Skipped++;
@@ -143,7 +177,7 @@ internal sealed partial class ScreenTimeInteractions
                     break;
                 }
                 await Wait(TimeSpan.FromSeconds(_settings.Options.StoryDwellSeconds), ct);
-                if (ScreenTimeHierarchy.StoryId(await Dump(ct)) == id)
+                if (ScreenTimeHierarchy.StoryPlaybackKey(await Dump(ct)) == id)
                     Stories++;
                 else
                     Skipped++;

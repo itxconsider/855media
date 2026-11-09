@@ -64,6 +64,8 @@ public sealed class PagePostDeletionService
     )
         : this(token, client) => _personaLink = personaLink;
 
+    // Compatibility entry point: device credential scraping has been removed.
+    // Callers with an independently authorized Page API token can use the token constructor.
     public static PagePostDeletionService ForDevice(
         ILDPlayerService ld,
         int index,
@@ -72,64 +74,8 @@ public sealed class PagePostDeletionService
         string? personaUid = null,
         HttpClient? client = null
     ) =>
-        new(
-            async ct =>
-            {
-                const string prefix =
-                    "/data/data/com.facebook.katana/app_light_prefs/com.facebook.katana/";
-                var auth = await ld.ExecuteAdbAsync(
-                    index,
-                    "shell su 0 cat " + prefix + "authentication",
-                    path,
-                    ct
-                );
-                var owner = await ld.ExecuteAdbAsync(
-                    index,
-                    "shell su 0 cat " + prefix + "underlying_account",
-                    path,
-                    ct
-                );
-                var uid = PFlowGraphIdentityReader.Field(
-                    PFlowGraphIdentityReader.Clean(owner),
-                    "underlying_account_uid"
-                );
-                if (uid != ownerUid || !Regex.IsMatch(ownerUid, @"^\d+$"))
-                    throw new InvalidOperationException(
-                        "The current Facebook owner does not match this target. Switch to the mapped account and Page first."
-                    );
-                var after = await ld.ExecuteAdbAsync(
-                    index,
-                    "shell su 0 cat " + prefix + "authentication",
-                    path,
-                    ct
-                );
-                var token = PFlowGraphIdentityReader.Token(auth);
-                if (string.IsNullOrEmpty(token) || token != PFlowGraphIdentityReader.Token(after))
-                    throw new InvalidOperationException(
-                        "Facebook session is missing or changed. Reopen this preview."
-                    );
-                return token;
-            },
-            client,
-            async (actorId, pageId, ct) =>
-            {
-                // New Page Experience has a profile/persona UID distinct from its Page ID.
-                // A name match never proves this relationship. Require the saved persona,
-                // fresh device delegation, and a canonical Graph node read below.
-                if (actorId != personaUid || !Regex.IsMatch(actorId, @"^\d+$"))
-                    return false;
-                var cache = await ld.ExecuteAdbAsync(
-                    index,
-                    "shell su 0 cat /data/data/com.facebook.katana/app_light_prefs/com.facebook.katana/logged_in_"
-                        + actorId,
-                    path,
-                    ct
-                );
-                return PFlowGraphIdentityReader.Field(
-                        PFlowGraphIdentityReader.Clean(cache),
-                        "delegate_page_id"
-                    ) == pageId;
-            }
+        throw new NotSupportedException(
+            "Device-token post deletion was removed. An authorized Page API connection is required."
         );
 
     private async Task<JsonDocument> RequestAsync(

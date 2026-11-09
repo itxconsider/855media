@@ -106,6 +106,12 @@ public sealed partial class PFlowRunner
 
     private static async Task VerifyBackupFilesAsync(PFlowJob job, CancellationToken ct)
     {
+        if (job.IsPhotoGroup)
+        {
+            foreach (var file in job.PhotoFiles)
+                await VerifyBackupFilesAsync(PhotoFileJob(job, file), ct);
+            return;
+        }
         var destination = BackupDestination(job);
         if (
             !string.Equals(
@@ -126,11 +132,26 @@ public sealed partial class PFlowRunner
 
     private async Task BackupFilesAsync(PFlowJob job, CancellationToken ct)
     {
-        if (!job.BackupRequested || job.State != PFlowState.Confirmed)
+        if (!job.BackupRequested || !job.CompletedSuccessfully)
             return;
         try
         {
             ct.ThrowIfCancellationRequested();
+            if (job.IsPhotoGroup)
+            {
+                foreach (var file in job.PhotoFiles)
+                {
+                    var single = PhotoFileJob(job, file);
+                    await BackupFilesAsync(single, ct);
+                    if (single.BackupState != "Verified")
+                        throw new IOException(single.Error);
+                    file.BackupPath = single.BackupPath;
+                }
+                job.BackupPath = job.PhotoFiles[0].BackupPath;
+                await VerifyBackupFilesAsync(job, ct);
+                job.BackupState = "Verified";
+                return;
+            }
             var destination = BackupDestination(job);
             await CopyVerifiedAsync(job.SourcePath, destination, job.Sha256, ct);
             var caption = Path.ChangeExtension(job.SourcePath, ".txt");

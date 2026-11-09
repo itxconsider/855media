@@ -27,24 +27,24 @@ public class FacebookBrowseStateMachineTests
     }
 
     [Theory]
-    [InlineData("feed-home", "PFlowLayouts", FacebookScreenKind.NewsFeed, "feed.home.v1")]
+    [InlineData("feed-home", "PFlowLayouts", FacebookScreenKind.NewsFeed, "feed.home.v2")]
     [InlineData(
         "ld1-feed-scrolled",
         "PFlowScreenTime",
         FacebookScreenKind.NewsFeed,
-        "feed.scrolled.v1"
+        "feed.scrolled.v2"
     )]
     [InlineData(
         "ld1-reels-interest",
         "PFlowScreenTime",
         FacebookScreenKind.ReelsFeed,
-        "reels.tabbed.v1"
+        "reels.tabbed.v2"
     )]
     [InlineData(
         "ld9-reels-fullscreen",
         "PFlowScreenTime",
         FacebookScreenKind.ReelsFeed,
-        "reels.fullscreen.v1"
+        "reels.fullscreen.v2"
     )]
     public void SavedLayoutsHaveExactlyOneBrowsingVariant(
         string file,

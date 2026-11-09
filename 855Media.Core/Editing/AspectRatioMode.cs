@@ -41,7 +41,8 @@ public static class AspectRatioFilterBuilder
         SmartTrackingMode trackingMode,
         double actionCentroidX = 0.5,
         double actionCentroidY = 0.5,
-        double zoomPercent = 0.0
+        double zoomPercent = 0.0,
+        ActionAnalysisResult? trajectory = null
     )
     {
         bool is4k = targetResolution == EditTargetResolution.Uhd4k;
@@ -53,6 +54,8 @@ public static class AspectRatioFilterBuilder
 
         string xStr = actionCentroidX.ToString("0.000", CultureInfo.InvariantCulture);
         string yStr = actionCentroidY.ToString("0.000", CultureInfo.InvariantCulture);
+        xStr = TrackingCropPath.Axis(trajectory, true) ?? xStr;
+        yStr = TrackingCropPath.Axis(trajectory, false) ?? yStr;
 
         bool isSmart = trackingMode != SmartTrackingMode.StaticCenter;
 
@@ -127,7 +130,8 @@ public static class AspectRatioFilterBuilder
         double zoomPercent,
         SmartZoomMode zoomMode = SmartZoomMode.ActionAnchored,
         double actionCentroidX = 0.5,
-        double actionCentroidY = 0.5
+        double actionCentroidY = 0.5,
+        ActionAnalysisResult? trajectory = null
     )
     {
         if (zoomPercent <= 0.0)
@@ -139,6 +143,8 @@ public static class AspectRatioFilterBuilder
             .ToString("0.000", CultureInfo.InvariantCulture);
         string yStr = Math.Clamp(actionCentroidY, 0.05, 0.95)
             .ToString("0.000", CultureInfo.InvariantCulture);
+        xStr = TrackingCropPath.Axis(trajectory, true) ?? xStr;
+        yStr = TrackingCropPath.Axis(trajectory, false) ?? yStr;
 
         return zoomMode switch
         {

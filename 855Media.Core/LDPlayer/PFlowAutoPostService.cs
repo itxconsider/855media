@@ -101,24 +101,23 @@ public partial class PFlowAutoPostService : IPFlowAutoPostService
         CancellationToken ct
     )
     {
-        if (_atxClient != null && await _atxClient.IsRunningAsync(index, ct))
+        if (
+            _atxClient != null
+            && await _atxClient.ForInstallation(customPath).IsRunningAsync(index, ct)
+        )
         {
             foreach (var candidate in candidates)
             {
                 if (
-                    await _atxClient.ClickElementAsync(
-                        index,
-                        text: candidate,
-                        cancellationToken: ct
-                    )
+                    await _atxClient
+                        .ForInstallation(customPath)
+                        .ClickElementAsync(index, text: candidate, cancellationToken: ct)
                 )
                     return true;
                 if (
-                    await _atxClient.ClickElementAsync(
-                        index,
-                        contentDesc: candidate,
-                        cancellationToken: ct
-                    )
+                    await _atxClient
+                        .ForInstallation(customPath)
+                        .ClickElementAsync(index, contentDesc: candidate, cancellationToken: ct)
                 )
                     return true;
             }

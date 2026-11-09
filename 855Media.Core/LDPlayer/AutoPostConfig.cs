@@ -10,6 +10,10 @@ namespace _855Media.Core.LDPlayer;
 /// </summary>
 public class AutoPostConfig
 {
+    public PFlowScheduleOptions Scheduling { get; set; } = new();
+    public bool GetPagesByApi { get; set; }
+    public bool SkipVerifiedFetchAccounts { get; set; }
+    public bool SkipVerifiedFetchPages { get; set; }
     public ScreenTimeOptions ScreenTimeOptions { get; set; } = new();
 
     // --- ScreenTime (legacy JSON property names retained for compatibility) ---
@@ -49,6 +53,13 @@ public class AutoPostConfig
     public int DeleteFriendRequestMax { get; set; } = 2;
 
     // --- Posting Options ---
+    public int PrepareFileCount { get; set; } = 2;
+
+    // Missing in older configurations: preserve the former shared count on load.
+    public int? PrepareGroupCount { get; set; }
+    public int PrepareFileSelection { get; set; } = 0; // Random, Name, Date modified
+    public bool PrepareFileSortDescending { get; set; }
+
     public bool IsPostReel { get; set; } = false;
     public bool IsDeleteReelFile { get; set; } = true;
     public bool IsBackupReelFile { get; set; } = false;

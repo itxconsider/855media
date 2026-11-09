@@ -31,7 +31,11 @@ public sealed class PFlowProfileLinkResolver : IDisposable
         uri.Scheme == Uri.UriSchemeHttps
         && uri.IsDefaultPort
         && string.IsNullOrEmpty(uri.UserInfo)
-        && uri.Host is "facebook.com" or "www.facebook.com" or "m.facebook.com";
+        && uri.Host
+            is "facebook.com"
+                or "www.facebook.com"
+                or "m.facebook.com"
+                or "web.facebook.com";
 
     private static bool UsernamePath(Uri uri)
     {

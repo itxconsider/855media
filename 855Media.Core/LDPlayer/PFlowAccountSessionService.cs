@@ -19,7 +19,11 @@ public sealed record PFlowAccountObservation(
     bool IsLiveUid,
     DateTimeOffset ObservedUtc,
     PFlowAuthenticationState State
-);
+)
+{
+    public string VerifiedName { get; init; } = "";
+    public string FailureReason { get; init; } = "";
+}
 
 public interface IPFlowAccountSessionNavigator
 {
@@ -106,7 +110,11 @@ public sealed class PFlowAccountSessionService(IPFlowAccountSessionNavigator nav
         binding.Validate();
         using var lease = deviceLeaseAlreadyHeld
             ? null
-            : await PFlowDeviceLease.AcquireAsync(binding.DeviceIndex, ct);
+            : await PFlowDeviceLease.AcquireAsync(
+                binding.DeviceIndex,
+                ct,
+                (navigator as IPFlowInstallationNavigator)?.InstallationPath
+            );
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
         deadline.CancelAfter(TimeSpan.FromSeconds(30));
         account.Authentication = PFlowAuthenticationState.Verifying;

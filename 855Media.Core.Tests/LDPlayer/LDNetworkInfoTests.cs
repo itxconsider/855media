@@ -9,6 +9,49 @@ namespace _855Media.Core.Tests.LDPlayer;
 
 public class LDNetworkInfoTests
 {
+    [Fact]
+    public async Task FreshHelperAvoidsCurlAndRechecksEveryGuest()
+    {
+        var fake = new GuestNetwork { Helper = Helper(true, "8.8.8.8") };
+        var service = new LDNetworkInfoService(fake);
+        Assert.Equal("Test City", (await service.ReadAsync(3, "ld14", default)).Location);
+        fake.Helper = Helper(true, "1.1.1.1");
+        Assert.Equal("1.1.1.1", (await service.ReadAsync(4, "ld9", default)).PublicIp);
+        Assert.Equal(0, fake.IpCalls + fake.LocationCalls);
+        Assert.Equal(2, fake.HelperCalls);
+    }
+
+    [Fact]
+    public async Task HelperFailureIsFastUnavailableAndStaleReplyFallsBack()
+    {
+        var fake = new GuestNetwork { Helper = Helper(false, "8.8.8.8") };
+        Assert.Empty((await new LDNetworkInfoService(fake).ReadAsync(3, null, default)).PublicIp);
+        Assert.Equal(0, fake.IpCalls);
+        fake.Helper = Helper(true, "8.8.8.8", -60000);
+        Assert.Equal(
+            "New York",
+            (await new LDNetworkInfoService(fake).ReadAsync(3, null, default)).Location
+        );
+        Assert.Equal(1, fake.IpCalls);
+        Assert.Null(LDNetworkInfoService.ParseHelper("json={}"));
+        Assert.Null(LDNetworkInfoService.ParseHelper(Helper(true, "8.8.8.8", 60000)));
+        Assert.Empty(LDNetworkInfoService.ParseHelper(Helper(true, "192.168.1.1"))!.PublicIp);
+    }
+
+    private static string Helper(bool success, string ip, long offset = 0) =>
+        "Row: 0 json="
+        + System.Text.Json.JsonSerializer.Serialize(
+            new
+            {
+                networkProtocolVersion = 1,
+                sampleUtcMillis = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + offset,
+                success,
+                ip,
+                city = "Test City",
+                country = "Test Country",
+            }
+        );
+
     [Theory]
     [InlineData("8.8.8.8", "8.8.8.8")]
     [InlineData("2606:4700:4700::1111", "2606:4700:4700::1111")]
@@ -104,6 +147,20 @@ public class LDNetworkInfoTests
     private sealed class GuestNetwork : LDPlayerService
     {
         public string Ip = "8.8.8.8";
+        public string? Helper;
+        public int HelperCalls;
+
+        public override Task<string?> Read885NetworkAsync(
+            int index,
+            string? path,
+            CancellationToken ct
+        )
+        {
+            ct.ThrowIfCancellationRequested();
+            HelperCalls++;
+            return Task.FromResult(Helper);
+        }
+
         public bool FailLocation;
         public int IpCalls,
             LocationCalls;

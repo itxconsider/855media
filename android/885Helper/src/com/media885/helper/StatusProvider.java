@@ -20,13 +20,28 @@ public final class StatusProvider extends ContentProvider {
     @Override public boolean onCreate() { return true; }
     @Override public String getType(Uri uri) { requireHost(); requireStatus(uri); return "vnd.android.cursor.item/vnd.media885.status"; }
     @Override public Cursor query(Uri uri, String[] projection, String selection, String[] args, String sort) {
-        requireHost(); requireStatus(uri);
+        requireHost();
+        if ("com.media885.helper.status".equals(uri.getAuthority()) && "/clock".equals(uri.getPath())) {
+            MatrixCursor result = new MatrixCursor(new String[]{"json"});
+            result.addRow(new Object[]{ClockStatus.read().toString()}); return result;
+        }
+        if ("com.media885.helper.status".equals(uri.getAuthority()) && uri.getPath().startsWith("/clipboard/")) {
+            MatrixCursor result=new MatrixCursor(new String[]{"json"});
+            result.addRow(new Object[]{ClipboardBridge.result(uri.getLastPathSegment()).toString()}); return result;
+        }
+        boolean network = "com.media885.helper.status".equals(uri.getAuthority()) && "/network".equals(uri.getPath());
+        if (!network) requireStatus(uri);
         MatrixCursor cursor = new MatrixCursor(new String[] { "json" });
-        cursor.addRow(new Object[] { DeviceStatus.read(getContext()).toString() });
+        cursor.addRow(new Object[] { (network ? NetworkStatus.read() : DeviceStatus.read(getContext())).toString() });
         return cursor;
     }
     @Override public int update(Uri uri, ContentValues values, String selection, String[] args) {
-        requireHost(); requireStatus(uri);
+        requireHost();
+        if ("com.media885.helper.status".equals(uri.getAuthority()) && "/clipboard".equals(uri.getPath())) {
+            if(values==null||values.size()!=3) return 0;
+            return ClipboardBridge.arm(values.getAsString("session"),values.getAsString("request"),values.getAsString("operation"))?1:0;
+        }
+        requireStatus(uri);
         if (values == null || values.size() != 1 || !values.containsKey("deviceLabel"))
             throw new IllegalArgumentException("Only deviceLabel may be written.");
         String label = values.getAsString("deviceLabel");

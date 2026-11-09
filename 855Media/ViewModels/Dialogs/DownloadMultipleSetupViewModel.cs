@@ -452,7 +452,9 @@ public partial class DownloadMultipleSetupViewModel(
             if (settingsService.ShouldSkipExistingFiles && File.Exists(baseFilePath))
                 continue;
 
-            var filePath = Path.EnsureUniqueFilePath(baseFilePath);
+            var filePath = _855Media.Core.Utils.FileUtils.GetAvailableDownloadFilePath(
+                baseFilePath
+            );
 
             // Download does not start immediately, so lock in the file path to avoid conflicts
             Directory.CreateForFile(filePath);

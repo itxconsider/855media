@@ -7,6 +7,201 @@ namespace _855Media.Core.Tests.LDPlayer;
 public class PFlowNativeReelTests
 {
     [Fact]
+    public void ScrolledTabbedHeaderRetainsOnlyFreshEnabledAlbumsControl()
+    {
+        var xml = FacebookLayoutRegistryTests.Fixture("ld14-reel-tabs-scrolled");
+        Assert.True(FacebookLayoutRegistry.Match(xml, FacebookScreenKind.ReelPicker).IsMatch);
+        Assert.NotNull(PFlowReelLayout.AlbumsTab(xml));
+        Assert.NotNull(PFlowReelLayout.AlbumTabsBounds(xml));
+        Assert.Null(PFlowReelLayout.AlbumsTab(xml.Replace("com.facebook.katana", "foreign.app")));
+        var doc = System.Xml.Linq.XDocument.Parse(xml);
+        var tab = doc.Descendants("node")
+            .Single(n => n.Attribute("content-desc")?.Value == "Albums");
+        tab.SetAttributeValue("enabled", "false");
+        Assert.Null(PFlowReelLayout.AlbumsTab(doc.ToString()));
+        tab.SetAttributeValue("enabled", "true");
+        tab.AddAfterSelf(new System.Xml.Linq.XElement(tab));
+        Assert.Null(PFlowReelLayout.AlbumsTab(doc.ToString()));
+    }
+
+    [Fact]
+    public async Task CapturedTabbedPickerUsesExactJobAlbumAndReachesDryRunWithoutAndroidShare()
+    {
+        var ld = DispatchProxy.Create<ILDPlayerService, ReelDevice>();
+        var device = (ReelDevice)(object)ld;
+        device.Tabbed = true;
+        var job = new PFlowJob
+        {
+            TargetName = "Target",
+            TargetId = "123",
+            SourcePath = "test.mp4",
+            State = PFlowState.IdentityVerified,
+            Size = 1,
+            Sha256 = new string('A', 64),
+            NativeReelAlbum = true,
+        };
+        device.Job = job;
+        await new PFlowAutoPostService(ld).PublishAsync(
+            job,
+            _ => Task.CompletedTask,
+            null,
+            default,
+            dryRun: true
+        );
+        Assert.Equal(PFlowState.CancelledBeforeSubmission, job.State);
+        Assert.Equal(1, device.TabSwipes);
+        Assert.Equal(0, device.AndroidShares + device.PublishTaps);
+        Assert.Contains("album=Reel_" + job.JobId, job.MediaSelectionEvidence);
+    }
+
+    [Fact]
+    public void CapturedTabbedAlbumRequiresInvocationProofAndRejectsChangedGrid()
+    {
+        const string album = "Reel_ff153e1e14804cd38ffc8e7274b2a04c";
+        var grid = FacebookLayoutRegistryTests.Fixture("ld14-reel-job-album-tabbed");
+        var albums = FacebookLayoutRegistryTests.Fixture("ld14-reel-albums-tabbed");
+        var media = new PFlowStoryMedia(1, "test.mp4", album, "video/mp4", 1, 3000);
+        Assert.True(
+            PFlowReelLayout.IsTabbedPicker(new FacebookLayoutObservation(albums)),
+            "Captured album list header: "
+                + string.Join(
+                    ";",
+                    new[]
+                    {
+                        "Create reel",
+                        "Recents",
+                        "Videos",
+                        "Albums",
+                        "Select",
+                        "Music",
+                        "Templates",
+                        "Drafts",
+                        "Green screen",
+                    }.Select(label =>
+                        label + "=" + new FacebookLayoutObservation(albums).Has(label)
+                    )
+                )
+        );
+        Assert.NotNull(PFlowReelLayout.AlbumsTab(albums));
+        var albumMatch = FacebookLayoutRegistry.Match(albums, FacebookScreenKind.StoryAlbums);
+        Assert.True(
+            albumMatch.IsMatch,
+            albumMatch.Diagnostic
+                + "; rows="
+                + string.Join(
+                    "; ",
+                    ScreenTimeHierarchy
+                        .Nodes(albums)
+                        .Where(n => n.Attribute("content-desc")?.Value.EndsWith(", Media") == true)
+                        .Select(n =>
+                            n.Attribute("content-desc")?.Value
+                            + ":"
+                            + PFlowStoryLayout.ControlCenter(n)
+                        )
+                )
+        );
+        Assert.NotNull(PFlowStoryLayout.Album(albums, album));
+        Assert.Null(PFlowStoryLayout.Album(albums, album[..20]));
+        Assert.Null(PFlowReelLayout.Media(grid, media));
+        Assert.Null(PFlowReelLayout.Media(grid, media, "Reel_other"));
+        Assert.NotNull(PFlowReelLayout.Media(grid, media, album));
+        Assert.Null(PFlowReelLayout.Media(albums, media, album));
+        Assert.Null(PFlowReelLayout.Media(grid, media with { DurationMs = 0 }, album));
+        Assert.Null(PFlowReelLayout.Media(grid.Replace("3 seconds", "9 seconds"), media, album));
+        Assert.Null(
+            PFlowReelLayout.Media(grid.Replace("com.facebook.katana", "foreign.app"), media, album)
+        );
+        var doc = System.Xml.Linq.XDocument.Parse(grid);
+        var tab = doc.Descendants("node")
+            .Single(n => n.Attribute("content-desc")?.Value == "Albums");
+        tab.SetAttributeValue("selected", "false");
+        Assert.Null(PFlowReelLayout.Media(doc.ToString(), media, album));
+        tab.SetAttributeValue("selected", "true");
+        var tile = doc.Descendants("node")
+            .Single(n =>
+                n.Attribute("content-desc")?.Value.StartsWith("Create reel with ") == true
+            );
+        tile.AddAfterSelf(new System.Xml.Linq.XElement(tile));
+        Assert.Null(PFlowReelLayout.Media(doc.ToString(), media, album));
+        var badAlbums = albums.Replace("Favorites, -1, Media", "Favorites, -2, Media");
+        Assert.Null(PFlowStoryLayout.Album(badAlbums, album));
+        Assert.Null(
+            PFlowReelLayout.AlbumsTab(
+                grid.Replace("content-desc=\"Albums\"", "content-desc=\"Other\"")
+            )
+        );
+    }
+
+    [Theory]
+    [InlineData(1, false)]
+    [InlineData(4, false)]
+    [InlineData(0, true)]
+    public async Task TransientBloksReadsAndEditorReplacementNeverOpenSecondShare(
+        int emptyReads,
+        bool replaceNext
+    )
+    {
+        var ld = DispatchProxy.Create<ILDPlayerService, ReelDevice>();
+        var device = (ReelDevice)(object)ld;
+        device.EmptyEditorReads = emptyReads;
+        device.ReplaceNextWithComposer = replaceNext;
+        var job = new PFlowJob
+        {
+            TargetName = "Target",
+            TargetId = "123",
+            SourcePath = "test.mp4",
+            State = PFlowState.IdentityVerified,
+            Size = 1,
+            Sha256 = new string('A', 64),
+            NativeReelAlbum = true,
+        };
+        device.Job = job;
+        await new PFlowAutoPostService(ld).PublishAsync(
+            job,
+            _ => Task.CompletedTask,
+            null,
+            default,
+            dryRun: true
+        );
+        Assert.Equal(PFlowState.CancelledBeforeSubmission, job.State);
+        Assert.Equal(0, device.AndroidShares + device.PublishTaps + device.StaleEditorTaps);
+        Assert.StartsWith("Bloks Reel picker", job.MediaSelectionEvidence);
+    }
+
+    [Fact]
+    public async Task UnreadableUiAfterMediaSelectionIsHeldInsteadOfOpeningAnotherIntent()
+    {
+        var ld = DispatchProxy.Create<ILDPlayerService, ReelDevice>();
+        var device = (ReelDevice)(object)ld;
+        device.EmptyEditorReads = 100;
+        var job = new PFlowJob
+        {
+            TargetName = "Target",
+            TargetId = "123",
+            SourcePath = "test.mp4",
+            State = PFlowState.IdentityVerified,
+            Size = 1,
+            Sha256 = new string('A', 64),
+            NativeReelAlbum = true,
+        };
+        device.Job = job;
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            new PFlowAutoPostService(ld).PublishAsync(
+                job,
+                _ => Task.CompletedTask,
+                null,
+                default,
+                dryRun: true
+            )
+        );
+        Assert.Equal(PFlowState.Unknown, job.State);
+        Assert.True(job.MayHaveSubmitted);
+        Assert.Null(job.SubmittedUtc);
+        Assert.Equal("Held for publication review", job.RemoteCleanupState);
+        Assert.Equal(0, device.AndroidShares + device.PublishTaps);
+    }
+
+    [Fact]
     public void CapturedRecyclerAlbumsMatchOnlyFullJobAlbum()
     {
         var xml = FacebookLayoutRegistryTests.Fixture("ld23-reel-albums-recycler");
@@ -315,6 +510,40 @@ public class PFlowNativeReelTests
         );
     }
 
+    [Fact]
+    public async Task MenuBackgroundCardIsNotTappedAndFeedRouteReachesDryRunComposer()
+    {
+        var ld = DispatchProxy.Create<ILDPlayerService, ReelDevice>();
+        var device = (ReelDevice)(object)ld;
+        device.InitialOwnXml = FacebookLayoutRegistryTests
+            .Fixture("ld10-posting-menu-captured")
+            .Replace("Fixture Page", "Target");
+        var job = new PFlowJob
+        {
+            TargetName = "Target",
+            TargetId = "123",
+            SourcePath = "test.mp4",
+            PostType = "Reel",
+            State = PFlowState.IdentityVerified,
+            Size = 1,
+            Sha256 = new string('A', 64),
+            NativeReelAlbum = true,
+        };
+        device.Job = job;
+        await new PFlowAutoPostService(ld).PublishAsync(
+            job,
+            _ => Task.CompletedTask,
+            null,
+            default,
+            dryRun: true
+        );
+        Assert.Equal(PFlowState.CancelledBeforeSubmission, job.State);
+        Assert.True(device.FeedOpens > 0);
+        Assert.Equal(0, device.BackgroundCardTaps);
+        Assert.Equal(0, device.AndroidShares);
+        Assert.Equal(0, device.PublishTaps);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -354,6 +583,8 @@ public class PFlowNativeReelTests
         public string? InitialOwnXml;
         public string? InitialPickerXml;
         public bool RecyclerAlbums;
+        public bool Tabbed;
+        public int TabSwipes;
         public bool FirstUseMedia;
         public int MediaAccessTaps;
         public bool Unavailable,
@@ -363,7 +594,13 @@ public class PFlowNativeReelTests
         public int EmptyIndexReads,
             IndexReads;
         public int AndroidShares,
+            FeedOpens,
+            BackgroundCardTaps,
             PublishTaps;
+        public int EmptyEditorReads,
+            StaleEditorTaps;
+        public bool ReplaceNextWithComposer;
+        int EditorReads;
         string State = "Own";
         const string Head = "<hierarchy><node bounds='[0,0][720,1280]'/>",
             Tail = "</hierarchy>";
@@ -391,6 +628,17 @@ public class PFlowNativeReelTests
             switch (method!.Name)
             {
                 case "DumpUiHierarchyAsync":
+                    if (State == "Editor")
+                    {
+                        EditorReads++;
+                        if (EmptyEditorReads-- > 0)
+                            return Task.FromResult<string?>("");
+                        if (
+                            ReplaceNextWithComposer && EditorReads >= 2
+                            || EditorReads > 1 && EmptyEditorReads == -1
+                        )
+                            State = "Composer";
+                    }
                     if (Authentication && State == "Picker")
                         return Task.FromResult<string?>(
                             "<hierarchy><node package='com.facebook.katana' password='true' bounds='[0,0][200,40]'/></hierarchy>"
@@ -407,7 +655,16 @@ public class PFlowNativeReelTests
                                     + Node("Professional dashboard", "[0,50][200,90]")
                                     + Node("Create reel", "[0,100][200,140]")
                                     + Tail,
+                            "Feed" => FacebookLayoutRegistryTests.Fixture(
+                                "ld2-feed-create-reel-card"
+                            ),
+                            "Picker" when Tabbed => FacebookLayoutRegistryTests.Fixture(
+                                "ld14-reel-picker-tabbed"
+                            ),
                             "Picker" => InitialPickerXml ?? Picker("Gallery", false),
+                            "Albums" when Tabbed => FacebookLayoutRegistryTests
+                                .Fixture("ld14-reel-albums-tabbed")
+                                .Replace("ff153e1e14804cd38ffc8e7274b2a04c", Job.JobId),
                             "Albums" when RecyclerAlbums => FacebookLayoutRegistryTests
                                 .Fixture("ld23-reel-albums-recycler")
                                 .Replace("18206b3d3f0148789970a5d35bf78798", Job.JobId),
@@ -420,11 +677,19 @@ public class PFlowNativeReelTests
                                 )
                                 + "</node>"
                                 + Tail,
+                            "Selected" when Tabbed => FacebookLayoutRegistryTests
+                                .Fixture("ld14-reel-job-album-tabbed")
+                                .Replace("3 seconds", "1 minute, 1 second"),
                             "Selected" => Picker("Reel_" + Job.JobId, true),
                             "Editor" => Head
                                 + Node("Add audio", "[0,0][100,40]")
                                 + Node("Effects", "[100,0][200,40]")
-                                + Node("Next", "[250,30][350,70]")
+                                + Node(
+                                    "Next",
+                                    ReplaceNextWithComposer
+                                        ? "[200,1160][500,1260]"
+                                        : "[250,30][350,70]"
+                                )
                                 + Tail,
                             "Chooser" => PFlowShareDestinationTests.SelectedReelsXml,
                             _ => Head
@@ -437,6 +702,12 @@ public class PFlowNativeReelTests
                     );
                 case "ExecuteAdbAsync":
                     var cmd = (string)args![1]!;
+                    if (cmd.Contains("fb://feed"))
+                    {
+                        FeedOpens++;
+                        State = "Feed";
+                        return Task.FromResult("Starting: Intent");
+                    }
                     return Task.FromResult(
                         cmd.Contains("stat -c") ? "1"
                         : cmd.Contains("sha256sum")
@@ -460,15 +731,25 @@ public class PFlowNativeReelTests
                     AndroidShares++;
                     State = "Chooser";
                     return Task.FromResult(true);
+                case "SwipeAsync" when Tabbed && State == "Picker":
+                    Assert.Equal("Picker", State);
+                    Assert.True((int)args![1]! > (int)args[3]!);
+                    Assert.Equal(389, (int)args[2]!);
+                    TabSwipes++;
+                    return Task.FromResult(true);
                 case "TapAsync":
                     var y = (int)args![2]!;
+                    if (State == "Composer" && y == 50)
+                        StaleEditorTaps++;
+                    if (State == "Own" && InitialOwnXml?.Contains("Close menu.") == true)
+                        BackgroundCardTaps++;
                     if (State is "MediaIntro" or "MediaStorage" or "MediaPermission")
                         MediaAccessTaps++;
-                    if (y == 1210)
+                    if (State == "Composer" && y == 1210)
                         PublishTaps++;
                     State = State switch
                     {
-                        "Own" => FirstUseMedia ? "MediaIntro" : "Picker",
+                        "Own" or "Feed" => FirstUseMedia ? "MediaIntro" : "Picker",
                         "MediaIntro" => "MediaStorage",
                         "MediaStorage" => "MediaPermission",
                         "MediaPermission" => "Picker",

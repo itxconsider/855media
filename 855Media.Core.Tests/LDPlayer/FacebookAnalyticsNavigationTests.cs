@@ -32,7 +32,7 @@ public class FacebookAnalyticsNavigationTests
     {
         var doc = Layout(name);
         var match = Match(doc);
-        Assert.Equal("dashboard.analytics-dual-entry.v1", match.VariantId);
+        Assert.Equal("dashboard.analytics-dual-entry.v2", match.VariantId);
         AssertPoint(match, 109, 184);
         Assert.Equal(
             FacebookScreenKind.Dashboard,
@@ -46,7 +46,7 @@ public class FacebookAnalyticsNavigationTests
         var doc = Layout();
         Entry(doc, "tab").SetAttributeValue("content-desc", "Analytics");
         AssertPoint(Match(doc), 109, 184);
-        Assert.Equal("dashboard.analytics-dual-entry.v1", Match(doc).VariantId);
+        Assert.Equal("dashboard.analytics-dual-entry.v2", Match(doc).VariantId);
     }
 
     [Fact]
@@ -83,7 +83,7 @@ public class FacebookAnalyticsNavigationTests
         var doc = Layout();
         Entry(doc, "tab").Remove();
         var match = Match(doc);
-        Assert.Equal("dashboard.analytics-section.v1", match.VariantId);
+        Assert.Equal("dashboard.analytics-section.v2", match.VariantId);
         AssertPoint(match, 144, 1012);
     }
 

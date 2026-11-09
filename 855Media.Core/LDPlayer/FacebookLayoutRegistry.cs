@@ -42,6 +42,19 @@ public enum FacebookScreenKind
     MetaAccount,
     PersonalInformationPermissions,
     MetaBirthdayDetails,
+    PhotoPicker,
+    PhotoPostEntry,
+    SwitcherSelection,
+    MediaPermissionPrompt,
+    PageIdentityRestriction,
+    PageAboutEntry,
+    PageAbout,
+    ProfileDetailsEntry,
+    ReelSchedulingEntry,
+    ReelSchedulingOptions,
+    ReelScheduleDatePicker,
+    ReelScheduleTimePicker,
+    ReelScheduledComposer,
 }
 
 public enum FacebookLayoutStatus
@@ -84,6 +97,22 @@ public enum FacebookControlRole
     Transparency,
     OpenMetaAccount,
     PersonalInformation,
+    PhotoGallery,
+    SelectedActor,
+    Albums,
+    About,
+    PageTransparency,
+    OpenProfileDetails,
+    SchedulingOptions,
+    PostNow,
+    ScheduleLater,
+    SchedulingDone,
+    PickerConfirm,
+    PickerCancel,
+    TimeKeyboard,
+    SelectedPostNow,
+    SelectedScheduleLater,
+    ScheduleSubmit,
 }
 
 public sealed record FacebookLayoutContext(
@@ -258,13 +287,22 @@ public static partial class FacebookLayoutRegistry
     private static readonly FacebookLayoutRule ComposerOverlay = Rule(
         "composer",
         "A post or Reel editor is active",
-        o => PFlowAutoPostService.HasComposerLayoutEvidence(o.Xml, "Reel") || o.Has("Create post")
+        o =>
+            PFlowAutoPostService.HasComposerLayoutEvidence(o.Xml, "Reel")
+            || o.Has("Create post")
+            || PFlowPhotoComposerLayout.IsDraft(o.Xml)
+            || PFlowPhotoComposerLayout.IsSettings(o.Xml)
+            || PFlowPhotoGalleryEntry.IsEmptyEntry(o.Xml)
     );
     private static readonly FacebookLayoutRule StoryOverlay = Rule(
         "story-overlay",
-        "Story creation or album selection covers the Feed",
+        "Story, Reel or photo creation and media selection covers the Feed",
         o =>
             PFlowStoryLayout.IsCreateMenu(o)
+            || PFlowPhotoGroupLayout.IsPicker(o.Xml)
+            || PFlowReelLayout.IsPicker(o)
+            || PFlowReelLayout.IsTabbedPicker(o)
+            || PFlowReelLayout.IsEditor(o)
             || PFlowStoryLayout.IsPicker(o)
             || PFlowStoryLayout.IsAlbums(o)
             || PFlowStoryLayout.IsEditor(o)
@@ -286,6 +324,24 @@ public static partial class FacebookLayoutRegistry
                 )
     );
 
+    private static readonly FacebookLayoutRule MediaPermissionOverlay = Rule(
+        "media-permission-overlay",
+        "Exact supported media access prompt",
+        o =>
+            o.Nodes.Any(n =>
+                new[] { n.Attribute("text")?.Value, n.Attribute("content-desc")?.Value }.Any(s =>
+                    s?.TrimStart().StartsWith("Allow", StringComparison.OrdinalIgnoreCase) == true
+                )
+            )
+            && PFlowMediaAccess.FindControl(o.Xml, "com.facebook.katana") != null
+    );
+
+    private static readonly FacebookLayoutRule PageRestrictionOverlay = Rule(
+        "page-identity-restriction",
+        "Exact Page identity verification prompt",
+        o => o.Has("Confirm your identity") && PFlowPageIdentityRestriction.IsVisible(o.Xml)
+    );
+
     internal static IReadOnlyList<FacebookLayoutDefinition> BuiltInDefinitions { get; } =
         Array.AsReadOnly(
             new[]
@@ -293,6 +349,20 @@ public static partial class FacebookLayoutRegistry
                 Switcher("switcher.typed.v1", "typed"),
                 Switcher("switcher.untyped.v1", "untyped"),
                 Switcher("switcher.footer.v1", "footer"),
+                new FacebookLayoutDefinition(
+                    "switcher.selection-confirmation.v1",
+                    FacebookScreenKind.SwitcherSelection,
+                    [],
+                    [
+                        Rule(
+                            "fresh-selected-actor",
+                            "Unique fresh selected row with the expected exact name",
+                            o => SelectedActorNode(o) != null
+                        ),
+                    ],
+                    [Authentication, Chooser, ComposerOverlay],
+                    [FacebookControlRole.SelectedActor]
+                ),
                 new FacebookLayoutDefinition(
                     "profile.own.v1",
                     FacebookScreenKind.OwnProfile,
@@ -366,12 +436,13 @@ public static partial class FacebookLayoutRegistry
                 StoryLayout(
                     "reel.picker.v1",
                     FacebookScreenKind.ReelPicker,
-                    PFlowReelLayout.IsPicker
+                    o => PFlowReelLayout.IsPicker(o) && !PFlowStoryLayout.IsAlbums(o)
                 ),
                 StoryLayout(
                     "reel.picker-tabbed.v1",
                     FacebookScreenKind.ReelPicker,
-                    PFlowReelLayout.IsTabbedPicker
+                    o => PFlowReelLayout.IsTabbedPicker(o) && !PFlowStoryLayout.IsAlbums(o),
+                    FacebookControlRole.Albums
                 ),
                 StoryLayout(
                     "reel.editor.v1",
@@ -383,6 +454,11 @@ public static partial class FacebookLayoutRegistry
                     "story.picker.v1",
                     FacebookScreenKind.StoryPicker,
                     PFlowStoryLayout.IsPicker
+                ),
+                StoryLayout(
+                    "photo.picker-multi.v1",
+                    FacebookScreenKind.PhotoPicker,
+                    o => PFlowPhotoGroupLayout.IsPicker(o.Xml)
                 ),
                 StoryLayout(
                     "story.albums.v1",
@@ -410,6 +486,10 @@ public static partial class FacebookLayoutRegistry
                             "Photo composer labels",
                             o =>
                                 PFlowAutoPostService.HasComposerLayoutEvidence(o.Xml, "Picture")
+                                && !PFlowPhotoComposerLayout.IsDraft(o.Xml)
+                                && !PFlowPhotoComposerLayout.IsSettings(o.Xml)
+                                && !PFlowPhotoComposerLayout.IsReview(o.Xml)
+                                && !PFlowPhotoGalleryEntry.IsEmptyEntry(o.Xml)
                                 && (
                                     o.Has("Create post")
                                     || o.Nodes.Any(n =>
@@ -424,8 +504,65 @@ public static partial class FacebookLayoutRegistry
                     [Authentication, Chooser, SwitcherOverlay, Loading],
                     [FacebookControlRole.Publish, FacebookControlRole.Caption]
                 ),
+                new FacebookLayoutDefinition(
+                    "photo.post-entry-gallery.v1",
+                    FacebookScreenKind.PhotoPostEntry,
+                    [],
+                    [
+                        Rule(
+                            "empty-photo-entry",
+                            "Empty New post with enabled Gallery category",
+                            o => PFlowPhotoGalleryEntry.IsEmptyEntry(o.Xml)
+                        ),
+                    ],
+                    [Authentication, Chooser, SwitcherOverlay, Loading],
+                    [FacebookControlRole.PhotoGallery]
+                ),
+                new FacebookLayoutDefinition(
+                    "composer.photo-native.v1",
+                    FacebookScreenKind.PhotoComposer,
+                    [],
+                    [
+                        Rule(
+                            "native-photo-draft",
+                            "New post, editable caption, attached photo and Next",
+                            o => PFlowPhotoComposerLayout.IsDraft(o.Xml)
+                        ),
+                    ],
+                    [Authentication, Chooser, SwitcherOverlay, Loading],
+                    [FacebookControlRole.Caption, FacebookControlRole.Continue]
+                ),
+                new FacebookLayoutDefinition(
+                    "composer.photo-review.v1",
+                    FacebookScreenKind.PhotoComposer,
+                    [],
+                    [
+                        Rule(
+                            "native-photo-review",
+                            "New post read-only photo review with bottom Post",
+                            o => PFlowPhotoComposerLayout.IsReview(o.Xml)
+                        ),
+                    ],
+                    [Authentication, Chooser, SwitcherOverlay, Loading],
+                    [FacebookControlRole.Publish]
+                ),
+                new FacebookLayoutDefinition(
+                    "composer.photo-settings.v1",
+                    FacebookScreenKind.PhotoComposer,
+                    [],
+                    [
+                        Rule(
+                            "native-photo-settings",
+                            "Post settings, audience options and header Share",
+                            o => PFlowPhotoComposerLayout.IsSettings(o.Xml)
+                        ),
+                    ],
+                    [Authentication, Chooser, SwitcherOverlay, Loading],
+                    [FacebookControlRole.Publish]
+                ),
             }
                 .Concat(ComponentDefinitions())
+                .Concat(SchedulingDefinitions())
                 .Concat(InteractionDefinitions())
                 .ToArray()
         );
@@ -608,7 +745,17 @@ public static partial class FacebookLayoutRegistry
         Evaluate(
             observation,
             observation.Catalog.Definitions.Where(d =>
-                expected == null ? !IsInteractionComponent(d.Screen) : d.Screen == expected
+                expected == null
+                    ? !IsInteractionComponent(d.Screen)
+                        && d.Screen
+                            is not (
+                                FacebookScreenKind.SwitcherSelection
+                                or FacebookScreenKind.PageAboutEntry
+                                or FacebookScreenKind.PageAbout
+                                or FacebookScreenKind.ProfileDetailsEntry
+                                or FacebookScreenKind.ReelSchedulingEntry
+                            )
+                    : d.Screen == expected
             )
         );
 
@@ -628,6 +775,8 @@ public static partial class FacebookLayoutRegistry
             packages.Length > 0
             && !packages.Contains("com.facebook.katana", StringComparer.Ordinal);
         var switching = PFlowIdentitySwitchLayout.IsSwitching(o.Xml);
+        var pageRestriction = o.Test(PageRestrictionOverlay);
+        var mediaPermission = o.Test(MediaPermissionOverlay);
         var evaluations = definitionsArray
             .Select(d => new FacebookLayoutEvaluation(
                 d.Id,
@@ -648,11 +797,35 @@ public static partial class FacebookLayoutRegistry
                         is not (
                             FacebookScreenKind.AndroidRecents
                             or FacebookScreenKind.ShareChooser
+                            or FacebookScreenKind.MediaPermissionPrompt
                         )
                         ? new[] { "foreign-app" }
                         : Array.Empty<string>()
                 )
                     .Concat(d.Exclusions.Where(o.Test).Select(r => r.Id))
+                    .Concat(
+                        d.Screen == FacebookScreenKind.PhotoComposer
+                        && o.Has("Content")
+                        && o.Has("Library")
+                            ? new[] { "content-library-is-not-composer" }
+                            : Array.Empty<string>()
+                    )
+                    .Concat(
+                        FacebookSchedulingLayout.BlocksBackground(o.Xml)
+                        && !FacebookSchedulingLayout.IsSchedulingScreen(d.Screen)
+                            ? new[] { "scheduling-surface-overlay" }
+                            : Array.Empty<string>()
+                    )
+                    .Concat(
+                        pageRestriction && d.Screen != FacebookScreenKind.PageIdentityRestriction
+                            ? new[] { "page-identity-restriction" }
+                            : Array.Empty<string>()
+                    )
+                    .Concat(
+                        mediaPermission && d.Screen != FacebookScreenKind.MediaPermissionPrompt
+                            ? new[] { "media-permission-overlay" }
+                            : Array.Empty<string>()
+                    )
                     .Concat(
                         d.Screen is FacebookScreenKind.Dashboard or FacebookScreenKind.Analytics
                         && PFlowCreatorDashboardWelcome.Sheet(o.Xml) != null
@@ -740,6 +913,19 @@ public static partial class FacebookLayoutRegistry
         FacebookScreenKind screen
     )
     {
+        if (FacebookSchedulingLayout.IsSchedulingScreen(screen))
+        {
+            foreach (
+                var point in FacebookSchedulingLayout.Controls(
+                    o.Xml,
+                    screen,
+                    role,
+                    o.Context.SectionLabel == "Reel scheduling"
+                )
+            )
+                yield return point;
+            yield break;
+        }
         if (role is FacebookControlRole.OpenMetaAccount or FacebookControlRole.PersonalInformation)
         {
             var metaLabels =
@@ -780,6 +966,11 @@ public static partial class FacebookLayoutRegistry
                 or FacebookControlRole.ExpandSection
                 or FacebookControlRole.CopyProfileLink
                 or FacebookControlRole.ClearRecentApps
+                or FacebookControlRole.SelectedActor
+                or FacebookControlRole.Albums
+                or FacebookControlRole.About
+                or FacebookControlRole.PageTransparency
+                or FacebookControlRole.OpenProfileDetails
         )
         {
             foreach (var point in FindComponentControls(o, role, screen))
@@ -806,6 +997,51 @@ public static partial class FacebookLayoutRegistry
             var field = PFlowAutoPostService.FindPFlowCaptionField(o.Xml);
             if (field != null && UsableCenter(field) is { } center)
                 yield return center;
+            yield break;
+        }
+        if (screen == FacebookScreenKind.PhotoPostEntry && role == FacebookControlRole.PhotoGallery)
+        {
+            if (
+                PFlowPhotoGalleryEntry.IsEmptyEntry(o.Xml)
+                && PFlowPhotoGalleryEntry.GalleryPoint(o.Xml) is { } point
+            )
+                yield return point;
+            yield break;
+        }
+        if (screen == FacebookScreenKind.PhotoComposer && role == FacebookControlRole.Continue)
+        {
+            if (
+                PFlowPhotoComposerLayout.IsDraft(o.Xml)
+                && PFlowPhotoComposerLayout.Header(o.Xml, "Next") is { } next
+                && UsableCenter(next) is { } point
+            )
+                yield return point;
+            yield break;
+        }
+        if (
+            screen == FacebookScreenKind.PhotoComposer
+            && role == FacebookControlRole.Publish
+            && PFlowPhotoComposerLayout.IsSettings(o.Xml)
+        )
+        {
+            if (
+                PFlowPhotoComposerLayout.Header(o.Xml, "Share") is { } share
+                && UsableCenter(share) is { } point
+            )
+                yield return point;
+            yield break;
+        }
+        if (
+            screen == FacebookScreenKind.PhotoComposer
+            && role == FacebookControlRole.Publish
+            && PFlowPhotoComposerLayout.IsReview(o.Xml)
+        )
+        {
+            if (
+                PFlowPhotoComposerLayout.ReviewPost(o.Xml) is { } post
+                && UsableCenter(post) is { } point
+            )
+                yield return point;
             yield break;
         }
         var labels = role switch
@@ -898,10 +1134,15 @@ public static partial class FacebookLayoutRegistry
         XElement node,
         bool storyPicker = false,
         bool storyTray = false,
-        bool readOnlyList = false
+        bool readOnlyList = false,
+        bool readOnlyLabel = false
     )
     {
-        var point = ScreenTimeHierarchy.Center(node);
+        var point =
+            readOnlyLabel && PFlowProfilePublicationVerifier.Bounds(node) is { } labelBounds
+                ? ((int X, int Y)?)
+                    (labelBounds.X + labelBounds.Width / 2, labelBounds.Y + labelBounds.Height / 2)
+                : ScreenTimeHierarchy.Center(node);
         if (point is not { X: > 0, Y: > 0 })
             return null;
         foreach (var ancestor in node.AncestorsAndSelf("node"))

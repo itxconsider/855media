@@ -1,0 +1,5 @@
+# Instagram import connection-loss status
+
+2026-10-30. The post extraction script checks navigator.onLine and Chromium error-page context before post identity/sign-in classification. The reader tracks failed completion even when DOMContentLoaded has already fired, reports post loading failures as connection/load problems, and separates actual password-form sign-in from wrong-post responses. Import continues to stop on failure and retain the collected link list; this change does not automatically restart the batch.
+
+The real isolated offscreen WebView diagnostic passed all 19 Instagram checks and 10 Facebook checks, including new offline-over-login precedence and actual sign-in classification cases. Existing collection retention, rate-limit stop and cancellation checks passed. Network loss was simulated through the browser online property; no live adapter was disconnected. Main Debug 3.2.4 built successfully with zero warnings/errors after explicit user closure and a fresh app-absence check. No publication, download batch or package was produced. Credited once; counter 12/10 toward 3.2.5, pending packaging.

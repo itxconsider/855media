@@ -164,7 +164,8 @@ public class PFlowPageDiscoveryTests
         );
         Assert.Null(await service.WaitForDiscoverySwitcherAsync(5, null, default));
         Assert.Equal(0, device.Taps);
-        Assert.True(device.Reads <= 21);
+        Assert.True(device.Reads <= 41);
+        Assert.True(clock <= DateTime.UtcNow.AddSeconds(21));
     }
 
     [Fact]

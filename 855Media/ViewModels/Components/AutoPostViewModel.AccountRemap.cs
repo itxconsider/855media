@@ -113,7 +113,8 @@ public partial class AutoPostViewModel
             using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             using var lease = await PFlowDeviceLease.AcquireAsync(
                 expected.DeviceIndex,
-                timeout.Token
+                timeout.Token,
+                LdFolder
             );
             var current = await _ldPlayerService.GetInstancesAsync(LdFolder, timeout.Token);
             PFlowAccountStore.RequireCurrentBinding(next, current, LdFolder);
@@ -126,10 +127,11 @@ public partial class AutoPostViewModel
                         && j.State
                             is not (
                                 PFlowState.Confirmed
+                                or PFlowState.Scheduled
                                 or PFlowState.Failed
                                 or PFlowState.CancelledBeforeSubmission
                             )
-                    ) || new ScreenTimeHistoryStore().NeedsReview(expected.DeviceIndex)
+                    ) || CreateScreenTimeHistoryStore().NeedsReview(expected.DeviceIndex)
             )
                 throw new InvalidOperationException(
                     "Clear queued work and review uncertain PFlow/ScreenTime outcomes on this LD before remapping. History was not changed."
@@ -153,14 +155,17 @@ public partial class AutoPostViewModel
             {
                 try
                 {
-                    new PFlowCredentialStore().Delete(oldCredential);
+                    CreateCredentialStore().Delete(oldCredential);
                 }
                 catch
                 { /* Old protected blob is no longer referenced or valid for the new binding. */
                 }
             }
             await LoadAccountMappingsAsync();
-            await PFlowPageStorage.SavePagesAsync(Pages.Select(p => p.Model.CreateSnapshot()));
+            await PFlowPageStorage.SavePagesAsync(
+                Pages.Select(p => p.Model.CreateSnapshot()),
+                _pagesStoragePath
+            );
             AccountRemapStatus =
                 "Assigned instance updated. Protected credentials retained. Select the account again; live identity verification is required before tasks run.";
             AccountRemapConfirmed = false;

@@ -26,6 +26,11 @@ internal static class PFlowProfileDates
                 e.ClassName == "android.widget.TabWidget"
                 || Regex.IsMatch(
                     e.ContentDesc,
+                    @"^\s*[\d.,]+\s*[KMB]?\s+posts\s*$",
+                    RegexOptions.IgnoreCase
+                )
+                || Regex.IsMatch(
+                    e.ContentDesc,
                     @"\btab\s+\d+\s+of\s+\d+\b",
                     RegexOptions.IgnoreCase
                 )
@@ -35,11 +40,11 @@ internal static class PFlowProfileDates
         return screen.AllElements.Where(e => !tabs.Contains(e)).ToArray();
     }
 
-    internal static bool ReachedProfileFeed(BloksScreenInfo screen)
+    internal static bool ReachedProfileFeed(BloksScreenInfo screen, bool stopAtFriends = true)
     {
         var content = ProfileContentElements(screen);
         return content.Any(e =>
-                e.Matches("Friends", false)
+                stopAtFriends && e.Matches("Friends", false)
                 || e.Matches("All posts", false)
                 || e.Matches("Posts", false)
             )
@@ -80,7 +85,7 @@ internal static class PFlowProfileDates
             return false;
         // Native headers wrap names and can insert nonbreaking spaces. Preserve
         // exact full-name matching after normalizing only presentation whitespace.
-        static string Normalize(string value) => Regex.Replace(value.Trim(), @"\s+", " ");
+        static string Normalize(string value) => PFlowNameMatch.Key(value);
         var expected = Normalize(name);
         return screen.AllElements.Any(e =>
             Normalize(e.Text).Equals(expected, StringComparison.OrdinalIgnoreCase)

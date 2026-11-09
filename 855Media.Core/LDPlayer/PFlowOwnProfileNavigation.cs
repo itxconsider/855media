@@ -9,6 +9,24 @@ namespace _855Media.Core.LDPlayer;
 /// <summary>Opens the selected identity's own profile using current accessibility bounds.</summary>
 internal static class PFlowOwnProfileNavigation
 {
+    internal static bool CanRevealOpenedOwnProfile(string xml, string name) =>
+        IsSelectedProfileSurface(xml)
+        && PFlowProfileDates.MatchesName(AtxAgentClient.ParseBloksHierarchy(xml), name);
+
+    private static bool IsSelectedProfileSurface(string xml) =>
+        PFlowPageAboutTransparency.Safe(xml)
+        && !AtxAgentClient.IsMenuPageInBloks(AtxAgentClient.ParseBloksHierarchy(xml))
+        && ScreenTimeHierarchy
+            .Nodes(xml)
+            .Any(n =>
+                n.Attribute("selected")?.Value == "true"
+                && (n.Attribute("content-desc")?.Value ?? "").StartsWith(
+                    "Profile, tab",
+                    StringComparison.OrdinalIgnoreCase
+                )
+                && FacebookLayoutRegistry.UsableCenter(n) != null
+            );
+
     internal static BloksElement? FindTarget(BloksScreenInfo screen, string expectedName)
     {
         if (
@@ -82,7 +100,8 @@ internal static class PFlowOwnProfileNavigation
         Func<string, Task>? progress = null,
         Func<TimeSpan, CancellationToken, Task>? delay = null,
         bool navigateCurrentActor = false,
-        Func<string, bool>? canNavigate = null
+        Func<string, bool>? canNavigate = null,
+        Func<CancellationToken, Task>? requireFresh = null
     )
     {
         if (string.IsNullOrWhiteSpace(expectedName))
@@ -91,6 +110,7 @@ internal static class PFlowOwnProfileNavigation
         var tapped = false;
         var menuOpened = false;
         var menuRowTapped = false;
+        var ownScrollStarted = false;
         var pollsSinceTap = 0;
         var profileScrolls = 0;
         var navigationReveals = 0;
@@ -99,6 +119,8 @@ internal static class PFlowOwnProfileNavigation
         {
             ct.ThrowIfCancellationRequested();
             // Fetch again after closing the identity sheet; never use its old bounds.
+            if (requireFresh != null)
+                await requireFresh(ct);
             var xml = await ld.DumpUiHierarchyAsync(index, path, ct);
             xml = await PFlowNavigationPrompts.DismissAsync(ld, index, xml, path, ct, delay);
             var screen = AtxAgentClient.ParseBloksHierarchy(xml);
@@ -113,6 +135,37 @@ internal static class PFlowOwnProfileNavigation
             var menu = AtxAgentClient.IsMenuPageInBloks(screen);
             if (!menu && isOwnProfile(screen))
                 return true;
+            if (
+                menuRowTapped
+                && profileScrolls < 12
+                && (
+                    ownScrollStarted
+                        ? IsSelectedProfileSurface(xml ?? "")
+                        : CanRevealOpenedOwnProfile(xml ?? "", expectedName)
+                )
+            )
+            {
+                var (width, height) = PFlowPersonaSwitcherService.ParseScreenDimensions(xml);
+                if (
+                    width <= 0
+                    || height <= 0
+                    || !await ld.SwipeAsync(
+                        index,
+                        width / 2,
+                        height / 3,
+                        width / 2,
+                        height * 4 / 5,
+                        400,
+                        path,
+                        ct
+                    )
+                )
+                    return false;
+                profileScrolls++;
+                ownScrollStarted = true;
+                await delay(TimeSpan.FromMilliseconds(400), ct);
+                continue;
+            }
             if (
                 !menu
                 && FindTarget(screen, expectedName) == null

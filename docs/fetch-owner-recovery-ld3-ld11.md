@@ -1,0 +1,11 @@
+# LD3 and LD11 Fetch recovery
+
+November 2, 2026, Bangkok time.
+
+LD3 failed saved-owner preparation while KC Waterheaters was active. The failure hierarchy contains the exact Harch Jing owner shortcut under a disabled container. Such background controls remain ineligible for taps. Recovery now uses a fresh usable shortcut directly on the Menu when available; after normalization and reopening, it waits for the owner shortcut to become usable rather than checking once after 500ms. Final personal-account observation remains required.
+
+The live LD3 retry stopped before recovery because the independent five-second switcher cleanup hierarchy read cancelled in the ADB fallback (`ObserveAccountAsync` finally block). Both name-observation switcher cleanup windows now allow 30 seconds. This final timeout change was compiled and regression checked; a fresh LD3 live retry remains pending.
+
+LD11 initially failed type discovery for Michael Petersen. A hierarchy captured during the reproduction showed the exact “Welcome to your profile” photo introduction. Shared navigation now skips this optional introduction only when its title, explanatory copy, public-picture notice, Add picture label and unique usable Skip button agree. It taps once and waits for the introduction to disappear; it never adds a picture. Actor type still comes from settings.
+
+Validation: 128 final focused native-account/Fetch/badge-free tests passed, including three capture/prompt checks, including an actual dismiss invocation. Main Debug build succeeded with zero warnings/errors after verifying the app was closed. Live updated LD11 identified Michael Petersen as Profile and Danny Stenhouse as Page, confirmed Michael’s numeric own-link ID, switched to Danny and restored Michael and the keyboard. Graph calls: zero. Danny’s Page UID remained unresolved after the Page-link sharing notice, so this is not complete Fetch success. LD3 owner retry used a readable ADB hierarchy fallback because ATX was unavailable, then raised OperationCanceledException before owner verification; LD3 live recovery remains unvalidated. Evidence is in artifacts/fetch-owner-recovery. Stores are read-only in live diagnostics; publication is not attempted.

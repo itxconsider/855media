@@ -137,6 +137,10 @@ public class EditJob : INotifyPropertyChanged
         set => SetField(ref _customOutputFilePath, value);
     }
 
+    // Split children render into scratch filenames but describe the final part.
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? MetadataTitle { get; set; }
+
     [System.Text.Json.Serialization.JsonIgnore]
     public string OutputFilePath =>
         !string.IsNullOrWhiteSpace(_customOutputFilePath)

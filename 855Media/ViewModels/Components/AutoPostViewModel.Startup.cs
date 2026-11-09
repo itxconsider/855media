@@ -6,6 +6,7 @@ namespace _855Media.ViewModels.Components;
 public partial class AutoPostViewModel
 {
     private TimeSpan _pFlowRunAppOpenDelay;
+    private TimeSpan _pFlowRunPostDelay;
 
     private PFlowSessionPreparation CreateRunSessionPreparation() =>
         new(_ldPlayerService, LdFolder) { AppOpenDelay = _pFlowRunAppOpenDelay };

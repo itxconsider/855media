@@ -1,0 +1,9 @@
+# Composer readiness stability and LD4 dry run (2026-11-03)
+
+After caption verification, settings-end scrolling and existing publish-button discovery/disabled waits, readiness now requires two additional fresh observations of a fully visible enabled publish control at stable bounds. Each frame repeats composer/identity/authentication checks and rejects any visible caption value that differs from the job. Transient missing/disabled/moved controls reset stability; settling is bounded by ten seconds and thirty observations. These reads do not tap or constitute publication evidence. Existing scrolling and disabled-control budgets remain unchanged.
+
+Three new mock regressions reproduce late context replacement, changed visible caption and disabled publish after settings scrolling; all73 focused composer-readiness/native-Reel/photo-composer checks passed. Main Debug built zero warnings/errors after fresh app-absence verification.
+
+User-authorized live LD9 LD4 retry initially passed Plumb Bob+, KCWaterheaters+ and Amanda Troxiron switches, then reached ready composer with the explicit test caption and Share0/Graph0. Captionless upload did not reproduce. After the readiness improvement, a current-actor Plumb Bob+ dry run again reached ComposerReady: caption fullTextMatched at20:24:59 and ready.stable freshFrames2 at20:25:11. Job remained CancelledBeforeSubmission with SubmittedUtc null, test caption Navigation validation. Not published., verified generated-media cleanup and keyboard restoration. Both diagnostic summaries show no publication attempts. Original actor restoration reported no error. No production account/history edit or package.
+
+Evidence: artifacts/ld4-caption-dry-retry and artifacts/ld4-composer-ready-stable. The earlier captionless job's precise premature-upload tap remains unresolved; this strengthens final readiness and does not claim to repair an unobserved pre-caption navigation race. No additional LD was live-tested this turn.

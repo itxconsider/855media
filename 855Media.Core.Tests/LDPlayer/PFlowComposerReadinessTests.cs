@@ -6,6 +6,30 @@ namespace _855Media.Core.Tests.LDPlayer;
 
 public class PFlowComposerReadinessTests
 {
+    [Theory]
+    [InlineData("context")]
+    [InlineData("caption")]
+    [InlineData("disabled")]
+    public async Task LateChangeAfterSettingsEndCannotBecomeComposerReady(string mode)
+    {
+        var (service, device) = Harness("bottom");
+        device.FinalFrame =
+            mode == "context"
+                ? "<hierarchy><node text='Home'/></hierarchy>"
+                : "<hierarchy><node bounds='[0,0][720,1280]'><node text='Reel Settings'/>"
+                    + (
+                        mode == "caption"
+                            ? "<node class='android.widget.EditText' text='Changed caption' bounds='[10,150][690,300]'/>"
+                            : ""
+                    )
+                    + "<node text='Share now' clickable='true' enabled='"
+                    + (mode == "disabled" ? "false" : "true")
+                    + "' bounds='[160,1176][688,1256]'/></node></hierarchy>";
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Prepare(service, device));
+        Assert.True(device.ReadyReads >= 2);
+        Assert.Equal(0, device.Taps);
+    }
+
     private static (PFlowAutoPostService Service, Viewport Device) Harness(string initial)
     {
         var ld = DispatchProxy.Create<ILDPlayerService, Viewport>();
@@ -306,6 +330,8 @@ public class PFlowComposerReadinessTests
         public int EnableAfter = int.MaxValue;
         public DateTime Now = new(2026, 10, 20);
         public int RequiredDown = 1;
+        public string? FinalFrame;
+        public int ReadyReads;
         public int Up,
             Down,
             Taps;
@@ -342,6 +368,8 @@ public class PFlowComposerReadinessTests
             switch (method!.Name)
             {
                 case "DumpUiHierarchyAsync":
+                    if (FinalFrame != null && Down >= 3 && ++ReadyReads >= 2)
+                        return Task.FromResult<string?>(FinalFrame);
                     return Task.FromResult<string?>(Xml());
                 case "SwipeAsync":
                     var down = (int)args![2]! > (int)args[4]!;

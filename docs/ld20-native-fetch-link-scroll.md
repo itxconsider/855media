@@ -1,0 +1,13 @@
+# Native Fetch own-link scrolling — 2026-10-27
+
+Fix the LD-20 account Fetch failure where the own numeric profile link is below the initial Profile Settings viewport. Poll and scroll only a recognized own Profile/Page Settings surface, at most six downward swipes with a read after the last swipe. Preserve scope, process, foreground, input/authentication and repeated-link guards. Numeric IDs still come from native links or existing unique saved mappings; username/share links do not generate IDs.
+
+Leave recognized settings before native switcher discovery and after the owned link lookup, including missing links. This avoids treating the settings toolbar's alternate account dropdown as the complete Facebook switcher. Support the separate Page Settings viewport and its Page link row. Tap that exact row at most once; dismiss only the resulting exact `Link sharing has been updated` notice without Continue or sharing, then leave settings. A sharing notice supplies no numeric identity.
+
+Validation: all 49 focused native Fetch cases passed, including seven new scroll/maximum-depth/missing-link/process-change/Page-link/notice cases. Main Debug 3.2.0 built in its normal directory with zero warnings/errors after fresh app-absence verification. No package.
+
+Live LD-20 final substantive retry: 12:15:40–12:17:05 Bangkok time. Complete switcher scan found William Rhodes and Caprani Plumbing+. William selected successfully; one scroll exposed native numeric ID `61594750165531`. Personal details returned `Joined Facebook September 2026`; birthday remained empty. Caprani selected, its separate Page Settings scrolled, and Page link opened the new informational sharing notice. No numeric Page ID was obtained, so the Page was explicitly unresolved and not invented. The production Fetch returned William's account details, zero resolved Pages and one unresolved Page. Personal restoration and keyboard restoration passed. Managed Graph request count zero. No Share/Post, root-setting change, production data persistence or LD-56 action. Earlier failed retries remain in evidence.
+
+Evidence: `artifacts/ld20-native-fetch-fix/focused.trx`, `live-page-link/native-fetch.log`, `live-page-link/native-fetch-result.json` and the per-step XML/PNG captures. The final owned-notice cleanup refinement is covered by its simulated regression; the preceding live retry completed restoration through the existing navigator. The new Page-sharing numeric-ID route remains unresolved and is not claimed fixed.
+
+One completed scrolling/settings-return improvement credited: 26/10 toward 3.2.1. Existing package unchanged.

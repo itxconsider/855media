@@ -274,6 +274,70 @@ public class PFlowOwnProfileNavigationTests
         Assert.Single(fake.Taps);
     }
 
+    [Theory]
+    [InlineData(6)]
+    [InlineData(12)]
+    public async Task ExactOwnMenuEntryCanRevealDeepRetainedProfileScroll(int revealAfter)
+    {
+        var ld = DispatchProxy.Create<ILDPlayerService, Device>();
+        var fake = (Device)(object)ld;
+        fake.Screen = "ld55-menu";
+        fake.ScrolledAfterMenu = FacebookLayoutRegistryTests
+            .Fixture("ld14-43-own-profile-scrolled")
+            .Replace("Abigail Ingram", Owner);
+        fake.RevealAfter = revealAfter;
+        Assert.True(await Run(ld));
+        Assert.Equal(revealAfter, fake.Swipes);
+        Assert.Single(fake.Taps);
+    }
+
+    [Fact]
+    public async Task DeepRetainedProfileRevealStopsAtTwelveSwipes()
+    {
+        var ld = DispatchProxy.Create<ILDPlayerService, Device>();
+        var fake = (Device)(object)ld;
+        fake.Screen = "ld55-menu";
+        fake.ScrolledAfterMenu = FacebookLayoutRegistryTests
+            .Fixture("ld14-43-own-profile-scrolled")
+            .Replace("Abigail Ingram", Owner);
+        fake.RevealAfter = 13;
+        Assert.False(await Run(ld));
+        Assert.Equal(12, fake.Swipes);
+        Assert.Single(fake.Taps);
+    }
+
+    [Fact]
+    public async Task ConfirmedOwnScrollCanCrossFramesWhereTheNameHasScrolledOffscreen()
+    {
+        var ld = DispatchProxy.Create<ILDPlayerService, Device>();
+        var fake = (Device)(object)ld;
+        fake.Screen = "ld55-menu";
+        fake.ScrolledAfterMenu = FacebookLayoutRegistryTests
+            .Fixture("ld14-43-own-profile-scrolled")
+            .Replace("Abigail Ingram", Owner);
+        fake.RevealAfter = 6;
+        fake.HideNameAfterFirstScroll = true;
+        Assert.True(await Run(ld));
+        Assert.Equal(6, fake.Swipes);
+        Assert.Single(fake.Taps);
+    }
+
+    [Theory]
+    [InlineData("foreign")]
+    [InlineData("wrong-name")]
+    [InlineData("unselected")]
+    public void DeepProfileRevealCannotUseUnprovenActorContext(string change)
+    {
+        var xml = FacebookLayoutRegistryTests.Fixture("ld14-43-own-profile-scrolled");
+        if (change == "foreign")
+            xml = xml.Replace("com.facebook.katana", "other.app");
+        if (change == "wrong-name")
+            xml = xml.Replace("Abigail Ingram", "Other");
+        if (change == "unselected")
+            xml = xml.Replace("selected=\"true\"", "selected=\"false\"");
+        Assert.False(PFlowOwnProfileNavigation.CanRevealOpenedOwnProfile(xml, "Abigail Ingram"));
+    }
+
     [Fact]
     public async Task ScrolledProfileDetailsReturnToHeaderBeforeNavigation()
     {
@@ -381,6 +445,9 @@ public class PFlowOwnProfileNavigationTests
         public bool AvatarWorks;
         public bool TapWorks = true;
         public bool MenuRowWorks = true;
+        public string? ScrolledAfterMenu;
+        public int RevealAfter = 1;
+        public bool HideNameAfterFirstScroll;
         public int Menus;
         public int Swipes;
         public List<(int, int)> Taps = [];
@@ -395,6 +462,12 @@ public class PFlowOwnProfileNavigationTests
                 case nameof(ILDPlayerService.SwipeAsync):
                     Assert.True((int)args![4]! > (int)args[2]!);
                     Swipes++;
+                    if (ScrolledAfterMenu != null && Swipes < RevealAfter)
+                    {
+                        if (HideNameAfterFirstScroll)
+                            Xml = ScrolledAfterMenu.Replace(Owner, "");
+                        return Task.FromResult(true);
+                    }
                     Xml = null;
                     Screen = "ld55-own-profile";
                     return Task.FromResult(true);
@@ -410,7 +483,7 @@ public class PFlowOwnProfileNavigationTests
                     }
                     if (TapWorks && ((Screen == "ld55-menu" && MenuRowWorks) || AvatarWorks))
                     {
-                        Xml = null;
+                        Xml = ScrolledAfterMenu;
                         Screen = "ld55-own-profile";
                     }
                     return Task.FromResult(TapWorks);

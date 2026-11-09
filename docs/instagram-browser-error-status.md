@@ -1,0 +1,7 @@
+# Instagram Unknown browser error evidence
+
+2026-10-30. The hidden reader could inspect Chromium's error document before NavigationCompleted supplied an error reason. An isolated WebView request returning HTTP403 reproduced the same Unknown failure; this does not establish the user's live HTTP status.
+
+The reader now records the exact requested post response's HTTP status through WebResourceResponseReceived, waits at most three seconds for navigation completion on failed loads, and falls back to a bounded Chromium ERR_/DNS_PROBE_ code from error-page text when no status is available. A known HTTP failure is displayed without an uninitialized Unknown suffix. Errors identify the post shortcode and append timestamp/code/state/status to %AppData%/855Media/logs/instagram-import.log. Queries, cookies, tokens and complete error-page text are not logged. Events are removed and loading stopped in finally.
+
+Validation: 21 isolated WebView Instagram checks and ten Facebook checks passed, including a real intercepted HTTP403 navigation, offline-versus-ready handling, sign-in, rate limits and cancellation. Main Debug 3.2.4 built zero warnings/errors after explicit app closure and fresh absence verification. No live Instagram navigation/download batch or network manipulation occurred. The user's actual live failure is still unresolved; retry the updated build to obtain its status. No package produced.

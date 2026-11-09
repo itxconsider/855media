@@ -7,6 +7,88 @@ namespace _855Media.Core.Tests.LDPlayer;
 
 public partial class PFlowSharedSwitchTests
 {
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task CapturedLd57ExhaustedRevealUsesOneFeedRecoveryWithoutRestart(bool recovers)
+    {
+        var (service, device) = Harness("hidden");
+        device.HiddenFixture = FacebookLayoutRegistryTests.Fixture(
+            "ld57-hidden-feed-switch-timeout"
+        );
+        device.KeepHidden = true;
+        device.RevealOnFeed = recovers;
+        device.PageActor = true;
+        var result = await service.SelectNativeTargetAsync(
+            900957,
+            new FacebookPageTarget
+            {
+                PageName = "KC Waterheaters",
+                Type = "Page",
+                PageId = "1007497349108596",
+            },
+            null,
+            default,
+            restartOnNavigationFailure: false
+        );
+        Assert.Equal(recovers, result);
+        Assert.Equal(3, device.Reveals);
+        Assert.Equal(1, device.DeepLinks);
+        Assert.Equal(0, device.Stops);
+        Assert.Equal(0, device.CacheClears);
+    }
+
+    [Fact]
+    public async Task ExhaustedRevealCannotNavigateWhenFacebookLostForeground()
+    {
+        var (service, device) = Harness("hidden");
+        device.KeepHidden = true;
+        device.Activity = "other.app/Activity";
+        Assert.False(
+            await service.SelectNativeTargetAsync(
+                900957,
+                new FacebookPageTarget
+                {
+                    PageName = "KC Waterheaters",
+                    Type = "Page",
+                    PageId = "1007497349108596",
+                },
+                null,
+                default,
+                restartOnNavigationFailure: false
+            )
+        );
+        Assert.Equal(0, device.DeepLinks);
+        Assert.Equal(0, device.Stops);
+    }
+
+    [Theory]
+    [InlineData("foreign")]
+    [InlineData("input")]
+    public async Task ExhaustedRevealRechecksBlockingUiBeforeRecovery(string blocker)
+    {
+        var (service, device) = Harness("hidden");
+        device.KeepHidden = true;
+        device.BlockAfterReveals = blocker;
+        Assert.False(
+            await service.SelectNativeTargetAsync(
+                900957,
+                new FacebookPageTarget
+                {
+                    PageName = "KC Waterheaters",
+                    Type = "Page",
+                    PageId = "1007497349108596",
+                },
+                null,
+                default,
+                restartOnNavigationFailure: false
+            )
+        );
+        Assert.Equal(3, device.Reveals);
+        Assert.Equal(0, device.DeepLinks);
+        Assert.Equal(0, device.Stops);
+    }
+
     private static string Fixture(string name) =>
         File.ReadAllText(
             Path.Combine(AppContext.BaseDirectory, "Fixtures", "PFlowScreenTime", name + ".xml")
@@ -286,6 +368,10 @@ public partial class PFlowSharedSwitchTests
 
     public class SwitchDevice : DispatchProxy
     {
+        public string? HiddenFixture;
+        public bool RevealOnFeed;
+        public string? BlockAfterReveals;
+        public string Activity = "com.facebook.katana/.LoginActivity";
         public string State = "hidden";
         public bool PageActor,
             FailReveal,
@@ -312,6 +398,10 @@ public partial class PFlowSharedSwitchTests
 
         private string Screen()
         {
+            if (Reveals >= 3 && BlockAfterReveals != null)
+                return BlockAfterReveals == "foreign"
+                    ? "<hierarchy><node package='other.app' text='Dialog'/></hierarchy>"
+                    : "<hierarchy><node package='com.facebook.katana' class='android.widget.EditText'/></hierarchy>";
             if (State == "switching")
             {
                 if (SwitchReads == 0)
@@ -331,7 +421,7 @@ public partial class PFlowSharedSwitchTests
                 State = "own";
             }
             if (State == "hidden")
-                return Fixture("ld4-feed-hidden-menu");
+                return HiddenFixture ?? Fixture("ld4-feed-hidden-menu");
             if (State == "visible")
                 return Fixture("ld2-feed-menu-header");
             if (State == "reels")
@@ -419,7 +509,11 @@ public partial class PFlowSharedSwitchTests
                     return Task.FromResult(true);
                 case "OpenDeepLinkAsync":
                     DeepLinks++;
+                    if (RevealOnFeed)
+                        State = "visible";
                     return Task.FromResult(true);
+                case "GetCurrentFocusedActivityAsync":
+                    return Task.FromResult<string?>(Activity);
                 case "StopFacebookAppAsync":
                     Stops++;
                     return Task.FromResult(true);

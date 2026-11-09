@@ -70,10 +70,8 @@ public partial class AutoPostViewModel
         IsLoadingCredentials = true;
         try
         {
-            using var credential = await new PFlowCredentialStore().LoadAsync(
-                account.Account.Binding,
-                account.Account.CredentialReference
-            );
+            using var credential = await CreateCredentialStore()
+                .LoadAsync(account.Account.Binding, account.Account.CredentialReference);
             if (version != _credentialEditorVersion || _credentialAccount != account)
                 return;
             CredentialLoginIdentifier = Encoding.UTF8.GetString(credential.LoginIdentifier);
@@ -126,7 +124,7 @@ public partial class AutoPostViewModel
         )
             return;
         IsSavingCredentials = true;
-        var store = new PFlowCredentialStore();
+        var store = CreateCredentialStore();
         string? reference = null;
         bool committed = false;
         try

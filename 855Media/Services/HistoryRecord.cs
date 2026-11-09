@@ -12,6 +12,7 @@ public class HistoryRecord
     public string Url { get; set; } = string.Empty;
     public string FilePath { get; set; } = string.Empty;
     public string Source { get; set; } = string.Empty;
+    public string? SourceItemId { get; set; }
     public DownloadStatus Status { get; set; } = DownloadStatus.Completed;
     public string? ErrorMessage { get; set; }
     public DateTimeOffset DownloadedAt { get; set; } = DateTimeOffset.Now;

@@ -8,6 +8,53 @@ namespace _855Media.Core.Tests.LDPlayer;
 
 public sealed partial class PFlowTests
 {
+    [Theory]
+    [InlineData("Reel")]
+    [InlineData("Story")]
+    [InlineData("Picture")]
+    public async Task SoftDeleteKeepsOriginalAndCaptionAndPersistsTargetExclusion(string type)
+    {
+        var job = await Job(delete: true);
+        job.PostType = type;
+        var caption = Path.ChangeExtension(job.SourcePath, ".txt");
+        await File.WriteAllTextAsync(caption, "original caption");
+        await _store.ReserveAsync(job);
+        Confirm(job);
+        await new PFlowRunner(FakeLd.Create(job), _store).RetainPostedSourceAsync(job, default);
+        var saved = Assert.Single(await new PFlowHistoryStore(_store.FilePath).ReadAsync());
+        Assert.False(saved.DeleteRequested);
+        Assert.Equal("Retained (posted)", saved.LocalDeleteState);
+        Assert.Equal(PFlowState.Confirmed, saved.State);
+        Assert.True(File.Exists(job.SourcePath));
+        Assert.Equal("original caption", await File.ReadAllTextAsync(caption));
+        Assert.False(await _store.ReserveAsync(job));
+        // Availability remains scoped to the target, even when its folder is shared.
+        var target = new FacebookPageTarget { PageId = job.TargetId, VideoReelPath = _dir };
+        if (type == "Reel")
+        {
+            var service = new PFlowMediaAvailability();
+            Assert.Equal("0 / 1", (await service.ReadAsync(target, type, [saved])).Display);
+            target.PageId = "other-page";
+            Assert.Equal("1 / 1", (await service.ReadAsync(target, type, [saved])).Display);
+        }
+    }
+
+    [Fact]
+    public async Task RetentionPreservesLegacyVerifiedRemovalAndDoesNotConfirmUnknown()
+    {
+        var job = await Job(delete: true);
+        await _store.ReserveAsync(job);
+        job.State = PFlowState.Unknown;
+        await new PFlowRunner(FakeLd.Create(job), _store).RetainPostedSourceAsync(job, default);
+        Assert.Equal(PFlowState.Unknown, job.State);
+        Assert.True(job.DeleteRequested);
+        Confirm(job);
+        job.LocalDeleteState = "Verified";
+        await new PFlowRunner(FakeLd.Create(job), _store).RetainPostedSourceAsync(job, default);
+        Assert.Equal("Verified", job.LocalDeleteState);
+        Assert.True(job.DeleteRequested);
+    }
+
     [Fact]
     public async Task UnknownSubmissionKeepsAndroidMediaAndIndexForReview()
     {

@@ -22,10 +22,11 @@ public sealed record PFlowAvailableMedia(
     public string Summary =>
         Error.Length > 0
             ? Error
-            : $"Available / Total: {Files.Count:N0} / {Total:N0}\nAlready posted: {Posted:N0}\nQueued or needs review: {Held:N0}\nUnreadable: {Unreadable:N0}";
+            : $"Available / Total: {Files.Count:N0} / {Total:N0}\nAlready posted: {Posted:N0}\nQueued or needs review: {Held:N0}\nUnreadable: {Unreadable:N0}\nPosted originals are kept and excluded for this target. Total also includes verified removals by older versions from the current sources.";
 }
 
-// Counts physical files against this target's content fingerprints, independent of caption or filename.
+// Available files are physical files; total also retains verified post-cleanup
+// removals from the current sources. History is supplied by the installation scope.
 public sealed class PFlowMediaAvailability
 {
     private readonly ConcurrentDictionary<
@@ -38,6 +39,87 @@ public sealed class PFlowMediaAvailability
         : value is "Photo" or "Picture" ? "Picture"
         : value;
 
+    private static string? FullPath(string path)
+    {
+        try
+        {
+            return Path.GetFullPath(path);
+        }
+        catch (Exception ex)
+            when (ex
+                    is ArgumentException
+                        or NotSupportedException
+                        or System.Security.SecurityException
+            )
+        {
+            return null;
+        }
+    }
+
+    private static Dictionary<string, bool> RemovedPostedSources(
+        FacebookPageTarget target,
+        string type,
+        IReadOnlyList<PFlowJob> history,
+        CancellationToken ct
+    )
+    {
+        var removed = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        var sources = target.GetUploadMediaPaths(type).Select(FullPath).OfType<string>().ToArray();
+        var extensions =
+            type == "Story" ? FacebookPageTarget.StoryExtensions
+            : type == "Picture" ? FacebookPageTarget.PhotoExtensions
+            : FacebookPageTarget.ReelExtensions;
+        foreach (
+            var job in history.Where(j =>
+                j.State == PFlowState.Confirmed
+                && j.DeleteRequested
+                && j.LocalDeleteState is "Verified" or "Verified; caption retained"
+                && !j.RequiresPublicationReviewBeforeCleanup
+            )
+        )
+        foreach (var file in job.MediaFiles)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                if (string.IsNullOrWhiteSpace(file.SourcePath))
+                    continue;
+                var path = Path.GetFullPath(file.SourcePath);
+                // Match the same top-level source semantics as ReadUploadMediaSnapshot.
+                // A sibling or nested folder must not import unrelated posting history.
+                if (
+                    File.Exists(path)
+                    || !extensions.Contains(
+                        Path.GetExtension(path),
+                        StringComparer.OrdinalIgnoreCase
+                    )
+                    || !sources.Any(source =>
+                        path.Equals(source, StringComparison.OrdinalIgnoreCase)
+                        || Directory.Exists(source)
+                            && string.Equals(
+                                Path.GetDirectoryName(path),
+                                source.TrimEnd(Path.DirectorySeparatorChar),
+                                StringComparison.OrdinalIgnoreCase
+                            )
+                    )
+                )
+                    continue;
+                var postedHere =
+                    job.TargetId == target.PageId
+                    && job.IsProfile == target.IsPrimaryProfile
+                    && Type(job.PostType) == Type(type);
+                removed[path] = removed.GetValueOrDefault(path) || postedHere;
+            }
+            catch (Exception ex)
+                when (ex
+                        is ArgumentException
+                            or NotSupportedException
+                            or System.Security.SecurityException
+                ) { }
+        }
+        return removed;
+    }
+
     public async Task<PFlowAvailableMedia> ReadAsync(
         FacebookPageTarget target,
         string type,
@@ -46,7 +128,15 @@ public sealed class PFlowMediaAvailability
     )
     {
         var snapshot = target.ReadUploadMediaSnapshot(type);
-        if (snapshot.Error.Length > 0)
+        var removed = RemovedPostedSources(target, type, history, ct);
+        var verifiedMissingSources = target
+            .GetUploadMediaPaths(type)
+            .Where(source => FullPath(source) is { } full && removed.ContainsKey(full))
+            .Select(source => "Source missing or inaccessible: " + source);
+        if (
+            snapshot.Error.Length > 0
+            && snapshot.Error != string.Join("; ", verifiedMissingSources)
+        )
             return new([], snapshot.Files.Count, 0, 0, 0, snapshot.Error);
         var blocked = history
             .Where(j =>
@@ -58,19 +148,24 @@ public sealed class PFlowMediaAvailability
             .ToArray();
         var postedHashes = blocked
             .Where(j => j.State == PFlowState.Confirmed && j.Sha256.Length > 0)
-            .Select(j => j.Sha256)
+            .SelectMany(j => j.MediaFiles.Select(f => f.Sha256))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var heldHashes = blocked
             .Where(j => j.State != PFlowState.Confirmed && j.Sha256.Length > 0)
-            .Select(j => j.Sha256)
+            .SelectMany(j => j.MediaFiles.Select(f => f.Sha256))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var sizes = blocked
             .Where(j => j.Sha256.Length > 0 && j.Size > 0)
-            .Select(j => j.Size)
+            .SelectMany(j => j.MediaFiles.Select(f => f.Size))
             .ToHashSet();
         var unknownSize = blocked.Any(j => j.Sha256.Length > 0 && j.Size <= 0);
         var heldPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var job in blocked.Where(j => j.Sha256.Length == 0 && j.SourcePath.Length > 0))
+        foreach (
+            var job in blocked
+                .Where(j => j.Sha256.Length == 0)
+                .SelectMany(j => j.MediaFiles)
+                .Where(f => f.SourcePath.Length > 0)
+        )
         {
             try
             {
@@ -169,6 +264,13 @@ public sealed class PFlowMediaAvailability
                 unreadable++;
             }
         }
-        return new(available, snapshot.Files.Count, posted, held, unreadable, "");
+        return new(
+            available,
+            snapshot.Files.Count + removed.Count,
+            posted + removed.Count(p => p.Value),
+            held,
+            unreadable,
+            ""
+        );
     }
 }

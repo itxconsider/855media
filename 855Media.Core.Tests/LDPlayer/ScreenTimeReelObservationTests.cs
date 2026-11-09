@@ -15,7 +15,7 @@ public class ScreenTimeReelObservationTests
         Assert.True(ScreenTimeNavigation.IsBrowseOnlyCard(xml, "Reels"));
         var match = FacebookLayoutRegistry.Match(xml, FacebookScreenKind.ReelsFeed);
         Assert.True(match.IsMatch, match.Diagnostic);
-        Assert.Equal("reels.tabbed.v1", match.VariantId);
+        Assert.Equal("reels.tabbed.v2", match.VariantId);
         Assert.False(match.Browse!.InteractionReady);
         Assert.NotNull(ScreenTimeNavigation.ReelObservationKey(xml));
     }
@@ -227,7 +227,7 @@ public class ScreenTimeReelObservationTests
         Assert.False(ScreenTimeNavigation.IsBlockingScreen(xml, "Reels"));
         var match = FacebookLayoutRegistry.Match(xml, FacebookScreenKind.ReelsFeed);
         Assert.True(match.IsMatch, match.Diagnostic);
-        Assert.Equal("reels.fullscreen.v1", match.VariantId);
+        Assert.Equal("reels.fullscreen.v2", match.VariantId);
         Assert.NotNull(ScreenTimeNavigation.ReelContentKey(xml));
         Assert.False(ScreenTimeNavigation.ReelContentChanged(xml, xml));
     }

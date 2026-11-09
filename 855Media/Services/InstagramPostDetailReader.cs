@@ -15,10 +15,15 @@ internal sealed class InstagramPostDetailReader : IDisposable
 {
     private readonly CoreWebView2Controller _controller;
     private readonly string _script;
+    private readonly InstagramRequestCooldown _cooldown;
 
-    private InstagramPostDetailReader(CoreWebView2Controller controller)
+    private InstagramPostDetailReader(
+        CoreWebView2Controller controller,
+        InstagramRequestCooldown cooldown
+    )
     {
         _controller = controller;
+        _cooldown = cooldown;
         var assembly = typeof(InstagramPostDetailReader).Assembly;
         using var reader = new StreamReader(
             assembly.GetManifestResourceStream(
@@ -32,7 +37,8 @@ internal sealed class InstagramPostDetailReader : IDisposable
 
     public static async Task<InstagramPostDetailReader> CreateAsync(
         CoreWebView2 source,
-        CoreWebView2Controller parent
+        CoreWebView2Controller parent,
+        InstagramRequestCooldown? cooldown = null
     )
     {
         var options = source.Environment.CreateCoreWebView2ControllerOptions();
@@ -55,7 +61,10 @@ internal sealed class InstagramPostDetailReader : IDisposable
                 )
                     e.Cancel = true;
             };
-            return new InstagramPostDetailReader(controller);
+            return new InstagramPostDetailReader(
+                controller,
+                cooldown ?? new InstagramRequestCooldown()
+            );
         }
         catch
         {
@@ -70,6 +79,7 @@ internal sealed class InstagramPostDetailReader : IDisposable
         CancellationToken cancellationToken
     )
     {
+        _cooldown.ThrowIfActive();
         var code =
             InstagramBrowserCollection.GetPostCode(pageUrl)
             ?? throw new InvalidOperationException("Invalid Instagram post URL.");
@@ -77,17 +87,112 @@ internal sealed class InstagramPostDetailReader : IDisposable
         var loaded = new TaskCompletionSource<bool>(
             TaskCreationOptions.RunContinuationsAsynchronously
         );
-        void Completed(object? sender, CoreWebView2NavigationCompletedEventArgs e) =>
-            loaded.TrySetResult(e.IsSuccess);
+        ulong? navigationId = null;
+        var navigationFailed = false;
+        var navigationError = "Unknown";
+        var httpStatus = 0;
+        var navigationCompleted = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously
+        );
+        void Starting(object? sender, CoreWebView2NavigationStartingEventArgs e) =>
+            navigationId = e.NavigationId;
+        void Completed(object? sender, CoreWebView2NavigationCompletedEventArgs e)
+        {
+            if (e.NavigationId == navigationId)
+            {
+                navigationFailed = !e.IsSuccess;
+                navigationError = e.WebErrorStatus.ToString();
+                if (e.HttpStatusCode > 0)
+                    httpStatus = e.HttpStatusCode;
+                navigationCompleted.TrySetResult(true);
+                loaded.TrySetResult(e.IsSuccess);
+            }
+        }
+        // Extraction validates the post and waits for complete media itself. Waiting
+        // for window.load also waits for unrelated images, video and subframes.
+        void DocumentReady(object? sender, CoreWebView2DOMContentLoadedEventArgs e)
+        {
+            if (e.NavigationId == navigationId)
+                loaded.TrySetResult(true);
+        }
+        browser.NavigationStarting += Starting;
         browser.NavigationCompleted += Completed;
+        browser.DOMContentLoaded += DocumentReady;
+        void ResponseReceived(object? sender, CoreWebView2WebResourceResponseReceivedEventArgs e)
+        {
+            if (string.Equals(e.Request.Uri, pageUrl, StringComparison.Ordinal))
+            {
+                httpStatus = e.Response.StatusCode;
+                if (httpStatus == 429)
+                    _cooldown.Observe(
+                        e.Response.Headers.Contains("Retry-After")
+                            ? e.Response.Headers.GetHeader("Retry-After")
+                            : null
+                    );
+            }
+        }
+        browser.WebResourceResponseReceived += ResponseReceived;
+        async Task<InvalidOperationException> LoadFailure(string state)
+        {
+            // Chromium's error DOM can precede NavigationCompleted. Await its actual
+            // reason instead of reporting the uninitialized Unknown value.
+            try
+            {
+                await navigationCompleted.Task.WaitAsync(
+                    TimeSpan.FromSeconds(3),
+                    cancellationToken
+                );
+            }
+            catch (TimeoutException) { }
+            var detail = httpStatus >= 400 ? $"HTTP {httpStatus}" : navigationError;
+            if (httpStatus == 429)
+            {
+                if (!_cooldown.IsActive)
+                    _cooldown.Observe(null);
+                return new InstagramRateLimitException(_cooldown.Message);
+            }
+            if (navigationError == "Unknown" && httpStatus < 400)
+            {
+                var error = await browser.ExecuteScriptAsync(
+                    "document.body?.innerText?.match(/\\b(?:ERR|DNS_PROBE)_[A-Z0-9_]+\\b/)?.[0] ?? ''"
+                );
+                var codeText = JsonSerializer.Deserialize<string>(error);
+                if (!string.IsNullOrWhiteSpace(codeText))
+                    detail = codeText;
+                else
+                    detail = "browser error page; completion unavailable";
+            }
+            try
+            {
+                var log = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "855Media",
+                    "logs",
+                    "instagram-import.log"
+                );
+                Directory.CreateDirectory(Path.GetDirectoryName(log)!);
+                await File.AppendAllTextAsync(
+                    log,
+                    $"{DateTimeOffset.Now:O} post={code} state={state} error={detail}{Environment.NewLine}",
+                    cancellationToken
+                );
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+            return new InvalidOperationException(
+                $"Instagram post {code} could not open in the import browser ({detail}). Open this post in the browser to check access, then retry Import."
+            );
+        }
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
             browser.Navigate(pageUrl);
             if (!await loaded.Task.WaitAsync(TimeSpan.FromSeconds(30), cancellationToken))
-                throw new InvalidOperationException(
-                    "Instagram could not open this post. Check the page in the browser and retry Import."
-                );
+                throw await LoadFailure("navigation_failed");
             var collected = new List<JsonElement>();
             var seen = new HashSet<string>();
             string caption = "",
@@ -95,6 +200,7 @@ internal sealed class InstagramPostDetailReader : IDisposable
             var stagnant = 0;
             var advancePending = false;
             var emptyCaptionRounds = 0;
+            var offlineRounds = 0;
             for (var round = 0; round < 60; round++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -104,11 +210,30 @@ internal sealed class InstagramPostDetailReader : IDisposable
                 using var document = JsonDocument.Parse(raw);
                 var root = document.RootElement;
                 var state = root.GetProperty("state").GetString();
+                if (state == "offline")
+                {
+                    if (++offlineRounds >= 6)
+                        throw new InvalidOperationException(
+                            "The import browser reports offline and has no usable post media. Check its connection, then retry Import."
+                        );
+                    await Task.Delay(500, cancellationToken);
+                    continue;
+                }
+                offlineRounds = 0;
+                if (state == "load_error" || navigationFailed && state is "loading" or "wrong_post")
+                    throw await LoadFailure(state ?? "unavailable");
+                if (state == "rate_limited")
+                {
+                    _cooldown.Observe(null);
+                    _cooldown.ThrowIfActive();
+                }
                 if (state is "login" or "rate_limited" or "wrong_post")
                     throw new InvalidOperationException(
                         state == "rate_limited"
                             ? "Instagram is limiting activity in the browser. Import stopped; wait for Instagram to allow access before retrying."
-                            : "Instagram needs sign-in or changed the open post. Check the browser before importing again."
+                        : state == "login"
+                            ? "Instagram is showing a sign-in screen. Check the browser before importing again."
+                        : "The expected Instagram post did not open. Check your connection and the post in the browser, then retry Import."
                     );
                 if (state == "ready")
                 {
@@ -176,6 +301,9 @@ internal sealed class InstagramPostDetailReader : IDisposable
         finally
         {
             browser.NavigationCompleted -= Completed;
+            browser.NavigationStarting -= Starting;
+            browser.DOMContentLoaded -= DocumentReady;
+            browser.WebResourceResponseReceived -= ResponseReceived;
             browser.Stop();
         }
     }

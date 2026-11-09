@@ -12,6 +12,59 @@ public class PFlowReelRecoveryTests
             Path.Combine(AppContext.BaseDirectory, "Fixtures", "PFlowLayouts", name + ".xml")
         );
 
+    [Theory]
+    [InlineData(10)]
+    [InlineData(17)]
+    [InlineData(23)]
+    public void CapturedMenuCannotLaunchClippedCreateReelBehindDrawer(int ld)
+    {
+        var xml = Fixture($"ld{ld}-posting-menu-captured");
+        Assert.Contains("Create reel", xml);
+        Assert.Null(PFlowReelLayout.CreateEntry(xml));
+    }
+
+    [Theory]
+    [InlineData("usable", true)]
+    [InlineData("disabled", false)]
+    [InlineData("hidden", false)]
+    [InlineData("duplicate", false)]
+    public void FullWidthProfessionalProfileReelButtonUsesExactAction(
+        string variation,
+        bool expected
+    )
+    {
+        // Reconstructed from the supplied professional-profile screenshot, not a native capture.
+        var doc = XDocument.Parse(
+            """
+            <hierarchy>
+              <node package="com.facebook.katana" class="android.widget.FrameLayout" bounds="[0,0][720,1280]">
+                <node package="com.facebook.katana" text="Fixture Professional" bounds="[100,450][620,520]"/>
+                <node package="com.facebook.katana" content-desc="Creator Dashboard" clickable="true" enabled="true" bounds="[24,770][414,840]"/>
+                <node package="com.facebook.katana" content-desc="Advertise" clickable="true" enabled="true" bounds="[430,770][696,840]"/>
+                <node package="com.facebook.katana" class="android.widget.Button" content-desc="Create reel" clickable="true" enabled="true" visible-to-user="true" bounds="[24,855][696,930]">
+                  <node package="com.facebook.katana" text="Create reel" clickable="false" bounds="[270,875][450,910]"/>
+                </node>
+              </node>
+            </hierarchy>
+            """
+        );
+        var button = doc.Descendants("node")
+            .Single(n => (string?)n.Attribute("content-desc") == "Create reel");
+        if (variation == "disabled")
+            button.SetAttributeValue("enabled", "false");
+        if (variation == "hidden")
+            button.SetAttributeValue("visible-to-user", "false");
+        if (variation == "duplicate")
+            button.Parent!.Add(new XElement(button));
+        var found = PFlowReelLayout.CreateEntry(doc.ToString());
+        Assert.Equal(expected, found != null);
+        if (found != null)
+        {
+            Assert.Equal("Create reel", (string?)found.Attribute("content-desc"));
+            Assert.Equal((360, 892), PFlowStoryLayout.ControlCenter(found));
+        }
+    }
+
     [Fact]
     public void CapturedVisibleCardIsRecognizedByRegistryDespiteItsPassiveWrapper()
     {

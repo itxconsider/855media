@@ -48,6 +48,17 @@ internal static class PFlowPublicationCycle
             + " fresh upload completion or observed copyright scan / picture posting cleared; no pending publication state, Facebook error, or active upload. Home refresh and success banner optional.";
     }
 
+    // Eligibility for read-only post inspection is not publication proof.
+    internal static bool CanCheckProfileEarly(
+        PFlowJob job,
+        string xml,
+        bool settled,
+        bool ongoingUpload
+    ) =>
+        job.PostType is "Reel" or "Video"
+        && SupportedSurface(job, xml)
+        && Read(job, xml, settled, ongoingUpload) != null;
+
     private static bool IsWork(PFlowPublicationStage stage) =>
         stage
             is PFlowPublicationStage.Uploading

@@ -57,8 +57,9 @@
       state.reason = ''; state.idle = 0; state.progress = Date.now();
       collect(); tick(); if (state.running) state.timer = setInterval(tick, 2500); notify(); },
     stop,
+    accessState() { return login() ? 'login' : blocked() ? 'rate_limited' : 'ready'; },
     clear() { stop('cleared'); state.items.clear(); state.enabled = false; notify(); },
-    payload() { state.enabled = true; collect(); return {pageUrl:location.href, items:[...state.items.values()]}; },
+    payload() { state.enabled = true; collect(); return {pageUrl:location.href, running:state.running, reason:state.reason, items:[...state.items.values()]}; },
     collect
   };
   new MutationObserver(() => {

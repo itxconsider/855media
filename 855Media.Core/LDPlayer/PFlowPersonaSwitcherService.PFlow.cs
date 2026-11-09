@@ -128,28 +128,57 @@ public partial class PFlowPersonaSwitcherService
         return null;
     }
 
-    private async Task<bool> SelectNativeTargetAsync(
+    internal async Task<bool> SelectNativeTargetAsync(
         int index,
         FacebookPageTarget target,
         string? path,
-        CancellationToken ct
+        CancellationToken ct,
+        bool postingNameOnly = false,
+        bool restartOnNavigationFailure = true
     )
     {
         if (
+            _mappedBinding != null
+            && (
+                _mappedBinding.DeviceIndex != index
+                || target.AccountBinding != _mappedBinding
+                || !PFlowPostingNameVerification.MatchesSavedTarget(target, _mappedTargets ?? [])
+            )
+        )
+            return false;
+        if (
             string.IsNullOrWhiteSpace(target.PageName)
             || target.Type is not ("Profile" or "Page")
-            || (target.Type != "Profile" && string.IsNullOrWhiteSpace(target.PageId))
+            || (
+                target.Type != "Profile"
+                && string.IsNullOrWhiteSpace(target.PageId)
+                && !(postingNameOnly && PFlowNativeFetchScope.Active(_ldPlayer, index, path))
+            )
         )
             return false;
         for (var attempt = 0; attempt < 2; attempt++)
         {
             ct.ThrowIfCancellationRequested();
-            var result = await SelectNativeTargetAttemptAsync(index, target, path, ct);
+            var result = await SelectNativeTargetAttemptAsync(
+                index,
+                target,
+                path,
+                ct,
+                postingNameOnly
+            );
+            await PFlowTrace.SessionAsync(
+                index,
+                "native.selection.result",
+                $"attempt={attempt + 1}; result={result}; restartAllowed={restartOnNavigationFailure}",
+                ct
+            );
             if (result == NativeSwitchResult.Confirmed)
                 return true;
             if (
                 result
                     is not (NativeSwitchResult.NavigationFailed or NativeSwitchResult.SwitchStalled)
+                || !restartOnNavigationFailure
+                || PFlowNativeFetchScope.Active(_ldPlayer, index, path)
                 || attempt != 0
             )
                 return false;
@@ -183,12 +212,15 @@ public partial class PFlowPersonaSwitcherService
         int index,
         FacebookPageTarget target,
         string? path,
-        CancellationToken ct
+        CancellationToken ct,
+        bool postingNameOnly = false
     )
     {
         var screen = await ReadNativeScreenAsync(index, path, ct);
         if (screen == null)
         {
+            if (PFlowNativeFetchScope.Active(_ldPlayer, index, path))
+                return NativeSwitchResult.NavigationFailed;
             if (!await _ldPlayer.LaunchAppAsync(index, "com.facebook.katana", path, ct))
                 return NativeSwitchResult.NavigationFailed;
             var readyUntil = _nativeNow().AddSeconds(15);
@@ -211,7 +243,7 @@ public partial class PFlowPersonaSwitcherService
             if (NativeNavigationBlocked(settled))
                 return NativeSwitchResult.Rejected;
         }
-        if (IsOwnNativeTarget(screen, target))
+        if (!postingNameOnly && IsOwnNativeTarget(screen, target))
         {
             await PFlowTrace.SessionAsync(
                 index,
@@ -234,6 +266,7 @@ public partial class PFlowPersonaSwitcherService
                 return NativeSwitchResult.NavigationFailed;
         var until = _nativeNow().AddSeconds(target.Type == "Profile" ? 45 : 20);
         var reveals = 0;
+        var recoveredHiddenFeed = false;
         var navigationTaps = new System.Collections.Generic.Dictionary<string, int>();
         var lastTapUtc = DateTime.MinValue;
         bool CanTap(BloksElement e) =>
@@ -290,7 +323,14 @@ public partial class PFlowPersonaSwitcherService
             {
                 var (x, y) = ParseNodeBoundsCenter(dropdown);
                 await PFlowTrace.SessionAsync(index, "native.dropdown.tap", $"x={x}; y={y}", ct);
-                if (!await _ldPlayer.TapAsync(index, x, y, path, ct))
+                var dropdownAcknowledged = await _ldPlayer.TapAsync(index, x, y, path, ct);
+                await PFlowTrace.SessionAsync(
+                    index,
+                    "native.dropdown.result",
+                    $"acknowledged={dropdownAcknowledged}",
+                    ct
+                );
+                if (!dropdownAcknowledged)
                     return NativeSwitchResult.NavigationFailed;
                 lastTapUtc = _nativeNow();
                 await _nativeDelay(TimeSpan.FromMilliseconds(1500), ct);
@@ -328,6 +368,40 @@ public partial class PFlowPersonaSwitcherService
                 )
                     return NativeSwitchResult.NavigationFailed;
             }
+            else if (
+                !recoveredHiddenFeed
+                && reveals >= 3
+                && route.Kind == NativeRouteKind.Reveal
+                && !PFlowConfirmation.HasPendingPublication(screen.RawXml)
+                && FacebookLayoutRegistry.Match(screen.RawXml, FacebookScreenKind.NewsFeed).IsMatch
+            )
+            {
+                // Some Feed layouts never expose their navigation after swiping.
+                // Reopen the recognized Feed once, then rebind fresh controls.
+                var activity =
+                    await _ldPlayer.GetCurrentFocusedActivityAsync(index, path, ct) ?? "";
+                if (!activity.StartsWith("com.facebook.katana/", StringComparison.Ordinal))
+                    return NativeSwitchResult.Rejected;
+                recoveredHiddenFeed = true;
+                await PFlowTrace.SessionAsync(
+                    index,
+                    "native.header.feed-recovery",
+                    "revealsExhausted=3; recognizedFeed=true; identityVerified=false",
+                    ct
+                );
+                if (
+                    !await _ldPlayer.OpenDeepLinkAsync(
+                        index,
+                        "fb://feed",
+                        "com.facebook.katana",
+                        path,
+                        ct
+                    )
+                )
+                    return NativeSwitchResult.NavigationFailed;
+                await _nativeDelay(TimeSpan.FromMilliseconds(1500), ct);
+                continue;
+            }
             await _nativeDelay(TimeSpan.FromMilliseconds(500), ct);
         }
         if (screen == null || !IsNativeSwitcherSheetOpen(screen.RawXml))
@@ -348,6 +422,42 @@ public partial class PFlowPersonaSwitcherService
             );
             await PFlowDiagnostics.CaptureAsync(_ldPlayer, index, "switcher-not-found", path);
             return NativeSwitchResult.NavigationFailed;
+        }
+        var inferredActors = ResolveNativeSwitcherActors(screen.RawXml);
+        var initialRows = FindNativeSwitcherRows(screen.RawXml);
+        if (
+            inferredActors.Length == 0
+            && (initialRows.Any(IsNativePageRow) || _mappedBinding != null)
+            && initialRows.Any(r =>
+                !IsNativePageRow(r) && PFlowNameMatch.Same(NativeRowName(r), target.PageName)
+            )
+        )
+        {
+            inferredActors = await ScanNativeSwitcherActorsAsync(index, path, ct);
+            screen = await ReadNativeScreenAsync(index, path, ct);
+            if (
+                screen == null
+                || !IsNativeSwitcherSheetOpen(screen.RawXml)
+                || NativeNavigationBlocked(screen.RawXml)
+            )
+                return NativeSwitchResult.Rejected;
+        }
+        bool MappedBadgeFree(string? xml) =>
+            _mappedBinding != null && !FindNativeSwitcherRows(xml).Any(IsNativePageRow);
+        if (MappedBadgeFree(screen.RawXml))
+        {
+            if (
+                !inferredActors.Any(a =>
+                    a.Type == target.Type && PFlowNameMatch.Same(a.Name, target.PageName)
+                )
+            )
+                return NativeSwitchResult.Rejected;
+            await PFlowTrace.SessionAsync(
+                index,
+                "native.switcher.badge-free",
+                "Unique saved LD/account mappings; unmatched rows remain Unknown; Graph=0",
+                ct
+            );
         }
         (int X, int Y, bool IsSelected)? row = null;
         await PFlowTrace.SessionAsync(
@@ -377,7 +487,13 @@ public partial class PFlowPersonaSwitcherService
         }
         for (var scroll = 0; scroll <= 20; scroll++)
         {
-            row = FindNativeTargetInSwitcher(screen.RawXml, target.PageName, target.Type);
+            row = FindNativeTargetInSwitcher(
+                screen.RawXml,
+                target.PageName,
+                target.Type,
+                inferredActors,
+                requireResolvedType: MappedBadgeFree(screen.RawXml)
+            );
             if (row.HasValue)
                 break;
             if (scroll == 20)
@@ -444,7 +560,13 @@ public partial class PFlowPersonaSwitcherService
             if (
                 poll >= 3
                 && !dismissed
-                && FindNativeTargetInSwitcher(current, target.PageName, target.Type)
+                && FindNativeTargetInSwitcher(
+                    current,
+                    target.PageName,
+                    target.Type,
+                    inferredActors,
+                    requireResolvedType: MappedBadgeFree(current)
+                )
                     is { IsSelected: true }
             )
             {
@@ -484,6 +606,8 @@ public partial class PFlowPersonaSwitcherService
             await PFlowDiagnostics.CaptureAsync(_ldPlayer, index, "switcher-did-not-close", path);
             return NativeSwitchResult.NavigationFailed;
         }
+        if (postingNameOnly)
+            return NativeSwitchResult.Confirmed; // Caller must freshly verify the selected switcher actor.
         var confirmed = await PFlowOwnProfileNavigation.OpenAsync(
             _ldPlayer,
             index,
@@ -653,6 +777,8 @@ public partial class PFlowPersonaSwitcherService
                                 is "Your Instagram profile"
                                     or "Your Instagram profiles"
                                     or "Go to Accounts Center"
+                                    or "Go to Meta Account settings"
+                                    or "Create Facebook Page"
                         )
                     );
                     var rows = nodes
@@ -675,8 +801,23 @@ public partial class PFlowPersonaSwitcherService
                         && n.Attribute("package")?.Value == "com.facebook.katana"
                     );
                     var untypedList =
-                        hasList
+                        nodes.Any(n =>
+                            n.Attribute("class")?.Value
+                                == "androidx.recyclerview.widget.RecyclerView"
+                            && n.Attribute("package")?.Value == "com.facebook.katana"
+                        )
                         && rows.Count > 0
+                        && (
+                            hasList
+                            || rows.Count(IsNativeRowSelected) == 1
+                                && nodes.Any(n =>
+                                    n.Attribute("content-desc")?.Value
+                                        == "Go to Meta Account settings"
+                                    && n.Attribute("enabled")?.Value != "false"
+                                    && n.Attribute("visible-to-user")?.Value != "false"
+                                    && n.Attribute("clickable")?.Value == "true"
+                                )
+                        )
                         && rows.All(n =>
                             n.Ancestors("node")
                                 .Any(a =>
@@ -687,8 +828,8 @@ public partial class PFlowPersonaSwitcherService
                         && rows.All(n =>
                             n.Descendants("node")
                                 .Any(c =>
-                                    string.Equals(
-                                        c.Attribute("text")?.Value?.Trim(),
+                                    PFlowNameMatch.Same(
+                                        c.Attribute("text")?.Value ?? "",
                                         Regex
                                             .Replace(
                                                 n.Attribute("content-desc")!.Value,
@@ -696,15 +837,104 @@ public partial class PFlowPersonaSwitcherService
                                                 "",
                                                 RegexOptions.IgnoreCase
                                             )
-                                            .Trim(),
-                                        StringComparison.OrdinalIgnoreCase
+                                            .Trim()
+                                    )
+                                )
+                        );
+                    // Some compact sheets expose a fixed Facebook list, without RecyclerView
+                    // or Page badges. Bound it between the dismiss handle and Instagram section;
+                    // require both footer actions, matching row labels and explicit selection.
+                    bool FooterAction(string label, bool aboveInstagram) =>
+                        nodes.Any(n =>
+                            n.Attribute("package")?.Value == "com.facebook.katana"
+                            && n.Attribute("class")?.Value == "android.widget.Button"
+                            && n.Attribute("content-desc")?.Value == label
+                            && n.Attribute("clickable")?.Value == "true"
+                            && n.Attribute("enabled")?.Value != "false"
+                            && n.Attribute("visible-to-user")?.Value != "false"
+                            && ScreenTimeHierarchy.Center(n) is { } point
+                            && (
+                                aboveInstagram
+                                    ? point.Y < instagramBoundary
+                                        && rows.All(r =>
+                                            ScreenTimeHierarchy.Center(r)!.Value.Y < point.Y
+                                        )
+                                    : point.Y > instagramBoundary
+                            )
+                        );
+                    var staticFooter =
+                        !hasList
+                        && instagramBoundary.HasValue
+                        && instagramHeader?.Attribute("package")?.Value == "com.facebook.katana"
+                        && rows.Count >= 1
+                        && rows.Count(IsNativeRowSelected) == 1
+                        && ScreenTimeHierarchy.Center(handle) is { } dismissPoint
+                        && rows.All(row =>
+                            ScreenTimeHierarchy.Center(row) is { } point
+                            && point.Y > dismissPoint.Y
+                            && point.Y < instagramBoundary
+                            && row.Descendants("node")
+                                .Any(child =>
+                                    child.Attribute("package")?.Value == "com.facebook.katana"
+                                    && child.Attribute("visible-to-user")?.Value != "false"
+                                    && child.Attribute("enabled")?.Value != "false"
+                                    && PFlowNameMatch.Same(
+                                        child.Attribute("text")?.Value ?? "",
+                                        NativeRowName(row)
+                                    )
+                                )
+                        )
+                        && FooterAction("Create Facebook Page", true)
+                        && FooterAction("Go to Accounts Center", false);
+                    // Compact one-account sheets have no Instagram section or Create Page
+                    // action: their complete native list ends at Accounts Center.
+                    var compactFooters = nodes
+                        .Where(n =>
+                            n.Attribute("package")?.Value == "com.facebook.katana"
+                            && n.Attribute("class")?.Value == "android.widget.Button"
+                            && n.Attribute("content-desc")?.Value == "Go to Accounts Center"
+                            && n.Attribute("clickable")?.Value == "true"
+                            && n.Attribute("enabled")?.Value != "false"
+                            && n.Attribute("visible-to-user")?.Value != "false"
+                        )
+                        .Take(2)
+                        .ToArray();
+                    var compactFooter =
+                        !hasList
+                        && instagramHeader == null
+                        && !nodes.Any(n =>
+                            n.Attribute("content-desc")?.Value == "Create Facebook Page"
+                        )
+                        && compactFooters.Length == 1
+                        && rows.Count is 1 or 2
+                        && rows.Count(IsNativeRowSelected) == 1
+                        && ScreenTimeHierarchy.Center(handle) is { } compactTop
+                        && ScreenTimeHierarchy.Center(compactFooters[0]) is { } compactEnd
+                        && rows.All(r =>
+                            NativeRowFullyVisible(r, xml)
+                            && Bounds(r) is { } b
+                            && b.Top >= compactTop.Y
+                            && b.Bottom <= compactEnd.Y
+                            && r.Descendants("node")
+                                .Any(n =>
+                                    n.Attribute("package")?.Value == "com.facebook.katana"
+                                    && n.Attribute("visible-to-user")?.Value != "false"
+                                    && n.Attribute("enabled")?.Value != "false"
+                                    && PFlowNameMatch.Same(
+                                        n.Attribute("text")?.Value ?? "",
+                                        NativeRowName(r)
                                     )
                                 )
                         );
                     if (
                         rows.Count == 0
                         || rows.Count == 1 && !footerVisible
-                        || (!rows.Any(IsNativePageRow) && !untypedList)
+                        || (
+                            !rows.Any(IsNativePageRow)
+                            && !untypedList
+                            && !staticFooter
+                            && !compactFooter
+                        )
                     )
                         continue;
                     // Never infer selection from the first row, a cached owner or a sibling.
@@ -823,10 +1053,14 @@ public partial class PFlowPersonaSwitcherService
     internal static (int X, int Y, bool IsSelected)? FindNativeTargetInSwitcher(
         string? xml,
         string name,
-        string? type
+        string? type,
+        IReadOnlyList<NativeSwitcherActor>? inferredActors = null,
+        bool requireResolvedType = false
     )
     {
         var rows = FindNativeSwitcherRows(xml);
+        if (requireResolvedType && (rows.Count == 0 || inferredActors is not { Count: > 0 }))
+            return null;
         if (rows.Count == 0)
         {
             // Legacy fuzzy matching cannot distinguish an Instagram identity section.
@@ -844,11 +1078,19 @@ public partial class PFlowPersonaSwitcherService
                 return null;
             return FindPersonaInSwitcher(xml, name);
         }
-        string Normalize(string value) => Regex.Replace(value.Trim(), @"\s+", " ");
+        string Normalize(string value) => PFlowNameMatch.Key(value);
         var expected = Normalize(name);
         if (expected.Length == 0 || (type != null && type is not ("Profile" or "Page")))
             return null;
         var typed = rows.Any(IsNativePageRow);
+        inferredActors =
+            inferredActors is { Count: > 0 } ? inferredActors
+            : typed
+            || ScreenTimeHierarchy
+                .Nodes(xml)
+                .Any(n => n.Attribute("content-desc")?.Value == "Go to Meta Account settings")
+                ? InferNativeSwitcherActors(xml)
+            : [];
         int Height(XElement n)
         {
             var b = Regex.Match(
@@ -858,9 +1100,8 @@ public partial class PFlowPersonaSwitcherService
             return b.Success ? int.Parse(b.Groups[4].Value) - int.Parse(b.Groups[2].Value) : 0;
         }
         var fullHeight = rows.Max(Height);
-        var matches = rows.Where(row =>
+        var namedRows = rows.Where(row =>
                 (typed || IsNativeRowSelected(row) || Height(row) >= fullHeight * 0.85)
-                && (type == null || !typed || IsNativePageRow(row) == (type == "Page"))
                 && (
                     row.Descendants("node")
                         .Any(n =>
@@ -884,6 +1125,25 @@ public partial class PFlowPersonaSwitcherService
                     )
                 )
             )
+            .ToArray();
+        // Facebook hides the Page badge on the selected actor. Selection proves
+        // only the active row, not its type; require an unambiguous complete name
+        // before accepting the saved Page type without its badge.
+        if (namedRows.Length != 1 && namedRows.Any(IsNativeRowSelected))
+            return null;
+        var matches = namedRows
+            .Where(row =>
+                type == null
+                || (
+                    inferredActors.Count > 0
+                        ? inferredActors.Any(a =>
+                            PFlowNameMatch.Same(a.Name, NativeRowName(row)) && a.Type == type
+                        )
+                        : !typed
+                            || IsNativePageRow(row) == (type == "Page")
+                            || (type == "Page" && IsNativeRowSelected(row))
+                )
+            )
             .Take(2)
             .ToArray();
         if (matches.Length != 1)
@@ -902,6 +1162,8 @@ public partial class PFlowPersonaSwitcherService
     public static XElement? FindProfileHeaderSwitcherButton(string? xml, string? profileName = null)
     {
         if (string.IsNullOrWhiteSpace(xml))
+            return null;
+        if (PFlowNativeFetchDevice.HasProfileSettingsHeader(xml))
             return null;
 
         var (screenWidth, screenHeight) = ParseScreenDimensions(xml);
@@ -988,7 +1250,7 @@ public partial class PFlowPersonaSwitcherService
                             && !label.Contains("story", StringComparison.OrdinalIgnoreCase)
                             && !label.Contains("friends", StringComparison.OrdinalIgnoreCase);
                     }
-                    return string.Equals(label, profileName, StringComparison.OrdinalIgnoreCase)
+                    return PFlowNameMatch.Same(label, profileName!)
                         || label.StartsWith(profileName!, StringComparison.OrdinalIgnoreCase)
                         || (
                             label.Length >= 4
@@ -1102,6 +1364,23 @@ public partial class PFlowPersonaSwitcherService
                             )
                         )
                             return false;
+                        // A blank clickable wrapper may contain a labelled settings,
+                        // search or other action. Geometry cannot change that action
+                        // into a switcher. Inspect its actionable descendants as well.
+                        if (
+                            node.Descendants("node")
+                                .Any(child =>
+                                    child.Attribute("clickable")?.Value == "true"
+                                    && $"{child.Attribute("text")?.Value} {child.Attribute("content-desc")?.Value}".Trim()
+                                        is { Length: > 0 } childLabel
+                                    && !Regex.IsMatch(
+                                        childLabel,
+                                        @"\b(?:profile switcher|switch accounts|switch profile|your profiles and pages|chevron|dropdown)\b",
+                                        RegexOptions.IgnoreCase
+                                    )
+                                )
+                        )
+                            return false;
 
                         var bounds = node.Attribute("bounds")?.Value;
                         if (string.IsNullOrWhiteSpace(bounds))
@@ -1119,6 +1398,10 @@ public partial class PFlowPersonaSwitcherService
                         var width = right - left;
                         var height = bottom - top;
                         return centerX >= screenWidth * 0.82
+                            && left >= 0
+                            && top >= 0
+                            && right <= screenWidth
+                            && bottom <= screenHeight
                             && Math.Abs(centerY - nameY) <= 100
                             && width is > 0 and <= 180
                             && height is > 0 and <= 180;

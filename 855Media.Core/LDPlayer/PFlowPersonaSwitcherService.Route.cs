@@ -27,6 +27,7 @@ public partial class PFlowPersonaSwitcherService
         Reveal,
         Feed,
         WaitForSwitch,
+        BackFromSettings,
     }
 
     internal sealed record NativeRoute(
@@ -48,6 +49,32 @@ public partial class PFlowPersonaSwitcherService
             return new(NativeRouteKind.WaitForSwitch);
         if (IsNativeSwitcherSheetOpen(screen.RawXml))
             return new(NativeRouteKind.SelectTarget);
+        // Settings has its own avatar dropdown; it is not the complete actor list.
+        // Exit this recognized surface before planning account-switch navigation.
+        if (PFlowNativeFetchDevice.HasProfileSettingsHeader(screen.RawXml ?? ""))
+        {
+            if (
+                PFlowConfirmation.HasPendingPublication(screen.RawXml ?? "")
+                || PFlowShareDestination.IsChooser(screen.RawXml ?? "")
+            )
+                return new(NativeRouteKind.Blocked);
+            var backs = ScreenTimeHierarchy
+                .Nodes(screen.RawXml)
+                .Where(n =>
+                    n.Attribute("package")?.Value == "com.facebook.katana"
+                    && n.Attribute("clickable")?.Value == "true"
+                    && (
+                        n.Attribute("text")?.Value == "Back"
+                        || n.Attribute("content-desc")?.Value == "Back"
+                    )
+                    && FacebookLayoutRegistry.UsableCenter(n) != null
+                )
+                .Take(2)
+                .ToArray();
+            return new(
+                backs.Length == 1 ? NativeRouteKind.BackFromSettings : NativeRouteKind.Blocked
+            );
+        }
         var dropdown = FindProfileHeaderSwitcherButton(screen.RawXml);
         if (dropdown != null)
             return new(NativeRouteKind.Dropdown, Dropdown: dropdown);

@@ -13,16 +13,28 @@ public partial class LDInstanceItemViewModel : ObservableObject
     public LDInstanceInfo Model { get; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StatusDetails))]
     private int _index;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StatusDetails))]
     private string _name = string.Empty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StatusDetails))]
     private string _fbClone = "FB-01";
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StatusSummary))]
+    [NotifyPropertyChangedFor(nameof(StatusDetails))]
     private string _status = "Idle";
+
+    private readonly PFlowStatusTrail _statusTrail = new();
+    public string StatusSummary => PFlowStatusText.Summary(Status);
+    public string StatusDetails =>
+        $"Device: {Name} (#{Index}) · {FbClone}\n\n" + _statusTrail.Details(Status);
+
+    partial void OnStatusChanged(string value) => _statusTrail.Record(value);
 
     [ObservableProperty]
     private bool _isAndroidStarted;
@@ -92,21 +104,11 @@ public partial class LDInstanceItemViewModel : ObservableObject
     }
 
     [RelayCommand]
-    public async Task ClearCacheAsync()
+    public Task ClearCacheAsync()
     {
-        if (IsBusy)
-            return;
-        IsBusy = true;
-        Status = "Clearing FB Cache...";
-        try
-        {
-            await _ldPlayerService.ClearFacebookCacheAsync(Index, _customLdPath);
-            Status = "Cache Cleared";
-        }
-        finally
-        {
-            IsBusy = false;
-        }
+        Status =
+            "Manage Facebook storage through Android Settings; automatic private cache clearing was removed.";
+        return Task.CompletedTask;
     }
 
     [RelayCommand]

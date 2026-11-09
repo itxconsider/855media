@@ -7,6 +7,10 @@ namespace _855Media.Core.LDPlayer;
 
 public interface ILDPlayerService
 {
+    Task<PFlowDeviceClock?> Read885ClockAsync(int index, string? path, CancellationToken ct) =>
+        Task.FromResult<PFlowDeviceClock?>(null);
+    Task<string?> Read885NetworkAsync(int index, string? path, CancellationToken ct) =>
+        Task.FromResult<string?>(null);
     bool IsInstalled(string? customPath = null);
     string ResolveLdConsolePath(string? customPath = null);
 
@@ -529,8 +533,7 @@ public interface ILDPlayerService
     );
 
     /// <summary>
-    /// Extracts Facebook accounts, profiles, and managed pages directly from rooted device storage
-    /// (/data/data/com.facebook.katana/) via root shell (LightSharedPreferences, prefs_db, cache).
+    /// Retired compatibility entry point. Always rejects private-storage extraction without device access.
     /// </summary>
     Task<List<FacebookAccountInfo>> ExtractFacebookAccountsFromRootShellAsync(
         int index,
@@ -540,7 +543,7 @@ public interface ILDPlayerService
     );
 
     /// <summary>
-    /// Synchronizes discovered Facebook accounts and pages from rooted device storage into facebook_pages.json.
+    /// Synchronizes native UI discovery results into facebook_pages.json.
     /// </summary>
     Task<List<FacebookPageTarget>> SyncDiscoveredAccountsToStorageAsync(
         int index,
@@ -594,7 +597,7 @@ public interface ILDPlayerService
 
     /// <summary>
     /// Verifies whether Facebook has an active, logged-in session on the emulator instance.
-    /// Checks root session database / shared_prefs and inspects UI hierarchy to detect
+    /// Inspects the native selected actor and UI hierarchy to detect
     /// login prompts, expired sessions, or checkpoints.
     /// </summary>
     Task<(
@@ -623,7 +626,7 @@ public interface ILDPlayerService
     void ApplyDiscoveryDelayConfig(LDSettings settings);
 
     /// <summary>
-    /// Fallback direct in-memory extraction of Facebook accounts via ADB root shell commands without pushing scripts.
+    /// Retired compatibility entry point. Always rejects private-storage extraction without device access.
     /// </summary>
     Task<List<FacebookAccountInfo>> ExtractFacebookAccountsDirectFromRootAdbAsync(
         int index,

@@ -20,12 +20,16 @@ public enum PFlowState
     CancelledBeforeSubmission,
     Unknown,
     Queued = 100,
+    Scheduled = 101,
 }
 
-public sealed class PFlowJob
+public sealed partial class PFlowJob
 {
     [System.Text.Json.Serialization.JsonIgnore]
     public PFlowNativeIdentityScope? NativeIdentityScope { get; set; }
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public PFlowBackgroundCopyright? BackgroundCopyright { get; set; }
     public PFlowAccountBinding? AccountBinding { get; set; }
     public string JobId { get; set; } = Guid.NewGuid().ToString("N");
     public string BatchId { get; set; } = "";
@@ -81,8 +85,11 @@ public sealed class PFlowJob
     public bool BackupRequested { get; set; }
     public bool DeleteRequested { get; set; }
     public bool NativeReelAlbum { get; set; }
+    public bool NativePhotoAlbum { get; set; }
     public string RemotePath =>
-        $"/sdcard/DCIM/855Media/{(PostType == "Story" ? "Story_" + JobId + "/" : NativeReelAlbum && PostType is "Reel" or "Video" ? "Reel_" + JobId + "/" : "")}{JobId}{Path.GetExtension(SourcePath).ToLowerInvariant()}";
+        PostType == "Picture" && (NativePhotoAlbum || IsPhotoGroup)
+            ? $"/sdcard/DCIM/855Media/Photo_{JobId}/001{Path.GetExtension(SourcePath).ToLowerInvariant()}"
+            : $"/sdcard/DCIM/855Media/{(PostType == "Story" ? "Story_" + JobId + "/" : NativeReelAlbum && PostType is "Reel" or "Video" ? "Reel_" + JobId + "/" : "")}{JobId}{Path.GetExtension(SourcePath).ToLowerInvariant()}";
     public string DuplicateKey =>
         $"{(IsProfile ? "Profile" : "Page")}:{TargetId}:{(PostType == "Video" ? "Reel" : PostType)}:{Sha256}";
     public bool CanRetry =>
@@ -105,6 +112,7 @@ public sealed class PFlowJob
                 or PFlowState.Submitted
                 or PFlowState.Unknown
                 or PFlowState.Confirmed
+                or PFlowState.Scheduled
         || SubmittedUtc.HasValue && !CanRetry;
 
     [System.Text.Json.Serialization.JsonIgnore]
@@ -115,7 +123,8 @@ public sealed class PFlowJob
 
     [System.Text.Json.Serialization.JsonIgnore]
     public bool RequiresPublicationReviewBeforeCleanup =>
-        State == PFlowState.Unknown
+        State == PFlowState.Scheduled && !ScheduledVerified
+        || State == PFlowState.Unknown
         || State == PFlowState.Failed && MayHaveSubmitted
         || State == PFlowState.Confirmed
             && (
@@ -131,6 +140,11 @@ public sealed class PFlowJob
 
     public static async Task FingerprintAsync(PFlowJob job, CancellationToken ct)
     {
+        if (job.PhotoFiles.Count > 1)
+        {
+            await job.FingerprintPhotoGroupAsync(ct);
+            return;
+        }
         job.SourcePath = Path.GetFullPath(job.SourcePath);
         await using var stream = new FileStream(
             job.SourcePath,

@@ -8,10 +8,49 @@ namespace _855Media.Core.LDPlayer;
 
 public partial class LDPlayerService
 {
-    public async Task<PFlowHelperHealth?> Ensure885HelperAsync(
+    public virtual async Task<PFlowDeviceClock?> Read885ClockAsync(
         int index,
         string? path,
         CancellationToken ct
+    )
+    {
+        const string query = "shell content query --uri content://com.media885.helper.status/clock";
+        var started = DateTimeOffset.UtcNow;
+        var output = await ExecuteDirectDeviceAdbAsync(index, query, path, ct);
+        if (PFlowDeviceClock.Parse(output, started, DateTimeOffset.UtcNow) is { } clock)
+            return clock;
+        var health = await Ensure885HelperAsync(index, path, ct, requireClock: true);
+        if (health?.ClockProtocolVersion != 1)
+            return null;
+        started = DateTimeOffset.UtcNow;
+        output = await ExecuteDirectDeviceAdbAsync(index, query, path, ct);
+        return PFlowDeviceClock.Parse(output, started, DateTimeOffset.UtcNow);
+    }
+
+    public virtual async Task<string?> Read885NetworkAsync(
+        int index,
+        string? path,
+        CancellationToken ct
+    )
+    {
+        const string query =
+            "shell content query --uri content://com.media885.helper.status/network";
+        var output = await ExecuteDirectDeviceAdbAsync(index, query, path, ct);
+        if (LDNetworkInfoService.ParseHelper(output) != null)
+            return output;
+        var health = await Ensure885HelperAsync(index, path, ct, requireNetwork: true);
+        return health?.NetworkProtocolVersion >= 1
+            ? await ExecuteDirectDeviceAdbAsync(index, query, path, ct)
+            : null;
+    }
+
+    public async Task<PFlowHelperHealth?> Ensure885HelperAsync(
+        int index,
+        string? path,
+        CancellationToken ct,
+        bool requireNetwork = false,
+        bool requireClipboard = false,
+        bool requireClock = false
     )
     {
         // Use the shell UID, never the ATX process identity, for the protected provider.
@@ -20,7 +59,12 @@ public partial class LDPlayerService
         var health = PFlowHelperHealth.Parse(
             await ExecuteDirectDeviceAdbAsync(index, query, path, ct)
         );
-        if (health == null)
+        if (
+            health == null
+            || requireNetwork && health.NetworkProtocolVersion < 1
+            || requireClipboard && health.ClipboardProtocolVersion < 1
+            || requireClock && health.ClockProtocolVersion != 1
+        )
         {
             var package = new[]
             {

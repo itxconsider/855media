@@ -219,6 +219,154 @@ Check(
         && large.Rows.All(r => r.Status is DownloadStatus.Started or DownloadStatus.Enqueued),
     "headless DataGrid updates to the selected filter"
 );
+
+// Equal-size replacement bursts must not emit thousands of collection edits.
+var completionEvents = new List<NotifyCollectionChangedAction>();
+((INotifyCollectionChanged)large.Rows).CollectionChanged += (_, e) =>
+    completionEvents.Add(e.Action);
+var completing = large.Rows[0];
+var retained = large.Rows[2];
+grid.SelectedItem = retained;
+completionEvents.Clear();
+completing.Status = DownloadStatus.Completed;
+Drain();
+Layout();
+Check(
+    completionEvents.SequenceEqual(new[] { NotifyCollectionChangedAction.Remove })
+        && ReferenceEquals(grid.SelectedItem, retained),
+    "one completion in a large Active table removes one row and retains the unaffected selection"
+);
+large.Filter = DownloadStatusFilter.All;
+Drain();
+var bulkEvents = new List<NotifyCollectionChangedAction>();
+((INotifyCollectionChanged)large.Rows).CollectionChanged += (_, e) => bulkEvents.Add(e.Action);
+for (var i = 0; i < 1200; i++)
+    largeSource[i] = Row(30000 + i, DownloadStatus.Completed);
+Drain();
+Check(
+    bulkEvents.SequenceEqual(new[] { NotifyCollectionChangedAction.Reset }),
+    "1,200 equal-count replacements produce one Reset, not thousands of UI events"
+);
+
+var builtCards = 0;
+var cards = new _855Media.Views.Controls.DownloadCardGrid
+{
+    DownloadsSource = large.Rows,
+    Columns = 4,
+    CardTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<DownloadViewModel>(
+        (row, _) =>
+        {
+            builtCards++;
+            return new Border
+            {
+                Width = 192,
+                Height = 184,
+                Margin = new Thickness(4),
+                Child = new TextBlock { Text = row?.FileName },
+            };
+        }
+    ),
+};
+window.Content = cards;
+Layout();
+var cardCount = cards
+    .GetVisualDescendants()
+    .OfType<TextBlock>()
+    .Count(t => t.Text?.StartsWith("photo-") == true);
+Check(
+    cards.ItemCount == 2500 && cardCount > 0 && cardCount < 100 && builtCards < 100,
+    $"production card control virtualizes 10,000 downloads ({cardCount} visible card controls, {builtCards} built)"
+);
+var beforeBurst = builtCards;
+for (var i = 1500; i < 2000; i++)
+    largeSource[i].Status = DownloadStatus.Completed;
+Drain();
+Layout();
+Check(
+    builtCards == beforeBurst,
+    "All status bursts do not rebuild visible cards or thumbnail templates"
+);
+var cardTimer = Stopwatch.StartNew();
+for (var i = 0; i < 12; i++)
+{
+    large.Filter = i % 2 == 0 ? DownloadStatusFilter.Active : DownloadStatusFilter.Completed;
+    Drain();
+    Layout();
+    var shown = cards
+        .GetVisualDescendants()
+        .OfType<TextBlock>()
+        .Count(t => t.Text?.StartsWith("photo-") == true);
+    Check(shown > 0 && shown < 100, $"card filter switch {i + 1} realizes only viewport cards");
+}
+cardTimer.Stop();
+Console.WriteLine(
+    $"MEASURED: 12 production card filter/layout switches over 10,000 downloads: {cardTimer.Elapsed.TotalMilliseconds:F1} ms (headless, no thumbnail network)."
+);
+large.Filter = DownloadStatusFilter.All;
+Drain();
+Layout();
+cards.ScrollIntoView(cards.ItemCount - 1);
+Layout();
+Check(
+    cards
+        .GetVisualDescendants()
+        .OfType<TextBlock>()
+        .Any(t => t.Text == largeSource.Last().FileName),
+    "scrolling reaches the final download, with no truncated queue"
+);
+cards.Columns = 8;
+Layout();
+Check(cards.ItemCount == 1250, "resizing regroups all downloads into eight-column rows");
+cards.DownloadsSource = null;
+Layout();
+Check(cards.ItemCount == 0, "switching away from card view releases its data and controls");
+cards.DownloadsSource = large.Rows;
+Layout();
+Check(cards.ItemCount == 1250, "returning to cards restores all filtered rows");
+window.Content = null;
+Layout();
+largeSource.RemoveAt(0);
+Drain();
+Layout();
+Check(
+    cards.ItemCount == 0,
+    "detached card controls unsubscribe and do not rebuild on queue changes"
+);
+window.Content = cards;
+Layout();
+Check(cards.ItemCount == 1250, "reattaching observes the current queue after detached mutations");
+
+// Exercise the unchanged production card markup and commands as well as the panel.
+var dashboardMarkup = new _855Media.Views.Components.DashboardView();
+var productionCards = dashboardMarkup.FindControl<_855Media.Views.Controls.DownloadCardGrid>(
+    "DownloadCards"
+)!;
+Check(
+    productionCards.CardTemplate != null,
+    "dashboard uses the virtualized control with its production card template"
+);
+cards.DownloadsSource = null;
+Layout();
+cards.CardTemplate = productionCards.CardTemplate;
+cards.DownloadsSource = large.Rows;
+Layout();
+var actualNames = cards
+    .GetVisualDescendants()
+    .OfType<TextBlock>()
+    .Count(t => t.Text?.StartsWith("photo-") == true);
+Check(
+    actualNames > 0 && actualNames < 100,
+    $"production thumbnail/status/action markup renders only viewport cards ({actualNames} file labels)"
+);
+Check(
+    cards
+        .GetVisualDescendants()
+        .OfType<Button>()
+        .Any(b =>
+            b.DataContext is DownloadViewModel row && ReferenceEquals(b.Command, row.CancelCommand)
+        ),
+    "production card buttons retain their original download-row commands"
+);
 window.Close();
 foreach (var row in owned)
     row.Dispose();

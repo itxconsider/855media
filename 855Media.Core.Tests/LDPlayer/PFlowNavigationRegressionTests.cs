@@ -1060,8 +1060,13 @@ public class PFlowNavigationRegressionTests
                 "Profile"
             )
         );
-        Assert.Null(
-            PFlowPersonaSwitcherService.FindNativeTargetInSwitcher(xml, "Gerardo Lopez", "Page")
+        // The selected row has no type badge. Its name/selection can locate the
+        // saved actor, but cannot independently classify it as personal or Page.
+        Assert.Equal(
+            (360, 490, true),
+            PFlowPersonaSwitcherService
+                .FindNativeTargetInSwitcher(xml, "Gerardo Lopez", "Page")!
+                .Value
         );
         Assert.Null(PFlowPersonaSwitcherService.FindPersonaInSwitcher(xml, "Gerardo"));
     }

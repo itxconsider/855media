@@ -70,13 +70,31 @@ public sealed class FacebookLayoutCatalog
                 Variants = FacebookLayoutRegistry
                     .BuiltInDefinitions.Select(d => new FacebookLayoutVariantConfiguration
                     {
-                        Id = d.Id,
+                        Id = BundledVersion(d.Id) == 2 ? d.Id[..^1] + "2" : d.Id,
                         BaseId = d.Id,
+                        Version = BundledVersion(d.Id),
                     })
                     .ToList(),
             },
             JsonOptions
         );
+
+    private static int BundledVersion(string id) =>
+        id
+            is "feed.home.v1"
+                or "feed.stacked-create.v1"
+                or "feed.scrolled.v1"
+                or "reels.tabbed.v1"
+                or "reels.fullscreen.v1"
+                or "story.albums.v1"
+                or "reel.picker.v1"
+                or "reel.picker-tabbed.v1"
+                or "dashboard.analytics-tab.v1"
+                or "dashboard.analytics-section.v1"
+                or "dashboard.analytics-dual-entry.v1"
+                or "authentication.checkpoint.v1"
+            ? 2
+            : 1;
 
     public static FacebookLayoutCatalog Parse(string json) => Parse(json, "JSON rules");
 

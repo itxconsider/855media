@@ -178,12 +178,20 @@ public static class PFlowDeviceRouting
             throw new InvalidOperationException("Unknown LD instance.");
         var root = Path.GetFullPath(ldDirectory);
         var config = Path.Combine(root, "vms", "config", $"leidian{index}.config");
-        var disk = Path.Combine(root, "vms", $"leidian{index}", "data.vmdk");
+        var instanceDirectory = Path.Combine(root, "vms", $"leidian{index}");
+        var disks = new[] { "data.vmdk", "data.vdi" }
+            .Select(name => Path.Combine(instanceDirectory, name))
+            .Where(File.Exists)
+            .ToArray();
+        if (disks.Length > 1)
+            throw new InvalidOperationException(
+                "More than one LD data disk was found. Review the instance files before continuing."
+            );
         using var json = JsonDocument.Parse(File.ReadAllText(config));
         if (
             !json.RootElement.TryGetProperty("propertySettings.phoneAndroidId", out var androidId)
             || string.IsNullOrWhiteSpace(androidId.GetString())
-            || !File.Exists(disk)
+            || disks.Length == 0
         )
             throw new InvalidOperationException(
                 "LD instance identity is unavailable. Review the instance mapping."
@@ -195,7 +203,7 @@ public static class PFlowDeviceRouting
             {
                 root.ToUpperInvariant(),
                 androidId.GetString(),
-                File.GetCreationTimeUtc(disk)
+                File.GetCreationTimeUtc(disks[0])
                     .Ticks.ToString(System.Globalization.CultureInfo.InvariantCulture),
             }
         );

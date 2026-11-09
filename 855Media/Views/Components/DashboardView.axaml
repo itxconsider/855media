@@ -4,6 +4,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:asyncImageLoader="clr-namespace:AsyncImageLoader;assembly=AsyncImageLoader.Avalonia"
     xmlns:components="clr-namespace:_855Media.ViewModels.Components"
+    xmlns:controls="clr-namespace:_855Media.Views.Controls"
     xmlns:converters="clr-namespace:_855Media.Converters"
     xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
     x:Name="UserControl"
@@ -757,12 +758,24 @@
                                     </DataGrid.Columns>
                                 </DataGrid>
 
-                                <ScrollViewer
-                                    HorizontalScrollBarVisibility="Disabled"
+                                <controls:DownloadCardGrid
+                                    x:Name="DownloadCards"
+                                    DownloadsSource="{Binding GridDownloadsSource}"
+                                    Columns="{Binding DownloadGridColumnCount}"
                                     IsVisible="{Binding IsDownloadsGridView}"
                                     SizeChanged="DownloadsGrid_OnSizeChanged"
-                                    VerticalScrollBarVisibility="Auto">
-                                    <ScrollViewer.ContextMenu>
+                                    Padding="0" BorderThickness="0" Background="Transparent"
+                                    ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                    ScrollViewer.VerticalScrollBarVisibility="Auto">
+                                    <controls:DownloadCardGrid.Styles>
+                                        <Style Selector="ListBoxItem">
+                                            <Setter Property="Padding" Value="0" />
+                                            <Setter Property="Margin" Value="0" />
+                                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                            <Setter Property="Focusable" Value="False" />
+                                        </Style>
+                                    </controls:DownloadCardGrid.Styles>
+                                    <controls:DownloadCardGrid.ContextMenu>
                                         <ContextMenu>
                                             <MenuItem Command="{Binding RemoveSuccessfulDownloadsCommand}" Header="{Binding LocalizationManager.ContextMenuRemoveSuccessful}" />
                                             <MenuItem Command="{Binding RemoveInactiveDownloadsCommand}" Header="{Binding LocalizationManager.ContextMenuRemoveInactive}" />
@@ -771,16 +784,9 @@
                                             <Separator />
                                             <MenuItem Command="{Binding CancelAllDownloadsCommand}" Header="{Binding LocalizationManager.ContextMenuCancelAll}" />
                                         </ContextMenu>
-                                    </ScrollViewer.ContextMenu>
-
-                                    <ItemsControl ItemsSource="{Binding GridDownloadsSource}">
-                                        <ItemsControl.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <WrapPanel />
-                                            </ItemsPanelTemplate>
-                                        </ItemsControl.ItemsPanel>
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
+                                    </controls:DownloadCardGrid.ContextMenu>
+                                    <controls:DownloadCardGrid.CardTemplate>
+                                        <DataTemplate x:DataType="components:DownloadViewModel">
                                                 <Border
                                                     Width="{Binding $parent[UserControl].((components:DashboardViewModel)DataContext).DownloadGridItemWidth}"
                                                     Height="184"
@@ -936,10 +942,9 @@
                                                             Value="{Binding Progress.Current.Fraction, Mode=OneWay}" />
                                                     </Grid>
                                                 </Border>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
-                                </ScrollViewer>
+                                        </DataTemplate>
+                                    </controls:DownloadCardGrid.CardTemplate>
+                                </controls:DownloadCardGrid>
                             </Panel>
                         </Border>
                     </Grid>

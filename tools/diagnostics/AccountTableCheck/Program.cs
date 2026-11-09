@@ -10,6 +10,74 @@ using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 
+if (args.Contains("--helper-clock-live"))
+{
+    await ScheduleClockCheck.LiveAsync(
+        args.Single(a => a.StartsWith("--ld-path="))[10..],
+        int.Parse(args.Single(a => a.StartsWith("--ld-index="))[11..])
+    );
+    return;
+}
+if (args.Contains("--audit-post-targets"))
+{
+    var ids = args.Where(a => a.StartsWith("--job=")).Select(a => a[6..]).ToArray();
+    var root = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "855Media",
+        "installations"
+    );
+    foreach (
+        var file in Directory.EnumerateFiles(
+            root,
+            "facebook_post_history.db",
+            SearchOption.AllDirectories
+        )
+    )
+    {
+        using var connection = new Microsoft.Data.Sqlite.SqliteConnection(
+            new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder
+            {
+                DataSource = file,
+                Mode = Microsoft.Data.Sqlite.SqliteOpenMode.ReadOnly,
+                Pooling = false,
+            }.ToString()
+        );
+        connection.Open();
+        foreach (var id in ids)
+        {
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT json FROM jobs WHERE id=$id";
+            command.Parameters.AddWithValue("$id", id);
+            if (command.ExecuteScalar() is not string json)
+                continue;
+            var job = System.Text.Json.JsonSerializer.Deserialize<PFlowJob>(json)!;
+            Console.WriteLine(
+                System.Text.Json.JsonSerializer.Serialize(
+                    new
+                    {
+                        job.JobId,
+                        job.AccountBinding,
+                        job.BatchId,
+                        job.DeviceIndex,
+                        job.AppPackage,
+                        job.TargetId,
+                        job.OwnerUid,
+                        job.PersonaUid,
+                        job.TargetName,
+                        job.IsProfile,
+                        job.PostType,
+                        job.State,
+                        job.ConfirmedUtc,
+                        EvidencePresent = !string.IsNullOrWhiteSpace(job.Evidence),
+                        job.IdentityEvidence,
+                    }
+                )
+            );
+        }
+    }
+    return;
+}
+
 Environment.SetEnvironmentVariable(
     "MediaTag_SETTINGS_PATH",
     Path.Combine(Path.GetTempPath(), "855-account-table-fixture.json")
@@ -22,6 +90,100 @@ AppBuilder
     .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false })
     .UseDesktopWebViewSafe()
     .SetupWithoutStarting();
+if (args.Contains("--helper-clock"))
+{
+    ScheduleClockCheck.Run();
+    return;
+}
+if (args.Contains("--pending-submission"))
+{
+    await PendingSubmissionCheck.RunAsync();
+    return;
+}
+if (args.Contains("--fetch-options"))
+{
+    FetchOptionsCheck.Run();
+    return;
+}
+if (args.Contains("--dashboard-performance"))
+{
+    DashboardPerformanceCheck.Run();
+    return;
+}
+if (args.Contains("--cleanup-instance"))
+{
+    await CleanupInstanceCheck.RunAsync();
+    return;
+}
+if (args.Contains("--ld14-identity"))
+{
+    foreach (var index in new[] { 6, 45 })
+    {
+        var identity = PFlowDeviceRouting.ReadIdentity(@"C:\LDPlayer\LDPlayer14", index);
+        if (identity.Length != 64)
+            throw new Exception("Invalid identity hash");
+        Console.WriteLine(
+            $"PASS LDPlayer14 index {index}: local instance identity read successfully"
+        );
+    }
+    return;
+}
+if (args.Contains("--installation-scope"))
+{
+    AccountInstallationCheck.Run();
+    return;
+}
+if (args.Contains("--installation-data"))
+{
+    await InstallationDataCheck.RunAsync();
+    return;
+}
+if (args.Contains("--post-history"))
+{
+    PostHistoryCheck.Run();
+    return;
+}
+if (args.Contains("--native-fetch"))
+{
+    await NativeFetchCheck.RunAsync();
+    return;
+}
+if (args.Contains("--page-uid-ui"))
+{
+    PageUidUiCheck.Run();
+    return;
+}
+if (args.Contains("--inventory-display"))
+{
+    await InventoryDisplayCheck.RunAsync();
+    return;
+}
+if (args.Contains("--open-instance-limit"))
+{
+    await OpenInstanceLimitCheck.RunAsync();
+    return;
+}
+if (args.Contains("--stop-flow"))
+{
+    await StopFlowCheck.RunAsync();
+    return;
+}
+if (args.Contains("--posting-upload-wait"))
+{
+    await PostingUploadWaitCheck.RunAsync();
+    return;
+}
+if (args.Contains("--queue-selection"))
+{
+    QueueSelectionCheck.Run();
+    return;
+}
+if (args.Contains("--screentime-name"))
+{
+    await ScreenTimeNameCheck.RunAsync();
+    return;
+}
+
 using var vm = new AutoPostViewModel(null!, null!, null!, null!, null!);
 foreach (var index in new[] { 10, 2, 1, 23, 3 })
     vm.MappedAccounts.Add(
@@ -117,6 +279,12 @@ var photoFile = Path.Combine(mediaFixture, "photo.jpg");
 var storyFile = Path.Combine(mediaFixture, "story.mp4");
 File.WriteAllText(reelFile, "fixture");
 File.WriteAllText(photoFile, "fixture");
+var secondPhotoFile = Path.Combine(mediaFixture, "photo-second.png");
+File.WriteAllText(secondPhotoFile, "second photo");
+File.WriteAllText(Path.ChangeExtension(photoFile, ".txt"), "Shared photo caption");
+File.WriteAllText(Path.ChangeExtension(secondPhotoFile, ".txt"), "Shared photo caption");
+File.WriteAllText(Path.Combine(mediaFixture, "unrelated.jpg"), "unrelated photo");
+File.WriteAllText(Path.Combine(mediaFixture, "unrelated.txt"), "Other caption");
 File.WriteAllText(storyFile, "fixture");
 using (
     var queueVm = new AutoPostViewModel(
@@ -148,13 +316,16 @@ using (
                 VideoReelPath = reelFile,
                 ImagePath = photoFile,
                 StoryPath = storyFile,
+                ReelCaptionSuffix = "Follow for more\n#reels",
+                PhotoCaptionSuffix = "#photos",
+                PhotoTitleFromTextFile = true,
+                GroupPhotosWithSameCaption = true,
             },
             991
         )
     );
     queueVm.AutoMaxPostByMaturity = false;
-    queueVm.PostFromCount = 1;
-    queueVm.PostToCount = 1;
+    queueVm.ExactFileCount = 1;
     queueVm.PrepareReels = true;
     queueVm.PreparePhotos = true;
     queueVm.PrepareStories = true;
@@ -175,6 +346,103 @@ using (
         task.GetAwaiter().GetResult();
     }
     RunPrepare();
+    Require(
+        queueVm.Tasks.Single(t => t.Type == "Reel").Title == "reel\nFollow for more\n#reels",
+        "Reel queue appends suffix once"
+    );
+    Require(
+        queueVm.Tasks.Single(t => t.Type == "Picture").Title == "Shared photo caption\n#photos",
+        "Photo queue uses independent suffix"
+    );
+    var photoRow = queueVm.Tasks.Single(t => t.Type == "Picture");
+    Require(
+        photoRow.PhotoPaths.Count == 2
+            && photoRow.PhotoPaths.Contains(secondPhotoFile)
+            && photoRow.PhotoPaths.Contains(photoFile),
+        "One selected file expands to matching sibling photo group in one row"
+    );
+    var photoQueueStore = new PFlowDispatchQueueStore(
+        Path.Combine(mediaFixture, "group-dispatch.db")
+    );
+    photoQueueStore.Save(photoRow);
+    var restoredGroup = photoQueueStore.Read().Single();
+    Require(
+        restoredGroup.PhotoPaths.SequenceEqual(photoRow.PhotoPaths)
+            && restoredGroup.Title == photoRow.Title,
+        "Saved queue restores all photos and one caption"
+    );
+    Require(
+        photoRow.SourcePaths.Count() == 2 && photoRow.SourceDisplay.Contains("photos"),
+        "Queue reservation and display include group members"
+    );
+    Require(
+        queueVm.Tasks.Single(t => t.Type == "Story").Title == "story.mp4",
+        "Story ignores caption suffix"
+    );
+    queueVm.Pages[0].ReelCaptionSuffix = "Changed suffix";
+    Require(
+        queueVm.Tasks.Single(t => t.Type == "Reel").Title == "reel\nFollow for more\n#reels",
+        "Existing queue retains prepared caption"
+    );
+    queueVm.Pages[0].SyncToModel();
+    var restoredCaptionRow = new FacebookPageTargetViewModel(
+        System.Text.Json.JsonSerializer.Deserialize<FacebookPageTarget>(
+            System.Text.Json.JsonSerializer.Serialize(queueVm.Pages[0].Model)
+        )!
+    );
+    Require(
+        restoredCaptionRow.ReelCaptionSuffix == "Changed suffix"
+            && restoredCaptionRow.PhotoCaptionSuffix == "#photos",
+        "Caption suffix VM/model save and reload"
+    );
+    var configProperties = (string[])
+        typeof(AutoPostViewModel)
+            .GetField("PageConfigProperties", BindingFlags.NonPublic | BindingFlags.Static)!
+            .GetValue(null)!;
+    Require(
+        configProperties.Contains("ReelCaptionSuffix")
+            && configProperties.Contains("PhotoCaptionSuffix"),
+        "Page editor save and rollback include suffixes"
+    );
+    queueVm.EditPageConfig(queueVm.Pages[0]);
+    Require(
+        queueVm.SelectedPageForEdit!.ReelCaptionSuffix == "Changed suffix",
+        "Page editor loads suffix"
+    );
+    var captionView = new AutoPostView { DataContext = queueVm };
+    var captionWindow = new Window
+    {
+        Content = captionView,
+        Width = 1280,
+        Height = 820,
+    };
+    captionWindow.Show();
+    Dispatcher.UIThread.RunJobs();
+    captionWindow.UpdateLayout();
+    var reelSuffixInput = captionView.FindControl<TextBox>("ReelCaptionSuffixInput")!;
+    var photoSuffixInput = captionView.FindControl<TextBox>("PhotoCaptionSuffixInput")!;
+    Require(
+        reelSuffixInput.Text == "Changed suffix" && photoSuffixInput.Text == "#photos",
+        "Actual caption fields load saved values"
+    );
+    reelSuffixInput.SetCurrentValue(TextBox.TextProperty, "Cancelled edit\n#new");
+    Dispatcher.UIThread.RunJobs();
+    Require(
+        queueVm.SelectedPageForEdit.ReelCaptionSuffix == "Cancelled edit\n#new",
+        "Actual caption field updates draft through binding"
+    );
+    Directory.CreateDirectory("artifacts/caption-suffix");
+    using (var captionBitmap = new RenderTargetBitmap(new PixelSize(1280, 820)))
+    {
+        captionBitmap.Render(captionView);
+        captionBitmap.Save("artifacts/caption-suffix/editor.png");
+    }
+    captionWindow.Close();
+    queueVm.CloseUpdatePage();
+    Require(queueVm.Pages[0].ReelCaptionSuffix == "Changed suffix", "Cancel isolates suffix edits");
+    Console.WriteLine(
+        "PASS independent caption suffixes in real queue, unchanged prepared rows, save/reload, editor binding and Cancel isolation"
+    );
     Require(
         queueVm.Tasks.Select(t => t.Type).SequenceEqual(new[] { "Reel", "Picture", "Story" }),
         "One prepare queues all selected types"

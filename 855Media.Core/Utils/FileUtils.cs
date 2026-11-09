@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -10,6 +11,8 @@ namespace _855Media.Core.Utils;
 
 public static class FileUtils
 {
+    // Leave room for yt-dlp format/part names and FFmpeg's conversion suffixes.
+    public const int MaximumDownloadPathLength = 230;
     private static readonly char[] InvalidFileNameChars = Path.GetInvalidFileNameChars();
 
     public static string SanitizeFileName(string? fileName, string fallback = "video")
@@ -56,7 +59,8 @@ public static class FileUtils
         // Truncate if exceeds safe filename length limit (200 characters)
         if (result.Length > 200)
         {
-            result = result[..200].TrimEnd(' ', '.', '-', '_');
+            var length = char.IsHighSurrogate(result[199]) ? 199 : 200;
+            result = result[..length].TrimEnd(' ', '.', '-', '_');
         }
 
         return string.IsNullOrWhiteSpace(result) ? fallback : result;
@@ -100,7 +104,46 @@ public static class FileUtils
 
         var cleanFileName = safeName + safeExt;
 
+        if (OperatingSystem.IsWindows())
+        {
+            var absolute = Path.GetFullPath(Path.Combine(dir ?? "", cleanFileName));
+            var budget = MaximumDownloadPathLength - (absolute.Length - safeName.Length);
+            if (budget <= 0 || safeName.Length > budget && budget < 16)
+                throw new PathTooLongException(
+                    "The download destination is too long. Choose a shorter folder path."
+                );
+            if (safeName.Length > budget)
+            {
+                // Keep similar long captions distinct, including differences past
+                // the ordinary 200-character filename cap. Full captions stay in sidecars.
+                var suffix =
+                    "~"
+                    + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(nameWithoutExt)))[
+                        ..8
+                    ];
+                var length = budget - suffix.Length;
+                if (char.IsHighSurrogate(safeName[length - 1]))
+                    length--;
+                safeName = safeName[..length].TrimEnd(' ', '.', '-', '_') + suffix;
+                cleanFileName = safeName + safeExt;
+            }
+        }
+
         return !string.IsNullOrWhiteSpace(dir) ? Path.Combine(dir, cleanFileName) : cleanFileName;
+    }
+
+    public static string GetAvailableDownloadFilePath(string filePath)
+    {
+        var original = SanitizeFilePath(filePath);
+        var candidate = original;
+        var directory = Path.GetDirectoryName(original);
+        var stem = Path.GetFileNameWithoutExtension(original);
+        var extension = Path.GetExtension(original);
+        for (var number = 1; File.Exists(candidate) || Directory.Exists(candidate); number++)
+            candidate = SanitizeFilePath(
+                Path.Combine(directory ?? "", $"{stem} ({number}){extension}")
+            );
+        return candidate;
     }
 
     public static async Task ReplaceFileWithRetryAsync(

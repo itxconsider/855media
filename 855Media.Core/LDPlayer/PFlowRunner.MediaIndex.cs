@@ -17,11 +17,10 @@ public sealed partial class PFlowRunner
         CancellationToken ct
     )
     {
-        var paths = new[]
-        {
-            job.RemotePath,
-            album == null ? null : "/sdcard/DCIM/855Media/" + album,
-        }
+        var paths = job
+            .RemoteMediaPaths.Concat(
+                new[] { album == null ? null : "/sdcard/DCIM/855Media/" + album }
+            )
             .Where(p => p != null)
             .SelectMany(p =>
                 new[]

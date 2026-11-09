@@ -146,7 +146,8 @@ public class GeminiTranslationService
         IReadOnlyList<SubtitleSegment> segments,
         string sourceLang = "auto",
         string model = DefaultModel,
-        CancellationToken cancellationToken = default
+        CancellationToken cancellationToken = default,
+        string? translationBrief = null
     )
     {
         var results = new Dictionary<int, string>();
@@ -162,6 +163,11 @@ public class GeminiTranslationService
                 index = s.Index,
                 speaker = string.IsNullOrWhiteSpace(s.SpeakerName) ? "Speaker" : s.SpeakerName,
                 gender = string.IsNullOrWhiteSpace(s.DetectedGender) ? "Neutral" : s.DetectedGender,
+                durationSeconds = Math.Round(
+                    Math.Max(0, (s.EndTime - s.StartTime).TotalSeconds),
+                    3
+                ),
+                emotion = s.Emotion,
                 original = s.OriginalText,
             })
             .ToList();
@@ -177,6 +183,17 @@ public class GeminiTranslationService
         );
         promptBuilder.AppendLine();
         promptBuilder.AppendLine("Movie Dubbing Rules:");
+        promptBuilder.AppendLine($"Source language: {sourceLang}. Target language: spoken Khmer.");
+        promptBuilder.AppendLine(
+            "Use durationSeconds as a speech budget, preserve meaning and emotion, and never invent dialogue to fill silence. Do not infer romance, age or rank from gender alone. Use relationships from the director brief when supplied."
+        );
+        if (!string.IsNullOrWhiteSpace(translationBrief))
+        {
+            promptBuilder.AppendLine(
+                "Director brief and terminology (use for adaptation; retain the JSON output contract):"
+            );
+            promptBuilder.AppendLine(translationBrief);
+        }
         promptBuilder.AppendLine(
             "1. Natural Cinema Phrasing: Translate for spoken cinema (ភាសាកុន/ភាពយន្ត), avoiding textbook or literal machine translation."
         );

@@ -69,7 +69,7 @@ public partial class LDInstanceItemViewModel
                 NetworkDetail =
                     $"{info.Detail}\nChecked {DateTime.Now:HH:mm:ss}. Approximate IP location, not GPS."
                     + "\nUses this LD's network; Facebook may use a different route with a per-app VPN."
-                    + "\nIP: ipify · Location: IPWhois";
+                    + "\nIP/location: 885Helper / IPWhois; legacy fallback: ipify / IPWhois";
                 _networkNextCheck = DateTimeOffset.UtcNow.AddMinutes(
                     string.IsNullOrEmpty(info.PublicIp) ? 1 : 5
                 );

@@ -158,12 +158,12 @@ public class FacebookPageTargetTests : IDisposable
     public void AutoPostTaskItem_StatusChange_FiresPropertyChanged()
     {
         var task = new AutoPostTaskItem { Status = "Queued" };
-        string? changedProp = null;
-        task.PropertyChanged += (_, e) => changedProp = e.PropertyName;
+        var changedProps = new List<string?>();
+        task.PropertyChanged += (_, e) => changedProps.Add(e.PropertyName);
 
         task.Status = "In Progress";
 
-        Assert.Equal("Status", changedProp);
+        Assert.Contains("Status", changedProps);
         Assert.Equal("In Progress", task.Status);
     }
 

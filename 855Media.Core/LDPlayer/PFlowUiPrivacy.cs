@@ -6,6 +6,12 @@ namespace _855Media.Core.LDPlayer;
 
 public static class PFlowUiPrivacy
 {
+    internal static bool IsEditableClass(string? name) =>
+        name
+            is "android.widget.EditText"
+                or "android.widget.AutoCompleteTextView"
+                or "android.widget.MultiAutoCompleteTextView";
+
     // Unknown hierarchy cannot rule out a password/code screen.
     public static bool ContainsInput(string? xml)
     {
@@ -14,7 +20,7 @@ public static class PFlowUiPrivacy
             var nodes = FacebookHierarchyCache.ParseStrict(xml ?? "").Descendants("node").ToArray();
             return nodes.Length == 0
                 || nodes.Any(n =>
-                    (string?)n.Attribute("class") == "android.widget.EditText"
+                    IsEditableClass((string?)n.Attribute("class"))
                     || (string?)n.Attribute("password") == "true"
                 );
         }
@@ -33,7 +39,7 @@ public static class PFlowUiPrivacy
             var authentication = nodes.Any(n =>
                 (string?)n.Attribute("password") == "true"
                 || (
-                    (string?)n.Attribute("class") == "android.widget.EditText"
+                    IsEditableClass((string?)n.Attribute("class"))
                     && ((string?)n.Attribute("content-desc") ?? "").Split(',')[0]
                         is "Code"
                             or "Password"
@@ -43,7 +49,7 @@ public static class PFlowUiPrivacy
             foreach (
                 var node in nodes.Where(n =>
                     authentication
-                    || (string?)n.Attribute("class") == "android.widget.EditText"
+                    || IsEditableClass((string?)n.Attribute("class"))
                     || (string?)n.Attribute("package") == "com.google.android.gms"
                 )
             )

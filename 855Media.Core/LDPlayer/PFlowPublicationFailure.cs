@@ -60,7 +60,7 @@ internal sealed record PFlowPublicationFailure(string Message, string Attribute)
                 if (
                     Regex.IsMatch(
                         normalized,
-                        @"^(?:Couldn't (?:post|share(?: your)? story|upload(?: your)? (?:reel|story|post))|Upload failed|Unable to publish)(?=$|[\s.!:;…-])",
+                        @"^(?:Couldn't (?:post|schedule(?: your)? (?:reel|post)|share(?: your)? story|upload(?: your)? (?:reel|story|post))|(?:Upload|Scheduling) failed|Unable to (?:publish|schedule))(?=$|[\s.!:;…-])",
                         RegexOptions.IgnoreCase
                     )
                 )

@@ -7,7 +7,7 @@ namespace _855Media.Core.LDPlayer;
 
 /// <summary>
 /// Domain service interface for discovering, verifying, and synchronizing Facebook accounts,
-/// profiles, and managed pages across emulator instances and root storage.
+/// profiles, and managed pages through native emulator UI.
 /// </summary>
 public interface IPFlowAccountDiscoveryService
 {
@@ -32,7 +32,7 @@ public interface IPFlowAccountDiscoveryService
 
     /// <summary>
     /// Extracts comprehensive account details (email, birthday, UID, name) using UI hierarchy,
-    /// Settings/Accounts Center, Bloks native shell, and root shell fallback.
+    /// Settings/Accounts Center and native UI; private-storage fallback was removed.
     /// </summary>
     Task<FacebookAccountDetails?> ExtractFacebookAccountDetailsAsync(
         int index,
@@ -43,7 +43,7 @@ public interface IPFlowAccountDiscoveryService
 
     /// <summary>
     /// Verifies whether Facebook has an active, logged-in session on the emulator instance.
-    /// Checks root session database / shared_prefs and inspects UI hierarchy to detect
+    /// Inspects the native selected actor and UI hierarchy to detect
     /// login prompts, expired sessions, or checkpoints.
     /// </summary>
     Task<(
@@ -57,8 +57,7 @@ public interface IPFlowAccountDiscoveryService
     );
 
     /// <summary>
-    /// Extracts Facebook accounts, profiles, and managed pages directly from rooted device storage
-    /// (/data/data/com.facebook.katana/) via root shell (LightSharedPreferences, prefs_db, cache).
+    /// Retired compatibility entry point. Always rejects private-storage extraction without device access.
     /// </summary>
     Task<List<FacebookAccountInfo>> ExtractFacebookAccountsFromRootShellAsync(
         int index,
@@ -68,7 +67,7 @@ public interface IPFlowAccountDiscoveryService
     );
 
     /// <summary>
-    /// Fallback direct in-memory extraction of Facebook accounts via ADB root shell commands without pushing scripts.
+    /// Retired compatibility entry point. Always rejects private-storage extraction without device access.
     /// </summary>
     Task<List<FacebookAccountInfo>> ExtractFacebookAccountsDirectFromRootAdbAsync(
         int index,
@@ -78,7 +77,7 @@ public interface IPFlowAccountDiscoveryService
     );
 
     /// <summary>
-    /// Synchronizes discovered Facebook accounts and pages from rooted device storage into facebook_pages.json.
+    /// Synchronizes native UI discovery results into facebook_pages.json.
     /// </summary>
     Task<List<FacebookPageTarget>> SyncDiscoveredAccountsToStorageAsync(
         int index,

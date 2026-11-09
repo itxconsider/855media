@@ -8,16 +8,24 @@ using System.Xml.Linq;
 namespace _855Media.Core.LDPlayer;
 
 // All navigation uses fresh native bounds. No private account cache is identity evidence.
-public sealed class PFlowNativeAccountNavigator(
+public sealed partial class PFlowNativeAccountNavigator(
     ILDPlayerService ld,
     string path,
     Func<PFlowAccountBinding, string> name,
     Func<PFlowOtpRequest, CancellationToken, Task<PFlowOtpCode>>? receiveCode = null,
     Func<TimeSpan, CancellationToken, Task>? delay = null,
     Func<PFlowAccountBinding, CancellationToken, Task>? requireRecoveryIdle = null,
-    Func<PFlowAccountBinding, CancellationToken, Task<PFlowGraphIdentity?>>? graphIdentity = null
-) : IPFlowAutomaticAccountNavigator
+    Func<PFlowAccountBinding, CancellationToken, Task<PFlowGraphIdentity?>>? graphIdentity = null,
+    Func<string, string?>? postingPersonalName = null,
+    bool postingNameOnly = false,
+    Func<
+        PFlowAccountBinding,
+        System.Collections.Generic.IEnumerable<FacebookPageTarget>
+    >? savedTargets = null
+) : IPFlowAutomaticAccountNavigator, IPFlowInstallationNavigator
 {
+    public string InstallationPath => path;
+    private readonly bool _postingNameOnly = postingNameOnly || postingPersonalName != null;
     private readonly PFlowSessionPreparation _preparation = new(ld, path);
     private readonly Func<TimeSpan, CancellationToken, Task> _delay = delay ?? Task.Delay;
     private PFlowAccountBinding? _lastPersonalBinding;
@@ -242,7 +250,13 @@ public sealed class PFlowNativeAccountNavigator(
             || url.Scheme != Uri.UriSchemeHttps
             || !url.IsDefaultPort
             || !string.IsNullOrEmpty(url.UserInfo)
-            || url.Host is not ("facebook.com" or "www.facebook.com" or "m.facebook.com")
+            || url.Host
+                is not (
+                    "facebook.com"
+                    or "www.facebook.com"
+                    or "m.facebook.com"
+                    or "web.facebook.com"
+                )
         )
             return null;
         string? uid = null;
@@ -307,10 +321,72 @@ public sealed class PFlowNativeAccountNavigator(
         CancellationToken ct
     )
     {
-        var observed = await ObserveWithPersonalRecoveryAsync(binding, ct);
+        var loadingExpired = false;
+        if (_postingNameOnly)
+        {
+            for (var poll = 0; poll < 60; poll++)
+            {
+                var frame = await Screen(binding, ct);
+                if (
+                    !PFlowPostingNameVerification.SafeNameResponseContext(frame, binding.AppPackage)
+                    || !PFlowPostingNameVerification.LoadingResponse(frame)
+                )
+                    break;
+                if (poll == 0)
+                    await PFlowTrace.SessionAsync(
+                        binding.DeviceIndex,
+                        "account.name.loading-wait",
+                        "Waiting up to 60s for readable UI; no navigation/restart/Graph.",
+                        ct
+                    );
+                await _delay(TimeSpan.FromSeconds(1), ct);
+                loadingExpired = poll == 59;
+            }
+        }
+        var observed = loadingExpired
+            ? new PFlowAccountObservation(
+                "",
+                binding.AppPackage,
+                false,
+                false,
+                false,
+                DateTimeOffset.UtcNow,
+                PFlowAuthenticationState.Unavailable
+            )
+            : await ObserveWithPersonalRecoveryAsync(binding, ct);
         if (observed.State != PFlowAuthenticationState.Unavailable || observed.IsLiveUid)
             return observed;
         var xml = await Screen(binding, ct);
+        if (_postingNameOnly)
+        {
+            var reader =
+                savedTargets == null
+                    ? new PFlowPersonaSwitcherService(ld)
+                    : new PFlowPersonaSwitcherService(ld, binding, savedTargets(binding));
+            var selected = reader
+                .ResolveNativeSwitcherActors(xml)
+                .Where(a => a.IsSelected)
+                .ToArray();
+            var actual =
+                selected.Length == 1 ? selected[0].Name + " (" + selected[0].Type + ")"
+                : PFlowPostingNameVerification.ActiveHeaderName(xml) is { } header
+                    ? header + " (type unresolved)"
+                : "unavailable or ambiguous";
+            var reason = "Expected: " + name(binding) + " (Profile); observed: " + actual + ".";
+            await PFlowTrace.SessionAsync(
+                binding.DeviceIndex,
+                "account.name.unresolved",
+                reason + " No restart; Graph=0.",
+                ct
+            );
+            await PFlowDiagnostics.CaptureAsync(
+                ld,
+                binding.DeviceIndex,
+                "account-name-unresolved",
+                path
+            );
+            return observed with { FailureReason = reason };
+        }
         if (
             PFlowLoginScreen.RequiresAuthentication(PFlowLoginScreen.Classify(xml))
             || LoginLanding(xml)
@@ -333,15 +409,205 @@ public sealed class PFlowNativeAccountNavigator(
         CancellationToken ct
     )
     {
+        // A Feed with hidden navigation cannot identify its personal owner. Use
+        // the guarded completed-list route before the legacy observation path
+        // consumes its opening budget or builds an unbound personal target.
+        if (_postingNameOnly && savedTargets != null)
+        {
+            var initial = await Screen(binding, ct);
+            var owner = name(binding);
+            if (
+                !string.IsNullOrWhiteSpace(owner)
+                && RecoverableOwnerFeed(initial, binding.AppPackage)
+            )
+            {
+                if (await RecoverOwnerSwitcherAsync(binding, owner, ct, fromFeed: true))
+                    return await ObserveCoreAsync(binding, ct, false);
+                return new PFlowAccountObservation(
+                    "",
+                    binding.AppPackage,
+                    false,
+                    false,
+                    false,
+                    DateTimeOffset.UtcNow,
+                    PFlowAuthenticationState.Unavailable
+                );
+            }
+        }
         var observed = await ObserveCoreAsync(binding, ct, true);
         if (observed.State != PFlowAuthenticationState.Unavailable)
             return observed;
 
         // A Page can expose the same Edit profile controls as a personal profile.
-        // Failed live identity proof gets one bounded recovery to the mapped personal actor.
-        // Navigation labels choose a destination; only a fresh settings UID can authenticate it.
+        // Failed identity proof gets bounded recovery to the mapped personal actor.
+        // Name mode still requires fresh personal name/type proof; UID mode retains live UID proof.
         var xml = await Screen(binding, ct);
         var personalName = name(binding);
+        if (_postingNameOnly)
+        {
+            if (BlockedOwnerMenu(xml, personalName))
+                return await RecoverBlockedOwnerMenuAsync(binding, personalName, ct)
+                    ? await ObserveCoreAsync(binding, ct, false)
+                    : observed;
+            // The profile dropdown can fail while an owned mapped Page remains
+            // readable. Menu exposes a separate, explicit personal-owner shortcut.
+            if (
+                savedTargets != null
+                && PFlowPostingNameVerification.CanRecoverOwnerFromPage(
+                    xml,
+                    binding,
+                    savedTargets(binding)
+                )
+            )
+            {
+                var recovered = await PFlowPostingNameVerification.RecoverOwnerThroughMenuAsync(
+                    ld,
+                    binding,
+                    personalName,
+                    path,
+                    token => Screen(binding, token),
+                    _delay,
+                    ct,
+                    requireRecoveryIdle == null
+                        ? null
+                        : token => requireRecoveryIdle(binding, token),
+                    fresh =>
+                        PFlowPostingNameVerification.CanRecoverOwnerFromPage(
+                            fresh,
+                            binding,
+                            savedTargets(binding)
+                        )
+                );
+                if (!recovered && BlockedOwnerMenu(await Screen(binding, ct), personalName))
+                    recovered = await RecoverBlockedOwnerMenuAsync(binding, personalName, ct);
+                return recovered ? await ObserveCoreAsync(binding, ct, false) : observed;
+            }
+            // A fresh, usable owner shortcut on an unobstructed Menu already
+            // identifies its destination. Avoid closing and reopening that drawer.
+            if (
+                MenuSurface(xml)
+                && !PFlowPersonaSwitcherService.IsNativeSwitcherSheetOpen(xml)
+                && PFlowPostingNameVerification.PersonalShortcut(xml, personalName)
+                    is { } ownerShortcut
+                && FacebookLayoutRegistry.UsableCenter(ownerShortcut) is { } ownerPoint
+            )
+            {
+                var recovered = await PFlowPostingNameVerification.SelectOwnerShortcutAsync(
+                    ld,
+                    binding,
+                    personalName,
+                    path,
+                    token => Screen(binding, token),
+                    _delay,
+                    ct,
+                    requireRecoveryIdle == null
+                        ? null
+                        : token => requireRecoveryIdle(binding, token)
+                );
+                return recovered ? await ObserveCoreAsync(binding, ct, false) : observed;
+            }
+            // An opened native sheet may be absent from accessibility. Normalize to
+            // Feed before touching the Menu shortcut so its background is never tapped.
+            if (
+                PFlowPostingNameVerification.PersonalShortcut(
+                    xml,
+                    personalName,
+                    requireUsable: false
+                ) != null
+            )
+            {
+                for (var back = 0; back < 3; back++)
+                {
+                    if (
+                        FacebookLayoutRegistry.Match(xml, FacebookScreenKind.NewsFeed).IsMatch
+                        && !MenuSurface(xml)
+                    )
+                        break;
+                    if (
+                        !PFlowPostingNameVerification.SafeNameResponseContext(
+                            xml,
+                            binding.AppPackage
+                        ) || !await ld.PressBackAsync(binding.DeviceIndex, path, ct)
+                    )
+                        return observed;
+                    await _delay(TimeSpan.FromMilliseconds(400), ct);
+                    xml = await Screen(binding, ct);
+                }
+                if (
+                    FacebookLayoutRegistry.Match(xml, FacebookScreenKind.NewsFeed).IsMatch
+                    && !MenuSurface(xml)
+                    && await PFlowPostingNameVerification.OpenNativeMenuAsync(
+                        ld,
+                        binding.DeviceIndex,
+                        path,
+                        ct
+                    )
+                )
+                {
+                    for (var poll = 0; poll < 20; poll++)
+                    {
+                        xml = await Screen(binding, ct);
+                        if (
+                            !PFlowPostingNameVerification.SafeNameResponseContext(
+                                xml,
+                                binding.AppPackage
+                            )
+                        )
+                            return observed;
+                        var shortcut = PFlowPostingNameVerification.PersonalShortcut(
+                            xml,
+                            personalName
+                        );
+                        if (
+                            shortcut != null
+                            && FacebookLayoutRegistry.UsableCenter(shortcut) is { } point
+                        )
+                        {
+                            var recovered =
+                                await PFlowPostingNameVerification.SelectOwnerShortcutAsync(
+                                    ld,
+                                    binding,
+                                    personalName,
+                                    path,
+                                    token => Screen(binding, token),
+                                    _delay,
+                                    ct,
+                                    requireRecoveryIdle == null
+                                        ? null
+                                        : token => requireRecoveryIdle(binding, token)
+                                );
+                            return recovered
+                                ? await ObserveCoreAsync(binding, ct, false)
+                                : observed;
+                        }
+                        await _delay(TimeSpan.FromMilliseconds(500), ct);
+                    }
+                }
+                return observed;
+            }
+            if (
+                string.IsNullOrWhiteSpace(personalName)
+                || !await (
+                    savedTargets == null
+                        ? new PFlowPersonaSwitcherService(ld)
+                        : new PFlowPersonaSwitcherService(ld, binding, savedTargets(binding))
+                ).SelectNativeTargetAsync(
+                    binding.DeviceIndex,
+                    new FacebookPageTarget
+                    {
+                        PageName = personalName,
+                        Type = "Profile",
+                        PageId = binding.OwnerUid,
+                    },
+                    path,
+                    ct,
+                    postingNameOnly: true,
+                    restartOnNavigationFailure: false
+                )
+            )
+                return observed;
+            return await ObserveCoreAsync(binding, ct, false);
+        }
         if (!CanRecoverPersonalProfile(xml) || string.IsNullOrWhiteSpace(personalName))
             return observed;
         if (PersonalSettings(xml) || PageSettings(xml) || Has(xml, "Your Page link"))
@@ -464,6 +730,50 @@ public sealed class PFlowNativeAccountNavigator(
             return Missing(xml);
         if (PFlowUiPrivacy.ContainsInput(xml) || PFlowAutoPostService.IsComposer(xml, "Reel"))
             return Missing(xml);
+        if (_postingNameOnly)
+        {
+            var selected =
+                savedTargets != null
+                    ? await PFlowPostingNameVerification.ObserveAccountAsync(
+                        ld,
+                        binding,
+                        name(binding),
+                        path,
+                        ct,
+                        savedTargets(binding)
+                    )
+                    : await PFlowPostingNameVerification.ObserveSelectedAsync(
+                        ld,
+                        binding,
+                        path,
+                        ct,
+                        name(binding)
+                    );
+            var verifiedName = selected?.Type == "Profile" ? selected.Name : null;
+            if (string.IsNullOrWhiteSpace(verifiedName))
+                return Missing(xml);
+            var observed = new PFlowAccountObservation(
+                "",
+                binding.AppPackage,
+                true,
+                false,
+                false,
+                DateTimeOffset.UtcNow,
+                PFlowAuthenticationState.Authenticated
+            )
+            {
+                VerifiedName = verifiedName,
+            };
+            _lastPersonalBinding = binding;
+            _lastPersonalObservation = observed;
+            await PFlowTrace.SessionAsync(
+                binding.DeviceIndex,
+                "account.name.ui.verified",
+                "Selected personal switcher name/type matched; Graph calls=0; live UID lookup=0.",
+                ct
+            );
+            return observed;
+        }
         if (!OwnProfile(xml))
         {
             // Menu may expose the active actor's name even when a different login is requested.
@@ -839,24 +1149,6 @@ public sealed class PFlowNativeAccountNavigator(
         await _delay(TimeSpan.FromMilliseconds(400), ct);
         var personalName =
             _lastPersonalBinding == null ? name(binding) : name(_lastPersonalBinding);
-        // Root metadata suggests a navigation destination, never an authenticated UID proof.
-        if (_lastPersonalBinding == null)
-        {
-            var root = await ld.ExtractFacebookAccountsFromRootShellAsync(
-                binding.DeviceIndex,
-                binding.AppPackage,
-                path,
-                ct
-            );
-            var owners = root.Where(a => a.IsActive)
-                .Select(a => string.IsNullOrWhiteSpace(a.UserUid) ? a.Uid : a.UserUid)
-                .Distinct()
-                .ToArray();
-            if (owners.Length == 1)
-                personalName =
-                    root.SingleOrDefault(a => a.Type == "Profile" && a.Uid == owners[0])?.Name
-                    ?? personalName;
-        }
         return await ld.EnsureSwitchedToPersonalProfileAsync(
             binding.DeviceIndex,
             personalName,
@@ -926,7 +1218,24 @@ public sealed class PFlowNativeAccountNavigator(
         }
         if (allowLogout && !pendingLogout && !LoginLanding(xml))
         {
-            if (!forceLogout)
+            if (!forceLogout && _postingNameOnly)
+            {
+                var previousName = _lastPersonalObservation?.VerifiedName;
+                var actor = await ObserveCoreAsync(binding, ct, false);
+                if (
+                    !PFlowPostingNameVerification.Verified(actor, actor.VerifiedName)
+                    || (
+                        !string.IsNullOrWhiteSpace(previousName)
+                        && !PFlowNameMatch.Same(previousName, actor.VerifiedName)
+                    )
+                )
+                    throw new InvalidOperationException(
+                        "Active personal name changed before logout; account rotation stopped."
+                    );
+                if (PFlowNameMatch.Same(actor.VerifiedName, name(binding)))
+                    return;
+            }
+            if (!forceLogout && !_postingNameOnly)
             {
                 var previousActor = _lastPersonalBinding;
                 var actor =

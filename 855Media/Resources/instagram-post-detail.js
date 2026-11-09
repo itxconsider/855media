@@ -1,4 +1,6 @@
 (expected => {
+  if (location.protocol === 'chrome-error:') return {state:'load_error'};
+  const readPost = () => {
   const code = location.pathname.match(/\/(?:p|reels?|tv)\/([\w-]+)(?:\/|$)/)?.[1];
   if (code !== expected.code) return {state:'wrong_post'};
   if (document.querySelector('input[name="password"]')) return {state:'login'};
@@ -89,4 +91,7 @@
     !button.disabled && button.getAttribute('aria-disabled') !== 'true'
       && (button.getAttribute('aria-label') === 'Next' || button.querySelector('svg[aria-label="Next"]')));
   return {...result([{url,isVideo:false}], caption, author, !next), canAdvance:!!next};
+  };
+  const parsed = readPost();
+  return parsed.state === 'loading' && navigator.onLine === false ? {state:'offline'} : parsed;
 })

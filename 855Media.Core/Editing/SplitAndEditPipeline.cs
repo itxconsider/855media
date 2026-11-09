@@ -220,6 +220,8 @@ public class SplitAndEditPipeline
                     );
                     var childJob = CreateChildJob(masterJob, partInput, partEdited, partDuration);
                     childJob.PartNumber = partNumber;
+                    childJob.MetadataTitle =
+                        $"{Path.GetFileNameWithoutExtension(masterJob.FilePath)}_Part{partNumber}_{masterJob.TargetResolution.ToString().ToLowerInvariant()}";
 
                     childJob.PropertyChanged += (_, e) =>
                     {
@@ -897,11 +899,12 @@ public class SplitAndEditPipeline
         process.StartInfo.ArgumentList.Add(manifestPath);
         process.StartInfo.ArgumentList.Add("-c");
         process.StartInfo.ArgumentList.Add("copy");
-        if (outputPath.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase))
-        {
-            process.StartInfo.ArgumentList.Add("-movflags");
-            process.StartInfo.ArgumentList.Add("+faststart");
-        }
+        foreach (
+            var argument in (
+                masterJob.CameraMetadata ?? new CameraMetadataSettings()
+            ).BuildOutputMetadataArgs(outputPath, masterJob.MetadataTitle)
+        )
+            process.StartInfo.ArgumentList.Add(argument);
         process.StartInfo.ArgumentList.Add(outputPath);
 
         process.StartInfo.UseShellExecute = false;

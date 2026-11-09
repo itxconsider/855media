@@ -23,6 +23,11 @@ public sealed record ReelPartPlan(
 
 public static class PFlowPartGroups
 {
+    public static IEnumerable<string> StandaloneFiles(
+        IEnumerable<string> files,
+        IEnumerable<string> reserved
+    ) => PFlowQueueMedia.ExcludeReserved(files.Where(p => !HasPartMarker(p)), reserved);
+
     private static readonly Regex Marker = new(
         @"(?<![\p{L}\p{N}])part[\s_\-]*(\d+)(?![\p{L}\p{N}])",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant
@@ -97,7 +102,10 @@ public static class PFlowPartGroups
         )
             return "Part group metadata no longer matches the source filename.";
         var done = history
-            .Where(h => SameTarget(h, job) && h.State == PFlowState.Confirmed)
+            .Where(h =>
+                SameTarget(h, job)
+                && (h.State == PFlowState.Confirmed || job.Schedule != null && h.ScheduledVerified)
+            )
             .Select(h => Parse(h.SourcePath))
             .Where(p => p?.GroupKey == job.PartGroupKey)
             .Select(p => p!.Number)
@@ -105,6 +113,18 @@ public static class PFlowPartGroups
         for (var n = 1; n < job.PartNumber; n++)
             if (!done.Contains(n))
                 return $"Waiting for confirmed Part {n}; review or retry that part first.";
+        if (
+            job.Schedule != null
+            && history.Any(h =>
+                SameTarget(h, job)
+                && h.ScheduledVerified
+                && Parse(h.SourcePath) is { } p
+                && p.GroupKey == job.PartGroupKey
+                && p.Number < job.PartNumber
+                && h.Schedule!.PublishAtUtc >= job.Schedule.PublishAtUtc
+            )
+        )
+            return "Earlier scheduled parts must publish before this part.";
         return "";
     }
 
@@ -118,13 +138,15 @@ public static class PFlowPartGroups
         int minimum,
         int maximum,
         int capacity,
-        Random? rng = null
+        Random? rng = null,
+        int orderBy = 1,
+        bool descending = false
     )
     {
         rng ??= Random.Shared;
         var history = targetHistory.ToArray();
         var confirmed = history
-            .Where(h => h.State == PFlowState.Confirmed)
+            .Where(h => h.CompletedSuccessfully)
             .Select(h => Parse(h.SourcePath))
             .Where(p => p != null)
             .Select(p => p!)
@@ -227,7 +249,14 @@ public static class PFlowPartGroups
                     g.Files.Where(p => !Done(g, p))
                         .All(p => available.Contains(p) && !reserved.Contains(p))
                 )
-                .OrderBy(g => g.Files[0], StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            var byFirstFile = eligible.ToDictionary(
+                g => g.Files[0],
+                StringComparer.OrdinalIgnoreCase
+            );
+            eligible = PFlowFileSelection
+                .Order(byFirstFile.Keys, random ? 1 : orderBy, descending)
+                .Select(p => byFirstFile[p])
                 .ToList();
             if (random)
             {

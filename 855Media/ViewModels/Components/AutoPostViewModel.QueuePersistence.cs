@@ -11,7 +11,7 @@ namespace _855Media.ViewModels.Components;
 
 public partial class AutoPostViewModel
 {
-    private readonly PFlowDispatchQueueStore _dispatchQueueStore = new();
+    private PFlowDispatchQueueStore _dispatchQueueStore = new();
     private readonly HashSet<AutoPostTaskItem> _persistedQueueRows = [];
     private readonly HashSet<AutoPostTaskItem> _preparedQueueWrites = [];
     private bool _queueStorageReady,
@@ -88,6 +88,13 @@ public partial class AutoPostViewModel
 
     private void PersistentQueueRowChanged(object? sender, PropertyChangedEventArgs e)
     {
+        // These describe the UI only; Status already triggers the durable write.
+        if (
+            e.PropertyName
+            is nameof(AutoPostTaskItem.StatusSummary)
+                or nameof(AutoPostTaskItem.StatusDetails)
+        )
+            return;
         if (sender is AutoPostTaskItem row)
             SaveQueueRow(row);
     }

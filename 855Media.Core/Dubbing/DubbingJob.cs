@@ -664,6 +664,9 @@ public class DubbingJob : INotifyPropertyChanged
 
     public bool EnableLoudnessNormalization { get; set; } = true; // EBU R128 (-16 LUFS) broadcast loudness mastering
 
+    public bool RequireTranslatedDialogue { get; set; }
+    public string TranslationBrief { get; set; } = string.Empty;
+
     public bool EnableSmartTimeStretch { get; set; } = true; // Auto-fit translated speech to visual scene duration
     public string? GeminiApiKey { get; set; } // Google Gemini API Key for context-aware cinema translation
     public string GeminiModel { get; set; } = "gemini-2.0-flash";

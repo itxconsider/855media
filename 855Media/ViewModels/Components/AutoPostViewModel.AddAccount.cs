@@ -132,7 +132,7 @@ public partial class AutoPostViewModel
             _addAccountOtpInbox = otpInbox;
             var service = new PFlowAddAccountService(
                 _accountStore,
-                new PFlowCredentialStore(),
+                CreateCredentialStore(),
                 new PFlowAddAccountLoginNavigator(
                     new PFlowNativeAccountNavigator(
                         _ldPlayerService,

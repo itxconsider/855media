@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 namespace _855Media.Core.LDPlayer;
 
 // In-memory target session for one device and batch; persisted history cannot restore it.
-public sealed class PFlowPostTargetSession
+public sealed partial class PFlowPostTargetSession
 {
     private PFlowJob? _previous;
     private Target? _target;
@@ -60,17 +60,7 @@ public sealed class PFlowPostTargetSession
     {
         var target = Target.Read(job);
         var generation = _generation;
-        var consecutive =
-            _previous != null
-            && _previous.JobId != job.JobId
-            && _previous.State == PFlowState.Confirmed
-            && _previous.ConfirmedUtc.HasValue
-            && !string.IsNullOrWhiteSpace(_previous.Evidence)
-            && _target == target
-            && target.Binding != null
-            && !string.IsNullOrWhiteSpace(target.Batch)
-            && SupportsContinuation(_previous)
-            && SupportsContinuation(job);
+        var consecutive = CanReuseConfirmedTarget(job);
         _previous = null;
         _target = null;
         job.TargetContinuation = null;
@@ -80,7 +70,7 @@ public sealed class PFlowPostTargetSession
             consecutive
             && generation == _generation
             && Target.Read(job) == target
-            && CanContinueFrom(xml, job.AppPackage);
+            && CanContinueForJob(job, xml);
         if (continued)
         {
             if (verifyContinuationSession != null)
@@ -97,22 +87,46 @@ public sealed class PFlowPostTargetSession
             var method = await verifyLiveUid(ct);
             ct.ThrowIfCancellationRequested();
             if (
-                method is not ("Graph UID" or "UI UID lookup" or "Session UI")
+                method is not ("Graph UID" or "UI UID lookup" or "Session UI" or "Database UI name")
                 || method == "Session UI"
-                    && (job.NativeIdentityScope == null || !job.NativeIdentityScope.Matches(job))
+                    && (
+                        job.NativeIdentityScope == null
+                        || job.NativeIdentityScope.UsesDatabaseName
+                        || !job.NativeIdentityScope.Matches(job)
+                    )
+                || method == "Database UI name"
+                    && (
+                        job.NativeIdentityScope is not { UsesDatabaseName: true }
+                        || !job.NativeIdentityScope.Matches(job)
+                    )
             )
                 throw new InvalidOperationException(
-                    "Fresh target UID or Graph-bound session/UI verification was not confirmed."
+                    "Fresh target identity or database-name/UI verification was not confirmed."
                 );
             if (Target.Read(job) != target)
                 throw new InvalidOperationException(
-                    "Posting target changed during UID verification."
+                    "Posting target changed during identity verification."
                 );
-            var afterUid = allowFeedAfterLiveUid ? await observe(ct) : "";
+            var nameOnly = method == "Database UI name";
+            var afterUid = allowFeedAfterLiveUid || nameOnly ? await observe(ct) : "";
             if (
-                allowFeedAfterLiveUid
-                && CanContinueFrom(afterUid, job.AppPackage)
-                && FacebookLayoutRegistry.Match(afterUid, FacebookScreenKind.NewsFeed).IsMatch
+                (allowFeedAfterLiveUid || nameOnly)
+                && CanContinueForJob(job, afterUid)
+                && (
+                    !nameOnly
+                    || !PFlowPostingNameVerification.Contradicts(
+                        afterUid,
+                        new FacebookPageTarget
+                        {
+                            PageName = job.TargetName,
+                            Type = job.IsProfile ? "Profile" : "Page",
+                        }
+                    )
+                )
+                && (
+                    nameOnly
+                    || FacebookLayoutRegistry.Match(afterUid, FacebookScreenKind.NewsFeed).IsMatch
+                )
             )
             {
                 job.TargetContinuation = new(job.JobId, target, DateTime.UtcNow);
@@ -120,14 +134,22 @@ public sealed class PFlowPostTargetSession
             }
             else
             {
+                if (nameOnly)
+                    throw new InvalidOperationException(
+                        "Selected target name/type matched, but Facebook is not on a safe posting screen."
+                    );
                 if (!await openOwnProfile(ct))
                     throw new InvalidOperationException(
-                        "Live UID was verified, but the target profile screen could not be confirmed. No post was submitted."
+                        method == "Database UI name"
+                            ? "Target name matched the database, but the own-profile screen could not be confirmed. No post was submitted."
+                            : "Live UID was verified, but the target profile screen could not be confirmed. No post was submitted."
                     );
                 xml = await observe(ct);
                 if (!HasOwnProfile(job, xml))
                     throw new InvalidOperationException(
-                        "Live UID was verified, but the expected own-profile controls were not visible. No post was submitted."
+                        method == "Database UI name"
+                            ? "Target name matched the database, but the expected own-profile controls were not visible. No post was submitted."
+                            : "Live UID was verified, but the expected own-profile controls were not visible. No post was submitted."
                     );
             }
         }
@@ -162,7 +184,17 @@ public sealed class PFlowPostTargetSession
                     || xml.Contains("Manage Page", StringComparison.OrdinalIgnoreCase)
         );
 
-    internal static bool CanContinueFrom(string xml, string package)
+    internal static bool CanContinueForJob(PFlowJob job, string xml) =>
+        CanContinueContext(xml, job.AppPackage)
+        && (
+            !PFlowConfirmation.HasPendingPublication(xml)
+            || job.BackgroundCopyright?.Allows(xml) == true
+        );
+
+    internal static bool CanContinueFrom(string xml, string package) =>
+        !PFlowConfirmation.HasPendingPublication(xml) && CanContinueContext(xml, package);
+
+    internal static bool CanContinueContext(string xml, string package)
     {
         using var scope = FacebookHierarchyCache.Enter();
         var nodes = ScreenTimeHierarchy.Nodes(xml);
@@ -181,6 +213,12 @@ public sealed class PFlowPostTargetSession
             && !PFlowIdentitySwitchLayout.IsSwitching(xml)
             && !PFlowPersonaSwitcherService.IsNativeSwitcherSheetOpen(xml)
             && !PFlowShareDestination.IsChooser(xml)
+            && !PFlowPageIdentityRestriction.IsVisible(xml)
+            && PFlowMediaAccess.FindControl(xml, package) == null
+            && !(
+                PFlowAutoPostService.Labels(xml).Contains("New post")
+                && PFlowAutoPostService.Labels(xml).Any(v => v is "Gallery" or "Select multiple")
+            )
             && !PFlowAutoPostService.HasComposerLayoutEvidence(xml, "Reel")
             && !xml.Contains("Admin quick access", StringComparison.OrdinalIgnoreCase)
             && !new[]
@@ -191,6 +229,8 @@ public sealed class PFlowPostTargetSession
                 FacebookScreenKind.StoryPicker,
                 FacebookScreenKind.StoryAlbums,
                 FacebookScreenKind.OwnStoryViewer,
+                FacebookScreenKind.ReelPicker,
+                FacebookScreenKind.ReelEditor,
             }.Any(kind => FacebookLayoutRegistry.Match(xml, kind).IsMatch);
     }
 
@@ -204,6 +244,6 @@ public sealed class PFlowPostTargetSession
             && proof.Target == Target.Read(job)
             && DateTime.UtcNow - proof.VerifiedUtc is { TotalSeconds: >= 0 and <= 90 }
             && SupportsContinuation(job)
-            && CanContinueFrom(xml, job.AppPackage);
+            && CanContinueForJob(job, xml);
     }
 }

@@ -6,6 +6,72 @@ namespace _855Media.Core.Tests.LDPlayer;
 
 public class PFlowRecentAppsNavigationTests
 {
+    [Fact]
+    public async Task CapturedLd14QuickstepUsesHorizontalRevealAndExactClearControl()
+    {
+        var ld = DispatchProxy.Create<ILDPlayerService, RecentsDevice>();
+        var device = (RecentsDevice)(object)ld;
+        device.Needed = 1;
+        device.Horizontal = true;
+        device.HiddenXml = FacebookLayoutRegistryTests.Fixture("ld14-recents-hidden");
+        device.VisibleXml = FacebookLayoutRegistryTests.Fixture("ld14-recents-revealed");
+        Assert.Null(LDPlayerService.FindRecentAppsClearTarget(device.HiddenXml));
+        var button = await PFlowRecentAppsNavigation.FindClearAsync(
+            ld,
+            45,
+            "ld14",
+            default,
+            (_, _) => Task.CompletedTask
+        );
+        Assert.Equal((162, 639), FacebookLayoutRegistry.RecentAppsClearPoint(button));
+        Assert.Equal(1, device.Swipes);
+        Assert.Equal(0, device.Taps);
+    }
+
+    [Theory]
+    [InlineData("foreign")]
+    [InlineData("missing-container")]
+    [InlineData("disabled")]
+    [InlineData("ambiguous")]
+    public void Android14ClearRequiresOwnedVisibleUniqueControl(string mutation)
+    {
+        var xml = System.Xml.Linq.XDocument.Parse(
+            FacebookLayoutRegistryTests.Fixture("ld14-recents-revealed")
+        );
+        var button = xml.Descendants("node")
+            .Single(n => (string?)n.Attribute("resource-id") == "com.ldmnq.launcher3:id/clear_all");
+        if (mutation == "foreign")
+            button.SetAttributeValue("package", "com.facebook.katana");
+        if (mutation == "disabled")
+            button.SetAttributeValue("enabled", "false");
+        if (mutation == "missing-container")
+            xml.Descendants("node")
+                .Single(n =>
+                    (string?)n.Attribute("resource-id") == "com.ldmnq.launcher3:id/overview_panel"
+                )
+                .SetAttributeValue("resource-id", "other");
+        if (mutation == "ambiguous")
+        {
+            var duplicate = new System.Xml.Linq.XElement(button);
+            duplicate.SetAttributeValue("bounds", "[66,700][258,796]");
+            button.AddAfterSelf(duplicate);
+        }
+        Assert.Null(LDPlayerService.FindRecentAppsClearTarget(xml.ToString()));
+    }
+
+    [Theory]
+    [InlineData("2", true)]
+    [InlineData("3", true)]
+    [InlineData("1", false)]
+    [InlineData("", false)]
+    public void Android14TaskMetadataRetainsExplicitTypeRequirement(string type, bool empty)
+    {
+        var text =
+            "ACTIVITY MANAGER RECENT TASKS (dumpsys activity recents)\nmRecentsUid=10049\nmRecentsComponent=ComponentInfo{com.ldmnq.launcher3/.Recents}\n  Recent tasks:\n  * Recent #0: Task{fixture}\n    autoRemoveRecents=false isPersistable=true activityType="
+            + type;
+        Assert.Equal(empty, PFlowSession.RecentAppsEmpty(text));
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(1)]
@@ -88,11 +154,37 @@ public class PFlowRecentAppsNavigationTests
         Assert.Equal(1, device.Swipes);
     }
 
+    [Theory]
+    [InlineData(4)]
+    [InlineData(8)]
+    [InlineData(12)]
+    [InlineData(99)]
+    public async Task Ld14TraversesMoreThanThreeCardsWithinBoundedBudget(int needed)
+    {
+        var ld = DispatchProxy.Create<ILDPlayerService, RecentsDevice>();
+        var device = (RecentsDevice)(object)ld;
+        device.Needed = needed;
+        device.Horizontal = true;
+        device.HiddenXml = FacebookLayoutRegistryTests.Fixture("ld14-recents-hidden");
+        device.VisibleXml = FacebookLayoutRegistryTests.Fixture("ld14-recents-revealed");
+        var result = await PFlowRecentAppsNavigation.FindClearAsync(
+            ld,
+            900942,
+            "fixture",
+            default,
+            (_, _) => Task.CompletedTask
+        );
+        Assert.Equal(needed <= 12, result != null);
+        Assert.Equal(Math.Min(needed, 12), device.Swipes);
+        Assert.Equal(0, device.Taps);
+    }
+
     public class RecentsDevice : DispatchProxy
     {
         public int Needed,
             Swipes,
             Taps;
+        public bool Horizontal;
         public string State = "normal";
         public string? HiddenXml,
             VisibleXml;
@@ -124,8 +216,16 @@ public class PFlowRecentAppsNavigationTests
                             : xml
                     );
                 case "SwipeAsync":
-                    Assert.True((int)args![2]! < (int)args[4]!);
-                    Assert.Equal((int)args[1]!, (int)args[3]!);
+                    if (Horizontal)
+                    {
+                        Assert.True((int)args![1]! < (int)args[3]!);
+                        Assert.Equal((int)args[2]!, (int)args[4]!);
+                    }
+                    else
+                    {
+                        Assert.True((int)args![2]! < (int)args[4]!);
+                        Assert.Equal((int)args[1]!, (int)args[3]!);
+                    }
                     Swipes++;
                     return Task.FromResult(true);
                 case "TapAsync":

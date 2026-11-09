@@ -73,6 +73,7 @@ public sealed partial class PFlowHistoryStore
     )
     {
         ct.ThrowIfCancellationRequested();
+        job.Schedule?.Validate(DateTimeOffset.UtcNow);
         if (string.IsNullOrWhiteSpace(job.TargetId) || string.IsNullOrWhiteSpace(job.Sha256))
             throw new InvalidOperationException("P-Flow requires target ID and media fingerprint.");
         using var connection = Open();
@@ -105,6 +106,21 @@ public sealed partial class PFlowHistoryStore
             while (await reader.ReadAsync(ct))
             {
                 var prior = JsonSerializer.Deserialize<PFlowJob>(reader.GetString(0))!;
+                if (prior.JobId != job.JobId && !prior.CanRetry && prior.OverlapsMedia(job))
+                    return false;
+                if (
+                    job.Schedule != null
+                    && prior.JobId != job.JobId
+                    && !prior.CanRetry
+                    && prior.Schedule?.PublishAtUtc == job.Schedule.PublishAtUtc
+                )
+                    return false;
+                if (job.Schedule != null || prior.Schedule != null)
+                {
+                    if (prior.JobId != job.JobId && OccupiesScheduleDay(prior, job))
+                        occupied++;
+                    continue;
+                }
                 if (
                     prior.State == PFlowState.Confirmed
                         && prior.ConfirmedUtc?.ToLocalTime().Date == DateTime.Today
@@ -124,7 +140,10 @@ public sealed partial class PFlowHistoryStore
         }
         command.CommandText =
             "SELECT COALESCE((SELECT count FROM daily_baseline WHERE target=$target AND day=$day),0)";
-        command.Parameters.AddWithValue("$day", DateTime.Today.ToString("yyyy-MM-dd"));
+        command.Parameters.AddWithValue(
+            "$day",
+            job.Schedule?.LocalTime.ToString("yyyy-MM-dd") ?? DateTime.Today.ToString("yyyy-MM-dd")
+        );
         occupied += Convert.ToInt32(await command.ExecuteScalarAsync(ct));
         if (occupied >= dailyLimit)
         {
@@ -150,6 +169,13 @@ public sealed partial class PFlowHistoryStore
 
     public async Task SaveAsync(PFlowJob job, CancellationToken ct = default)
     {
+        if (
+            job.State == PFlowState.Scheduled
+            && (!job.ScheduledVerified || job.ConfirmedUtc != null)
+        )
+            throw new InvalidOperationException(
+                "Scheduled outcomes require separate acceptance evidence, submission and acceptance timestamps; they are not published."
+            );
         job.UpdatedUtc = DateTime.UtcNow;
         if (
             job.NoPublicationVerified
@@ -212,7 +238,7 @@ public sealed partial class PFlowHistoryStore
         using var connection = Open();
         using var command = connection.CreateCommand();
         command.CommandText =
-            "SELECT pid,processStart,json FROM jobs WHERE state NOT IN ('Confirmed','Failed','Unknown','CancelledBeforeSubmission') OR (state='Failed' AND json_extract(json,'$.SubmittedUtc') IS NOT NULL)";
+            "SELECT pid,processStart,json FROM jobs WHERE state NOT IN ('Confirmed','Scheduled','Failed','Unknown','CancelledBeforeSubmission') OR (state='Failed' AND json_extract(json,'$.SubmittedUtc') IS NOT NULL)";
         var abandoned = new List<PFlowJob>();
         using (var reader = await command.ExecuteReaderAsync(ct))
         {

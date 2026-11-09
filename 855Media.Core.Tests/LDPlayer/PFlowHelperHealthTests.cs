@@ -6,6 +6,25 @@ namespace _855Media.Core.Tests.LDPlayer;
 public class PFlowHelperHealthTests
 {
     [Fact]
+    public void ClockCapabilityIsOptionalForLegacyStatusAndAdvertisedForUpgrade()
+    {
+        const string legacy =
+            "Row: 0 json={\"protocolVersion\":1,\"heartbeat\":true,\"sampleUtcMillis\":1}";
+        Assert.Equal(0, PFlowHelperHealth.Parse(legacy)!.ClockProtocolVersion);
+        Assert.Equal(
+            1,
+            PFlowHelperHealth
+                .Parse(
+                    legacy.Replace(
+                        "\"protocolVersion\":1",
+                        "\"protocolVersion\":1,\"clockProtocolVersion\":1"
+                    )
+                )!
+                .ClockProtocolVersion
+        );
+    }
+
+    [Fact]
     public void ReadsFreshProviderResponseWithoutTreatingVpnPresenceAsSurfsharkOwnership()
     {
         var status = PFlowHelperHealth.Parse(

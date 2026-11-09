@@ -39,16 +39,6 @@ public partial class AutoPostView : UserControl
             OnManageDevicePointerPressed,
             RoutingStrategies.Tunnel
         );
-
-        var dataGrid = this.FindControl<DataGrid>("WorkerDataGrid");
-        if (dataGrid != null)
-        {
-            dataGrid.AddHandler(
-                PointerWheelChangedEvent,
-                OnWorkerDataGridPointerWheelChanged,
-                RoutingStrategies.Tunnel | RoutingStrategies.Bubble
-            );
-        }
     }
 
     private bool? _compactTables;
@@ -73,14 +63,14 @@ public partial class AutoPostView : UserControl
                 : Avalonia.Layout.HorizontalAlignment.Right;
             actions.Margin = new Thickness(compactToolbar ? 0 : 12, 0, 0, 4);
         }
-        var compactTables = Bounds.Width < 1100;
+        var compactTables = Bounds.Width < 1350;
         if (_compactTables == compactTables)
             return;
         _compactTables = compactTables;
         var tables = this.FindControl<Grid>("DashboardTables")!;
         var queue = this.FindControl<Border>("QueuePanel")!;
         var splitter = this.FindControl<GridSplitter>("DashboardTableSplitter")!;
-        tables.ColumnDefinitions = new ColumnDefinitions(compactTables ? "*" : "2*,6,3*");
+        tables.ColumnDefinitions = new ColumnDefinitions(compactTables ? "*" : "5*,8,7*");
         tables.RowDefinitions = new RowDefinitions(compactTables ? "2*,6,3*" : "*");
         Grid.SetColumn(queue, compactTables ? 0 : 2);
         Grid.SetRow(queue, compactTables ? 2 : 0);
@@ -214,24 +204,5 @@ public partial class AutoPostView : UserControl
             .FirstOrDefault();
         // Resolve the row actually right-clicked, never a previously selected different LD.
         grid.SelectedItem = row?.DataContext as LDInstanceItemViewModel;
-    }
-
-    private void OnWorkerDataGridPointerWheelChanged(object? sender, PointerWheelEventArgs e)
-    {
-        if (sender is DataGrid dg)
-        {
-            var scrollViewer = dg.FindDescendantOfType<ScrollViewer>();
-            if (scrollViewer != null && scrollViewer.Extent.Height > scrollViewer.Viewport.Height)
-            {
-                var step = 48.0;
-                var newY = Math.Clamp(
-                    scrollViewer.Offset.Y - (e.Delta.Y * step),
-                    0,
-                    Math.Max(0, scrollViewer.Extent.Height - scrollViewer.Viewport.Height)
-                );
-                scrollViewer.Offset = new Vector(scrollViewer.Offset.X, newY);
-                e.Handled = true;
-            }
-        }
     }
 }

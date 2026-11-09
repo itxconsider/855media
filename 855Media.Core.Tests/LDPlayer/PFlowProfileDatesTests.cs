@@ -115,6 +115,53 @@ public class PFlowProfileDatesTests
         Assert.True(PFlowProfileDates.ReachedProfileFeed(screen));
     }
 
+    [Fact]
+    public void FriendCountAndSuggestionsDoNotStopMainProfileBirthdayScan()
+    {
+        var screen = Screen(
+            Node("William Rhodes", 30),
+            Node("friends", 130),
+            Node("People you may know", 260),
+            Node("September 18, 1980", 300)
+        );
+        Assert.False(PFlowProfileDates.ReachedProfileFeed(screen, stopAtFriends: false));
+        Assert.Empty(PFlowProfileDates.Birthdate(screen, true));
+    }
+
+    [Fact]
+    public void MainProfilePersonalDetailsReadsWilliamBirthdayBetweenSuggestionAndFriends()
+    {
+        var screen = Screen(
+            Node("William Rhodes", 30),
+            Node("Elle Alexander", 100),
+            Node("January 1, 1980", 160),
+            Node("Personal details", 300),
+            Node("Denver, Colorado", 350),
+            Node("Paris, France", 390),
+            Node("September 19, 1999", 430),
+            Node("Separated", 470),
+            Node("Friends", 550),
+            Node("May 3, 1970", 600)
+        );
+        Assert.Equal("September 19, 1999", PFlowProfileDates.Birthdate(screen, true));
+    }
+
+    [Theory]
+    [InlineData("Posts")]
+    [InlineData("All posts")]
+    public void MainProfileScanStillStopsAtPosts(string title)
+    {
+        Assert.True(
+            PFlowProfileDates.ReachedProfileFeed(Screen(Node(title, 200)), stopAtFriends: false)
+        );
+        Assert.Empty(
+            PFlowProfileDates.Birthdate(
+                Screen(Node(title, 200), Node("September 19, 1999", 300)),
+                true
+            )
+        );
+    }
+
     [Theory]
     [InlineData("At a glance", "Born July 8, 1996", "July 8, 1996")]
     [InlineData("At a glance", "Born April 10, 1992", "April 10, 1992")]

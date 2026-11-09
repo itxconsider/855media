@@ -106,13 +106,13 @@ public partial class LDPlayerService
                 )
             )
                 continue;
-            var networkInfo = Regex.Match(block, @"\bni\{\[(.*?)\]\}", RegexOptions.Singleline);
+            var networkInfo = Regex.Match(block, @"\bni\{([^{}]*)\}", RegexOptions.Singleline);
             var capabilities = Regex.Match(block, @"\bnc\{\[(.*?)\]\}", RegexOptions.Singleline);
             if (!networkInfo.Success || !capabilities.Success)
                 continue;
             var flags = Regex.Match(capabilities.Groups[1].Value, @"\bCapabilities:\s*([A-Z_&|]+)");
             if (
-                Regex.IsMatch(networkInfo.Groups[1].Value, @"\bstate:\s*CONNECTED/CONNECTED\b")
+                ConnectedNetworkInfo(networkInfo.Groups[1].Value)
                 && flags.Success
                 && Regex.IsMatch(flags.Groups[1].Value, @"(?:^|[&|])INTERNET(?:[&|]|$)")
                 && Regex.IsMatch(flags.Groups[1].Value, @"(?:^|[&|])VALIDATED(?:[&|]|$)")
@@ -157,7 +157,7 @@ public partial class LDPlayerService
             );
             if (block == null)
                 continue;
-            var networkInfo = Regex.Match(block, @"\bni\{\[(.*?)\]\}", RegexOptions.Singleline);
+            var networkInfo = Regex.Match(block, @"\bni\{([^{}]*)\}", RegexOptions.Singleline);
             var capabilities = Regex.Match(block, @"\bnc\{\[(.*?)\]\}", RegexOptions.Singleline);
             if (!networkInfo.Success || !capabilities.Success)
                 continue;
@@ -166,8 +166,8 @@ public partial class LDPlayerService
             var owner = Regex.Match(text, @"\b(?:EstablishingAppUid|OwnerUid):\s*(\d+)");
             var capabilityFlags = Regex.Match(text, @"\bCapabilities:\s*([A-Z_&|]+)");
             if (
-                Regex.IsMatch(networkInfo.Groups[1].Value, @"\bstate:\s*CONNECTED/CONNECTED\b")
-                && Regex.IsMatch(text, @"Transports:\s*VPN\b")
+                ConnectedNetworkInfo(networkInfo.Groups[1].Value)
+                && Regex.IsMatch(text, @"Transports:\s*(?:[A-Z_]+[&|])*VPN\b")
                 && capabilityFlags.Success
                 && Regex.IsMatch(capabilityFlags.Groups[1].Value, @"(?:^|[&|])VALIDATED(?:[&|]|$)")
                 && owner.Success
@@ -178,6 +178,11 @@ public partial class LDPlayerService
         }
         return false;
     }
+
+    private static bool ConnectedNetworkInfo(string value) =>
+        value.TrimStart().StartsWith("[", StringComparison.Ordinal)
+            ? Regex.IsMatch(value, @"\bstate:\s*CONNECTED/CONNECTED\b")
+            : Regex.IsMatch(value.Trim(), @"^[A-Z0-9_]+\s+CONNECTED(?:\s|$)");
 
     private static string? ReadConnectivityAgentRecord(string text, int openingBrace)
     {

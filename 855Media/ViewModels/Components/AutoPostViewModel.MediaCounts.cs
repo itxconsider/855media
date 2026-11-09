@@ -20,9 +20,12 @@ public partial class AutoPostViewModel
     public Task RefreshVisibleMediaCountsAsync() =>
         RefreshMediaCountsForPagesAsync(DisplayedManagePages.ToArray());
 
-    private async Task RefreshMediaCountsForPagesAsync(FacebookPageTargetViewModel[] pages)
+    private async Task RefreshMediaCountsForPagesAsync(
+        FacebookPageTargetViewModel[] pages,
+        CancellationToken ct = default
+    )
     {
-        await _mediaCountsGate.WaitAsync();
+        await _mediaCountsGate.WaitAsync(ct);
         try
         {
             await Dispatcher.UIThread.InvokeAsync(() => IsRefreshingMediaCounts = true);
@@ -39,6 +42,8 @@ public partial class AutoPostViewModel
                                 VideoReelPath = page.VideoReelPath,
                                 VideoLongPath = page.VideoLongPath,
                                 ImagePath = page.ImagePath,
+                                GroupPhotosWithSameCaption = page.GroupPhotosWithSameCaption,
+                                PhotoTitleFromTextFile = page.PhotoTitleFromTextFile,
                                 StoryPath = page.StoryPath,
                                 GroupReelPath = page.GroupReelPath,
                                 GroupVideoPath = page.GroupVideoPath,
@@ -78,7 +83,9 @@ public partial class AutoPostViewModel
                 >();
                 foreach (var snapshot in snapshots)
                 {
+                    ct.ThrowIfCancellationRequested();
                     snapshot.Source.RefreshMediaCounts();
+                    ct.ThrowIfCancellationRequested();
                     if (historyError.Length > 0)
                     {
                         var unavailable = new PFlowAvailableMedia([], 0, 0, 0, 0, historyError);
@@ -100,6 +107,8 @@ public partial class AutoPostViewModel
             });
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
+                if (ct.IsCancellationRequested)
+                    return;
                 foreach (var snapshot in snapshots)
                     if (
                         Pages.Contains(snapshot.Page)
@@ -108,6 +117,10 @@ public partial class AutoPostViewModel
                         && snapshot.Page.VideoReelPath == snapshot.Source.VideoReelPath
                         && snapshot.Page.VideoLongPath == snapshot.Source.VideoLongPath
                         && snapshot.Page.ImagePath == snapshot.Source.ImagePath
+                        && snapshot.Page.GroupPhotosWithSameCaption
+                            == snapshot.Source.GroupPhotosWithSameCaption
+                        && snapshot.Page.PhotoTitleFromTextFile
+                            == snapshot.Source.PhotoTitleFromTextFile
                         && snapshot.Page.StoryPath == snapshot.Source.StoryPath
                         && snapshot.Page.GroupReelPath == snapshot.Source.GroupReelPath
                         && snapshot.Page.GroupVideoPath == snapshot.Source.GroupVideoPath

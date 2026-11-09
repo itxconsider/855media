@@ -34,10 +34,7 @@ public partial class PFlowAutoPostService
                 )
                 .ToList();
             bool Editable(XElement n) =>
-                (n.Attribute("class")?.Value ?? "").Contains(
-                    "EditText",
-                    StringComparison.OrdinalIgnoreCase
-                )
+                PFlowUiPrivacy.IsEditableClass(n.Attribute("class")?.Value)
                 || (n.Attribute("resource-id")?.Value ?? "").Contains(
                     "caption",
                     StringComparison.OrdinalIgnoreCase
@@ -161,8 +158,35 @@ public partial class PFlowAutoPostService
     {
         if (job.State != PFlowState.IdentityVerified)
             throw new InvalidOperationException("A verified target session is required.");
+        if (job.Schedule != null)
+        {
+            job.Schedule.Validate(DateTimeOffset.UtcNow);
+            if (job.PostType is not ("Reel" or "Video") || string.IsNullOrWhiteSpace(job.Caption))
+                throw new InvalidOperationException(
+                    "Scheduled posting supports Reels with a nonempty caption for scheduled-item verification."
+                );
+            if (job.NativeIdentityScope == null || !job.NativeIdentityScope.Matches(job))
+                throw new InvalidOperationException(
+                    "Scheduling requires a verified native target session."
+                );
+        }
         if (job.PostType is not ("Reel" or "Video" or "Picture" or "Story"))
             throw new InvalidOperationException("Unsupported publication type.");
+        PhotoSettingsProof? photoSettingsProof = null;
+        if (
+            job.IsPhotoGroup
+            && (
+                !Guid.TryParseExact(job.JobId, "N", out _)
+                || job.PhotoFiles.Count > PFlowPhotoGroups.MaxPhotos
+                || job.PhotoFiles.Any(f =>
+                    f.Size <= 0
+                    || !System.Text.RegularExpressions.Regex.IsMatch(f.Sha256, "^[0-9a-fA-F]{64}$")
+                )
+            )
+        )
+            throw new InvalidOperationException(
+                "Multi-photo staging requires valid fingerprinted members."
+            );
         await PFlowJobBindingGuard.RequireAsync(_ldPlayer, job, customPath, ct);
         var identityXml =
             await _ldPlayer.DumpUiHierarchyAsync(job.DeviceIndex, customPath, ct) ?? "";
@@ -173,8 +197,11 @@ public partial class PFlowAutoPostService
             throw new InvalidOperationException(
                 "Active own-profile identity changed before media transfer."
             );
-        job.IdentityEvidence = continued
-            ? $"Active session UID verified {job.TargetId} ({job.TargetName}); continuing the same target after its previous confirmed post."
+        job.IdentityEvidence =
+            job.NativeIdentityScope is { UsesDatabaseName: true }
+                ? $"Saved database name/type and native actor session verified for {job.TargetName}; Graph=0; liveUID=0."
+            : continued
+                ? $"Active session UID verified {job.TargetId} ({job.TargetName}); continuing the same target after its previous confirmed post."
             : $"Live UID verification and own-profile controls verified {job.TargetId} ({job.TargetName}) before media staging.";
         await checkpoint(job);
         var profileVerifier = new PFlowProfilePublicationVerifier(_ldPlayer)
@@ -261,46 +288,60 @@ public partial class PFlowAutoPostService
             && System.Text.RegularExpressions.Regex.IsMatch(job.Sha256, "^[0-9a-fA-F]{64}$")
         )
             job.NativeReelAlbum = true;
-        await Step("Transferring and verifying media");
-        await _ldPlayer.ExecuteAdbAsync(
-            job.DeviceIndex,
-            "shell mkdir -p " + ShellQuote(job.RemotePath[..job.RemotePath.LastIndexOf('/')]),
-            customPath,
-            ct
-        );
         if (
-            !await _ldPlayer.PushFileToEmulatorAsync(
+            job.PostType == "Picture"
+            && job.AccountBinding != null
+            && System.Text.RegularExpressions.Regex.IsMatch(job.Sha256, "^[0-9a-fA-F]{64}$")
+        )
+            job.NativePhotoAlbum = true;
+        await Step("Transferring and verifying media");
+        for (var mediaIndex = 0; mediaIndex < job.MediaFiles.Count; mediaIndex++)
+        {
+            var media = job.MediaFiles[mediaIndex];
+            var remotePath = job.IsPhotoGroup ? job.PhotoRemotePath(mediaIndex) : job.RemotePath;
+            await _ldPlayer.ExecuteAdbAsync(
                 job.DeviceIndex,
-                job.SourcePath,
-                job.RemotePath,
+                "shell mkdir -p " + ShellQuote(remotePath[..remotePath.LastIndexOf('/')]),
                 customPath,
                 ct
+            );
+            if (
+                !await _ldPlayer.PushFileToEmulatorAsync(
+                    job.DeviceIndex,
+                    media.SourcePath,
+                    remotePath,
+                    customPath,
+                    ct
+                )
             )
-        )
-            throw new InvalidOperationException("Media transfer failed.");
-        var size = await _ldPlayer.ExecuteAdbAsync(
-            job.DeviceIndex,
-            $"shell stat -c %s {ShellQuote(job.RemotePath)}",
-            customPath,
-            ct
-        );
-        if (!long.TryParse(size.Trim(), out var remoteSize) || remoteSize != job.Size)
-            throw new InvalidOperationException("Remote media size was not verified.");
-        var checksum = await _ldPlayer.ExecuteAdbAsync(
-            job.DeviceIndex,
-            $"shell sha256sum {ShellQuote(job.RemotePath)}",
-            customPath,
-            ct
-        );
-        if (!checksum.Trim().StartsWith(job.Sha256, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Remote media checksum was not verified.");
-        if (!await _ldPlayer.ScanMediaFileAsync(job.DeviceIndex, job.RemotePath, customPath, ct))
-            throw new InvalidOperationException("Media scan failed.");
+                throw new InvalidOperationException("Media transfer failed.");
+            var size = await _ldPlayer.ExecuteAdbAsync(
+                job.DeviceIndex,
+                $"shell stat -c %s {ShellQuote(remotePath)}",
+                customPath,
+                ct
+            );
+            if (!long.TryParse(size.Trim(), out var remoteSize) || remoteSize != media.Size)
+                throw new InvalidOperationException("Remote media size was not verified.");
+            var checksum = await _ldPlayer.ExecuteAdbAsync(
+                job.DeviceIndex,
+                $"shell sha256sum {ShellQuote(remotePath)}",
+                customPath,
+                ct
+            );
+            if (!checksum.Trim().StartsWith(media.Sha256, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Remote media checksum was not verified.");
+            if (!await _ldPlayer.ScanMediaFileAsync(job.DeviceIndex, remotePath, customPath, ct))
+                throw new InvalidOperationException("Media scan failed.");
+        }
         await Stage(PFlowState.MediaReady);
         string xml;
         var wait = Stopwatch.StartNew();
-        var nativeComposer = job.NativeReelAlbum
-            ? await TryOpenNativeReelComposerAsync(job, checkpoint, customPath, ct, continued)
+        var nativeComposer =
+            job.IsPhotoGroup || job.NativePhotoAlbum
+                ? await OpenNativePhotoGroupComposerAsync(job, checkpoint, customPath, ct)
+            : job.NativeReelAlbum
+                ? await TryOpenNativeReelComposerAsync(job, checkpoint, customPath, ct, continued)
             : null;
         if (nativeComposer != null)
             xml = nativeComposer;
@@ -441,6 +482,16 @@ public partial class PFlowAutoPostService
             );
         if (!await ComposerIdentityMatchesAsync(xml))
             throw new InvalidOperationException("Composer identity was not confirmed.");
+        if (job.IsPhotoGroup)
+        {
+            if (!PFlowPhotoGroups.ComposerMatchesGroup(xml, job))
+                throw new InvalidOperationException(
+                    "Grouped photo attachment count could not be verified; no Post tap was made."
+                );
+            job.MediaSelectionEvidence +=
+                $"; checksums={string.Join(",", job.PhotoFiles.Select(f => f.Sha256))}";
+            await checkpoint(job);
+        }
         if (!string.IsNullOrWhiteSpace(job.Caption))
         {
             await Step("Entering and verifying caption");
@@ -506,16 +557,109 @@ public partial class PFlowAutoPostService
             } while (captionWait.Elapsed < TimeSpan.FromSeconds(8));
             if (!CaptionTextMatches(xml, job.Caption))
                 throw new InvalidOperationException("Caption text could not be verified.");
-            await _ldPlayer.PressBackAsync(job.DeviceIndex, customPath, ct);
+            var captionDone =
+                job.PostType == "Picture" ? PFlowPhotoComposerLayout.CaptionEditorDone(xml) : null;
+            if (captionDone != null)
+            {
+                var point = ScreenTimeHierarchy.Center(captionDone)!.Value;
+                if (!await _ldPlayer.TapAsync(job.DeviceIndex, point.X, point.Y, customPath, ct))
+                    throw new InvalidOperationException("Caption Done tap was not acknowledged.");
+                var returnWait = Stopwatch.StartNew();
+                do
+                {
+                    await Task.Delay(300, ct);
+                    xml =
+                        await _ldPlayer.DumpUiHierarchyAsync(job.DeviceIndex, customPath, ct) ?? "";
+                    PFlowPageIdentityRestriction.ThrowIfVisible(job, xml);
+                    if (IsComposer(xml, job.PostType))
+                        break;
+                } while (returnWait.Elapsed < TimeSpan.FromSeconds(8));
+                if (!CaptionTextMatches(xml, job.Caption))
+                    throw new InvalidOperationException(
+                        "Caption was not retained after closing its editor."
+                    );
+            }
+            else
+                await _ldPlayer.PressBackAsync(job.DeviceIndex, customPath, ct);
         }
         await SetOptionalReelTitleAsync(job, checkpoint, customPath, ct);
         xml = await _ldPlayer.DumpUiHierarchyAsync(job.DeviceIndex, customPath, ct) ?? "";
         PFlowPageIdentityRestriction.ThrowIfVisible(job, xml);
         if (!IsComposer(xml, job.PostType) || !await ComposerIdentityMatchesAsync(xml))
             throw new InvalidOperationException("Composer context changed before submission.");
+        if (job.PostType == "Picture" && PFlowPhotoComposerLayout.IsDraft(xml))
+        {
+            (xml, photoSettingsProof) = await AdvancePhotoSettingsAsync(
+                job,
+                xml,
+                ComposerIdentityMatchesAsync,
+                checkpoint,
+                customPath,
+                ct
+            );
+        }
+        if (job.Schedule != null)
+        {
+            PFlowNativeIdentityScope? submittedScope = null;
+            DateTime? submittedAt = null;
+            async Task GuardSchedule(CancellationToken token)
+            {
+                await PFlowJobBindingGuard.RequireAsync(_ldPlayer, job, customPath, token);
+                if (job.State == PFlowState.Submitted && submittedScope != null)
+                {
+                    if (
+                        job.SubmittedUtc != submittedAt
+                        || !ReferenceEquals(job.NativeIdentityScope, submittedScope)
+                        || !await submittedScope.ObserveSubmittedSessionAsync(
+                            job,
+                            _ldPlayer,
+                            customPath,
+                            token
+                        )
+                    )
+                        throw new InvalidOperationException(
+                            "Submitted scheduling process/foreground/target changed; monitoring stopped without resubmission."
+                        );
+                    return;
+                }
+                var focus =
+                    await _ldPlayer.GetCurrentFocusedActivityAsync(
+                        job.DeviceIndex,
+                        customPath,
+                        token
+                    ) ?? "";
+                if (
+                    !focus.StartsWith(job.AppPackage + "/", StringComparison.Ordinal)
+                    || job.NativeIdentityScope == null
+                    || !job.NativeIdentityScope.Matches(job)
+                    || !await job.NativeIdentityScope.SessionUnchangedAsync(
+                        _ldPlayer,
+                        customPath,
+                        token
+                    )
+                )
+                    throw new InvalidOperationException(
+                        "Scheduling identity/process/foreground changed."
+                    );
+                if (job.State == PFlowState.SubmitRequested)
+                {
+                    submittedScope = job.NativeIdentityScope;
+                    submittedAt = job.SubmittedUtc;
+                }
+            }
+            using var scheduleDeadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            scheduleDeadline.CancelAfter(TimeSpan.FromMinutes(8));
+            var scheduler = new PFlowNativeScheduler(_ldPlayer, job, customPath, GuardSchedule);
+            await Step("Configuring future publication");
+            await scheduler.ConfigureAsync(scheduleDeadline.Token);
+            await scheduler.SubmitAsync(checkpoint, dryRun, scheduleDeadline.Token);
+            return;
+        }
         var buttons =
             job.PostType == "Picture"
-                ? new[] { "Post", "POST", "Publish" }
+                ? photoSettingsProof != null && !PFlowPhotoComposerLayout.IsReview(xml)
+                    ? new[] { "Share", "SHARE" }
+                    : new[] { "Post", "POST", "Publish" }
                 : new[] { "Share now", "Share reel", "Share Reel", "Share" };
         await Step("Waiting for composer readiness");
         xml = await PrepareComposerReadinessAsync(
@@ -524,7 +668,14 @@ public partial class PFlowAutoPostService
             buttons,
             ComposerIdentityMatchesAsync,
             customPath,
-            ct
+            ct,
+            captionProof: current =>
+                photoSettingsProof != null
+                && photoSettingsProof.MatchesSnapshot(job)
+                && (
+                    PFlowPhotoComposerLayout.IsSettings(current)
+                    || PFlowPhotoComposerLayout.IsReview(current)
+                )
         );
         await Stage(PFlowState.ComposerReady);
         if (dryRun)
@@ -552,7 +703,10 @@ public partial class PFlowAutoPostService
             job.AppPackage
         );
         var toastAvailable =
-            _atxClient != null && await _atxClient.ClearLastToastAsync(job.DeviceIndex, ct);
+            _atxClient != null
+            && await _atxClient
+                .ForInstallation(customPath)
+                .ClearLastToastAsync(job.DeviceIndex, ct);
         await PFlowJobBindingGuard.RequireAsync(_ldPlayer, job, customPath, ct);
         xml = await _ldPlayer.DumpUiHierarchyAsync(job.DeviceIndex, customPath, ct) ?? "";
         PFlowPageIdentityRestriction.ThrowIfVisible(job, xml);
@@ -573,6 +727,7 @@ public partial class PFlowAutoPostService
             !readyLayout.IsMatch
             || readyLayout.Control(FacebookControlRole.Publish) == null
             || !await ComposerIdentityMatchesAsync(xml)
+            || job.IsPhotoGroup && !PFlowPhotoGroups.ComposerMatchesGroup(xml, job)
             || FindVisiblePublishControl(xml, buttons) == null
             || (
                 job.ReelTitle.Length > 0
@@ -611,11 +766,19 @@ public partial class PFlowAutoPostService
             return;
         }
         await Stage(PFlowState.Submitted);
+        using var submissionReads = PFlowSubmissionReadScope.Begin(
+            _ldPlayer,
+            job,
+            customPath,
+            checkpoint
+        );
         await Publication(
             PFlowPublicationStage.AwaitingConfirmation,
             "Share tapped; awaiting Facebook status"
         );
         var confirmationWindow = UploadConfirmationWindow(job.Size, PublicationTimeout);
+        var confirmationRecovery = new PFlowConfirmationRecovery();
+        var confirmationDeadline = confirmationWindow;
         wait.Restart();
         var nextNotificationPoll = TimeSpan.Zero;
         string? pendingUploadEvidence = null;
@@ -625,6 +788,7 @@ public partial class PFlowAutoPostService
         var settleGate = new PFlowPublicationSettleGate(PublicationQuietPeriod);
         var uploadOngoing = false;
         var feedRefreshedAfterProcessing = false;
+        var earlyProfileChecked = false;
         var nextPendingHomeRefresh = TimeSpan.FromSeconds(30);
         var postShareHome = new PFlowPostShareHomeNavigation();
         string? evidenceBeforeHome = null;
@@ -670,9 +834,15 @@ public partial class PFlowAutoPostService
                 ? "Fresh Facebook toast: " + toast.Message.Trim()
                 : null;
         }
+        ObservePublication:
         while (
             wait.Elapsed
-            < confirmationWindow + (processingSeen ? TimeSpan.FromMinutes(5) : TimeSpan.Zero)
+            < confirmationDeadline
+                + (
+                    processingSeen && !confirmationRecovery.Attempted
+                        ? TimeSpan.FromMinutes(5)
+                        : TimeSpan.Zero
+                )
         )
         {
             ct.ThrowIfCancellationRequested();
@@ -884,7 +1054,9 @@ public partial class PFlowAutoPostService
                     continue;
                 }
                 feedRefreshedAfterProcessing = true;
-                before.UnionWith(Labels(afterRefresh));
+                // The baseline belongs to the pre-submit frame. A success first
+                // exposed by refresh is fresh evidence, never part of that baseline.
+                evidenceBeforeHome ??= NewPublicationEvidence(afterRefresh, before, job.PostType);
                 await PFlowTrace.SessionAsync(
                     job.DeviceIndex,
                     "publication.feed-refreshed",
@@ -927,6 +1099,52 @@ public partial class PFlowAutoPostService
             }
             if (
                 evidence == null
+                && requireProfileProof
+                && !earlyProfileChecked
+                && feedRefreshedAfterProcessing
+                && notificationBaselineAvailable
+                && PFlowPublicationCycle.CanCheckProfileEarly(
+                    job,
+                    xml,
+                    settledForProfile,
+                    uploadOngoing
+                )
+            )
+            {
+                // A pre-existing upload in the notification baseline prevents cycle-only
+                // confirmation. Once currently clear, check the actual post instead of
+                // spending the entire size-based upload timeout refreshing Home.
+                var notificationDump = await _ldPlayer.ExecuteAdbAsync(
+                    job.DeviceIndex,
+                    "shell dumpsys notification --noredact",
+                    customPath,
+                    ct
+                );
+                if (
+                    PFlowConfirmation.HasActiveNotificationList(notificationDump)
+                    && !PFlowConfirmation
+                        .ReadUploadNotifications(notificationDump, job.AppPackage)
+                        .Any(n => n.Ongoing)
+                )
+                {
+                    earlyProfileChecked = true;
+                    var proof = await ReadProfileProof();
+                    if (proof != null)
+                    {
+                        job.PostId = proof.Id;
+                        job.PostUrl = proof.Url;
+                        await Stage(
+                            PFlowConfirmation.RecordPublicationEvidence(job, proof.Evidence)
+                        );
+                        return;
+                    }
+                    // Profile checking navigates; never use the old Feed observation.
+                    settleGate.Reset();
+                    continue;
+                }
+            }
+            if (
+                evidence == null
                 && pendingUploadEvidence != null
                 && (!requireProfileProof || settledForProfile)
                 && (!PFlowPublicationCycle.WorkObserved(job) || settledForProfile)
@@ -934,6 +1152,8 @@ public partial class PFlowAutoPostService
                     >= PFlowConfirmation.DirectConfirmationGrace(confirmationWindow)
             )
                 evidence = pendingUploadEvidence;
+            if (!confirmationRecovery.AcceptsEvidence(evidence))
+                evidence = null;
             if (evidence != null)
             {
                 await PFlowTrace.SessionAsync(
@@ -1011,6 +1231,22 @@ public partial class PFlowAutoPostService
                 return;
             }
             await Task.Delay(400, ct);
+        }
+        if (await confirmationRecovery.TryAsync(_ldPlayer, job, customPath, ct))
+        {
+            confirmationDeadline = wait.Elapsed + TimeSpan.FromSeconds(60);
+            pendingUploadEvidence = null;
+            uploadCompletedAt = null;
+            processingActive = false;
+            uploadOngoing = false;
+            feedRefreshedAfterProcessing = false;
+            earlyProfileChecked = false;
+            evidenceBeforeHome = null;
+            settleGate.Reset();
+            nextNotificationPoll = wait.Elapsed;
+            nextPendingHomeRefresh = wait.Elapsed + TimeSpan.FromSeconds(30);
+            await Step("Rechecking existing publication after reopening Facebook");
+            goto ObservePublication;
         }
         xml = await _ldPlayer.DumpUiHierarchyAsync(job.DeviceIndex, customPath, ct) ?? "";
         PFlowPageIdentityRestriction.ThrowIfVisible(job, xml);
@@ -1093,6 +1329,21 @@ public partial class PFlowAutoPostService
 
         async Task<bool> ComposerIdentityMatchesAsync(string hierarchy)
         {
+            if (
+                job.PostType == "Picture"
+                && (
+                    PFlowPhotoComposerLayout.IsSettings(hierarchy)
+                    || PFlowPhotoComposerLayout.IsReview(hierarchy)
+                )
+            )
+                return photoSettingsProof != null
+                    && await photoSettingsProof.VerifyAsync(
+                        _ldPlayer,
+                        job,
+                        hierarchy,
+                        customPath,
+                        ct
+                    );
             if (ComposerMatchesTarget(hierarchy, job.TargetName))
                 return true;
             // This Facebook version hides the actor in Reel Settings. Bind that recognized
@@ -1186,15 +1437,18 @@ public partial class PFlowAutoPostService
 
     internal static bool HasComposerLayoutEvidence(string xml, string type) =>
         type == "Picture"
-            ? Labels(xml)
-                .Any(x =>
-                    x.Contains("Create post", StringComparison.OrdinalIgnoreCase)
-                    || x.Contains("What's on your mind", StringComparison.OrdinalIgnoreCase)
-                    || x.Contains(
-                        "Say something about this photo",
-                        StringComparison.OrdinalIgnoreCase
+            ? PFlowPhotoComposerLayout.IsDraft(xml)
+                || PFlowPhotoComposerLayout.IsSettings(xml)
+                || PFlowPhotoComposerLayout.IsReview(xml)
+                || Labels(xml)
+                    .Any(x =>
+                        x.Contains("Create post", StringComparison.OrdinalIgnoreCase)
+                        || x.Contains("What's on your mind", StringComparison.OrdinalIgnoreCase)
+                        || x.Contains(
+                            "Say something about this photo",
+                            StringComparison.OrdinalIgnoreCase
+                        )
                     )
-                )
             : Labels(xml)
                 .Any(x =>
                     x.Contains("Describe your reel", StringComparison.OrdinalIgnoreCase)
@@ -1207,14 +1461,11 @@ public partial class PFlowAutoPostService
             return false;
         // Native profile headers can expose line breaks and nonbreaking spaces.
         // Preserve exact actor matching after normalizing presentation whitespace.
-        static string Normalize(string label) => Regex.Replace(label.Trim(), @"\s+", " ");
-        var expected = Normalize(name);
         return Labels(xml)
-            .Select(Normalize)
             .Any(label =>
-                label.Equals(expected, StringComparison.OrdinalIgnoreCase)
-                || label.Equals("Posting as " + expected, StringComparison.OrdinalIgnoreCase)
-                || label.Equals("Sharing as " + expected, StringComparison.OrdinalIgnoreCase)
+                PFlowNameMatch.Same(label, name)
+                || PFlowNameMatch.Same(label, "Posting as " + name)
+                || PFlowNameMatch.Same(label, "Sharing as " + name)
             );
     }
 
@@ -1231,10 +1482,7 @@ public partial class PFlowAutoPostService
                 !n.AncestorsAndSelf("node")
                     .Any(a =>
                         a.Attribute("visible-to-user")?.Value == "false"
-                        || (a.Attribute("class")?.Value ?? "").Contains(
-                            "EditText",
-                            StringComparison.Ordinal
-                        )
+                        || PFlowUiPrivacy.IsEditableClass(a.Attribute("class")?.Value)
                         || a.Attribute("password")?.Value == "true"
                         || (
                             a.Attribute("package")?.Value is { Length: > 0 } package

@@ -9,7 +9,7 @@ public class LDSettings
     public bool ShowOnlyOpen { get; set; } = false;
     public bool AutoSortLDPlayer { get; set; } = true;
     public bool CloseLDAfterAction { get; set; } = true;
-    public bool ClearCacheFBBeforeOpen { get; set; } = true;
+    public bool ClearCacheFBBeforeOpen { get; set; } = false;
 
     // Timing & Delays (in seconds)
     public int DelayAfterOpenLD { get; set; } = 30;

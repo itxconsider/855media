@@ -32,27 +32,65 @@ public class ActionAnalysisResult
     {
         if (Trajectory.Count == 0)
             return (OverallCentroidX, OverallCentroidY);
-
-        // Find closest trajectory sample
-        ActionTrajectoryPoint closest = Trajectory[0];
-        double minDiff = Math.Abs((closest.Timestamp - time).TotalSeconds);
-
-        for (int i = 1; i < Trajectory.Count; i++)
+        var previous = Trajectory[0];
+        foreach (var next in Trajectory)
         {
-            double diff = Math.Abs((Trajectory[i].Timestamp - time).TotalSeconds);
-            if (diff < minDiff)
+            if (next.Timestamp <= previous.Timestamp)
+                continue;
+            if (time < next.Timestamp)
             {
-                minDiff = diff;
-                closest = Trajectory[i];
+                if (next.IsSceneCut)
+                    return (previous.NormalizedX, previous.NormalizedY);
+                double weight = Math.Clamp(
+                    (time - previous.Timestamp).TotalSeconds
+                        / (next.Timestamp - previous.Timestamp).TotalSeconds,
+                    0,
+                    1
+                );
+                return (
+                    previous.NormalizedX + weight * (next.NormalizedX - previous.NormalizedX),
+                    previous.NormalizedY + weight * (next.NormalizedY - previous.NormalizedY)
+                );
             }
+            previous = next;
         }
+        return (previous.NormalizedX, previous.NormalizedY);
+    }
 
-        return (closest.NormalizedX, closest.NormalizedY);
+    internal ActionAnalysisResult Copy()
+    {
+        var result = new ActionAnalysisResult
+        {
+            ModeUsed = ModeUsed,
+            OverallCentroidX = OverallCentroidX,
+            OverallCentroidY = OverallCentroidY,
+            DetectedSceneCuts = DetectedSceneCuts,
+        };
+        foreach (var p in Trajectory)
+            result.Trajectory.Add(
+                new ActionTrajectoryPoint
+                {
+                    Timestamp = p.Timestamp,
+                    NormalizedX = p.NormalizedX,
+                    NormalizedY = p.NormalizedY,
+                    IsSceneCut = p.IsSceneCut,
+                }
+            );
+        return result;
     }
 }
 
 public static class SmartActionAnalyzer
 {
+    internal static double SmoothAxis(double previous, double target, int sampleFps)
+    {
+        double delta = target - previous;
+        if (Math.Abs(delta) < 0.01)
+            return previous;
+        double alpha = 1 - Math.Exp(-1.0 / (sampleFps * 1.5));
+        return previous + Math.Clamp(delta * alpha, -0.20 / sampleFps, 0.20 / sampleFps);
+    }
+
     public const int SampleWidth = 320;
     public const int SampleHeight = 180;
     public const int FrameByteSize = SampleWidth * SampleHeight * 3; // BGR24
@@ -64,7 +102,7 @@ public static class SmartActionAnalyzer
 
     /// <summary>
     /// Analyzes a video using FFmpeg to extract motion or face centroids across timeline.
-    /// Uses hardware decoding, multithreaded fast seeking, early convergence, and caching for ultra-high throughput.
+    /// Uses bounded low-resolution windows across the clip, cancellable decoding and immutable cache snapshots.
     /// </summary>
     public static async Task<ActionAnalysisResult> AnalyzeVideoAsync(
         string videoPath,
@@ -72,9 +110,87 @@ public static class SmartActionAnalyzer
         string? customFfmpegPath = null,
         int maxSampleSeconds = 120,
         RenderSpeedMode speedMode = RenderSpeedMode.Balanced,
-        CancellationToken cancellationToken = default
+        CancellationToken cancellationToken = default,
+        double? durationSeconds = null
     )
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (mode == SmartTrackingMode.StaticCenter || !File.Exists(videoPath))
+            return new ActionAnalysisResult { ModeUsed = mode };
+        double duration =
+            durationSeconds is > 0 && double.IsFinite(durationSeconds.Value)
+                ? durationSeconds.Value
+                : (
+                    await new VideoPreviewService(customFfmpegPath).GetVideoDurationAsync(
+                        videoPath,
+                        cancellationToken
+                    )
+                ).TotalSeconds;
+        int budget = Math.Clamp(
+            Math.Min(
+                maxSampleSeconds,
+                speedMode == RenderSpeedMode.TurboFast ? 20
+                    : speedMode == RenderSpeedMode.Quality ? 60
+                    : 30
+            ),
+            1,
+            120
+        );
+        int windows = duration > budget ? Math.Min(8, Math.Max(2, budget / 3)) : 1;
+        int windowSeconds = Math.Max(1, budget / windows);
+        var result = new ActionAnalysisResult { ModeUsed = mode };
+        for (int i = 0; i < windows; i++)
+        {
+            double start =
+                windows == 1 ? 0 : Math.Max(0, duration - windowSeconds) * i / (windows - 1);
+            var sample = await AnalyzeWindowAsync(
+                videoPath,
+                mode,
+                customFfmpegPath,
+                windowSeconds,
+                speedMode,
+                cancellationToken,
+                start
+            );
+            foreach (var point in sample.Trajectory)
+                result.Trajectory.Add(
+                    new ActionTrajectoryPoint
+                    {
+                        Timestamp = point.Timestamp + TimeSpan.FromSeconds(start),
+                        NormalizedX = point.NormalizedX,
+                        NormalizedY = point.NormalizedY,
+                        IsSceneCut =
+                            point.IsSceneCut || (i > 0 && point.Timestamp == TimeSpan.Zero),
+                    }
+                );
+            result.DetectedSceneCuts += sample.DetectedSceneCuts;
+        }
+        if (result.Trajectory.Count > 0)
+        {
+            double x = 0,
+                y = 0;
+            foreach (var p in result.Trajectory)
+            {
+                x += p.NormalizedX;
+                y += p.NormalizedY;
+            }
+            result.OverallCentroidX = Math.Round(x / result.Trajectory.Count, 3);
+            result.OverallCentroidY = Math.Round(y / result.Trajectory.Count, 3);
+        }
+        return result;
+    }
+
+    private static async Task<ActionAnalysisResult> AnalyzeWindowAsync(
+        string videoPath,
+        SmartTrackingMode mode,
+        string? customFfmpegPath,
+        int maxSampleSeconds,
+        RenderSpeedMode speedMode,
+        CancellationToken cancellationToken,
+        double startSeconds
+    )
+    {
+        cancellationToken.ThrowIfCancellationRequested();
         var result = new ActionAnalysisResult { ModeUsed = mode };
 
         if (mode == SmartTrackingMode.StaticCenter || !File.Exists(videoPath))
@@ -88,13 +204,13 @@ public static class SmartActionAnalyzer
         {
             var fileInfo = new FileInfo(videoPath);
             cacheKey =
-                $"{videoPath}|{mode}|{speedMode}|{fileInfo.Length}|{fileInfo.LastWriteTimeUtc.Ticks}";
+                $"{Path.GetFullPath(videoPath)}|{mode}|{speedMode}|{maxSampleSeconds}|{startSeconds:R}|{customFfmpegPath}|{fileInfo.Length}|{fileInfo.LastWriteTimeUtc.Ticks}";
             if (
                 _analysisCache.TryGetValue(cacheKey, out var cached)
                 && (DateTime.UtcNow - cached.Timestamp).TotalMinutes < 60
             )
             {
-                return cached.Result;
+                return cached.Result.Copy();
             }
         }
         catch { }
@@ -129,13 +245,17 @@ public static class SmartActionAnalyzer
         process.StartInfo.ArgumentList.Add("-hwaccel");
         process.StartInfo.ArgumentList.Add("auto");
         process.StartInfo.ArgumentList.Add("-threads");
-        process.StartInfo.ArgumentList.Add("0");
+        process.StartInfo.ArgumentList.Add(
+            EditorThreadPolicy
+                .FilterThreads(Environment.ProcessorCount)
+                .ToString(CultureInfo.InvariantCulture)
+        );
         process.StartInfo.ArgumentList.Add("-flags2");
         process.StartInfo.ArgumentList.Add("+fast");
         process.StartInfo.ArgumentList.Add("-fflags");
-        process.StartInfo.ArgumentList.Add("+fastseek+nobuffer");
+        process.StartInfo.ArgumentList.Add("+fastseek");
         process.StartInfo.ArgumentList.Add("-ss");
-        process.StartInfo.ArgumentList.Add("0");
+        process.StartInfo.ArgumentList.Add(startSeconds.ToString(CultureInfo.InvariantCulture));
         process.StartInfo.ArgumentList.Add("-i");
         process.StartInfo.ArgumentList.Add(videoPath);
         process.StartInfo.ArgumentList.Add("-t");
@@ -177,7 +297,6 @@ public static class SmartActionAnalyzer
         double sumX = 0.0;
         double sumY = 0.0;
         int validPoints = 0;
-        int stableFrameCount = 0;
 
         var stdout = process.StandardOutput.BaseStream;
 
@@ -200,7 +319,7 @@ public static class SmartActionAnalyzer
                 if (bytesRead < FrameByteSize)
                     break; // End of stream
 
-                TimeSpan timestamp = TimeSpan.FromSeconds(frameIndex * 0.5);
+                TimeSpan timestamp = TimeSpan.FromSeconds(frameIndex / (double)sampleFps);
 
                 var (rawX, rawY, isSceneCut) = AnalyzeFrame(
                     currentFrame,
@@ -221,9 +340,8 @@ public static class SmartActionAnalyzer
                 }
                 else
                 {
-                    // Exponential kinematic smoothing damping (alpha = 0.20)
-                    smoothedX = (0.20 * rawX) + (0.80 * smoothedX);
-                    smoothedY = (0.20 * rawY) + (0.80 * smoothedY);
+                    smoothedX = SmoothAxis(smoothedX, rawX, sampleFps);
+                    smoothedY = SmoothAxis(smoothedY, rawY, sampleFps);
                 }
 
                 // Clamp to safe margins (0.15 to 0.85) to avoid extreme edge panning
@@ -244,41 +362,24 @@ public static class SmartActionAnalyzer
                 sumY += smoothedY;
                 validPoints++;
 
-                // Early convergence check after minimum 12 frames: if centroid stabilizes without scene cuts, break early
-                if (validPoints >= 12 && result.DetectedSceneCuts == 0)
-                {
-                    double currentMeanX = sumX / validPoints;
-                    double currentMeanY = sumY / validPoints;
-                    if (
-                        Math.Abs(smoothedX - currentMeanX) < 0.012
-                        && Math.Abs(smoothedY - currentMeanY) < 0.012
-                    )
-                    {
-                        stableFrameCount++;
-                        if (stableFrameCount >= 6)
-                        {
-                            break;
-                        }
-                    }
-                    else
-                    {
-                        stableFrameCount = 0;
-                    }
-                }
-
                 previousFrame ??= new byte[FrameByteSize];
                 Buffer.BlockCopy(currentFrame, 0, previousFrame, 0, FrameByteSize);
                 frameIndex++;
             }
+            await process.WaitForExitWithCancellationAsync(cancellationToken);
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         finally
         {
             try
             {
                 if (!process.HasExited)
                 {
-                    process.Kill();
+                    process.Kill(entireProcessTree: true);
+                    await process.WaitForExitAsync(CancellationToken.None);
                 }
             }
             catch { }
@@ -290,9 +391,12 @@ public static class SmartActionAnalyzer
             result.OverallCentroidY = Math.Round(sumY / validPoints, 3);
         }
 
-        if (!string.IsNullOrEmpty(cacheKey))
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!string.IsNullOrEmpty(cacheKey) && process.ExitCode == 0 && validPoints > 0)
         {
-            _analysisCache[cacheKey] = (result, DateTime.UtcNow);
+            if (_analysisCache.Count > 256)
+                _analysisCache.Clear();
+            _analysisCache[cacheKey] = (result.Copy(), DateTime.UtcNow);
         }
 
         return result;
@@ -459,6 +563,13 @@ public static class SmartActionAnalyzer
         double sumX = 0;
         double sumY = 0;
         double totalWeight = 0;
+        // Select one connected salient region, rather than framing empty space
+        // between unrelated bright objects on opposite sides of the image.
+        const int columns = 20,
+            rows = 12;
+        var cellWeights = new double[columns * rows];
+        var cellX = new double[cellWeights.Length];
+        var cellY = new double[cellWeights.Length];
 
         double centerX = width / 2.0;
         double centerY = height / 2.0;
@@ -555,23 +666,76 @@ public static class SmartActionAnalyzer
                     sumX += x * wSq;
                     sumY += y * wSq;
                     totalWeight += wSq;
+                    int cell =
+                        Math.Min(rows - 1, y * rows / height) * columns
+                        + Math.Min(columns - 1, x * columns / width);
+                    cellWeights[cell] += wSq;
+                    cellX[cell] += x * wSq;
+                    cellY[cell] += y * wSq;
                 }
             }
 
             bool isSceneCut = hasPrev && (((double)changedPixels / totalPixels) > 0.38);
-            if (isSceneCut)
-            {
-                return (0.5, 0.5, true);
-            }
-
             if (totalWeight > 0)
             {
+                double peak = 0;
+                foreach (var weight in cellWeights)
+                    peak = Math.Max(peak, weight);
+                var visited = new bool[cellWeights.Length];
+                var pending = new int[cellWeights.Length];
+                double best = 0;
+                for (int seed = 0; seed < cellWeights.Length; seed++)
+                {
+                    if (visited[seed] || cellWeights[seed] < peak * 0.15)
+                        continue;
+                    int head = 0,
+                        tail = 1;
+                    pending[0] = seed;
+                    visited[seed] = true;
+                    double weight = 0,
+                        x = 0,
+                        y = 0;
+                    while (head < tail)
+                    {
+                        int current = pending[head++];
+                        weight += cellWeights[current];
+                        x += cellX[current];
+                        y += cellY[current];
+                        foreach (
+                            var neighbor in new[]
+                            {
+                                current - columns,
+                                current + columns,
+                                current % columns == 0 ? -1 : current - 1,
+                                current % columns == columns - 1 ? -1 : current + 1,
+                            }
+                        )
+                        {
+                            if (
+                                neighbor < 0
+                                || neighbor >= cellWeights.Length
+                                || visited[neighbor]
+                                || cellWeights[neighbor] < peak * 0.15
+                            )
+                                continue;
+                            visited[neighbor] = true;
+                            pending[tail++] = neighbor;
+                        }
+                    }
+                    if (weight > best)
+                    {
+                        best = weight;
+                        sumX = x;
+                        sumY = y;
+                        totalWeight = weight;
+                    }
+                }
                 double cx = sumX / totalWeight / width;
                 double cy = sumY / totalWeight / height;
-                return (Math.Clamp(cx, 0.05, 0.95), Math.Clamp(cy, 0.05, 0.95), false);
+                return (Math.Clamp(cx, 0.05, 0.95), Math.Clamp(cy, 0.05, 0.95), isSceneCut);
             }
 
-            return (0.5, 0.5, false);
+            return (0.5, 0.5, isSceneCut);
         }
         finally
         {

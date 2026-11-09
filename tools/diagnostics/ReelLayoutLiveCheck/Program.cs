@@ -80,22 +80,8 @@ if (args.Length == 2 && args[0] is "--root-names" or "--read-ui" or "--page-rout
         Console.WriteLine("Saved redacted hierarchy to artifacts/menu-read/current.xml");
         return;
     }
-    var rootAccounts = await rootLd.ExtractFacebookAccountsFromRootShellAsync(
-        int.Parse(args[1]),
-        "com.facebook.katana",
-        @"C:\LDPlayer\LDPlayer9",
-        CancellationToken.None
-    );
-    Console.WriteLine(
-        System.Text.Json.JsonSerializer.Serialize(
-            rootAccounts.Select(a => new
-            {
-                a.Type,
-                a.Name,
-                a.PageId,
-                PersonaUid = a.Uid,
-            })
-        )
+    Console.Error.WriteLine(
+        "Private account extraction was removed. Use the native switcher diagnostic."
     );
     return;
 }

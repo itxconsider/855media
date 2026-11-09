@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
+using System.Globalization;
+using System.IO;
 
 namespace _855Media.Core.Editing;
 
@@ -29,6 +31,21 @@ public enum CameraProfileType
 
     [Display(Name = "Custom Camera Metadata")]
     Custom,
+
+    [Display(Name = "Samsung Galaxy S23 (Android Camera)")]
+    SamsungGalaxyS23,
+
+    [Display(Name = "Samsung Galaxy S23+ (Android Camera)")]
+    SamsungGalaxyS23Plus,
+
+    [Display(Name = "Samsung Galaxy S23 Ultra (Android Camera)")]
+    SamsungGalaxyS23Ultra,
+
+    [Display(Name = "Samsung Galaxy S24 (Android Camera)")]
+    SamsungGalaxyS24Base,
+
+    [Display(Name = "Samsung Galaxy S24+ (Android Camera)")]
+    SamsungGalaxyS24Plus,
 }
 
 public class CameraMetadataSettings
@@ -65,7 +82,7 @@ public class CameraMetadataSettings
     {
         if (ProfileType == CameraProfileType.None)
         {
-            return ["-map_metadata", "1"]; // Legacy fallback: copy original metadata
+            return ["-map_metadata", "0"]; // The original video is input zero, even with isolated audio.
         }
 
         var args = new List<string>
@@ -77,6 +94,15 @@ public class CameraMetadataSettings
             "-map_metadata:s:a",
             "-1",
         }; // Strip old tracking and stream metadata
+        if (InjectCurrentTimestamp)
+            args.AddRange([
+                "-metadata",
+                "creation_time="
+                    + DateTime.UtcNow.ToString(
+                        "yyyy-MM-ddTHH:mm:ss.fffZ",
+                        CultureInfo.InvariantCulture
+                    ),
+            ]);
 
         string make = Make ?? string.Empty;
         string model = Model ?? string.Empty;
@@ -85,7 +111,6 @@ public class CameraMetadataSettings
         string focalLength = FocalLength ?? string.Empty;
         string fNumber = FNumber ?? string.Empty;
         string handler = "VideoHandler";
-        string encoder = "855Media Normalized Encoder";
 
         switch (ProfileType)
         {
@@ -106,7 +131,6 @@ public class CameraMetadataSettings
                 focalLength = string.IsNullOrWhiteSpace(focalLength) ? "24mm" : focalLength;
                 fNumber = string.IsNullOrWhiteSpace(fNumber) ? "1.78" : fNumber;
                 handler = "Core Media Video";
-                encoder = "Apple HEVC Encoder";
                 break;
 
             case CameraProfileType.AppleIPhone15Pro:
@@ -119,7 +143,6 @@ public class CameraMetadataSettings
                 focalLength = string.IsNullOrWhiteSpace(focalLength) ? "24mm" : focalLength;
                 fNumber = string.IsNullOrWhiteSpace(fNumber) ? "1.78" : fNumber;
                 handler = "Core Media Video";
-                encoder = "Apple H.264 Encoder";
                 break;
 
             case CameraProfileType.SonyAlphaA7IV:
@@ -130,7 +153,6 @@ public class CameraMetadataSettings
                     ? "FE 24-70mm F2.8 GM II"
                     : lensModel;
                 handler = "Sony Video Media Handler";
-                encoder = "Sony XAVC S Encoder";
                 break;
 
             case CameraProfileType.CanonEosR6:
@@ -141,7 +163,6 @@ public class CameraMetadataSettings
                     ? "RF24-70mm F2.8 L IS USM"
                     : lensModel;
                 handler = "Canon Video Media Handler";
-                encoder = "Canon MP4 Encoder";
                 break;
 
             case CameraProfileType.SamsungGalaxyS24:
@@ -152,7 +173,58 @@ public class CameraMetadataSettings
                     ? "Galaxy S24 Ultra Main Camera 24mm f/1.7"
                     : lensModel;
                 handler = "VideoHandler";
-                encoder = "Samsung AVC Encoder";
+                focalLength = string.IsNullOrWhiteSpace(focalLength) ? "24mm" : focalLength;
+                fNumber = string.IsNullOrWhiteSpace(fNumber) ? "1.7" : fNumber;
+                break;
+
+            case CameraProfileType.SamsungGalaxyS23:
+                make = string.IsNullOrWhiteSpace(make) ? "Samsung" : make;
+                model = string.IsNullOrWhiteSpace(model) ? "SM-S911B" : model;
+                software = string.IsNullOrWhiteSpace(software) ? "Android 13" : software;
+                lensModel = string.IsNullOrWhiteSpace(lensModel)
+                    ? "Galaxy S23 Main Camera f/1.8"
+                    : lensModel;
+                fNumber = string.IsNullOrWhiteSpace(fNumber) ? "1.8" : fNumber;
+                break;
+
+            case CameraProfileType.SamsungGalaxyS23Plus:
+                make = string.IsNullOrWhiteSpace(make) ? "Samsung" : make;
+                model = string.IsNullOrWhiteSpace(model) ? "SM-S916B" : model;
+                software = string.IsNullOrWhiteSpace(software) ? "Android 13" : software;
+                lensModel = string.IsNullOrWhiteSpace(lensModel)
+                    ? "Galaxy S23+ Main Camera f/1.8"
+                    : lensModel;
+                fNumber = string.IsNullOrWhiteSpace(fNumber) ? "1.8" : fNumber;
+                break;
+
+            case CameraProfileType.SamsungGalaxyS23Ultra:
+                make = string.IsNullOrWhiteSpace(make) ? "Samsung" : make;
+                model = string.IsNullOrWhiteSpace(model) ? "SM-S918B" : model;
+                software = string.IsNullOrWhiteSpace(software) ? "Android 13" : software;
+                lensModel = string.IsNullOrWhiteSpace(lensModel)
+                    ? "Galaxy S23 Ultra Main Camera f/1.7"
+                    : lensModel;
+                fNumber = string.IsNullOrWhiteSpace(fNumber) ? "1.7" : fNumber;
+                break;
+
+            case CameraProfileType.SamsungGalaxyS24Base:
+                make = string.IsNullOrWhiteSpace(make) ? "Samsung" : make;
+                model = string.IsNullOrWhiteSpace(model) ? "SM-S921B" : model;
+                software = string.IsNullOrWhiteSpace(software) ? "Android 14" : software;
+                lensModel = string.IsNullOrWhiteSpace(lensModel)
+                    ? "Galaxy S24 Main Camera f/1.8"
+                    : lensModel;
+                fNumber = string.IsNullOrWhiteSpace(fNumber) ? "1.8" : fNumber;
+                break;
+
+            case CameraProfileType.SamsungGalaxyS24Plus:
+                make = string.IsNullOrWhiteSpace(make) ? "Samsung" : make;
+                model = string.IsNullOrWhiteSpace(model) ? "SM-S926B" : model;
+                software = string.IsNullOrWhiteSpace(software) ? "Android 14" : software;
+                lensModel = string.IsNullOrWhiteSpace(lensModel)
+                    ? "Galaxy S24+ Main Camera f/1.8"
+                    : lensModel;
+                fNumber = string.IsNullOrWhiteSpace(fNumber) ? "1.8" : fNumber;
                 break;
 
             case CameraProfileType.Custom:
@@ -205,15 +277,23 @@ public class CameraMetadataSettings
             args.AddRange(["-metadata:g", $"com.apple.quicktime.f_number={fNumber}"]);
         }
 
-        args.AddRange(["-metadata", $"handler_name={handler}"]);
-        args.AddRange(["-metadata", $"encoder={encoder}"]);
+        args.AddRange(["-metadata:s:v:0", $"handler_name={handler}"]);
 
-        if (InjectCurrentTimestamp)
-        {
-            var now = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
-            args.AddRange(["-metadata", $"creation_time={now}"]);
-        }
+        return args;
+    }
 
+    // Container options are required as well as metadata arguments: the default
+    // MP4 muxer otherwise silently discards arbitrary camera/QuickTime keys.
+    public List<string> BuildOutputMetadataArgs(string outputPath, string? title = null)
+    {
+        var args = BuildFfmpegMetadataArgs(title ?? Path.GetFileNameWithoutExtension(outputPath));
+        var extension = Path.GetExtension(outputPath);
+        if (
+            extension.Equals(".mp4", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".m4v", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".mov", StringComparison.OrdinalIgnoreCase)
+        )
+            args.AddRange(["-movflags", "+faststart+use_metadata_tags"]);
         return args;
     }
 }

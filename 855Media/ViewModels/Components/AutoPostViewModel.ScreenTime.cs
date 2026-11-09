@@ -12,7 +12,7 @@ namespace _855Media.ViewModels.Components;
 
 public partial class AutoPostViewModel
 {
-    private readonly IScreenTimeService _screenTimeService;
+    private IScreenTimeService _screenTimeService;
     private AutoPostConfig? _configBeforeEdit;
     private bool _screenTimeOnlyRequested;
 
@@ -139,6 +139,14 @@ public partial class AutoPostViewModel
         )!;
         settings.OwnerUid = profile.UserUid;
         settings.OwnerName = profile.PageName;
+        var identity = new ScreenTimeNameSession(
+            _ldPlayerService,
+            account.Binding,
+            account.Name,
+            profile.Model!,
+            LdFolder,
+            token => RequireNameActivationRecoveryIdleAsync(account.Binding, token)
+        );
         try
         {
             RequireSubscription();
@@ -149,10 +157,52 @@ public partial class AutoPostViewModel
                 {
                     await Dispatcher.UIThread.InvokeAsync(() =>
                         worker.Status =
-                            $"ScreenTime: verifying live personal UID [{profile.PageName}]"
+                            $"ScreenTime: verifying saved personal name [{profile.PageName}]"
                     );
-                    // Graph matches preserve the current screen; navigation is only a fallback.
-                    return await VerifyPFlowIdentityAsync(worker, profile, c);
+                    await CreateRunSessionPreparation()
+                        .RestorePostForegroundFromLauncherAsync(account.Binding, c);
+                    var xml = await RecoverRunStartingScreenAsync(
+                        account.Binding,
+                        profile.PageName,
+                        null,
+                        null,
+                        c
+                    );
+                    var login = PFlowLoginScreen.Classify(xml);
+                    if (
+                        PFlowLoginScreen.RequiresAuthentication(login)
+                        && login != PFlowLoginScreenKind.LoginRequired
+                    )
+                        throw new InvalidOperationException(PFlowLoginScreen.Message(login));
+                    if (
+                        login == PFlowLoginScreenKind.LoginRequired
+                        || !_pFlowActiveBindings.TryGetValue(worker.Index, out var activeBinding)
+                        || activeBinding != account.Binding
+                    )
+                    {
+                        await EnsureRunAccountAsync(worker, account, c, postingNameOnly: true);
+                        identity = new ScreenTimeNameSession(
+                            _ldPlayerService,
+                            account.Binding,
+                            account.Name,
+                            profile.Model!,
+                            LdFolder,
+                            token => RequireNameActivationRecoveryIdleAsync(account.Binding, token)
+                        );
+                    }
+                    PFlowAccountStore.RequireCurrentBinding(
+                        account.Binding,
+                        (await _ldPlayerService.GetInstancesAsync(LdFolder, c)).ToArray(),
+                        LdFolder
+                    );
+                    return await identity.VerifyAsync(
+                        profile.Model!.CreateSnapshot(),
+                        Pages
+                            .Select(p => p.Model)
+                            .Where(p => p.AccountBinding == account.Binding)
+                            .ToArray(),
+                        c
+                    );
                 },
                 async p =>
                 {

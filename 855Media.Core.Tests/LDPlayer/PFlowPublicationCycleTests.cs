@@ -16,6 +16,37 @@ public class PFlowPublicationCycleTests
         new() { State = PFlowState.Submitted, SubmittedUtc = DateTime.UtcNow.AddSeconds(-90) };
 
     [Theory]
+    [InlineData("", true, false, true)]
+    [InlineData("Uploading your reel", true, false, false)]
+    [InlineData("Finishing reel upload. Keep Facebook open.", true, false, false)]
+    [InlineData("", false, false, false)]
+    [InlineData("", true, true, false)]
+    [InlineData("Upload failed: connection lost", true, false, false)]
+    public void EarlyProfileInspectionWaitsForClearStableUpload(
+        string label,
+        bool settled,
+        bool ongoing,
+        bool eligible
+    )
+    {
+        var job = Job();
+        job.PostType = "Reel";
+        PFlowPublicationTracking.Transition(
+            job,
+            PFlowPublicationStage.Uploading,
+            "Observed current job upload"
+        );
+        Assert.Equal(
+            eligible,
+            PFlowPublicationCycle.CanCheckProfileEarly(job, With(label), settled, ongoing)
+        );
+        Assert.Equal(PFlowState.Submitted, job.State);
+        Assert.Empty(job.Evidence);
+        job.SubmittedUtc = null;
+        Assert.False(PFlowPublicationCycle.CanCheckProfileEarly(job, Feed, true, false));
+    }
+
+    [Theory]
     [InlineData("Reel", PFlowPublicationStage.UploadComplete)]
     [InlineData("Reel", PFlowPublicationStage.CopyrightScanning)]
     [InlineData("Picture", PFlowPublicationStage.UploadComplete)]

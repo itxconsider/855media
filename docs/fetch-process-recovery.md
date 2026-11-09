@@ -1,0 +1,15 @@
+# Keep Facebook's process stable through Fetch detail lookup
+
+Implemented 2026-11-04 for LD-33. At01:12:07 a nested personal-profile selector restarted Facebook after navigation failed. Personal details then completed, but Fetch correctly rejected the changed process at01:12:47. The old combined error misleadingly suggested that another app might have opened.
+
+Fetch now reselects the personal actor with its shared invocation-local reader, then opens that actor's own profile through fresh own-profile navigation rather than the legacy restart selector. Confirmed personal details return to a freshly recognized Feed before the next Page selection; the captured scrolled birthday/details surface had otherwise led to an unrelated toolbar menu and a failed switcher opening.
+
+An active Fetch scope also blocks the legacy selector's Stop/Launch restart fallback and its launch-on-missing-hierarchy branch. Existing navigation recovery outside Fetch retains its prior behavior. No process baseline is reset: an actual restart still invalidates identity verification and stops Fetch. Missing process, changed process and foreground loss now have separate messages that describe the observation without attributing an action to the user. Empty transition hierarchies allow waiting only, under the same foreground/process guards; they cannot authorize a control tap.
+
+Validation: all132 focused Core checks passed, including12 new cases for scoped restart/launch prevention, precise process/foreground errors, captured profile return, empty transitions, input, changed process, foreign foreground, bounded waiting and cancellation. The existing changed-PID regression additionally checks the corrected restart message. Results: `artifacts/fetch-process-recovery/tests/fetch-process-recovery-final.trx`.
+
+Main Debug and diagnostics built with zero warnings/errors after fresh app-absence checks. The main/live diagnostic Core hashes match. The first live attempt passed personal details without restart but exposed the subsequent Page switcher failure; it is retained under `artifacts/fetch-process-recovery/live-LD33`. The corrected profile-to-Feed route was tested under `live-LD33-feed-return`, with full personal detail collection enabled, expected saved owner name/UID and only Danny Stenhouse requested. It completed Rudolph's join-date lookup, selected Danny, corroborated Page UID61593547578002 and read Page details. Birthday remained unavailable. The test is read-only for production data and never publishes.
+
+This change does not alter LD9/LD14 recent-app cleanup or default Fetch/API selection. The live test explicitly enabled the optional API; no default clipboard or LD14 end-to-end claim is made. Package/version unchanged.
+
+The final live run completed at01:27:19: Rudolph plus the one requested Page, unresolved0, Graph2 (startup0), personal owner and normal keyboard restored. No navigation restart occurred. One credit for this related Fetch recovery fix, error correction and tests:45/10 toward3.2.5; packaged version remains3.2.4.

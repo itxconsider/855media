@@ -53,6 +53,10 @@ public class DubbingPipeline
         try
         {
             Log($"Starting Khmer Dubbing Pipeline for {job.FileName}...");
+            if (job.EnableVoiceCloning && !File.Exists(job.RvcModelPath))
+                throw new InvalidOperationException(
+                    "Studio QC: The selected voice-conversion model is missing. Relink the model or disable voice cloning."
+                );
             job.Progress = 5;
 
             // Stage 1: Audio Extraction & Stem Separation
@@ -136,6 +140,8 @@ public class DubbingPipeline
                 );
             }
 
+            DubbingQualityService.ValidateForSynthesis(job.Segments, requireTranslation: false);
+
             // Format and improve original dialogue text while preserving exact scene timeline timestamps
             foreach (var s in job.Segments)
             {
@@ -169,7 +175,8 @@ public class DubbingPipeline
                         {
                             job.Progress = 35 + ((double)curr / tot * 25.0);
                         },
-                        cancellationToken
+                        cancellationToken,
+                        job.TranslationBrief
                     );
                 }
                 else
@@ -198,9 +205,17 @@ public class DubbingPipeline
                 );
             }
 
+            // Recheck translated results before any TTS call, including unattended queue jobs.
+            DubbingQualityService.ValidateForSynthesis(job.Segments, job.RequireTranslatedDialogue);
+
             // Stage 3.5: Auto-Diarize Cast Characters & Emotional Tones if not already assigned
             job.StatusMessage = "Auto-assigning voice cast characters and emotional tones...";
             await EnsureAutomatedCastAndEmotionsAsync(job, ffmpeg, Log, cancellationToken);
+            DubbingQualityService.ValidateForSynthesis(
+                job.Segments,
+                job.RequireTranslatedDialogue,
+                job.Characters
+            );
 
             // Stage 4: Synthesizing Khmer Speech for all Movie Characters
             job.Status = DubbingJobStatus.SynthesizingSpeech;

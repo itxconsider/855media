@@ -5,15 +5,17 @@ using System.Threading.Tasks;
 
 namespace _855Media.Core.LDPlayer;
 
-// Memory-only handoff from a live Graph check. Native session bytes never authorize
-// work alone: every repeat check must also confirm the current actor's own profile UI.
+// Memory-only actor proof: Graph/session for existing consumers, or explicit
+// database-name/UI policy for posting. Never restored from persisted history.
 public sealed class PFlowNativeIdentityScope
 {
     private readonly PFlowAccountBinding _binding;
     private readonly string _process;
     private readonly string _fingerprint;
     private readonly FacebookPageTarget _target;
+    public bool UsesDatabaseName { get; private init; }
     private int _invalidated;
+    private readonly long _uiReaderEpoch;
 
     private PFlowNativeIdentityScope(
         PFlowAccountBinding binding,
@@ -23,7 +25,8 @@ public sealed class PFlowNativeIdentityScope
     )
     {
         _binding = binding;
-        _process = process;
+        _uiReaderEpoch = PFlowUiReaderEpoch.Read(binding.InstanceIdentity);
+        _process = PFlowProcessIdentity.Normalize(process) ?? process;
         _fingerprint = fingerprint;
         _target = new()
         {
@@ -52,10 +55,7 @@ public sealed class PFlowNativeIdentityScope
             || identity.UnderlyingUid != binding.OwnerUid
             || target.UserUid != binding.OwnerUid
             || target.AccountBinding != null && target.AccountBinding != binding
-            || string.IsNullOrWhiteSpace(process)
-            || !process
-                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
-                .All(p => p.All(char.IsAsciiDigit))
+            || PFlowProcessIdentity.Normalize(process) == null
             || (
                 target.IsPrimaryProfile
                     ? identity.Id != target.UserUid
@@ -66,10 +66,58 @@ public sealed class PFlowNativeIdentityScope
         return new(binding, process, identity.AuthenticationFingerprint, target);
     }
 
+    internal static PFlowNativeIdentityScope? FromSelectedName(
+        PFlowAccountBinding binding,
+        string process,
+        FacebookPageTarget target,
+        PFlowPostingNameVerification.Actor? selected,
+        System.Collections.Generic.IEnumerable<FacebookPageTarget> savedTargets
+    )
+    {
+        if (
+            selected == null
+            || selected.Type != target.Type
+            || !PFlowNameMatch.Same(selected.Name, target.PageName)
+            || target.Type is not ("Profile" or "Page")
+            || target.IsPrimaryProfile && target.PageId != target.UserUid
+            || binding.AppPackage != "com.facebook.katana"
+            || target.UserUid != binding.OwnerUid
+            || target.AccountBinding != binding
+            || PFlowProcessIdentity.Normalize(process) == null
+            || !PFlowPostingNameVerification.MatchesSavedTarget(target, savedTargets)
+        )
+            return null;
+        return new(binding, process, "", target) { UsesDatabaseName = true };
+    }
+
+    // Posting-only proof from a complete typed switcher; stored IDs only route history.
+    public static PFlowNativeIdentityScope? FromVerifiedName(
+        PFlowAccountBinding binding,
+        string process,
+        FacebookPageTarget target,
+        string switcherXml,
+        System.Collections.Generic.IEnumerable<FacebookPageTarget> savedTargets
+    )
+    {
+        var selected = PFlowPersonaSwitcherService
+            .InferNativeSwitcherActors(switcherXml)
+            .Where(a => a.IsSelected)
+            .Take(2)
+            .ToArray();
+        return FromSelectedName(
+            binding,
+            process,
+            target,
+            selected.Length == 1 ? new(selected[0].Name, selected[0].Type) : null,
+            savedTargets
+        );
+    }
+
     public bool Matches(PFlowAccountBinding binding, string process, FacebookPageTarget target) =>
         Volatile.Read(ref _invalidated) == 0
+        && _uiReaderEpoch == PFlowUiReaderEpoch.Read(_binding.InstanceIdentity)
         && _binding == binding
-        && _process == process
+        && PFlowProcessIdentity.Same(_process, process)
         && _target.PageId == target.PageId
         && _target.UserUid == target.UserUid
         && _target.PersonaUid == target.PersonaUid
@@ -97,9 +145,43 @@ public sealed class PFlowNativeIdentityScope
         ILDPlayerService ld,
         string? path,
         CancellationToken ct
-    ) => await ReadFingerprintAsync(_binding, _process, ld, path, ct) == _fingerprint;
+    ) =>
+        _uiReaderEpoch == PFlowUiReaderEpoch.Read(_binding.InstanceIdentity)
+        && (
+            UsesDatabaseName
+                ? await ProcessUnchangedAsync(_binding, _process, ld, path, ct)
+                : await ReadFingerprintAsync(_binding, _process, ld, path, ct) == _fingerprint
+        )
+        && _uiReaderEpoch == PFlowUiReaderEpoch.Read(_binding.InstanceIdentity);
 
-    private static async Task<string?> ReadFingerprintAsync(
+    // Read-only monitoring of an already submitted job. Reader recovery invalidates
+    // future actor/input proof, but does not itself change this submission's process.
+    internal async Task<bool> ObserveSubmittedSessionAsync(
+        PFlowJob job,
+        ILDPlayerService ld,
+        string? path,
+        CancellationToken ct
+    )
+    {
+        bool Snapshot() =>
+            Volatile.Read(ref _invalidated) == 0
+            && UsesDatabaseName
+            && job.State == PFlowState.Submitted
+            && job.SubmittedUtc.HasValue
+            && job.AccountBinding == _binding
+            && job.DeviceIndex == _binding.DeviceIndex
+            && job.AppPackage == _binding.AppPackage
+            && job.TargetId == _target.PageId
+            && job.OwnerUid == _target.UserUid
+            && job.PersonaUid == _target.PersonaUid
+            && job.TargetName == _target.PageName
+            && job.IsProfile == _target.IsPrimaryProfile;
+        return Snapshot()
+            && await ProcessUnchangedAsync(_binding, _process, ld, path, ct)
+            && Snapshot();
+    }
+
+    private static async Task<bool> ProcessUnchangedAsync(
         PFlowAccountBinding binding,
         string process,
         ILDPlayerService ld,
@@ -107,52 +189,58 @@ public sealed class PFlowNativeIdentityScope
         CancellationToken ct
     )
     {
-        if (binding.AppPackage != "com.facebook.katana")
-            return null;
         var activity = await ld.GetCurrentFocusedActivityAsync(binding.DeviceIndex, path, ct) ?? "";
         if (
             activity != binding.AppPackage
             && !activity.StartsWith(binding.AppPackage + "/", StringComparison.Ordinal)
         )
-            return null;
-        var pid = (
-            await ld.ExecuteAdbAsync(
-                binding.DeviceIndex,
-                "shell pidof com.facebook.katana",
-                path,
-                ct
-            ) ?? ""
-        ).Trim();
-        if (pid != process)
-            return null;
-        const string prefix =
-            "shell su 0 cat /data/data/com.facebook.katana/app_light_prefs/com.facebook.katana/";
-        var auth =
-            await ld.ExecuteAdbAsync(binding.DeviceIndex, prefix + "authentication", path, ct)
-            ?? "";
-        var token = PFlowGraphIdentityReader.Token(auth);
-        if (token.Length == 0)
-            return null;
-        var ownerRaw =
-            await ld.ExecuteAdbAsync(binding.DeviceIndex, prefix + "underlying_account", path, ct)
-            ?? "";
-        var owner = PFlowGraphIdentityReader.Field(
-            PFlowGraphIdentityReader.Clean(ownerRaw),
-            "underlying_account_uid"
+            return false;
+        return PFlowProcessIdentity.Same(
+            (
+                await ld.ExecuteAdbAsync(
+                    binding.DeviceIndex,
+                    "shell pidof com.facebook.katana",
+                    path,
+                    ct
+                ) ?? ""
+            ).Trim(),
+            process
         );
-        if (!Numeric(owner))
-            owner = PFlowGraphIdentityReader.Field(
-                PFlowGraphIdentityReader.Clean(auth),
-                "underlying_account_uid"
-            );
-        if (!Numeric(owner))
-            owner = PFlowGraphIdentityReader.Field(PFlowGraphIdentityReader.Clean(auth), "user_id");
-        return owner == binding.OwnerUid
-            ? PFlowGraphIdentityReader.Fingerprint(token, owner)
-            : null;
+    }
+
+    private static Task<string?> ReadFingerprintAsync(
+        PFlowAccountBinding binding,
+        string process,
+        ILDPlayerService ld,
+        string? path,
+        CancellationToken ct
+    )
+    {
+        ct.ThrowIfCancellationRequested();
+        // A legacy Graph proof cannot be refreshed without an authorized credential source.
+        // Never substitute a PID, saved UID or UI name for its old authenticated fingerprint.
+        return Task.FromResult<string?>(null);
     }
 
     // Consecutive confirmed posts reuse the actor proof without navigating its profile.
+    // A pending label may be observed while waiting, but never authorizes posting.
+    public async Task<bool> VerifyContinuationWaitAsync(
+        PFlowJob job,
+        string xml,
+        ILDPlayerService ld,
+        string? path,
+        CancellationToken ct
+    ) =>
+        Matches(job)
+        && PFlowPostTargetSession.CanContinueContext(xml, job.AppPackage)
+        && !(
+            UsesDatabaseName
+                ? PFlowPostingNameVerification.Contradicts(xml, _target)
+                : PFlowSessionProfileUi.Contradicts(xml, _target)
+        )
+        && await SessionUnchangedAsync(ld, path, ct)
+        && Matches(job);
+
     public async Task<bool> VerifyContinuationAsync(
         PFlowJob job,
         string xml,
@@ -166,8 +254,12 @@ public sealed class PFlowNativeIdentityScope
         {
             if (
                 Matches(job)
-                && PFlowPostTargetSession.CanContinueFrom(xml, job.AppPackage)
-                && !PFlowSessionProfileUi.Contradicts(xml, _target)
+                && PFlowPostTargetSession.CanContinueForJob(job, xml)
+                && !(
+                    UsesDatabaseName
+                        ? PFlowPostingNameVerification.Contradicts(xml, _target)
+                        : PFlowSessionProfileUi.Contradicts(xml, _target)
+                )
                 && await SessionUnchangedAsync(ld, path, ct)
                 && Matches(job)
             )
@@ -221,6 +313,12 @@ public sealed class PFlowNativeIdentityScope
         CancellationToken ct
     )
     {
+        if (UsesDatabaseName)
+        {
+            var xml = await ld.DumpUiHierarchyAsync(_binding.DeviceIndex, path, ct) ?? "";
+            return PFlowPostTargetSession.CanContinueFrom(xml, _binding.AppPackage)
+                && !PFlowPostingNameVerification.Contradicts(xml, _target);
+        }
         var initial = await ld.DumpUiHierarchyAsync(_binding.DeviceIndex, path, ct) ?? "";
         var nodes = ScreenTimeHierarchy.Nodes(initial).ToArray();
         if (

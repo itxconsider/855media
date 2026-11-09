@@ -34,7 +34,8 @@ public partial class AutoPostViewModel
                     // Do not interrupt another worker's posting or account operation.
                     using var lease = await PFlowDeviceLease.AcquireAsync(
                         device.Index,
-                        timeout.Token
+                        timeout.Token,
+                        LdFolder
                     );
                     device.Status = "Closing LD...";
                     if (
@@ -58,7 +59,7 @@ public partial class AutoPostViewModel
                     device.Status = "Could not close LD: " + ex.Message;
                 }
             }
-            OnPropertyChanged(nameof(DisplayedInstances));
+            RefreshDisplayedInstances();
             OnPropertyChanged(nameof(SelectedInstancesCountSummary));
             StatusSummary = $"Closed {closed}/{selected.Length} selected LD instances.";
             _snackbarManager.Notify(StatusSummary);

@@ -378,79 +378,28 @@ public class PFlowAccountDiscoveryService : IPFlowAccountDiscoveryService
         CancellationToken cancellationToken = default
     )
     {
-        // 1. Fast path: Direct extraction from rooted storage via LightSharedPreferences / prefs_db
-        try
-        {
-            var rootAccounts = await ExtractFacebookAccountsFromRootShellAsync(
-                index,
-                "com.facebook.katana",
-                customPath,
-                cancellationToken
-            );
-
-            if (rootAccounts.Count > 0)
+        var details = await PFlowNativeDiscovery.ReadAsync(
+            _ldPlayer,
+            index,
+            customPath,
+            cancellationToken
+        );
+        return details == null
+            ? null
+            : new FacebookDeviceAccountInfo
             {
-                var devInfo = new FacebookDeviceAccountInfo { DeviceName = $"LD-{index}" };
-
-                var primaryProfile =
-                    rootAccounts.FirstOrDefault(a =>
-                        a.IsActive
-                        || string.Equals(a.Type, "Profile", StringComparison.OrdinalIgnoreCase)
-                    ) ?? rootAccounts.FirstOrDefault();
-
-                if (primaryProfile != null)
+                DeviceName = details.DeviceName,
+                UserUid = details.Uid,
+                UserName = details.Name,
+                UserProfile = new FacebookPageInfo
                 {
-                    devInfo.UserUid = !string.IsNullOrEmpty(primaryProfile.UserUid)
-                        ? primaryProfile.UserUid
-                        : primaryProfile.Uid;
-                    devInfo.UserName = primaryProfile.Name;
-                    devInfo.UserProfile = primaryProfile.ToFacebookPageInfo();
-                }
-
-                foreach (
-                    var pageAcc in rootAccounts.Where(a =>
-                        string.Equals(a.Type, "Page", StringComparison.OrdinalIgnoreCase)
-                    )
-                )
-                {
-                    var page = pageAcc.ToFacebookPageInfo();
-                    try
-                    {
-                        var pageBloksInfo = await FetchPageInfoFromBloksAsync(
-                            index,
-                            pageAcc.Uid,
-                            page.PageId,
-                            customPath,
-                            cancellationToken
-                        );
-                        MergePageDetails(page, pageBloksInfo);
-                    }
-                    catch (OperationCanceledException)
-                        when (cancellationToken.IsCancellationRequested)
-                    {
-                        throw;
-                    }
-                    catch
-                    {
-                        // Preserve the root-shell result if the Bloks lookup is unavailable.
-                    }
-                    devInfo.Pages.Add(page);
-                }
-
-                return devInfo;
-            }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"[LD-{index}] Root-shell device discovery failed: {ex.Message}");
-        }
-
-        Debug.WriteLine($"[LD-{index}] Root-shell discovery found no account or Page UIDs.");
-        return null;
+                    PageId = details.Uid,
+                    UserUid = details.Uid,
+                    PageName = details.Name,
+                    Type = "Profile",
+                },
+                Pages = details.Pages,
+            };
     }
 
     public static FacebookDeviceAccountInfo ParseDeviceAccountAndPagesFromXml(
@@ -599,160 +548,15 @@ public class PFlowAccountDiscoveryService : IPFlowAccountDiscoveryService
         Func<FacebookAccountDetails, Task>? rootShellCompleted = null
     )
     {
-        List<FacebookAccountInfo> rootAccounts = [];
-        // 0. Fast path: Direct extraction from rooted storage via LightSharedPreferences & prefs_db
-        try
-        {
-            rootAccounts = await ExtractFacebookAccountsFromRootShellAsync(
-                index,
-                "com.facebook.katana",
-                customPath,
-                cancellationToken
-            );
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"[LD-{index}] Root-shell account extraction failed: {ex.Message}");
-        }
-
-        // Root shell is the only account-discovery path. Use Bloks only to enrich
-        // fields that are not present in the rooted account records.
-        if (rootAccounts.Count > 0)
-        {
-            var fastPathProfile = rootAccounts.FirstOrDefault(a =>
-                a.IsActive || string.Equals(a.Type, "Profile", StringComparison.OrdinalIgnoreCase)
-            );
-            var details = new FacebookAccountDetails
-            {
-                DeviceName = $"LD-{index}",
-                Name = fastPathProfile?.Name ?? string.Empty,
-                Uid = !string.IsNullOrWhiteSpace(fastPathProfile?.UserUid)
-                    ? fastPathProfile.UserUid
-                    : fastPathProfile?.Uid ?? string.Empty,
-                Email = fastPathProfile?.Email ?? string.Empty,
-                SwitchedToProfile = false,
-            };
-
-            var rootPageAccounts = rootAccounts
-                .Where(a => string.Equals(a.Type, "Page", StringComparison.OrdinalIgnoreCase))
-                .ToList();
-            foreach (var pageAccount in rootPageAccounts)
-            {
-                var page = pageAccount.ToFacebookPageInfo();
-                page.UserUid = details.Uid;
-                page.ManagedBy = details.Name;
-                details.Pages.Add(page);
-            }
-
-            // Publish and persist the fast root-shell results before any slower UI/Bloks calls.
-            if (rootShellCompleted != null)
-                await rootShellCompleted(details);
-
-            // Retrieve profile-only data before switching to managed Pages. This keeps
-            // Accounts Center navigation from leaving the app on that screen afterward.
-            var ownerVerified = await _personaSwitcher.EnsureSwitchedToPersonalProfileAsync(
-                index,
-                details.Name,
-                customPath,
-                cancellationToken
-            );
-            details.SwitchedToProfile = ownerVerified;
-            try
-            {
-                if (ownerVerified)
-                {
-                    var profileDates = await PFlowProfileDetailsReader.ReadOwnProfileAsync(
-                        _ldPlayer,
-                        index,
-                        details.Name,
-                        true,
-                        customPath,
-                        cancellationToken
-                    );
-                    details.CreationDate = profileDates.CreationDate;
-                    details.Birthdate = !string.IsNullOrWhiteSpace(profileDates.Birthdate)
-                        ? profileDates.Birthdate
-                        : await FetchBirthdayFromBloksAsync(index, customPath, cancellationToken)
-                            ?? string.Empty;
-                }
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine(
-                    $"[LD-{index}] Accounts Center birthday lookup failed: {ex.Message}"
-                );
-            }
-
-            foreach (var (pageAccount, page) in rootPageAccounts.Zip(details.Pages))
-            {
-                if (!ownerVerified)
-                {
-                    page.LivePageAccessVerified = false;
-                    continue;
-                }
-                var bloksPage = await FetchPageInfoFromBloksAsync(
-                    index,
-                    pageAccount.Uid,
-                    pageAccount.PageId,
-                    customPath,
-                    cancellationToken
-                );
-                MergePageDetails(page, bloksPage);
-
-                // A Page deep link opens its public profile. That does not change the
-                // active Facebook identity, so explicitly select the Page persona after
-                // the lookup and leave the device switched to the last processed Page.
-                try
-                {
-                    var switched = await _personaSwitcher.SwitchToPersonaAsync(
-                        index,
-                        pageAccount.ToFacebookPageTarget($"LD-{index}"),
-                        customPath,
-                        cancellationToken
-                    );
-                    page.LivePageAccessVerified = switched ? null : false;
-                    if (switched)
-                    {
-                        var pageDates = await PFlowProfileDetailsReader.ReadOwnProfileAsync(
-                            _ldPlayer,
-                            index,
-                            page.PageName,
-                            false,
-                            customPath,
-                            cancellationToken
-                        );
-                        if (!string.IsNullOrWhiteSpace(pageDates.CreationDate))
-                            page.CreationDate = pageDates.CreationDate;
-                    }
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    page.LivePageAccessVerified = false;
-                    Debug.WriteLine(
-                        $"[LD-{index}] Could not switch to Page persona '{pageAccount.Name}': {ex.Message}"
-                    );
-                }
-            }
-
-            return details;
-        }
-
-        Debug.WriteLine(
-            $"[LD-{index}] Root-shell discovery returned no account or Page UIDs; UI fallback is disabled."
+        var details = await PFlowNativeDiscovery.ReadAsync(
+            _ldPlayer,
+            index,
+            customPath,
+            cancellationToken
         );
-        return null;
+        if (details != null && rootShellCompleted != null)
+            await rootShellCompleted(details); // Compatibility callback; payload is native UI data.
+        return details;
     }
 
     public async Task<(
@@ -765,630 +569,49 @@ public class PFlowAccountDiscoveryService : IPFlowAccountDiscoveryService
         CancellationToken cancellationToken = default
     )
     {
-        try
-        {
-            var rootAccounts = await ExtractFacebookAccountsFromRootShellAsync(
-                index,
-                "com.facebook.katana",
-                customPath,
-                cancellationToken
-            );
-
-            if (rootAccounts.Count > 0)
-            {
-                var activeAccount = rootAccounts.FirstOrDefault(a => a.IsActive);
-                if (activeAccount != null)
-                {
-                    return (true, activeAccount.Name, "Active Session in Database");
-                }
-
-                var profile = rootAccounts.FirstOrDefault(a =>
-                    string.Equals(a.Type, "Profile", StringComparison.OrdinalIgnoreCase)
-                );
-                if (profile != null && !string.IsNullOrWhiteSpace(profile.Name))
-                {
-                    return (true, profile.Name, "Stored Profile Session");
-                }
-            }
-        }
-        catch { }
-
-        try
-        {
-            var xml = await _ldPlayer.DumpUiHierarchyAsync(index, customPath, cancellationToken);
-            if (!string.IsNullOrWhiteSpace(xml))
-            {
-                if (
-                    xml.Contains("Log In", StringComparison.OrdinalIgnoreCase)
-                    && (
-                        xml.Contains("Find your account", StringComparison.OrdinalIgnoreCase)
-                        || xml.Contains("Create new account", StringComparison.OrdinalIgnoreCase)
-                    )
-                )
-                {
-                    return (false, null, "Logged Out / Login Screen");
-                }
-
-                if (
-                    xml.Contains("Session Expired", StringComparison.OrdinalIgnoreCase)
-                    || xml.Contains("Please log in again", StringComparison.OrdinalIgnoreCase)
-                )
-                {
-                    return (false, null, "Session Expired");
-                }
-
-                if (
-                    xml.Contains("checkpoint", StringComparison.OrdinalIgnoreCase)
-                    || xml.Contains("Account Locked", StringComparison.OrdinalIgnoreCase)
-                    || xml.Contains("Confirm your identity", StringComparison.OrdinalIgnoreCase)
-                )
-                {
-                    return (false, null, "Checkpoint / Account Locked");
-                }
-
-                var menuXml = xml;
-                if (!menuXml.Contains("fb://menu", StringComparison.OrdinalIgnoreCase))
-                {
-                    await _ldPlayer.OpenDeepLinkAsync(
-                        index,
-                        "fb://menu",
-                        "com.facebook.katana",
-                        customPath,
-                        cancellationToken
-                    );
-                    await PFlowFetchPacing.DelayAsync(
-                        _delayConfig.DelayMenuNavMs,
-                        cancellationToken
-                    );
-                    menuXml =
-                        await _ldPlayer.DumpUiHierarchyAsync(index, customPath, cancellationToken)
-                        ?? xml;
-                }
-
-                var accountDetails = ParseFacebookAccountDetails(
-                    menuXml,
-                    null,
-                    null,
-                    null,
-                    null,
-                    index
-                );
-                if (
-                    !string.IsNullOrWhiteSpace(accountDetails.Name)
-                    && !accountDetails.Name.StartsWith(
-                        "Facebook User",
-                        StringComparison.OrdinalIgnoreCase
-                    )
-                )
-                {
-                    return (true, accountDetails.Name, "Active Session in UI");
-                }
-            }
-        }
-        catch { }
-
-        return (false, null, "No Active Facebook Session Found");
-    }
-
-    private const string RootExtractionScript =
-        @"#!/system/bin/sh
-PKG=""$1""
-[ -z ""$PKG"" ] && PKG=""com.facebook.katana""
-FB_DIR=""/data/data/$PKG""
-LP_DIR=""$FB_DIR/app_light_prefs/$PKG""
-DB=""$FB_DIR/databases/prefs_db""
-SP_DIR=""$FB_DIR/shared_prefs""
-
-ACTIVE_UID=""""
-ACTIVE_NAME=""""
-ACCESS_TOKEN=""""
-COOKIES=""""
-
-# Helper function to extract readable printable strings without relying on 'strings' binary
-extract_printable() {
-    src=""$1""
-    [ -f ""$src"" ] || return
-    if command -v strings >/dev/null 2>&1; then
-        strings ""$src"" 2>/dev/null
-    else
-        cat ""$src"" 2>/dev/null | tr -d '\r' | tr -c '[:print:]\n' '\n'
-    fi
-}
-
-# Helper function to get line following a key using portable sed
-get_next_line() {
-    key=""$1""
-    sed -n ""/^${key}\$/{n;p;q;}"" 2>/dev/null
-}
-
-# 1. Check underlying_account
-if [ -f ""$LP_DIR/underlying_account"" ]; then
-    UA_STR=$(extract_printable ""$LP_DIR/underlying_account"")
-    ACTIVE_UID=$(echo ""$UA_STR"" | get_next_line ""underlying_account_uid"")
-    if [ -z ""$ACTIVE_UID"" ]; then
-        ACTIVE_UID=$(echo ""$UA_STR"" | grep -E '^[0-9]{10,20}$' | head -n 1)
-    fi
-fi
-
-# 2. Check authentication
-if [ -f ""$LP_DIR/authentication"" ]; then
-    AUTH_STR=$(extract_printable ""$LP_DIR/authentication"")
-    if [ -z ""$ACTIVE_UID"" ]; then
-        ACTIVE_UID=$(echo ""$AUTH_STR"" | get_next_line ""user_id"")
-        if [ -z ""$ACTIVE_UID"" ]; then
-            ACTIVE_UID=$(echo ""$AUTH_STR"" | grep -E '^[0-9]{10,20}$' | head -n 1)
-        fi
-    fi
-    ACTIVE_NAME=$(echo ""$AUTH_STR"" | get_next_line ""username"")
-    [ -z ""$ACTIVE_NAME"" ] && ACTIVE_NAME=$(echo ""$AUTH_STR"" | get_next_line ""name"")
-    ACCESS_TOKEN=$(echo ""$AUTH_STR"" | get_next_line ""access_token"")
-    [ -z ""$ACCESS_TOKEN"" ] && ACCESS_TOKEN=$(echo ""$AUTH_STR"" | grep -E '^EAA[A-Za-z0-9_-]{10,}$' | head -n 1)
-    COOKIES=$(echo ""$AUTH_STR"" | get_next_line ""session_cookies_string"")
-    [ -z ""$COOKIES"" ] && COOKIES=$(echo ""$AUTH_STR"" | grep -E '^\[\{.*""c_user"".*\}\]$' | head -n 1)
-fi
-
-# Recent Facebook builds keep the active auth identity in a per-UID file instead
-# of underlying_account / logged_in_* files. Use its filename as the logged-in UID.
-if [ -z ""$ACTIVE_UID"" ]; then
-    for f in ""$LP_DIR""/dbl_local_auth_*; do
-        [ -f ""$f"" ] || continue
-        file_uid=${f##*dbl_local_auth_}
-        if echo ""$file_uid"" | grep -Eq '^[0-9]{10,20}$'; then
-            ACTIVE_UID=""$file_uid""
-            break
-        fi
-    done
-fi
-
-# Fallback for active UID from shared_prefs if still empty
-if [ -z ""$ACTIVE_UID"" ]; then
-    for f in ""$SP_DIR/logged_in_user.xml"" ""$SP_DIR/user_id.xml"" ""$SP_DIR/com.facebook.katana_preferences.xml""; do
-        if [ -f ""$f"" ]; then
-            ACTIVE_UID=$(grep -ohE '(615[0-9]{11,13}|[0-9]{14,16})' ""$f"" 2>/dev/null | head -n 1)
-            [ -n ""$ACTIVE_UID"" ] && break
-        fi
-    done
-fi
-
-echo ""AUTH|$ACTIVE_UID|$ACTIVE_NAME|$ACCESS_TOKEN|$COOKIES""
-
-# Facebook now stores identity-scoped preferences in prefs_db. The path is
-# /logged_in_user_scoped/<user_uid>/<persona_uid>/..., so expose the persona UID
-# without reading preference values, cookies, or tokens.
-if [ -n ""$ACTIVE_UID"" ] && [ -f ""$DB"" ] && command -v sqlite3 >/dev/null 2>&1; then
-    sqlite3 ""$DB"" ""SELECT DISTINCT key FROM preferences WHERE key LIKE '/logged_in_user_scoped/$ACTIVE_UID/%';"" 2>/dev/null \
-        | awk -F/ -v user_uid=""$ACTIVE_UID"" '$2 == ""logged_in_user_scoped"" && $3 == user_uid && $4 ~ /^[0-9]{10,20}$/ { print ""PERSONA|"" $3 ""|"" $4 }' \
-        | sort -u
-fi
-
-# 3. Logged in profiles & pages
-for f in $LP_DIR/logged_in_*; do
-    [ -f ""$f"" ] || continue
-    uid=$(basename ""$f"" | sed 's/logged_in_//')
-    [ -z ""$uid"" ] && continue
-
-    f_str=$(extract_printable ""$f"")
-    name=$(echo ""$f_str"" | get_next_line ""name"")
-    fname=$(echo ""$f_str"" | get_next_line ""first_name"")
-    lname=$(echo ""$f_str"" | get_next_line ""last_name"")
-    if [ -z ""$name"" ]; then
-        if [ -n ""$fname"" ]; then
-            name=""$fname $lname""
-        fi
-    fi
-    email=$(echo ""$f_str"" | get_next_line ""email"")
-    [ -z ""$email"" ] && email=$(echo ""$f_str"" | get_next_line ""primary_contact"")
-    [ -z ""$email"" ] && email=$(echo ""$f_str"" | grep -E '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$' | head -n 1)
-
-    pic=$(echo ""$f_str"" | get_next_line ""pic_url"")
-    [ -z ""$pic"" ] && pic=$(echo ""$f_str"" | get_next_line ""pic_square"")
-    [ -z ""$pic"" ] && pic=$(echo ""$f_str"" | grep -E '^https?://' | head -n 1)
-
-    page_id=$(echo ""$f_str"" | get_next_line ""delegate_page_id"")
-    [ -z ""$page_id"" ] && page_id=$(echo ""$f_str"" | get_next_line ""page_id"")
-
-    user_uid=$(echo ""$f_str"" | get_next_line ""user_id"")
-    [ -z ""$user_uid"" ] && user_uid=""$ACTIVE_UID""
-
-    type=""Profile""
-    is_page=$(echo ""$f_str"" | grep -c ""is_page"")
-    if [ ""$is_page"" -gt 0 ] || [ -n ""$page_id"" ]; then
-        type=""Page""
-    fi
-
-    [ -z ""$page_id"" ] && page_id=""$uid""
-
-    if [ ""$type"" = ""Page"" ] && [ -n ""$fname"" ] && [ ""$fname"" = ""$lname"" ] && [ ""$name"" = ""$fname $lname"" ]; then
-        name=""$fname""
-    fi
-
-    echo ""ACCOUNT|$type|$uid|$page_id|$name|$user_uid|$email|$pic""
-done
-
-# 4. Extract from shared_prefs DBL credentials XML
-for dbl_xml in ""$SP_DIR/auth_device_based_login_credentials.xml"" ""$SP_DIR/com.facebook.katana_preferences.xml""; do
-    if [ -f ""$dbl_xml"" ]; then
-        grep -o '{[^{}]*""uid""[^{}]*}' ""$dbl_xml"" 2>/dev/null | sed 's/&quot;/""/g' | while read -r line; do
-            [ -n ""$line"" ] && echo ""DBL|$line""
-        done
-    fi
-done
-";
-
-    public async Task<List<FacebookAccountInfo>> ExtractFacebookAccountsFromRootShellAsync(
-        int index,
-        string packageName = "com.facebook.katana",
-        string? customPath = null,
-        CancellationToken cancellationToken = default
-    )
-    {
-        if (string.IsNullOrWhiteSpace(packageName))
-            packageName = "com.facebook.katana";
-
-        List<FacebookAccountInfo> directAccounts = [];
-        // Step 1: Ultra-fast direct in-memory ADB extraction (~150ms)
-        try
-        {
-            directAccounts = await ExtractFacebookAccountsDirectFromRootAdbAsync(
-                index,
-                packageName,
-                customPath,
-                cancellationToken
-            );
-
-            // The direct files may expose only the signed-in profile. Keep looking
-            // in prefs_db for managed persona UIDs unless pages were found already.
-            if (
-                directAccounts.Any(a =>
-                    string.Equals(a.Type, "Page", StringComparison.OrdinalIgnoreCase)
-                )
-            )
-                return directAccounts;
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"[LD-{index}] Direct ADB extraction fast-path failed: {ex.Message}");
-        }
-
-        if (cancellationToken.IsCancellationRequested)
-            return [];
-
-        // Step 2: Fallback to pushed shell script if direct extraction yielded no accounts
-        try
-        {
-            using var scriptCts = new CancellationTokenSource(TimeSpan.FromSeconds(12));
-            using var linkedScriptCts = CancellationTokenSource.CreateLinkedTokenSource(
-                cancellationToken,
-                scriptCts.Token
-            );
-            var scriptCt = linkedScriptCts.Token;
-
-            var tempFile = Path.Combine(Path.GetTempPath(), $"extract_fb_{Guid.NewGuid():N}.sh");
-            try
-            {
-                var scriptLf = RootExtractionScript.Replace("\r\n", "\n").Replace('\r', '\n');
-                await File.WriteAllBytesAsync(
-                    tempFile,
-                    System.Text.Encoding.UTF8.GetBytes(scriptLf),
-                    scriptCt
-                );
-                await _ldPlayer.PushFileToEmulatorAsync(
-                    index,
-                    tempFile,
-                    "/data/local/tmp/extract_fb_root.sh",
-                    customPath,
-                    scriptCt
-                );
-            }
-            catch (Exception pEx)
-            {
-                Debug.WriteLine($"[LD-{index}] Push script fallback: {pEx.Message}");
-            }
-            finally
-            {
-                if (File.Exists(tempFile))
-                {
-                    try
-                    {
-                        File.Delete(tempFile);
-                    }
-                    catch { }
-                }
-            }
-
-            await _ldPlayer.ExecuteAdbAsync(
-                index,
-                "shell chmod 755 /data/local/tmp/extract_fb_root.sh",
-                customPath,
-                scriptCt
-            );
-
-            // Execute script with primary su -c command
-            var output = await _ldPlayer.ExecuteAdbAsync(
-                index,
-                $"shell su -c 'sh /data/local/tmp/extract_fb_root.sh {packageName}' || sh /data/local/tmp/extract_fb_root.sh {packageName}",
-                customPath,
-                scriptCt
-            );
-
-            if (!string.IsNullOrWhiteSpace(output))
-            {
-                var accounts = ParseRootShellAccountOutput(output);
-                if (accounts.Count > 0)
-                {
-                    foreach (var directAccount in directAccounts)
-                    {
-                        MergeOrAddAccount(
-                            accounts,
-                            directAccount,
-                            directAccount.UserUid,
-                            directAccount.AccessToken,
-                            directAccount.Cookies
-                        );
-                    }
-                    return accounts;
-                }
-            }
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            Debug.WriteLine($"[LD-{index}] Shell script extraction timed out.");
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"[LD-{index}] Shell script extraction attempt failed: {ex.Message}");
-        }
-        finally
-        {
-            // Clean up temporary script file asynchronously
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    await _ldPlayer.ExecuteAdbAsync(
-                        index,
-                        "shell rm -f /data/local/tmp/extract_fb_root.sh",
-                        customPath,
-                        CancellationToken.None
-                    );
-                }
-                catch { }
-            });
-        }
-
-        return directAccounts;
-    }
-
-    public async Task<List<FacebookAccountInfo>> ExtractFacebookAccountsDirectFromRootAdbAsync(
-        int index,
-        string packageName = "com.facebook.katana",
-        string? customPath = null,
-        CancellationToken cancellationToken = default
-    )
-    {
-        var result = new List<FacebookAccountInfo>();
-        var lightPrefs = $"/data/data/{packageName}/app_light_prefs/{packageName}";
-        try
-        {
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(TimeSpan.FromSeconds(30));
-            var ct = timeout.Token;
-
-            var rootProbe = await _ldPlayer.ExecuteAdbAsync(index, "shell su 0 id", customPath, ct);
-            if (!Regex.IsMatch(rootProbe, @"\buid=0\b", RegexOptions.IgnoreCase))
-            {
-                var detail = string.IsNullOrWhiteSpace(rootProbe)
-                    ? "the root probe returned no output"
-                    : rootProbe.Trim();
-                throw new InvalidOperationException(
-                    $"Root shell is unavailable on LD-{index} ({detail}). Enable root access in LDPlayer settings, then restart the instance."
-                );
-            }
-
-            var fileList = await _ldPlayer.ExecuteAdbAsync(
-                index,
-                $"shell su 0 ls -1 {lightPrefs}",
-                customPath,
-                ct
-            );
-            var accountFiles = fileList
-                .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
-                .Select(line => line.Trim())
-                .Where(name => Regex.IsMatch(name, @"^logged_in_\d{10,20}$"))
-                .Distinct(StringComparer.Ordinal)
-                .ToList();
-
-            var authDump = await ReadRootTextFileAsync(
-                index,
-                $"{lightPrefs}/underlying_account",
-                customPath,
-                ct
-            );
-            authDump +=
-                "\n"
-                + await ReadRootTextFileAsync(
-                    index,
-                    $"{lightPrefs}/authentication",
-                    customPath,
-                    ct
-                );
-            authDump = SanitizeRootDump(authDump);
-            var underlyingUid = Regex
-                .Match(
-                    authDump,
-                    @"underlying_account_uid[\r\n\s]+(\d{10,20})",
-                    RegexOptions.IgnoreCase
-                )
-                .Groups[1]
-                .Value;
-            var activeUid = Regex
-                .Match(
-                    authDump,
-                    @"(?:underlying_account_uid|user_id)[\r\n\s]+(\d{10,20})",
-                    RegexOptions.IgnoreCase
-                )
-                .Groups[1]
-                .Value;
-            if (!string.IsNullOrWhiteSpace(underlyingUid))
-                activeUid = underlyingUid;
-            if (string.IsNullOrWhiteSpace(activeUid))
-                activeUid = Regex.Match(authDump, @"\b(615\d{11,13}|\d{14,16})\b").Groups[1].Value;
-            var activeName = Regex
-                .Match(
-                    authDump,
-                    @"(?:username|name)[\r\n\s]+([^\r\n]{2,60})",
-                    RegexOptions.IgnoreCase
-                )
-                .Groups[1]
-                .Value.Trim();
-
-            foreach (var fileName in accountFiles)
-            {
-                ct.ThrowIfCancellationRequested();
-                var uid = Regex.Match(fileName, @"^logged_in_(\d{10,20})$").Groups[1].Value;
-                var dump = SanitizeRootDump(
-                    await ReadRootTextFileAsync(index, $"{lightPrefs}/{fileName}", customPath, ct)
-                );
-                if (string.IsNullOrWhiteSpace(dump))
-                    continue;
-
-                var name = Regex
-                    .Match(
-                        dump,
-                        @"(?:^|[\r\n])name[\r\n\s]+([^\r\n]{2,60})",
-                        RegexOptions.IgnoreCase
-                    )
-                    .Groups[1]
-                    .Value.Trim();
-                if (string.IsNullOrWhiteSpace(name))
-                {
-                    var first = Regex
-                        .Match(
-                            dump,
-                            @"(?:^|[\r\n])first_name[\r\n\s]+([^\r\n]{1,30})",
-                            RegexOptions.IgnoreCase
-                        )
-                        .Groups[1]
-                        .Value.Trim();
-                    var last = Regex
-                        .Match(
-                            dump,
-                            @"(?:^|[\r\n])last_name[\r\n\s]+([^\r\n]{1,30})",
-                            RegexOptions.IgnoreCase
-                        )
-                        .Groups[1]
-                        .Value.Trim();
-                    name = $"{first} {last}".Trim();
-                }
-                var pageId = Regex
-                    .Match(
-                        dump,
-                        @"(?:delegate_page_id|page_id)[\r\n\s]+(\d{10,20})",
-                        RegexOptions.IgnoreCase
-                    )
-                    .Groups[1]
-                    .Value;
-                // The owner's logged_in record can retain delegate_page_id from a Page.
-                // Explicit underlying-account metadata determines this cached record's role;
-                // it is not proof of the currently selected live actor.
-                var isUnderlyingOwner =
-                    !string.IsNullOrWhiteSpace(underlyingUid) && uid == underlyingUid;
-                var isPage =
-                    !isUnderlyingOwner
-                    && (
-                        Regex.IsMatch(
-                            dump,
-                            @"(?:^|[\r\n])is_page[\r\n\s]+(?:1|true)(?=\s|$)",
-                            RegexOptions.IgnoreCase
-                        )
-                        || !string.IsNullOrWhiteSpace(pageId)
-                        || (!string.IsNullOrWhiteSpace(activeUid) && uid != activeUid)
-                    );
-                name = ResolveRootPageName(name, dump, isPage);
-                var userUid = Regex
-                    .Match(
-                        dump,
-                        @"(?:^|[\r\n])user_id[\r\n\s]+(\d{10,20})",
-                        RegexOptions.IgnoreCase
-                    )
-                    .Groups[1]
-                    .Value;
-                if (string.IsNullOrWhiteSpace(userUid))
-                    userUid = activeUid;
-                if (isUnderlyingOwner)
-                    userUid = uid;
-                if (!isPage && (isUnderlyingOwner || string.IsNullOrWhiteSpace(pageId)))
-                    pageId = uid;
-
-                MergeRootAccount(
-                    result,
-                    new FacebookAccountInfo
-                    {
-                        Type = isPage ? "Page" : "Profile",
-                        Uid = uid,
-                        PageId = pageId,
-                        Name = name,
-                        UserUid = userUid,
-                        Email = Regex
-                            .Match(dump, @"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
-                            .Value,
-                        PicUrl = string.Empty,
-                        IsActive = !string.IsNullOrWhiteSpace(activeUid) && uid == activeUid,
-                    }
-                );
-            }
-
-            if (!string.IsNullOrWhiteSpace(activeUid) && result.All(a => a.Uid != activeUid))
-            {
-                MergeRootAccount(
-                    result,
-                    new FacebookAccountInfo
-                    {
-                        Type = "Profile",
-                        Uid = activeUid,
-                        PageId = activeUid,
-                        Name = activeName,
-                        UserUid = activeUid,
-                        IsActive = true,
-                    }
-                );
-            }
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            throw new InvalidOperationException(
-                $"Root-shell discovery timed out on LD-{index} after 30 seconds; saved data was preserved."
-            );
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (InvalidOperationException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"[LD-{index}] Direct Facebook root read failed: {ex.Message}");
-        }
-
-        return result;
-    }
-
-    private async Task<string> ReadRootTextFileAsync(
-        int index,
-        string remotePath,
-        string? customPath = null,
-        CancellationToken cancellationToken = default
-    ) =>
-        await _ldPlayer.ExecuteAdbAsync(
+        cancellationToken.ThrowIfCancellationRequested();
+        using var policy = new PFlowNativeFetchScope(_ldPlayer, index, customPath);
+        var actors = await new PFlowNativeFetchDevice(
+            _ldPlayer,
             index,
-            $"shell su 0 cat {remotePath}",
             customPath,
-            cancellationToken
+            _ => Task.CompletedTask
+        ).ScanAsync(cancellationToken);
+        var selected = actors.Where(a => a.Selected).ToArray();
+        return selected.Length == 1
+            ? (true, selected[0].Name, "Native selected actor; no live UID ownership claim")
+            : (false, null, "Native account selection is unavailable or ambiguous");
+    }
+
+    public Task<List<FacebookAccountInfo>> ExtractFacebookAccountsFromRootShellAsync(
+        int index,
+        string packageName = "com.facebook.katana",
+        string? customPath = null,
+        CancellationToken cancellationToken = default
+    )
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromException<List<FacebookAccountInfo>>(
+            new NotSupportedException(
+                "Private Facebook storage extraction was removed. Use native UI Fetch."
+            )
         );
+    }
+
+    public Task<List<FacebookAccountInfo>> ExtractFacebookAccountsDirectFromRootAdbAsync(
+        int index,
+        string packageName = "com.facebook.katana",
+        string? customPath = null,
+        CancellationToken cancellationToken = default
+    )
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromException<List<FacebookAccountInfo>>(
+            new NotSupportedException(
+                "Private Facebook storage extraction was removed. Use native UI Fetch."
+            )
+        );
+    }
 
     private static string SanitizeRootDump(string? raw)
     {
@@ -1441,11 +664,14 @@ done
     )
     {
         var targetDevice = !string.IsNullOrWhiteSpace(deviceName) ? deviceName : $"LD-{index}";
-        var discovered = await ExtractFacebookAccountsFromRootShellAsync(
+        if (packageName != "com.facebook.katana")
+            throw new NotSupportedException("Native Facebook discovery supports FB-01 only.");
+        var discovered = await PFlowNativeDiscovery.ReadAccountsAsync(
+            _ldPlayer,
             index,
-            packageName,
             customPath,
-            cancellationToken
+            cancellationToken,
+            storageFilePath
         );
 
         var existingPages = await PFlowPageStorage.LoadPagesAsync(storageFilePath);

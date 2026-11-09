@@ -6,6 +6,41 @@ namespace _855Media.Core.Tests.Dubbing;
 
 public class DubbingPipelineRegressionTests
 {
+    [Fact]
+    public async Task StudioBriefAndTimingReachGeminiWithoutOverwritingEditedLines()
+    {
+        var handler = new TranslationHandler();
+        using var client = new HttpClient(handler);
+        var gemini = new GeminiTranslationService(client);
+        await gemini.TranslateBatchAsync(
+            "test-key",
+            [
+                new SubtitleSegment
+                {
+                    Index = 2,
+                    OriginalText = "Hello",
+                    SpeakerName = "Mira",
+                    Emotion = "Whisper",
+                    StartTime = TimeSpan.FromSeconds(10),
+                    EndTime = TimeSpan.FromSeconds(12.5),
+                },
+            ],
+            "Japanese",
+            translationBrief: "Mira is the elder sister. Keep the name Mira."
+        );
+        using var request = System.Text.Json.JsonDocument.Parse(handler.GeminiRequestBody!);
+        var prompt = request
+            .RootElement.GetProperty("contents")[0]
+            .GetProperty("parts")[0]
+            .GetProperty("text")
+            .GetString()!;
+        Assert.Contains("Mira is the elder sister", prompt);
+        Assert.Contains("Source language: Japanese", prompt);
+        Assert.Contains("\"durationSeconds\":2.5", prompt);
+        Assert.Contains("\"emotion\":\"Whisper\"", prompt);
+        Assert.Contains("Do not infer romance", prompt);
+    }
+
     private sealed class TranslationHandler : HttpMessageHandler
     {
         public List<Uri> Requests { get; } = [];

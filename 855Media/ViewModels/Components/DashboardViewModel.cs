@@ -571,9 +571,14 @@ public partial class DashboardViewModel : ViewModelBase
 
             if (!string.IsNullOrWhiteSpace(download.FilePath))
             {
-                download.FilePath = _855Media.Core.Utils.FileUtils.SanitizeFilePath(
-                    download.FilePath
-                );
+                var safePath = _855Media.Core.Utils.FileUtils.SanitizeFilePath(download.FilePath);
+                download.FilePath = string.Equals(
+                    safePath,
+                    download.FilePath,
+                    StringComparison.Ordinal
+                )
+                    ? safePath
+                    : _855Media.Core.Utils.FileUtils.GetAvailableDownloadFilePath(safePath);
             }
 
             download.Status = DownloadStatus.Started;
@@ -835,6 +840,7 @@ public partial class DashboardViewModel : ViewModelBase
                     Url = download.Video?.Url ?? string.Empty,
                     FilePath = download.FilePath ?? string.Empty,
                     Source = download.Video?.Source.ToString() ?? "Unknown",
+                    SourceItemId = download.Video?.Id,
                     Status = DownloadStatus.Completed,
                     DownloadedAt = DateTimeOffset.Now,
                     FileSizeBytes = fileSize,
@@ -1108,6 +1114,199 @@ public partial class DashboardViewModel : ViewModelBase
 
     public Task QueueFacebookPhotosAsync(QueryResult queryResult) => QueuePhotosAsync(queryResult);
 
+    public async Task<InstagramImportQueue?> CreateBrowserImportQueueAsync(
+        string profileUrl,
+        InstagramMediaKind kind,
+        CancellationToken ct
+    )
+    {
+        RequireSubscription();
+        if (!_licenseService.IsProActive)
+        {
+            await ShowSubscriptionSettingsAsync();
+            return null;
+        }
+        var folder = await _dialogManager.PromptDirectoryPathAsync();
+        ct.ThrowIfCancellationRequested();
+        if (string.IsNullOrWhiteSpace(folder))
+            return null;
+        var sequence = 0;
+        var queued = new HashSet<string>(StringComparer.Ordinal);
+        var translateCaptions = _settingsService.ShouldTranslateCaptionsToEnglish;
+        var translateTitles = _settingsService.ShouldTranslateTitleToEnglish;
+        var template = _settingsService.FileNameTemplate;
+        var skipExisting = _settingsService.ShouldSkipExistingFiles;
+        var saveCaption = _settingsService.ShouldSaveTitleToTextFile;
+        var root = System.IO.Path.TrimEndingDirectorySeparator(System.IO.Path.GetFullPath(folder));
+        bool InDestination(string? path) => InstagramImportQueue.IsInDestination(path, root);
+        var scope = System.Text.Json.JsonSerializer.Serialize(
+            new
+            {
+                Profile = new Uri(profileUrl)
+                    .GetLeftPart(UriPartial.Path)
+                    .TrimEnd('/')
+                    .ToLowerInvariant(),
+                Destination = root.ToUpperInvariant(),
+                kind,
+                template,
+                translateCaptions,
+                translateTitles,
+                saveCaption,
+            }
+        );
+        var resume = await Task.Run(
+            () =>
+                new InstagramImportProgress(
+                    System.IO.Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                        Program.Name,
+                        "instagram-import"
+                    ),
+                    scope
+                ),
+            ct
+        );
+        var history = _historyService
+            .Records.Where(r =>
+                r.Status == DownloadStatus.Completed
+                && r.SourceItemId is not null
+                && InDestination(r.FilePath)
+            )
+            .GroupBy(r => (r.SourceItemId!, r.Source))
+            .ToDictionary(g => g.Key, g => g.ToArray());
+        var active = Downloads
+            .Where(d => d.Video is not null && InDestination(d.FilePath))
+            .GroupBy(d => (d.Video!.Id, d.Video.Source.ToString()))
+            .ToDictionary(g => g.Key, g => g.ToList());
+        bool HasItem(string url, InstagramImportItem item)
+        {
+            var source = item.IsPhoto
+                ? VideoSource.InstagramPhoto.ToString()
+                : VideoSource.Instagram.ToString();
+            var key = (item.Id, source);
+            var code = InstagramBrowserCollection.GetPostCode(url);
+            if (
+                active.TryGetValue(key, out var jobs)
+                && jobs.Any(d =>
+                    !d.IsDisposed
+                    && Downloads.Contains(d)
+                    && InstagramBrowserCollection.GetPostCode(d.Video!.Url) == code
+                    && (
+                        d.Status is DownloadStatus.Enqueued or DownloadStatus.Started
+                        || d.Status == DownloadStatus.Completed
+                            && d.FilePath is { } completedPath
+                            && InstagramImportQueue.HasCompletedFile(
+                                new HistoryRecord
+                                {
+                                    SourceItemId = d.Video.Id,
+                                    Source = source,
+                                    Url = d.Video.Url,
+                                    FilePath = completedPath,
+                                    FileSizeBytes = File.Exists(completedPath)
+                                        ? new FileInfo(completedPath).Length
+                                        : null,
+                                },
+                                url,
+                                item,
+                                root,
+                                saveCaption
+                            )
+                    )
+                )
+            )
+                return true;
+            return history.TryGetValue(key, out var records)
+                && records.Any(r =>
+                    InstagramImportQueue.HasCompletedFile(r, url, item, root, saveCaption)
+                );
+        }
+        bool CanResume(string url)
+        {
+            if (!skipExisting)
+                return false;
+            var count = 0;
+            if (
+                !resume.CanSkip(
+                    url,
+                    (page, item) =>
+                    {
+                        count++;
+                        return HasItem(page, item);
+                    }
+                )
+            )
+                return false;
+            sequence += count;
+            return true;
+        }
+        return new InstagramImportQueue(
+            async (items, token) =>
+            {
+                var added = 0;
+                foreach (var item in items)
+                {
+                    token.ThrowIfCancellationRequested();
+                    RequireSubscription();
+                    if (queued.Contains(item.Id))
+                        continue;
+                    if (
+                        skipExisting
+                        && HasItem(
+                            item.Url,
+                            new InstagramImportItem(
+                                item.Id,
+                                item.IsPhoto,
+                                !string.IsNullOrWhiteSpace(item.Caption)
+                            )
+                        )
+                    )
+                    {
+                        sequence++;
+                        continue;
+                    }
+                    var container = new YoutubeExplode.Videos.Streams.Container(
+                        item.IsPhoto ? "jpg" : "mp4"
+                    );
+                    var name = FileNameTemplate.Apply(
+                        template,
+                        item,
+                        container,
+                        (++sequence).ToString("D4")
+                    );
+                    var target = _855Media.Core.Utils.FileUtils.SanitizeFilePath(
+                        Path.Combine(folder, name)
+                    );
+                    if (skipExisting && File.Exists(target) && new FileInfo(target).Length > 0)
+                        continue;
+                    var file = _855Media.Core.Utils.FileUtils.GetAvailableDownloadFilePath(target);
+                    var download = _viewModelManager.GetDownloadViewModel(
+                        item,
+                        new VideoDownloadPreference(
+                            container,
+                            VideoQualityPreference.Highest,
+                            translateCaptions,
+                            translateTitles
+                        ),
+                        file
+                    );
+                    Directory.CreateForFile(file);
+                    await File.WriteAllBytesAsync(file, [], token);
+                    EnqueueDownload(download);
+                    var key = (item.Id, item.Source.ToString());
+                    if (!active.TryGetValue(key, out var jobs))
+                        active[key] = jobs = [];
+                    jobs.Add(download);
+                    queued.Add(item.Id);
+                    added++;
+                }
+                // Keep the importer visible while downloads run in Download Manager.
+                return added;
+            },
+            CanResume,
+            resume.RememberAsync
+        );
+    }
+
     public async Task QueueBrowserMediaAsync(
         QueryResult queryResult,
         CancellationToken cancellationToken = default
@@ -1215,7 +1414,9 @@ public partial class DashboardViewModel : ViewModelBase
             if (_settingsService.ShouldSkipExistingFiles && File.Exists(baseFilePath))
                 continue;
 
-            var filePath = Path.EnsureUniqueFilePath(baseFilePath);
+            var filePath = _855Media.Core.Utils.FileUtils.GetAvailableDownloadFilePath(
+                baseFilePath
+            );
 
             Directory.CreateForFile(filePath);
             await File.WriteAllBytesAsync(filePath, []);

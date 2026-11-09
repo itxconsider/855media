@@ -15,7 +15,6 @@
                 <Expander Header="Account and Page details" IsExpanded="True" HorizontalAlignment="Stretch" FontSize="13">
                     <WrapPanel Margin="0,12,0,0">
                         <StackPanel Width="240" Margin="0,0,16,14" Spacing="4"><TextBlock Text="User UID" Foreground="{DynamicResource AntigravityMutedBrush}" FontSize="12" /><SelectableTextBlock Text="{Binding UserUid}" FontSize="13" TextWrapping="Wrap" /></StackPanel>
-                        <StackPanel Width="240" Margin="0,0,16,14" Spacing="4"><TextBlock Text="Page ID" Foreground="{DynamicResource AntigravityMutedBrush}" FontSize="12" /><SelectableTextBlock Text="{Binding PageId}" FontSize="13" TextWrapping="Wrap" /></StackPanel>
                         <StackPanel Width="240" Margin="0,0,16,14" Spacing="4"><TextBlock Text="Page UID" Foreground="{DynamicResource AntigravityMutedBrush}" FontSize="12" /><SelectableTextBlock Text="{Binding PersonaUid}" FontSize="13" TextWrapping="Wrap" /></StackPanel>
                         <StackPanel Width="240" Margin="0,0,16,14" Spacing="4"><TextBlock Text="Email" Foreground="{DynamicResource AntigravityMutedBrush}" FontSize="12" /><SelectableTextBlock Text="{Binding Email}" FontSize="13" TextWrapping="Wrap" /></StackPanel>
                         <StackPanel Width="240" Margin="0,0,16,14" Spacing="4"><TextBlock Text="Facebook app" Foreground="{DynamicResource AntigravityMutedBrush}" FontSize="12" /><SelectableTextBlock Text="{Binding AppClone}" FontSize="13" TextWrapping="Wrap" /></StackPanel>
@@ -44,7 +43,7 @@
     </UserControl.Resources>
     <Grid>
         <!-- Compact dashboard: only the tables scroll; their space follows the window. -->
-        <Grid x:Name="DashboardLayout" Margin="20,16" RowDefinitions="Auto,*">
+        <Grid x:Name="DashboardLayout" Margin="14,12" RowDefinitions="Auto,*">
             <Border x:Name="RunOptionsCard" Grid.Row="0" Classes="card-panel" Padding="14,8" Margin="0,0,0,8">
                 <StackPanel Spacing="8">
                     <Grid x:Name="RunToolbar" ColumnDefinitions="*,Auto">
@@ -55,7 +54,7 @@
                         <CheckBox IsChecked="{Binding ShowOnlyOpen}" Content="Running devices only" Margin="0,0,22,4" />
                         <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,22,4">
                             <TextBlock Text="Concurrent LDs" VerticalAlignment="Center" />
-                            <NumericUpDown Value="{Binding RunThread}" Minimum="1" Maximum="32" Width="70" Height="30" FormatString="0" IsEnabled="{Binding !IsRunning}" />
+                            <NumericUpDown Value="{Binding RunThread}" Minimum="1" Maximum="32" Width="70" Height="30" FormatString="0" IsEnabled="{Binding !IsRunning}" ToolTip.Tip="Limits active workers and new open LDs in this installation. Finished LDs close when queued workers need space. LDs retained for review still occupy capacity; already-open LDs are counted." />
                         </StackPanel>
                     </WrapPanel>
                 <StackPanel x:Name="RunActionButtons" Grid.Column="1" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="12,0,0,4">
@@ -65,13 +64,14 @@
                     <Button x:Name="AutomationToggleButton" Content="{Binding AutomationButtonText}" Command="{Binding AutomationButtonCommand}" IsEnabled="{Binding CanToggleAutomation}" Classes="action-btn" Classes.btn-success="{Binding !IsRunning}" Classes.btn-danger="{Binding IsRunning}" />
                 </StackPanel>
                     </Grid>
-                    <Expander Header="LD Options" HorizontalAlignment="Stretch" IsExpanded="False" FontSize="12">
+                    <Expander Header="Device options" HorizontalAlignment="Stretch" IsExpanded="False" FontSize="12">
                         <StackPanel Spacing="8" Margin="0,8,0,0">
                             <Grid ColumnDefinitions="Auto,*,Auto">
                                 <TextBlock Text="LDPlayer folder" VerticalAlignment="Center" Margin="0,0,12,0" />
-                                <TextBox Grid.Column="1" Text="{Binding LdFolder}" Height="32" ToolTip.Tip="{Binding LdFolder}" IsEnabled="{Binding !IsRunning}" />
-                                <Button Grid.Column="2" Command="{Binding SetPathFolderCommand}" Classes="action-btn" Content="Browse folder" Margin="8,0,0,0" IsEnabled="{Binding !IsRunning}" />
+                                <TextBox Grid.Column="1" Text="{Binding LdFolder}" IsReadOnly="True" Height="32" ToolTip.Tip="{Binding LdFolder}" />
+                                <Button Grid.Column="2" Command="{Binding SetPathFolderCommand}" Classes="action-btn" Content="Switch installation" Margin="8,0,0,0" IsEnabled="{Binding !IsBusy}" />
                             </Grid>
+                            <TextBlock Text="Accounts, Pages, queue and history are saved independently for each LDPlayer folder." FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
                             <WrapPanel>
                                 <CheckBox IsChecked="{Binding AutoSortLDPlayer}" Content="Arrange emulator windows" Margin="0,0,18,4" />
                                 <Button Command="{Binding SortWindowsCommand}" Content="Arrange windows" Classes="action-btn" Margin="0,0,8,4" />
@@ -85,14 +85,14 @@
 
 
 
-            <Grid x:Name="DashboardTables" Grid.Row="1" ColumnDefinitions="2*,6,3*">
+            <Grid x:Name="DashboardTables" Grid.Row="1" ColumnDefinitions="5*,8,7*">
                 <Border x:Name="DevicePanel" Grid.Column="0" Classes="card-panel" Padding="14,10">
-                    <Grid RowDefinitions="Auto,*">
+                    <Grid RowDefinitions="Auto,*,Auto">
                         <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,8">
-                            <TextBlock Text="DEVICES · LIVE STEP STATUS" Classes="section-title" Margin="0" VerticalAlignment="Center" />
+                            <TextBlock Text="Devices" Classes="section-title" Margin="0" VerticalAlignment="Center" />
                             <TextBlock Grid.Column="1" Text="{Binding DisplayedInstances.Count, StringFormat='Instances: {0}'}" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityMutedBrush}" />
                         </Grid>
-                        <DataGrid
+                        <views:PostQueueGrid
                             x:Name="WorkerDataGrid"
                             FrozenColumnCount="3"
                             Grid.Row="1"
@@ -135,10 +135,24 @@
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
-                                <DataGridTextColumn Header="No" Binding="{Binding Index}" Width="50" MinWidth="40" IsReadOnly="True" />
-                                <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="125" MinWidth="100" FontWeight="Bold" IsReadOnly="True" />
-                                <DataGridTextColumn Header="FB" Binding="{Binding FbClone}" Width="65" MinWidth="60" />
-                                <DataGridTemplateColumn Header="IP location" Width="205" MinWidth="180">
+                                <DataGridTextColumn Header="#" Binding="{Binding Index}" Width="44" MinWidth="40" IsReadOnly="True" />
+                                <DataGridTextColumn Header="Device" Binding="{Binding Name}" Width="110" MinWidth="90" FontWeight="Bold" IsReadOnly="True" />
+                                <DataGridTextColumn Header="App" Binding="{Binding FbClone}" Width="65" MinWidth="60" />
+                                <DataGridTemplateColumn Header="Current step" Width="*" MinWidth="260">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate DataType="components:LDInstanceItemViewModel">
+                                            <Border
+                                                Padding="8,3"
+                                                Margin="0,4"
+                                                CornerRadius="6"
+                                                Background="{DynamicResource AntigravityElevatedBrush}"
+                                                HorizontalAlignment="Left">
+                                                <TextBlock Text="{Binding StatusSummary}" ToolTip.Tip="{Binding Status}" FontSize="13" Foreground="{DynamicResource AntigravityTextBrush}" TextTrimming="CharacterEllipsis" />
+                                            </Border>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="Location / IP" Width="155" MinWidth="130">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate DataType="components:LDInstanceItemViewModel">
                                             <StackPanel Spacing="3" Margin="8,5" ToolTip.Tip="{Binding NetworkDetail}">
@@ -148,21 +162,7 @@
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
-                                <DataGridTemplateColumn Header="Status" Width="*" MinWidth="160">
-                                    <DataGridTemplateColumn.CellTemplate>
-                                        <DataTemplate DataType="components:LDInstanceItemViewModel">
-                                            <Border
-                                                Padding="8,3"
-                                                Margin="0,4"
-                                                CornerRadius="6"
-                                                Background="{DynamicResource AntigravityElevatedBrush}"
-                                                HorizontalAlignment="Left">
-                                                <TextBlock Text="{Binding Status}" ToolTip.Tip="{Binding Status}" FontSize="13" Foreground="{DynamicResource AntigravityTextBrush}" TextTrimming="CharacterEllipsis" />
-                                            </Border>
-                                        </DataTemplate>
-                                    </DataGridTemplateColumn.CellTemplate>
-                                </DataGridTemplateColumn>
-                                <DataGridTemplateColumn Header="Actions" Width="112" MinWidth="108">
+                                <DataGridTemplateColumn Header="Actions" Width="84" MinWidth="80">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate DataType="components:LDInstanceItemViewModel">
                                             <StackPanel Orientation="Horizontal" Spacing="4" Margin="8,0,0,0" HorizontalAlignment="Left" IsEnabled="{Binding !$parent[UserControl].((components:AutoPostViewModel)DataContext).IsRunning}">
@@ -172,15 +172,14 @@
                                                 <Button Command="{Binding QuitCommand}" ToolTip.Tip="Close LDPlayer" Padding="6" Width="28" Height="28">
                                                     <materialIcons:MaterialIcon Kind="Stop" Width="14" Height="14" Foreground="#EF4444" />
                                                 </Button>
-                                                <Button Command="{Binding ClearCacheCommand}" ToolTip.Tip="Clear FB Cache" Padding="6" Width="28" Height="28">
-                                                    <materialIcons:MaterialIcon Kind="Broom" Width="14" Height="14" Foreground="#F59E0B" />
-                                                </Button>
+
                                             </StackPanel>
                                         </DataTemplate>
                                     </DataGridTemplateColumn.CellTemplate>
                                 </DataGridTemplateColumn>
                             </DataGrid.Columns>
-                        </DataGrid>
+                        </views:PostQueueGrid>
+                        <Expander Grid.Row="2" x:Name="DeviceStatusDetails" Header="Selected device · details &amp; recent steps" IsExpanded="False" HorizontalAlignment="Stretch" FontSize="12"><ScrollViewer MaxHeight="160" VerticalScrollBarVisibility="Auto"><SelectableTextBlock Margin="8" Text="{Binding #WorkerDataGrid.SelectedItem.StatusDetails}" x:CompileBindings="False" TextWrapping="Wrap" /></ScrollViewer></Expander>
                     </Grid>
                 </Border>
                 <GridSplitter x:Name="DashboardTableSplitter" Grid.Column="1" ResizeDirection="Columns" ResizeBehavior="PreviousAndNext" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" Background="Transparent" ToolTip.Tip="Drag to resize the LD and queue panels" />
@@ -189,7 +188,7 @@
                         <Expander.Header>
                             <StackPanel Spacing="4">
                                 <WrapPanel VerticalAlignment="Center">
-                                    <TextBlock Text="POST QUEUE &amp; OUTCOMES" FontWeight="SemiBold" Margin="0,0,20,4" VerticalAlignment="Center" />
+                                    <TextBlock Text="Post queue" FontWeight="SemiBold" Margin="0,0,20,4" VerticalAlignment="Center" />
                                     <TextBlock Text="{Binding PFlowQueuedCount, StringFormat='Queued  {0}'}" Margin="0,0,16,4" VerticalAlignment="Center" />
                                     <TextBlock Text="{Binding PFlowConfirmedCount, StringFormat='Confirmed  {0}'}" Foreground="#10B981" Margin="0,0,16,4" VerticalAlignment="Center" />
                                     <TextBlock Text="{Binding PFlowFailedCount, StringFormat='Failed  {0}'}" Foreground="#EF4444" Margin="0,0,16,4" VerticalAlignment="Center" />
@@ -198,7 +197,7 @@
 
                             </StackPanel>
                         </Expander.Header>
-                        <Grid RowDefinitions="Auto,*" Margin="0,8,0,0">
+                        <Grid RowDefinitions="Auto,*,Auto" Margin="0,8,0,0">
                             <StackPanel Spacing="6" Margin="0,0,0,8">
                                 <WrapPanel VerticalAlignment="Center">
                                     <Button Command="{Binding ShowPFlowHistoryCommand}" Classes="action-btn" Content="History &amp; review" Padding="8,4" FontSize="12" Margin="0,0,8,4" />
@@ -213,7 +212,7 @@
                         <views:PostQueueGrid
                             Grid.Row="1"
                             ItemsSource="{Binding Tasks}"
-                            x:Name="PostQueueDataGrid"
+                            x:Name="PostQueueDataGrid" FrozenColumnCount="2"
                             FontSize="13"
                             RowHeight="44"
                             IsReadOnly="True"
@@ -242,17 +241,19 @@
                                 </Style>
                             </DataGrid.Styles>
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="Stt" Binding="{Binding Index}" Width="50" MinWidth="40" IsReadOnly="True" />
-                                <DataGridTextColumn Header="Caption" Binding="{Binding Title}" Width="*" MinWidth="160" FontWeight="SemiBold" IsReadOnly="True" />
-                                <DataGridTextColumn Header="Source file" Binding="{Binding FilePath}" Width="180" MinWidth="100" IsReadOnly="True" />
-                                <DataGridTextColumn Header="Device Name" Binding="{Binding DeviceName}" Width="110" MinWidth="80" />
+                                <DataGridTextColumn Header="#" Binding="{Binding Index}" Width="50" MinWidth="40" IsReadOnly="True" />
+                                <DataGridTextColumn Header="Device" Binding="{Binding DeviceName}" Width="110" MinWidth="80" />
                                 <DataGridTextColumn Header="App" Binding="{Binding App}" Width="70" MinWidth="50" />
+                                <DataGridTextColumn Header="Page / profile" Binding="{Binding Page}" Width="180" MinWidth="100" FontWeight="SemiBold" />
                                 <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="80" MinWidth="60" />
-                                <DataGridTextColumn Header="Page" Binding="{Binding Page}" Width="180" MinWidth="100" FontWeight="SemiBold" />
+                                <DataGridTemplateColumn Header="Current step / outcome" Width="340" MinWidth="240"><DataGridTemplateColumn.CellTemplate><DataTemplate DataType="ld:AutoPostTaskItem"><TextBlock Text="{Binding StatusSummary}" ToolTip.Tip="{Binding Status}" TextTrimming="CharacterEllipsis" Margin="4" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+                                <DataGridTextColumn Header="Caption" Binding="{Binding Title}" Width="260" MinWidth="160" FontWeight="SemiBold" IsReadOnly="True" />
+                                <DataGridTextColumn Header="Source file" Binding="{Binding SourceDisplay}" Width="180" MinWidth="100" IsReadOnly="True" />
                                 <DataGridTextColumn Header="Part group" Binding="{Binding PartGroupDisplay}" Width="200" MinWidth="100" IsReadOnly="True" />
-                                <DataGridTemplateColumn Header="Current step / outcome" Width="340" MinWidth="240"><DataGridTemplateColumn.CellTemplate><DataTemplate DataType="ld:AutoPostTaskItem"><TextBlock Text="{Binding Status}" ToolTip.Tip="{Binding Status}" TextWrapping="Wrap" Margin="4" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+                                <DataGridTextColumn Header="Publish time" Binding="{Binding ScheduleDisplay}" Width="240" IsReadOnly="True" />
                             </DataGrid.Columns>
                         </views:PostQueueGrid>
+                        <Expander Grid.Row="2" x:Name="PostStatusDetails" Header="Selected post · details &amp; recent steps" IsExpanded="False" HorizontalAlignment="Stretch" FontSize="12"><ScrollViewer MaxHeight="160" VerticalScrollBarVisibility="Auto"><SelectableTextBlock Margin="8" Text="{Binding #PostQueueDataGrid.SelectedItem.StatusDetails}" x:CompileBindings="False" TextWrapping="Wrap" /></ScrollViewer></Expander>
                         </Grid>
                     </Expander>
                 </Border>
@@ -280,13 +281,12 @@
                     <Border Grid.Row="1" Background="{DynamicResource AntigravityCardBrush}" CornerRadius="8" Padding="12" Margin="0,0,0,12">
                         <Grid ColumnDefinitions="*,Auto">
                             <WrapPanel>
-                                <Button Content="Fetch accounts" Command="{Binding FetchSelectedPagesInfoCommand}" IsEnabled="{Binding !IsBusy}" Classes="action-btn btn-success" Margin="0,0,8,4" ToolTip.Tip="Fetch accounts and their Pages from selected devices" />
-                                <Button Content="Stop fetch" Command="{Binding CancelFetchCommand}" IsVisible="{Binding IsBusy}" Classes="action-btn btn-danger" Margin="0,0,8,4" />
+                                <Button Content="{Binding FetchButtonText}" Command="{Binding FetchButtonCommand}" Classes="action-btn" Classes.btn-success="{Binding !IsFetching}" Classes.btn-danger="{Binding IsFetching}" Margin="0,0,8,4" />
                                 <Button Content="Assign media" Command="{Binding OpenBulkPathsCommand}" Classes="action-btn" Margin="0,0,8,4" ToolTip.Tip="Assign media to checked targets" />
                                 <ToggleButton Content="Devices" IsChecked="{Binding IsLdPanelVisible, Mode=TwoWay}" Margin="0,0,8,4" Padding="12,6" ToolTip.Tip="Show or hide the device list" />
                                 <ToggleButton Content="Post queue" IsChecked="{Binding IsPostQueuePanelVisible, Mode=TwoWay}" Margin="0,0,8,4" Padding="12,6" ToolTip.Tip="Show or hide queue settings" />
                                 <Button Content="Refresh counts" Command="{Binding RefreshVisibleMediaCountsCommand}" IsEnabled="{Binding !IsRefreshingMediaCounts}" Classes="action-btn" Margin="0,0,8,4" ToolTip.Tip="Refresh media counts for visible targets" />
-                                <Button Content="Manage posts" Command="{Binding ReviewPagePostsCommand}" IsEnabled="{Binding !IsBusy}" Classes="action-btn" Margin="0,0,8,4" ToolTip.Tip="Review Page posts and bulk delete selected posts" />
+                                <Button Content="Manage posts" Command="{Binding ReviewPagePostsCommand}" IsEnabled="{Binding !IsBusy}" Classes="action-btn" Margin="0,0,8,4" ToolTip.Tip="Post review requires an authorized Page API connection" />
                                 <Button Content="Remove selected" Command="{Binding DeleteSelectedPagesCommand}" Classes="action-btn" Margin="0,0,8,4" ToolTip.Tip="Remove checked targets from the saved list" />
                             </WrapPanel>
                             <TextBlock Grid.Column="1" Text="{Binding PFlowTargetSummary}" VerticalAlignment="Center" Foreground="{DynamicResource AntigravityMutedBrush}" />
@@ -657,7 +657,7 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
     <Style Selector="DataGridRow:selected"><Setter Property="Background" Value="#263D58" /></Style>
 </DataGrid.Styles>
                                                                         <DataGrid.Columns>
-<DataGridTemplateColumn Width="38" MinWidth="38" MaxWidth="44">
+                                <DataGridTemplateColumn Width="38" MinWidth="38" MaxWidth="44">
                                                                                 <DataGridTemplateColumn.CellTemplate>
                                                                                     <DataTemplate DataType="components:FacebookPageTargetViewModel">
                                                                                         <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}"
@@ -666,24 +666,24 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
                                                                                     </DataTemplate>
                                                                                 </DataGridTemplateColumn.CellTemplate>
                                                                             </DataGridTemplateColumn>
-<DataGridTemplateColumn Header="Name" SortMemberPath="PageName" Width="280" MinWidth="240">
+                                <DataGridTemplateColumn Header="Name" SortMemberPath="PageName" Width="280" MinWidth="240">
     <DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding PageName}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding PageName}" /></DataTemplate></DataGridTemplateColumn.CellTemplate>
 </DataGridTemplateColumn>
-<DataGridTextColumn Header="Device" Binding="{Binding DeviceName}" Width="100" />
-<DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="100" />
-<DataGridTemplateColumn Header="Reel files" SortMemberPath="ReelFilesSortKey" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding ReelFilesDisplay}" ToolTip.Tip="{Binding ReelFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
-<DataGridTemplateColumn Header="Photo files" SortMemberPath="PhotoFilesSortKey" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding PhotoFilesDisplay}" ToolTip.Tip="{Binding PhotoFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
-<DataGridTemplateColumn Header="Story files" SortMemberPath="StoryFilesSortKey" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding StoryFilesDisplay}" ToolTip.Tip="{Binding StoryFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
-<DataGridTextColumn Header="Group files" SortMemberPath="GroupFilesSortKey" Binding="{Binding GroupFilesDisplay}" Width="100" />
-<DataGridTextColumn Header="Followers" Binding="{Binding FollowersDisplay}" Width="110" />
-<DataGridTextColumn Header="Views" Binding="{Binding ViewsDisplay}" Width="110" />
-<DataGridTextColumn Header="Created" SortMemberPath="CreationDateSortKey" Binding="{Binding CreationDateDisplay}" Width="190" />
-<DataGridTextColumn Header="Maturity" SortMemberPath="Maturity" Binding="{Binding MaturityName}" Width="110" />
-<DataGridTextColumn Header="Daily posts / limit" SortMemberPath="PostsToday" Binding="{Binding DailyPostStatus}" Width="145" />
-<DataGridTemplateColumn Header="Status" SortMemberPath="TableStatus" Width="*" MinWidth="170">
+                                <DataGridTextColumn Header="Device" Binding="{Binding DeviceName}" Width="100" />
+                                <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="100" />
+                                <DataGridTemplateColumn Header="Reel files" SortMemberPath="ReelFilesSortKey" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding ReelFilesDisplay}" ToolTip.Tip="{Binding ReelFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="Photo files" SortMemberPath="PhotoFilesSortKey" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding PhotoFilesDisplay}" ToolTip.Tip="{Binding PhotoFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="Story files" SortMemberPath="StoryFilesSortKey" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding StoryFilesDisplay}" ToolTip.Tip="{Binding StoryFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+                                <DataGridTextColumn Header="Group files" SortMemberPath="GroupFilesSortKey" Binding="{Binding GroupFilesDisplay}" Width="100" />
+                                <DataGridTextColumn Header="Followers" Binding="{Binding FollowersDisplay}" Width="110" />
+                                <DataGridTextColumn Header="Views" Binding="{Binding ViewsDisplay}" Width="110" />
+                                <DataGridTextColumn Header="Created" SortMemberPath="CreationDateSortKey" Binding="{Binding CreationDateDisplay}" Width="190" />
+                                <DataGridTextColumn Header="Maturity" SortMemberPath="Maturity" Binding="{Binding MaturityName}" Width="110" />
+                                <DataGridTextColumn Header="Daily posts / limit" SortMemberPath="PostsToday" Binding="{Binding DailyPostStatus}" Width="145" />
+                                <DataGridTemplateColumn Header="Status" SortMemberPath="TableStatus" Width="*" MinWidth="170">
     <DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding TableStatus}" FontSize="13" VerticalAlignment="Center" ToolTip.Tip="{Binding AccessStatus}" /></DataTemplate></DataGridTemplateColumn.CellTemplate>
 </DataGridTemplateColumn>
-</DataGrid.Columns>
+                                </DataGrid.Columns>
                                                                     </DataGrid>
 
                                                                     <!-- Empty state when profile has no pages -->
@@ -712,19 +712,19 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
     <Style Selector="DataGridRow:selected"><Setter Property="Background" Value="#263D58" /></Style>
 </DataGrid.Styles>
 <DataGrid.Columns><DataGridTemplateColumn Header="Select" Width="55"><DataGridTemplateColumn.CellTemplate><DataTemplate DataType="components:FacebookProfileGroupViewModel"><CheckBox IsChecked="{Binding Profile.IsSelected, Mode=TwoWay}" HorizontalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
-<DataGridTextColumn Header="Name" Binding="{Binding ProfileName}" Width="280" MinWidth="240" FontWeight="SemiBold" />
-<DataGridTextColumn Header="Device" Binding="{Binding DeviceName}" Width="100" />
-<DataGridTextColumn Header="Type" Binding="{Binding Profile.Type}" Width="100" />
-<DataGridTemplateColumn Header="Reel files" SortMemberPath="Profile.ReelFilesSortKey" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookProfileGroupViewModel"><TextBlock Text="{Binding Profile.ReelFilesDisplay}" ToolTip.Tip="{Binding Profile.ReelFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
-<DataGridTemplateColumn Header="Photo files" SortMemberPath="Profile.PhotoFilesSortKey" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookProfileGroupViewModel"><TextBlock Text="{Binding Profile.PhotoFilesDisplay}" ToolTip.Tip="{Binding Profile.PhotoFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
-<DataGridTemplateColumn Header="Story files" SortMemberPath="Profile.StoryFilesSortKey" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookProfileGroupViewModel"><TextBlock Text="{Binding Profile.StoryFilesDisplay}" ToolTip.Tip="{Binding Profile.StoryFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
-<DataGridTextColumn Header="Group files" SortMemberPath="Profile.GroupFilesSortKey" Binding="{Binding Profile.GroupFilesDisplay}" Width="100" />
-<DataGridTextColumn Header="Followers" Binding="{Binding Profile.FollowersDisplay}" Width="110" />
-<DataGridTextColumn Header="Views" Binding="{Binding Profile.ViewsDisplay}" Width="110" />
-<DataGridTextColumn Header="Created" SortMemberPath="Profile.CreationDateSortKey" Binding="{Binding Profile.CreationDateDisplay}" Width="190" />
-<DataGridTextColumn Header="Maturity" SortMemberPath="Profile.Maturity" Binding="{Binding Profile.MaturityName}" Width="110" />
-<DataGridTextColumn Header="Daily posts / limit" SortMemberPath="Profile.PostsToday" Binding="{Binding Profile.DailyPostStatus}" Width="145" />
-<DataGridTextColumn Header="Status" Binding="{Binding Profile.TableStatus}" Width="*" MinWidth="170" /></DataGrid.Columns>
+                                <DataGridTextColumn Header="Name" Binding="{Binding ProfileName}" Width="280" MinWidth="240" FontWeight="SemiBold" />
+                                <DataGridTextColumn Header="Device" Binding="{Binding DeviceName}" Width="100" />
+                                <DataGridTextColumn Header="Type" Binding="{Binding Profile.Type}" Width="100" />
+                                <DataGridTemplateColumn Header="Reel files" SortMemberPath="Profile.ReelFilesSortKey" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookProfileGroupViewModel"><TextBlock Text="{Binding Profile.ReelFilesDisplay}" ToolTip.Tip="{Binding Profile.ReelFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="Photo files" SortMemberPath="Profile.PhotoFilesSortKey" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookProfileGroupViewModel"><TextBlock Text="{Binding Profile.PhotoFilesDisplay}" ToolTip.Tip="{Binding Profile.PhotoFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="Story files" SortMemberPath="Profile.StoryFilesSortKey" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookProfileGroupViewModel"><TextBlock Text="{Binding Profile.StoryFilesDisplay}" ToolTip.Tip="{Binding Profile.StoryFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+                                <DataGridTextColumn Header="Group files" SortMemberPath="Profile.GroupFilesSortKey" Binding="{Binding Profile.GroupFilesDisplay}" Width="100" />
+                                <DataGridTextColumn Header="Followers" Binding="{Binding Profile.FollowersDisplay}" Width="110" />
+                                <DataGridTextColumn Header="Views" Binding="{Binding Profile.ViewsDisplay}" Width="110" />
+                                <DataGridTextColumn Header="Created" SortMemberPath="Profile.CreationDateSortKey" Binding="{Binding Profile.CreationDateDisplay}" Width="190" />
+                                <DataGridTextColumn Header="Maturity" SortMemberPath="Profile.Maturity" Binding="{Binding Profile.MaturityName}" Width="110" />
+                                <DataGridTextColumn Header="Daily posts / limit" SortMemberPath="Profile.PostsToday" Binding="{Binding Profile.DailyPostStatus}" Width="145" />
+                                <DataGridTextColumn Header="Status" Binding="{Binding Profile.TableStatus}" Width="*" MinWidth="170" /></DataGrid.Columns>
                                     </DataGrid>
 
                                     <!-- 2. FLAT TABLE VIEW: Visible when IsGroupedView is False -->
@@ -747,7 +747,7 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
     <Style Selector="DataGridRow:selected"><Setter Property="Background" Value="#263D58" /></Style>
 </DataGrid.Styles>
                                         <DataGrid.Columns>
-<DataGridTemplateColumn Width="38" MinWidth="38" MaxWidth="44">
+                                <DataGridTemplateColumn Width="38" MinWidth="38" MaxWidth="44">
                                                 <DataGridTemplateColumn.Header>
                                                     <CheckBox IsChecked="{Binding #RootView.((components:AutoPostViewModel)DataContext).IsAllManagePagesSelected, Mode=TwoWay}"
                                                               ToolTip.Tip="Select / Deselect All Pages"
@@ -762,24 +762,24 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
                                                     </DataTemplate>
                                                 </DataGridTemplateColumn.CellTemplate>
                                             </DataGridTemplateColumn>
-<DataGridTemplateColumn Header="Name" SortMemberPath="PageName" Width="280" MinWidth="240">
+                                <DataGridTemplateColumn Header="Name" SortMemberPath="PageName" Width="280" MinWidth="240">
     <DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding PageName}" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding PageName}" /></DataTemplate></DataGridTemplateColumn.CellTemplate>
 </DataGridTemplateColumn>
-<DataGridTextColumn Header="Device" Binding="{Binding DeviceName}" Width="100" />
-<DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="100" />
-<DataGridTemplateColumn Header="Reel files" SortMemberPath="ReelFilesSortKey" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding ReelFilesDisplay}" ToolTip.Tip="{Binding ReelFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
-<DataGridTemplateColumn Header="Photo files" SortMemberPath="PhotoFilesSortKey" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding PhotoFilesDisplay}" ToolTip.Tip="{Binding PhotoFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
-<DataGridTemplateColumn Header="Story files" SortMemberPath="StoryFilesSortKey" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding StoryFilesDisplay}" ToolTip.Tip="{Binding StoryFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
-<DataGridTextColumn Header="Group files" SortMemberPath="GroupFilesSortKey" Binding="{Binding GroupFilesDisplay}" Width="100" />
-<DataGridTextColumn Header="Followers" Binding="{Binding FollowersDisplay}" Width="110" />
-<DataGridTextColumn Header="Views" Binding="{Binding ViewsDisplay}" Width="110" />
-<DataGridTextColumn Header="Created" SortMemberPath="CreationDateSortKey" Binding="{Binding CreationDateDisplay}" Width="190" />
-<DataGridTextColumn Header="Maturity" SortMemberPath="Maturity" Binding="{Binding MaturityName}" Width="110" />
-<DataGridTextColumn Header="Daily posts / limit" SortMemberPath="PostsToday" Binding="{Binding DailyPostStatus}" Width="145" />
-<DataGridTemplateColumn Header="Status" SortMemberPath="TableStatus" Width="*" MinWidth="170">
+                                <DataGridTextColumn Header="Device" Binding="{Binding DeviceName}" Width="100" />
+                                <DataGridTextColumn Header="Type" Binding="{Binding Type}" Width="100" />
+                                <DataGridTemplateColumn Header="Reel files" SortMemberPath="ReelFilesSortKey" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding ReelFilesDisplay}" ToolTip.Tip="{Binding ReelFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="Photo files" SortMemberPath="PhotoFilesSortKey" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding PhotoFilesDisplay}" ToolTip.Tip="{Binding PhotoFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+                                <DataGridTemplateColumn Header="Story files" SortMemberPath="StoryFilesSortKey" Width="140"><DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding StoryFilesDisplay}" ToolTip.Tip="{Binding StoryFilesTooltip}" VerticalAlignment="Center" /></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+                                <DataGridTextColumn Header="Group files" SortMemberPath="GroupFilesSortKey" Binding="{Binding GroupFilesDisplay}" Width="100" />
+                                <DataGridTextColumn Header="Followers" Binding="{Binding FollowersDisplay}" Width="110" />
+                                <DataGridTextColumn Header="Views" Binding="{Binding ViewsDisplay}" Width="110" />
+                                <DataGridTextColumn Header="Created" SortMemberPath="CreationDateSortKey" Binding="{Binding CreationDateDisplay}" Width="190" />
+                                <DataGridTextColumn Header="Maturity" SortMemberPath="Maturity" Binding="{Binding MaturityName}" Width="110" />
+                                <DataGridTextColumn Header="Daily posts / limit" SortMemberPath="PostsToday" Binding="{Binding DailyPostStatus}" Width="145" />
+                                <DataGridTemplateColumn Header="Status" SortMemberPath="TableStatus" Width="*" MinWidth="170">
     <DataGridTemplateColumn.CellTemplate><DataTemplate x:DataType="components:FacebookPageTargetViewModel"><TextBlock Text="{Binding TableStatus}" FontSize="13" VerticalAlignment="Center" ToolTip.Tip="{Binding AccessStatus}" /></DataTemplate></DataGridTemplateColumn.CellTemplate>
 </DataGridTemplateColumn>
-</DataGrid.Columns>
+                                </DataGrid.Columns>
                                     </DataGrid>
 
                                     <!-- Clean Empty State Overlay when no accounts/pages are discovered -->
@@ -793,7 +793,7 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
                                             </Border>
                                             <StackPanel Spacing="4" HorizontalAlignment="Center">
                                                 <TextBlock Text="No Facebook Accounts Discovered Yet" FontWeight="Bold" FontSize="15" HorizontalAlignment="Center" Foreground="{DynamicResource AntigravityTextBrush}" />
-                                                <TextBlock Text="Extract Facebook profile UID, email, and managed pages directly from this instance's root storage."
+                                                <TextBlock Text="Fetch the current account and managed Pages through Facebook's native screens."
                                                            FontSize="12" Foreground="{DynamicResource AntigravityMutedBrush}" TextAlignment="Center" HorizontalAlignment="Center" />
                                             </StackPanel>
                                             <Button Command="{Binding FetchSelectedPagesInfoCommand}" IsEnabled="{Binding !IsBusy}" Classes="action-btn" Background="#16A34A" Foreground="White" HorizontalAlignment="Center" Padding="16,8">
@@ -810,7 +810,7 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
                             <TabItem Header="LD-Accounts">
                                 <Border BorderThickness="1" BorderBrush="{DynamicResource AntigravityBorderBrush}" CornerRadius="8" Padding="12" Background="{DynamicResource AntigravityCardBrush}">
                                     <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*">
-                                        <TextBlock Text="{Binding LdAccountsHeading}" FontWeight="Bold" FontSize="16" />
+                                        <TextBlock Text="{Binding LdAccountsHeading}" FontWeight="Bold" FontSize="16" TextWrapping="Wrap" />
                                         <TextBlock Grid.Row="1" Text="{Binding LdAccountsSummary}" ToolTip.Tip="{Binding AccountMappingStatus}" TextWrapping="Wrap" Margin="0,8" />
                                         <Grid Grid.Row="2" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
                                             <TextBox Text="{Binding AccountSearchText, Mode=TwoWay}" Watermark="Search LD number, account name or UID" MinWidth="120" />
@@ -943,12 +943,52 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
                                             </WrapPanel>
                                             <TextBlock Text="File / series limits apply per selected type; daily limits are shared." FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                         </StackPanel>
-                                        <StackPanel Spacing="6"><TextBlock Text="File selection" FontWeight="SemiBold" /><ComboBox SelectedIndex="{Binding SelectedFileByIndex}" HorizontalAlignment="Stretch"><ComboBoxItem Content="Random" /><ComboBoxItem Content="Sequential" /></ComboBox></StackPanel>
-                                        <StackPanel Spacing="6"><TextBlock Text="Files / series per target · min / max" FontWeight="SemiBold" ToolTip.Tip="Counts series for Pages with Keep video parts together enabled; otherwise counts individual files. Sequential uses the from/to selection range." /><Grid ColumnDefinitions="*,*"><NumericUpDown Value="{Binding PostFromCount}" Minimum="1" Maximum="50" FormatString="0" Margin="0,0,4,0" /><NumericUpDown Grid.Column="1" Value="{Binding PostToCount}" Minimum="1" Maximum="50" FormatString="0" Margin="4,0,0,0" /></Grid></StackPanel>
+                                        <StackPanel Spacing="12" IsEnabled="{Binding !IsPreparingPostQueue}">
+                                            <StackPanel Spacing="6">
+                                                <TextBlock Text="File selection" FontWeight="SemiBold" />
+                                                <ComboBox x:Name="QueueFileSelectionMode" SelectedIndex="{Binding SelectedFileByIndex, Mode=TwoWay}" HorizontalAlignment="Stretch" ToolTip.Tip="Date modified uses the first file in each group. Reel Parts always stay in numeric order.">
+                                                    <ComboBoxItem Content="Random" />
+                                                    <ComboBoxItem Content="By name" />
+                                                    <ComboBoxItem Content="By date modified" />
+                                                </ComboBox>
+                                            </StackPanel>
+                                            <StackPanel Spacing="6" IsEnabled="{Binding IsFileSortEnabled}">
+                                                <TextBlock Text="Order" FontWeight="SemiBold" />
+                                                <ComboBox x:Name="QueueFileSortDirection" SelectedIndex="{Binding FileSortDirectionIndex, Mode=TwoWay}" HorizontalAlignment="Stretch" ToolTip.Tip="Ascending: A–Z or oldest first. Descending: Z–A or newest first.">
+                                                    <ComboBoxItem Content="Ascending" />
+                                                    <ComboBoxItem Content="Descending" />
+                                                </ComboBox>
+                                            </StackPanel>
+                                            <StackPanel Spacing="6">
+                                                <TextBlock Text="Files per target" FontWeight="SemiBold" ToolTip.Tip="Exact count for ungrouped targets and Stories." />
+                                                <ListBox x:Name="QueueExactFileCount" ItemsSource="{Binding FileCountChoices}" SelectedItem="{Binding ExactFileCount, Mode=TwoWay}" SelectionMode="Single,AlwaysSelected" Padding="0" BorderThickness="0" Background="Transparent" AutomationProperties.Name="Files per target">
+                                                    <ListBox.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="5" /></ItemsPanelTemplate></ListBox.ItemsPanel>
+                                                    <ListBox.Styles>
+                                                        <Style Selector="ListBoxItem"><Setter Property="MinHeight" Value="36" /><Setter Property="Padding" Value="0" /><Setter Property="Margin" Value="0,0,4,0" /><Setter Property="HorizontalContentAlignment" Value="Stretch" /><Setter Property="VerticalContentAlignment" Value="Center" /></Style>
+                                                        <Style Selector="Border.queue-count-key"><Setter Property="Background" Value="{DynamicResource AntigravityElevatedBrush}" /><Setter Property="BorderBrush" Value="{DynamicResource AntigravityBorderBrush}" /><Setter Property="BorderThickness" Value="1" /><Setter Property="CornerRadius" Value="6" /><Setter Property="Padding" Value="0,7" /></Style>
+                                                        <Style Selector="Border.queue-count-key.selected"><Setter Property="Background" Value="#2563EB" /><Setter Property="BorderBrush" Value="#60A5FA" /></Style>
+                                                    </ListBox.Styles>
+                                                    <ListBox.ItemTemplate><DataTemplate x:DataType="x:Int32"><Border Classes="queue-count-key" Classes.selected="{Binding $parent[ListBoxItem].IsSelected}"><TextBlock Text="{Binding}" FontWeight="SemiBold" HorizontalAlignment="Center" /></Border></DataTemplate></ListBox.ItemTemplate>
+                                                </ListBox>
+                                            </StackPanel>
+                                            <StackPanel Spacing="6">
+                                                <TextBlock Text="Groups per target" FontWeight="SemiBold" />
+                                                <ListBox x:Name="QueueExactGroupCount" ItemsSource="{Binding GroupCountChoices}" SelectedItem="{Binding ExactGroupCount, Mode=TwoWay}" SelectionMode="Single,AlwaysSelected" Padding="0" BorderThickness="0" Background="Transparent" AutomationProperties.Name="Groups per target">
+                                                    <ListBox.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="6" /></ItemsPanelTemplate></ListBox.ItemsPanel>
+                                                    <ListBox.Styles>
+                                                        <Style Selector="ListBoxItem"><Setter Property="MinHeight" Value="36" /><Setter Property="Padding" Value="0" /><Setter Property="Margin" Value="0,0,4,0" /><Setter Property="HorizontalContentAlignment" Value="Stretch" /><Setter Property="VerticalContentAlignment" Value="Center" /></Style>
+                                                        <Style Selector="Border.queue-count-key"><Setter Property="Background" Value="{DynamicResource AntigravityElevatedBrush}" /><Setter Property="BorderBrush" Value="{DynamicResource AntigravityBorderBrush}" /><Setter Property="BorderThickness" Value="1" /><Setter Property="CornerRadius" Value="6" /><Setter Property="Padding" Value="0,7" /></Style>
+                                                        <Style Selector="Border.queue-count-key.selected"><Setter Property="Background" Value="#2563EB" /><Setter Property="BorderBrush" Value="#60A5FA" /></Style>
+                                                    </ListBox.Styles>
+                                                    <ListBox.ItemTemplate><DataTemplate x:DataType="x:Int32"><Border Classes="queue-count-key" Classes.selected="{Binding $parent[ListBoxItem].IsSelected}"><TextBlock Text="{Binding}" FontWeight="SemiBold" HorizontalAlignment="Center" /></Border></DataTemplate></ListBox.ItemTemplate>
+                                                </ListBox>
+                                                <TextBlock Text="0 skips Part series and photo groups; Files count selects standalone media. Daily limits still apply." TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                            </StackPanel>
+                                        </StackPanel>
                                         <CheckBox Content="Use each file once across targets" IsChecked="{Binding UploadUniqueFile}" />
                                         <CheckBox Content="Show targets for checked devices" IsChecked="{Binding FilterBySelectedDevice}" />
                                         <CheckBox Content="Respect maturity limits" IsChecked="{Binding AutoMaxPostByMaturity}" />
-                                        <Expander Header="Advanced"><CheckBox Content="Get Pages by API" IsChecked="{Binding GetPagesByApi}" Margin="0,8,0,0" /></Expander>
+
                                         <TextBlock Text="{Binding Tasks.Count, StringFormat='Current queue: {0} rows'}" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                     </StackPanel>
                                 </ScrollViewer>
@@ -1020,21 +1060,17 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
                                 </Grid>
                             </Border>
 
-                            <!-- Identifiers Row: Page ID (Canonical), Page UID, User UID -->
-                            <Grid ColumnDefinitions="*, 8, *, 8, *, 8, *">
+                            <!-- Target name, Page UID and admin UID -->
+                            <Grid ColumnDefinitions="*, 8, *, 8, *">
                                 <StackPanel Grid.Column="0" Spacing="4">
                                     <TextBlock Text="Page / Profile Name" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                     <TextBox Text="{Binding SelectedPageForEdit.PageName}" Height="32" IsReadOnly="True" />
                                 </StackPanel>
                                 <StackPanel Grid.Column="2" Spacing="4">
-                                    <TextBlock Text="Page ID (Canonical)" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityMutedBrush}" />
-                                    <TextBox Text="{Binding SelectedPageForEdit.PageId}" IsReadOnly="True" Height="32" />
-                                </StackPanel>
-                                <StackPanel Grid.Column="4" Spacing="4">
                                     <TextBlock Text="Page UID" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                     <TextBox Text="{Binding SelectedPageForEdit.PersonaUid}" IsReadOnly="True" Height="32" Foreground="#A78BFA" />
                                 </StackPanel>
-                                <StackPanel Grid.Column="6" Spacing="4">
+                                <StackPanel Grid.Column="4" Spacing="4">
                                     <TextBlock Text="Admin User UID" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                     <TextBox Text="{Binding SelectedPageForEdit.UserUid}" Height="32" IsReadOnly="True" />
                                 </StackPanel>
@@ -1048,8 +1084,13 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
                                  <!-- Reel Column -->
                                 <StackPanel Grid.Column="0" Spacing="6" Margin="0,0,8,0">
                                     <TextBlock Text="Reel caption" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" />
-                                    <CheckBox Content="Use title from text file" IsChecked="{Binding SelectedPageForEdit.ReelTitleFromTextFile, Mode=TwoWay}" />
-                                    <CheckBox Content="Keep video parts together" IsChecked="{Binding SelectedPageForEdit.KeepReelPartsTogether, Mode=TwoWay}" />
+                                    <WrapPanel Orientation="Horizontal">
+                                        <CheckBox Content="Use title from text file" IsChecked="{Binding SelectedPageForEdit.ReelTitleFromTextFile, Mode=TwoWay}" Margin="0,0,12,0" />
+                                        <CheckBox Content="Keep video parts together" IsChecked="{Binding SelectedPageForEdit.KeepReelPartsTogether, Mode=TwoWay}" />
+                                    </WrapPanel>
+                                    <TextBlock Text="Append to caption (optional)" FontSize="12" />
+                                    <TextBox Name="ReelCaptionSuffixInput" Text="{Binding SelectedPageForEdit.ReelCaptionSuffix, Mode=TwoWay}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="64" MaxHeight="140" Watermark="Extra text or #hashtags…" />
+                                    <TextBlock Text="Added on a new line after the original caption. Save, then prepare the queue to apply." FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                     <TextBlock IsVisible="{Binding SelectedPageForEdit.KeepReelPartsTogether}" Text="Random selects a series; Part 1, 2, 3 post separately in order. Selection counts series. Unfinished parts continue when you prepare again. Recognizes numbered Part filenames." TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                     <TextBlock Text="Unchecked: use media filename. Checked: use matching .txt; fall back to filename if unavailable." FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                     <TextBlock Text="Reel source (file or folder)" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
@@ -1068,7 +1109,14 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
                                 <!-- Image Column -->
                                 <StackPanel Grid.Column="1" Spacing="6" Margin="4,0,4,0">
                                     <TextBlock Text="Photo caption" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" />
-                                    <CheckBox Content="Use title from text file" IsChecked="{Binding SelectedPageForEdit.PhotoTitleFromTextFile, Mode=TwoWay}" />
+                                    <WrapPanel Orientation="Horizontal">
+                                        <CheckBox Content="Use title from text file" IsChecked="{Binding SelectedPageForEdit.PhotoTitleFromTextFile, Mode=TwoWay}" Margin="0,0,12,0" />
+                                        <CheckBox Content="Group photos with same caption" IsChecked="{Binding SelectedPageForEdit.GroupPhotosWithSameCaption, Mode=TwoWay}" />
+                                    </WrapPanel>
+                                    <TextBlock IsVisible="{Binding SelectedPageForEdit.GroupPhotosWithSameCaption}" Text="One queue row per caption group, up to 10 photos per post. Selection limits count posts. Text-file matching follows the option above; append text is added once. A file source also checks matching photos in its folder." FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
+                                    <TextBlock Text="Append to caption (optional)" FontSize="12" />
+                                    <TextBox Name="PhotoCaptionSuffixInput" Text="{Binding SelectedPageForEdit.PhotoCaptionSuffix, Mode=TwoWay}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="64" MaxHeight="140" Watermark="Extra text or #hashtags…" />
+                                    <TextBlock Text="Added on a new line after the original caption. Save, then prepare the queue to apply." FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                     <TextBlock Text="Unchecked: use media filename. Checked: use matching .txt; fall back to filename if unavailable." FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                     <TextBlock Text="Photo source (file or folder)" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                     <Grid ColumnDefinitions="*, Auto, Auto">
@@ -1106,6 +1154,7 @@ RowHeight="48" FrozenColumnCount="2" IsReadOnly="True" AreRowDetailsFrozen="True
                                 <StackPanel Grid.Row="1" Grid.ColumnSpan="3" IsVisible="{Binding SelectedPageForEdit.HasAdditionalReelSource}" Spacing="6" Margin="0,12,0,0">
                                     <TextBlock Text="Additional Reel caption" FontWeight="SemiBold" Foreground="{DynamicResource AntigravityTextBrush}" />
                                     <CheckBox Content="Use title from text file" IsChecked="{Binding SelectedPageForEdit.VideoTitleFromTextFile, Mode=TwoWay}" />
+                                    <TextBlock Text="Uses the Reel append text configured above." FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                     <TextBlock Text="Unchecked: use media filename. Checked: use matching .txt; fall back to filename if unavailable." FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                     <TextBlock Text="Additional Reel source (from saved video configuration)" FontSize="11" Foreground="{DynamicResource AntigravityMutedBrush}" />
                                     <Grid ColumnDefinitions="*, Auto, Auto">

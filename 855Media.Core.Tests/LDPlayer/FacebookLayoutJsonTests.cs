@@ -149,8 +149,15 @@ public class FacebookLayoutJsonTests
         );
         Assert.Equal(FacebookLayoutCatalog.CreateDefaultJson(), shipped);
         var catalog = FacebookLayoutCatalog.Parse(FacebookLayoutCatalog.CreateDefaultJson());
+        var config = JsonSerializer.Deserialize<FacebookLayoutConfiguration>(
+            FacebookLayoutCatalog.CreateDefaultJson(),
+            FacebookLayoutCatalog.JsonOptions
+        )!;
         Assert.Equal(
-            FacebookLayoutRegistry.BuiltInDefinitions.Select(d => d.Id),
+            FacebookLayoutRegistry
+                .BuiltInDefinitions.Select(d => d.Id)
+                .Concat(config.Variants!.Select(v => v.Id))
+                .Distinct(),
             catalog.Definitions.Select(d => d.Id)
         );
         foreach (
@@ -369,7 +376,7 @@ public class FacebookLayoutJsonTests
             Assert.Equal("dashboard.custom.v2", current.VariantId);
             Assert.NotEqual(old.ObservationId, current.ObservationId);
             Assert.Equal(
-                "dashboard.analytics-tab.v1",
+                "dashboard.analytics-tab.v2",
                 FacebookLayoutRegistry.Match(oldObservation, FacebookScreenKind.Dashboard).VariantId
             );
             File.WriteAllText(file, "{broken");

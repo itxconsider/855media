@@ -9,19 +9,28 @@ namespace _855Media.Core.LDPlayer;
 
 public partial class PFlowPersonaSwitcherService
 {
-    internal async Task<bool> OpenDiscoverySwitcherAsync(
+    internal Task<bool> OpenDiscoverySwitcherAsync(int index, string? path, CancellationToken ct) =>
+        OpenGuardedDiscoverySwitcherAsync(index, path, ct, null);
+
+    internal async Task<bool> OpenGuardedDiscoverySwitcherAsync(
         int index,
         string? path,
-        CancellationToken ct
+        CancellationToken ct,
+        Func<CancellationToken, Task>? requireFresh = null
     )
     {
-        var deadline = _nativeNow().AddSeconds(30);
+        // Guarded owner recovery revalidates worker, process and idle state on
+        // each observation; allow its device reads within the outer deadline.
+        var deadline = _nativeNow().AddSeconds(requireFresh == null ? 30 : 60);
         var fed = false;
         var reveals = 0;
+        var settingsBacks = 0;
         var taps = new Dictionary<string, int>();
         for (var attempt = 0; attempt < 30 && _nativeNow() < deadline; attempt++)
         {
             ct.ThrowIfCancellationRequested();
+            if (requireFresh != null)
+                await requireFresh(ct);
             var screen = await ReadNativeScreenAsync(index, path, ct);
             if (screen == null)
             {
@@ -57,16 +66,53 @@ public partial class PFlowPersonaSwitcherService
                 return false;
             var route = settings
                 ? new NativeRoute(NativeRouteKind.Feed)
-                : PlanNativeRoute(screen, e => taps.GetValueOrDefault(e.ContentDesc + e.Text) < 2);
+                : PlanNativeRoute(
+                    screen,
+                    e =>
+                        taps.GetValueOrDefault(e.ContentDesc + e.Text)
+                        < (
+                            FacebookLayoutRegistry
+                                .Match(screen.RawXml, FacebookScreenKind.NewsFeed)
+                                .IsMatch
+                            && (
+                                e.ContentDesc == "Menu"
+                                || e.ContentDesc.StartsWith(
+                                    "Menu, tab",
+                                    StringComparison.OrdinalIgnoreCase
+                                )
+                            )
+                                ? 1
+                                : 2
+                        )
+                );
             if (route.Kind == NativeRouteKind.Blocked)
                 return false;
+            await PFlowTrace.SessionAsync(
+                index,
+                "discovery.route",
+                $"kind={route.Kind}; navigation={route.Navigation?.ContentDesc}; remainingSeconds={Math.Max(0, (deadline - _nativeNow()).TotalSeconds):F1}",
+                ct
+            );
             if (route.Kind == NativeRouteKind.SelectTarget)
                 return true;
+            if (route.Kind == NativeRouteKind.BackFromSettings)
+            {
+                if (settingsBacks++ >= 2 || !await _ldPlayer.PressBackAsync(index, path, ct))
+                    return false;
+                await PFlowTrace.SessionAsync(
+                    index,
+                    "discovery.settings.back",
+                    $"attempt={settingsBacks}/2; freshSettings=true; actorNotYetVerified=true",
+                    ct
+                );
+                await _nativeDelay(TimeSpan.FromMilliseconds(500), ct);
+                continue; // Re-read; never reuse the settings avatar dropdown.
+            }
             if (route.Dropdown != null)
             {
                 var point = ParseNodeBoundsCenter(route.Dropdown);
                 if (
-                    taps.GetValueOrDefault("dropdown") >= 2
+                    taps.GetValueOrDefault("dropdown") >= 1
                     || !await _ldPlayer.TapAsync(index, point.X, point.Y, path, ct)
                 )
                     return false;
@@ -78,7 +124,7 @@ public partial class PFlowPersonaSwitcherService
                     ct
                 );
                 // Wait for animation/network loading before attempting another navigation action.
-                if (await WaitForDiscoverySwitcherAsync(index, path, ct) != null)
+                if (await WaitForDiscoverySwitcherAsync(index, path, ct, requireFresh) != null)
                     return true;
             }
             else if (route.Navigation is { } nav)
@@ -88,8 +134,9 @@ public partial class PFlowPersonaSwitcherService
                 var key = nav.ContentDesc + nav.Text;
                 taps[key] = taps.GetValueOrDefault(key) + 1;
             }
-            else if (route.Kind == NativeRouteKind.Reveal && reveals++ < 3)
+            else if (route.Kind == NativeRouteKind.Reveal && reveals < 3)
             {
+                reveals++;
                 var (w, h) = ParseScreenDimensions(screen.RawXml);
                 if (
                     w <= 0
@@ -107,8 +154,34 @@ public partial class PFlowPersonaSwitcherService
                 )
                     return false;
             }
-            else if (route.Kind == NativeRouteKind.Feed && !fed)
+            else if (
+                !fed
+                && (
+                    route.Kind == NativeRouteKind.Feed
+                    || route.Kind == NativeRouteKind.Reveal
+                        && reveals >= 3
+                        && !PFlowConfirmation.HasPendingPublication(screen.RawXml)
+                        && FacebookLayoutRegistry
+                            .Match(screen.RawXml, FacebookScreenKind.NewsFeed)
+                            .IsMatch
+                )
+            )
             {
+                if (requireFresh != null)
+                    await requireFresh(ct);
+                if (route.Kind == NativeRouteKind.Reveal)
+                {
+                    var activity =
+                        await _ldPlayer.GetCurrentFocusedActivityAsync(index, path, ct) ?? "";
+                    if (!activity.StartsWith("com.facebook.katana/", StringComparison.Ordinal))
+                        return false;
+                    await PFlowTrace.SessionAsync(
+                        index,
+                        "discovery.hidden-feed.recovery",
+                        "revealsExhausted=3; recognizedFeed=true; actorVerified=false",
+                        ct
+                    );
+                }
                 // Settings/Meta Account is not a switcher. Return to Feed without tapping its controls.
                 fed = true;
                 if (
@@ -130,13 +203,16 @@ public partial class PFlowPersonaSwitcherService
     internal async Task<BloksScreenInfo?> WaitForDiscoverySwitcherAsync(
         int index,
         string? path,
-        CancellationToken ct
+        CancellationToken ct,
+        Func<CancellationToken, Task>? requireFresh = null
     )
     {
-        var deadline = _nativeNow().AddSeconds(10);
-        for (var attempt = 0; attempt < 21; attempt++)
+        var deadline = _nativeNow().AddSeconds(20);
+        for (var attempt = 0; attempt < 41; attempt++)
         {
             ct.ThrowIfCancellationRequested();
+            if (requireFresh != null)
+                await requireFresh(ct);
             var screen = await ReadNativeScreenAsync(index, path, ct);
             var hasNodes = screen != null && ScreenTimeHierarchy.Nodes(screen.RawXml).Length > 0;
             if (hasNodes && NativeNavigationBlocked(screen!.RawXml))
@@ -190,23 +266,18 @@ public partial class PFlowPersonaSwitcherService
     internal static string[] DiscoveryPageNames(string? xml) =>
         !IsNativeSwitcherSheetOpen(xml) || NativeNavigationBlocked(xml)
             ? []
-            : FindNativeSwitcherRows(xml)
-                .Where(IsNativePageRow)
-                .Select(row =>
-                    Regex.Replace(
-                        row.Attribute("content-desc")?.Value?.Trim() ?? "",
-                        @",\s*\d+\s+notifications?\s*$",
-                        "",
-                        RegexOptions.IgnoreCase
-                    )
-                )
+            : (
+                InferNativeSwitcherActors(xml) is { Length: > 0 } actors
+                    ? actors.Where(a => a.Type == "Page").Select(a => a.Name)
+                    : FindNativeSwitcherRows(xml).Where(IsNativePageRow).Select(NativeRowName)
+            )
                 .Where(n =>
                     n.Length > 0 && !n.EndsWith('…') && !n.EndsWith("...", StringComparison.Ordinal)
                 )
                 .ToArray();
 
     // Warming is navigation only. Root records never grant live Page access.
-    public async Task WarmPageDiscoveryAsync(
+    public Task WarmPageDiscoveryAsync(
         int index,
         string ownerName,
         string ownerUid,
@@ -215,149 +286,9 @@ public partial class PFlowPersonaSwitcherService
         CancellationToken ct
     )
     {
-        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        try
-        {
-            if (!await EnsureSwitchedToPersonalProfileAsync(index, ownerName, path, ct))
-                throw new InvalidOperationException(
-                    "Personal profile could not be restored before Page discovery."
-                );
-            var identity = await new PFlowGraphIdentityReader().TryReadUidAsync(
-                _ldPlayer,
-                index,
-                path,
-                ct
-            );
-            if (identity?.Id != ownerUid)
-                throw new InvalidOperationException(
-                    "Live personal UID could not be confirmed before Page discovery."
-                );
-            if (!await OpenDiscoverySwitcherAsync(index, path, ct))
-            {
-                await PFlowDiagnostics.CaptureAsync(
-                    _ldPlayer,
-                    index,
-                    "discovery-switcher-open-failed",
-                    path
-                );
-                throw new InvalidOperationException(
-                    "Page switcher could not be confirmed using visible controls; no Settings fallback was tapped. Diagnostic capture attempted."
-                );
-            }
-            string? previous = null;
-            var complete = false;
-            for (var round = 0; round < 60; round++)
-            {
-                ct.ThrowIfCancellationRequested();
-                var screen = await WaitForDiscoverySwitcherAsync(index, path, ct);
-                if (
-                    screen == null
-                    || !IsNativeSwitcherSheetOpen(screen.RawXml)
-                    || NativeNavigationBlocked(screen.RawXml)
-                )
-                {
-                    await PFlowDiagnostics.CaptureAsync(
-                        _ldPlayer,
-                        index,
-                        "discovery-switcher-unconfirmed",
-                        path
-                    );
-                    throw new InvalidOperationException(
-                        "Page discovery could not confirm the switcher after waiting 10 seconds; enumeration is incomplete. Diagnostic capture attempted."
-                    );
-                }
-                var rows = FindNativeSwitcherRows(screen.RawXml);
-                if (rows.Any() && !rows.Any(IsNativePageRow))
-                    throw new InvalidOperationException(
-                        "Switcher has no explicit Page labels; automatic enumeration is unresolved. Existing cached Pages are retained."
-                    );
-                if (rows.Where(IsNativePageRow).Count() > DiscoveryPageNames(screen.RawXml).Length)
-                    await progress(
-                        "Some Page names are truncated or unreadable; those entries remain unresolved."
-                    );
-                var visible = DiscoveryPageNames(screen.RawXml);
-                foreach (var label in visible)
-                    names.Add(label);
-                var signature = string.Join(
-                    "\n",
-                    FindNativeSwitcherRows(screen.RawXml)
-                        .Select(r => r.Attribute("content-desc")?.Value)
-                );
-                if (signature == previous)
-                {
-                    complete = true;
-                    break;
-                }
-                previous = signature;
-                var swipe = DiscoverySwipe(screen.RawXml);
-                if (
-                    swipe == null
-                    || !await _ldPlayer.SwipeAsync(
-                        index,
-                        swipe.Value.X,
-                        swipe.Value.FromY,
-                        swipe.Value.X,
-                        swipe.Value.ToY,
-                        450,
-                        path,
-                        ct
-                    )
-                )
-                    throw new InvalidOperationException("Page switcher scrolling failed.");
-                await _nativeDelay(TimeSpan.FromMilliseconds(700), ct);
-            }
-            await progress(
-                $"Page switcher: {names.Count} distinct full names; list scan {(complete ? "finished" : "limit reached, incomplete")}."
-            );
-            var warmed = 0;
-            foreach (var page in names)
-            {
-                await progress($"Discovering Page {++warmed}/{names.Count}: {page}");
-                var switched = await SwitchToPersonaAsync(
-                    index,
-                    new FacebookPageTarget { Type = "Page", PageName = page },
-                    path,
-                    ct
-                );
-                if (!switched)
-                {
-                    await progress($"Unresolved Page: {page}; switch could not be confirmed.");
-                    continue;
-                }
-                var live = await new PFlowGraphIdentityReader().TryReadUidAsync(
-                    _ldPlayer,
-                    index,
-                    path,
-                    ct
-                );
-                var records = await _ldPlayer.ExtractFacebookAccountsFromRootShellAsync(
-                    index,
-                    "com.facebook.katana",
-                    path,
-                    ct
-                );
-                var matches = records
-                    .Where(a =>
-                        a.Type == "Page"
-                        && a.UserUid == ownerUid
-                        && (a.Uid == live?.Id || a.PageId == live?.Id)
-                    )
-                    .ToArray();
-                await progress(
-                    matches.Length == 1 && live?.UnderlyingUid == ownerUid
-                        ? $"Page identity resolved: {page}."
-                        : $"Unresolved Page: {page}; live identity or cached owner could not be matched. Existing Page verification will retry."
-                );
-            }
-        }
-        finally
-        {
-            // Stop/error must not leave an arbitrary Page silently active.
-            using var restore = new CancellationTokenSource(TimeSpan.FromSeconds(60));
-            if (!await EnsureSwitchedToPersonalProfileAsync(index, ownerName, path, restore.Token))
-                throw new InvalidOperationException(
-                    "Personal profile could not be restored after Page discovery; fetch stopped."
-                );
-        }
+        ct.ThrowIfCancellationRequested();
+        throw new NotSupportedException(
+            "Legacy Page warming was removed. Use complete native UI Fetch."
+        );
     }
 }

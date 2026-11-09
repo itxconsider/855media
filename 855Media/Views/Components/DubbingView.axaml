@@ -676,6 +676,53 @@
                         </DataGrid>
                     </Grid>
                 </TabItem>
+                <TabItem Header="Studio QC">
+                    <Grid RowDefinitions="Auto,*" Margin="10">
+                        <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,8">
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="Dialogue &amp; delivery checks" FontSize="14" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding QualitySummary}" TextWrapping="Wrap" FontSize="11" />
+                                <TextBlock Text="Run QC again after script, cast or take changes." IsVisible="{Binding QualityReportNeedsRefresh}" FontSize="10" Foreground="#EAB975" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="Run studio QC" Command="{Binding RunStudioQualityCheckCommand}" Margin="10,0,0,0" VerticalAlignment="Top" />
+                        </Grid>
+                        <Grid Grid.Row="1" ColumnDefinitions="270,*">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" Margin="0,0,12,0">
+                                <StackPanel Spacing="5">
+                                    <TextBlock Text="Translation brief &amp; terminology" FontWeight="SemiBold" FontSize="12" />
+                                    <TextBox Text="{Binding TranslationBrief}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="70" MaxHeight="95" Watermark="Names, relationships, pronouns, tone, recurring terms…" />
+                                    <TextBlock Text="Used by Gemini batches; web fallback ignores the brief. Edited translations are preserved." TextWrapping="Wrap" FontSize="10" Foreground="#B8C1D0" />
+                                    <CheckBox IsChecked="{Binding RequireTranslatedDialogue}">
+                                        <TextBlock Text="Require translated dialogue before final voice generation" TextWrapping="Wrap" FontSize="11" />
+                                    </CheckBox>
+                                </StackPanel>
+                            </ScrollViewer>
+                            <ListBox Grid.Column="1" ItemsSource="{Binding QualityIssues}">
+                                <ListBox.Styles>
+                                    <Style Selector="ListBoxItem">
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                    </Style>
+                                </ListBox.Styles>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate x:DataType="dubbing:DubbingQualityIssue">
+                                        <Border BorderBrush="#343944" BorderThickness="0,0,0,1" Padding="6">
+                                            <Grid ColumnDefinitions="*,Auto">
+                                                <StackPanel Spacing="3">
+                                                    <StackPanel Orientation="Horizontal" Spacing="10">
+                                                        <TextBlock Text="{Binding Location}" FontWeight="SemiBold" FontSize="11" />
+                                                        <TextBlock Text="{Binding Severity}" Foreground="#EAB975" FontSize="11" />
+                                                    </StackPanel>
+                                                    <TextBlock Text="{Binding Message}" TextWrapping="Wrap" FontSize="11" />
+                                                </StackPanel>
+                                                <Button Grid.Column="1" Margin="8,0,0,0" Content="Go to line" Command="{Binding $parent[UserControl].((components:DubbingViewModel)DataContext).GoToQualityIssueCommand}" CommandParameter="{Binding}" />
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </Grid>
+                    </Grid>
+                </TabItem>
             </TabControl>
         </Border>
         <Border Grid.Row="4" Padding="8,3" Background="#14161B" Grid.ColumnSpan="3">

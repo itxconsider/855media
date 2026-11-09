@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
@@ -493,7 +493,10 @@ public partial class PFlowAutoPostService
                 "Another Facebook upload is active; Story submission was stopped."
             );
         var toastAvailable =
-            _atxClient != null && await _atxClient.ClearLastToastAsync(job.DeviceIndex, ct);
+            _atxClient != null
+            && await _atxClient
+                .ForInstallation(customPath)
+                .ClearLastToastAsync(job.DeviceIndex, ct);
         await PFlowTrace.SessionAsync(
             job.DeviceIndex,
             "story.confirmation.channels",
@@ -528,13 +531,16 @@ public partial class PFlowAutoPostService
         );
         var timer = Stopwatch.StartNew();
         var window = UploadConfirmationWindow(job.Size, PublicationTimeout);
+        var confirmationRecovery = new PFlowConfirmationRecovery();
+        var confirmationDeadline = window;
         var nextNotification = TimeSpan.Zero;
         var nextStoryInspection = TimeSpan.FromSeconds(2);
         var storyInspectionDelay = TimeSpan.FromSeconds(6);
         var uploadOngoing = false;
         var hadPendingUi = false;
         var completionGate = new PFlowPublicationSettleGate(PublicationQuietPeriod);
-        while (timer.Elapsed < window)
+        ObserveStoryPublication:
+        while (timer.Elapsed < confirmationDeadline)
         {
             ct.ThrowIfCancellationRequested();
             xml = await Observe();
@@ -698,12 +704,23 @@ public partial class PFlowAutoPostService
                 );
                 evidence = null;
             }
+            if (!confirmationRecovery.AcceptsEvidence(evidence))
+                evidence = null;
             if (evidence != null)
             {
                 await Stage(PFlowConfirmation.RecordPublicationEvidence(job, evidence));
                 return;
             }
             await Task.Delay(400, ct);
+        }
+        if (await confirmationRecovery.TryAsync(_ldPlayer, job, customPath, ct))
+        {
+            confirmationDeadline = timer.Elapsed + TimeSpan.FromSeconds(60);
+            completionGate.Reset();
+            uploadOngoing = false;
+            nextNotification = timer.Elapsed;
+            nextStoryInspection = timer.Elapsed;
+            goto ObserveStoryPublication;
         }
         var finalFailure = PFlowPublicationFailure.Read(await Observe(), job.Caption, before);
         if (finalFailure != null)

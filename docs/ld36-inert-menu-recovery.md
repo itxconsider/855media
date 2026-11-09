@@ -1,0 +1,10 @@
+# LD36 switcher navigation after an ineffective Menu route
+
+The initial live discovery test returned no actors after Menu navigation. A subsequent full type-discovery attempt reached the rows but failed to reopen the list for the next actor. A captured Feed reproduction is retained in docs/fixtures/pflow-layouts/ld36-inert-menu-feed.xml.
+
+Normal discovery now permits one Menu tap per invocation on a freshly recognized Feed, rather than spending two attempts on the same ineffective route. The existing planner can then use a fresh Profile navigation control and the own-profile dropdown. Existing input/auth/foreign/pending guards, cancellation, bounded deadlines, complete-list enumeration, exact names and final identity/type checks remain. Route diagnostics record planned semantic navigation and remaining time. No coordinates or account names are hardcoded in runtime code.
+
+Validation: all55 focused discovery/selected-Feed/settings/actor-restore checks passed, including the new captured inert-Menu regression. API-off live raw discovery from Feed opened the actual switcher through Menu → Feed reopen → Profile → dropdown and returned Jonh Ward and Harch Sive Jing; their raw types were Unknown, which is not type verification. One earlier full discovery failed and is retained for comparison. Final full discovery validation is recorded below.
+
+Isolated desktop Debug3.2.4 built with zero warnings/errors; Core SHA256 matches tests. Main app was running and its output retained. No production mappings/history/settings changes, publication, Graph calls or release ZIP.
+Final live result: production ScanAsync completed with Jonh Ward/Page selected and Harch Sive Jing/Profile, Graph0, and its mandatory starting-actor restore completed. See artifacts/ld36-fix/final-discovery/fetch-actors.json and final captures. The diagnostic process exited1 afterward because this older mode asserts that no type-discovery messages occur; the types in this layout require discovery, so that inference-only harness assertion is not a production failure. Full UID/date/analytics Fetch and persistence were not rerun.

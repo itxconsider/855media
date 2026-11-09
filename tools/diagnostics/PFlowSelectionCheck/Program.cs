@@ -5,6 +5,12 @@ using _855Media.Core.LDPlayer;
 using _855Media.ViewModels.Components;
 using Avalonia.Threading;
 
+if (args.Contains("--posting-name"))
+{
+    await PostingNameCheck.RunAsync();
+    return;
+}
+
 // Synthetic data only. No InitializeAsync, credential load, LD access, login, or publication.
 var ld = DispatchProxy.Create<ILDPlayerService, NoDeviceCalls>();
 using var vm = new AutoPostViewModel(ld, null!, null!, null!, null!);

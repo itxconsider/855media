@@ -26,6 +26,19 @@ public sealed class LDNetworkInfoService(ILDPlayerService ldPlayer)
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeout.CancelAfter(TimeSpan.FromSeconds(25));
             var token = timeout.Token;
+            try
+            {
+                var helper = ParseHelper(
+                    await ldPlayer.Read885NetworkAsync(index, ldFolder, token)
+                );
+                if (helper != null)
+                    return helper;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex) when (ex is System.IO.IOException or InvalidOperationException) { }
             var ip = ParsePublicIp(
                 await FetchAsync(index, ldFolder, "https://api64.ipify.org?format=json", token)
             );
@@ -96,6 +109,49 @@ public sealed class LDNetworkInfoService(ILDPlayerService ldPlayer)
             folder,
             ct
         );
+
+    internal static LDNetworkInfo? ParseHelper(string? output)
+    {
+        if (output == null || output.Length > 17000)
+            return null;
+        const string marker = "json=";
+        var position = output.IndexOf(marker, StringComparison.Ordinal);
+        if (position < 0)
+            return null;
+        var json = output[(position + marker.Length)..].Trim();
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            if (root.GetProperty("networkProtocolVersion").GetInt32() != 1)
+                return null;
+            var age =
+                DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                - root.GetProperty("sampleUtcMillis").GetInt64();
+            if (age < -2000 || age > 30000)
+                return null;
+            var ip = ParsePublicIp(json);
+            if (root.GetProperty("success").ValueKind != JsonValueKind.True || ip == null)
+                return new(
+                    "",
+                    "Unavailable",
+                    "885Helper could not verify this LD's current public IP. Refresh to retry."
+                );
+            var info = ParseLocation(ip, json);
+            return info with { Detail = info.Detail + " · via 885Helper / IPWhois" };
+        }
+        catch (Exception ex)
+            when (ex
+                    is JsonException
+                        or InvalidOperationException
+                        or KeyNotFoundException
+                        or FormatException
+                        or OverflowException
+            )
+        {
+            return null;
+        }
+    }
 
     internal static string? ParsePublicIp(string output)
     {

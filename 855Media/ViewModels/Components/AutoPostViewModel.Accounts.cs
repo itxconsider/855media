@@ -12,10 +12,12 @@ namespace _855Media.ViewModels.Components;
 
 public partial class AutoPostViewModel
 {
-    private readonly PFlowAccountStore _accountStore = new();
+    private PFlowAccountStore _accountStore = new();
     private readonly System.Threading.SemaphoreSlim _accountMappingRefreshGate = new(1, 1);
     private List<PFlowPersonalAccount> _mappedAccounts = [];
     public ObservableCollection<PFlowAccountItemViewModel> MappedAccounts { get; } = [];
+    private HashSet<string>? _accountInstallationIdentities;
+    private string _accountInstallationFolder = "";
 
     [ObservableProperty]
     private string _accountSearchText = "";
@@ -23,11 +25,16 @@ public partial class AutoPostViewModel
     [ObservableProperty]
     private string _accountFilter = "All";
     public string[] AccountFilters { get; } =
-    ["All", "Needs attention", "Fetch", "ScreenTime", "Posting"];
+    ["All", "Needs attention", "Fetch", "ScreenTime", "Posting", "All saved instances"];
     public IEnumerable<PFlowAccountItemViewModel> DisplayedMappedAccounts =>
         MappedAccounts
             .Where(a =>
                 (
+                    AccountFilter == "All saved instances"
+                    || _accountInstallationIdentities == null
+                    || _accountInstallationIdentities.Contains(a.Account.Binding.InstanceIdentity)
+                )
+                && (
                     string.IsNullOrWhiteSpace(AccountSearchText)
                     || $"{a.DeviceName} {a.Name} {a.OwnerUid} LD-{a.Account.Binding.DeviceIndex}".Contains(
                         AccountSearchText.Trim(),
@@ -53,9 +60,19 @@ public partial class AutoPostViewModel
 
     partial void OnAccountFilterChanged(string value) => RefreshLdAccountsSection();
 
-    public string LdAccountsHeading => "LD-Accounts";
+    public string LdAccountsHeading => "LD-Accounts · " + LdFolder;
     public string LdAccountsSummary =>
-        $"{DisplayedMappedAccounts.Count()} / {MappedAccounts.Count} accounts • {MappedAccounts.Count(a => !a.IsMappingValid)} need attention • Select a row for details. Changes require Save.";
+        $"{DisplayedMappedAccounts.Count()} shown • {MappedAccounts.Count(a => _accountInstallationIdentities == null || _accountInstallationIdentities.Contains(a.Account.Binding.InstanceIdentity))} matched to this installation • {MappedAccounts.Count(a => !a.IsMappingValid)} saved mappings need attention. Accounts are stored separately for this LDPlayer folder. To review replaced/missing instances, use All saved instances. Changes require Save.";
+
+    partial void OnLdFolderChanged(string value)
+    {
+        _accountInstallationIdentities = [];
+        _accountInstallationFolder = "";
+        foreach (var account in MappedAccounts)
+            account.IsSelectedForBulk = false;
+        MappedAccounts.Clear(); // Validity belongs to the previous installation.
+        RefreshLdAccountsSection();
+    }
 
     private void RefreshLdAccountsSection()
     {
@@ -92,7 +109,7 @@ public partial class AutoPostViewModel
             await PFlowFetchTrace.WriteAsync(
                 device.Index,
                 "account.mapping.refreshed",
-                "Saved root profile and Page rows reconciled into LD-Accounts; live identity verification remains required before actions."
+                "Saved profile and Page rows reconciled into LD-Accounts; fresh identity verification remains required before actions."
             );
         }
         catch (Exception ex)
@@ -127,6 +144,11 @@ public partial class AutoPostViewModel
         var instances = await Dispatcher.UIThread.InvokeAsync(() =>
             Instances.Select(i => i.Model).ToArray()
         );
+        var installationFolder = LdFolder;
+        var installationIdentities = PFlowAccountInstallationScope.ReadIdentities(
+            installationFolder,
+            instances
+        );
         var savedMappings = await _accountStore.LoadAsync();
         var obsoleteBindings = removedBindings
             .Concat(savedMappings.SelectMany(a => a.TransferredFromBindings))
@@ -146,6 +168,8 @@ public partial class AutoPostViewModel
         }
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
+            if (!string.Equals(installationFolder, LdFolder, StringComparison.Ordinal))
+                return;
             foreach (
                 var task in Tasks.Where(t =>
                     oldJobs.Any(j =>
@@ -230,6 +254,8 @@ public partial class AutoPostViewModel
         _mappedAccounts = await _accountStore.LoadAsync();
         await Dispatcher.UIThread.InvokeAsync(() =>
         {
+            if (!string.Equals(installationFolder, LdFolder, StringComparison.Ordinal))
+                return;
             PFlowAccountRemap.ReplayRows(
                 _mappedAccounts,
                 Pages.Select(p => p.Model),
@@ -240,10 +266,16 @@ public partial class AutoPostViewModel
             foreach (var row in Pages)
                 row.DeviceName = row.Model.DeviceName;
             var selectedForBulk = MappedAccounts
-                .Where(a => a.IsSelectedForBulk && a.IsMappingValid)
+                .Where(a =>
+                    a.IsSelectedForBulk
+                    && a.IsMappingValid
+                    && _accountInstallationFolder == installationFolder
+                )
                 .Select(a => a.Account.Binding)
                 .ToHashSet();
             MappedAccounts.Clear();
+            _accountInstallationFolder = installationFolder;
+            _accountInstallationIdentities = installationIdentities;
             foreach (
                 var account in _mappedAccounts
                     .OrderBy(a => a.Binding.DeviceIndex)
@@ -261,6 +293,10 @@ public partial class AutoPostViewModel
                     ?? "";
                 try
                 {
+                    if (!installationIdentities.Contains(account.Binding.InstanceIdentity))
+                        throw new InvalidOperationException(
+                            "Not matched to the selected installation (other installation or replaced/missing instance). Refresh or explicitly review its mapping; no reassignment was made."
+                        );
                     PFlowAccountStore.RequireCurrentBinding(account.Binding, instances, LdFolder);
                 }
                 catch (Exception ex)
@@ -323,7 +359,7 @@ public partial class AutoPostViewModel
             return;
         try
         {
-            await LoadAccountMappingsAsync();
+            await LoadDevicesAsync();
         }
         catch (Exception ex)
         {
@@ -342,7 +378,13 @@ public partial class AutoPostViewModel
         {
             var rows = MappedAccounts
                 .Where(a =>
-                    (allowed == null || allowed.Contains(a.Account.Binding.DeviceIndex))
+                    (
+                        _accountInstallationIdentities == null
+                        || _accountInstallationIdentities.Contains(
+                            a.Account.Binding.InstanceIdentity
+                        )
+                    )
+                    && (allowed == null || allowed.Contains(a.Account.Binding.DeviceIndex))
                     && (bindings == null || bindings.Contains(a.Account.Binding))
                 )
                 .ToArray();

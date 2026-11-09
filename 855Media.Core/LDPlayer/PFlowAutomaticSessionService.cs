@@ -18,7 +18,8 @@ public interface IPFlowAutomaticAccountNavigator : IPFlowLoginNavigator
 public sealed class PFlowAutomaticSessionService(
     IPFlowAutomaticAccountNavigator navigator,
     IPFlowCredentialStore credentials,
-    Func<CancellationToken, Task> requireIdle
+    Func<CancellationToken, Task> requireIdle,
+    bool postingNameOnly = false
 )
 {
     private readonly HashSet<string> _loginAttempts = [];
@@ -41,6 +42,10 @@ public sealed class PFlowAutomaticSessionService(
     )
     {
         var binding = account.Binding;
+        bool Accepted(PFlowAccountObservation observation) =>
+            postingNameOnly
+                ? PFlowPostingNameVerification.Verified(observation, account.Name)
+                : Verified(observation, binding);
         account.Authentication = PFlowAuthenticationState.Verifying;
         account.LastVerifiedUtc = null;
         foreach (var page in account.Pages)
@@ -48,7 +53,11 @@ public sealed class PFlowAutomaticSessionService(
         binding.Validate();
         using var lease = deviceLeaseAlreadyHeld
             ? null
-            : await PFlowDeviceLease.AcquireAsync(binding.DeviceIndex, ct);
+            : await PFlowDeviceLease.AcquireAsync(
+                binding.DeviceIndex,
+                ct,
+                (navigator as IPFlowInstallationNavigator)?.InstallationPath
+            );
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
         deadline.CancelAfter(TimeSpan.FromMinutes(5));
         var token = deadline.Token;
@@ -71,10 +80,14 @@ public sealed class PFlowAutomaticSessionService(
         {
             await RequireBinding();
             await requireIdle(token);
-            await progress("Verifying personal account " + binding.OwnerUid);
+            await progress(
+                postingNameOnly
+                    ? "Checking saved personal name: " + account.Name
+                    : "Verifying personal account " + binding.OwnerUid
+            );
             var observed = await navigator.ObserveAsync(binding, token);
             await RequireBinding();
-            if (!Verified(observed, binding))
+            if (!Accepted(observed))
             {
                 account.Authentication = observed.State;
                 if (observed.State == PFlowAuthenticationState.Checkpoint)
@@ -83,13 +96,22 @@ public sealed class PFlowAutomaticSessionService(
                     );
                 if (observed.State == PFlowAuthenticationState.Unavailable)
                     throw new InvalidOperationException(
-                        "Personal-profile recovery could not confirm the live account UID after automatic recovery. Facebook was left open."
+                        postingNameOnly
+                            ? "Could not switch to saved account "
+                                + account.Name
+                                + ". "
+                                + observed.FailureReason
+                                + " Facebook was left open."
+                            : "Personal-profile recovery could not confirm the live account UID after automatic recovery. Facebook was left open."
                     );
-                var otherAccount =
-                    !string.IsNullOrWhiteSpace(observed.OwnerUid)
-                    && observed.OwnerUid.All(char.IsAsciiDigit)
-                    && Verified(observed, binding with { OwnerUid = observed.OwnerUid })
-                    && observed.OwnerUid != binding.OwnerUid;
+                var otherAccount = postingNameOnly
+                    ? !string.IsNullOrWhiteSpace(observed.VerifiedName)
+                        && PFlowPostingNameVerification.Verified(observed, observed.VerifiedName)
+                        && !PFlowPostingNameVerification.Verified(observed, account.Name)
+                    : !string.IsNullOrWhiteSpace(observed.OwnerUid)
+                        && observed.OwnerUid.All(char.IsAsciiDigit)
+                        && Verified(observed, binding with { OwnerUid = observed.OwnerUid })
+                        && observed.OwnerUid != binding.OwnerUid;
                 if (!otherAccount && observed.State != PFlowAuthenticationState.LoginRequired)
                     throw new InvalidOperationException(
                         "Current personal identity could not be verified; login was not attempted."
@@ -132,19 +154,25 @@ public sealed class PFlowAutomaticSessionService(
                 await requireIdle(token);
                 observed = await navigator.LoginAsync(binding, credential, progress, token);
                 await RequireBinding();
-                if (!Verified(observed, binding))
+                if (!Accepted(observed))
                     throw new InvalidOperationException(
-                        "Login did not verify the requested live personal UID; its tasks were not started."
+                        postingNameOnly
+                            ? "Login did not match the saved personal account name; its tasks were not started."
+                            : "Login did not verify the requested live personal UID; its tasks were not started."
                     );
             }
             await RequireBinding();
-            if (!Verified(observed, binding))
+            if (!Accepted(observed))
                 throw new InvalidOperationException(
                     "Personal identity evidence expired before task execution."
                 );
             account.Authentication = PFlowAuthenticationState.Authenticated;
             account.LastVerifiedUtc = observed.ObservedUtc;
-            await progress("Personal account verified: " + binding.OwnerUid);
+            await progress(
+                postingNameOnly
+                    ? "Personal account name matched: " + account.Name
+                    : "Personal account verified: " + binding.OwnerUid
+            );
         }
         catch
         {

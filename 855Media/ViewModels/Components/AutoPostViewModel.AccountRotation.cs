@@ -29,7 +29,7 @@ public partial class AutoPostViewModel
             throw new InvalidOperationException(
                 "Publication is still being monitored; this LD cannot change accounts yet."
             );
-        if (new ScreenTimeHistoryStore().NeedsReview(index))
+        if (CreateScreenTimeHistoryStore().NeedsReview(index))
             throw new InvalidOperationException(
                 "ScreenTime interactions need review before this LD can change accounts."
             );
@@ -65,7 +65,8 @@ public partial class AutoPostViewModel
     private async Task EnsureRunAccountAsync(
         LDInstanceItemViewModel worker,
         PFlowPersonalAccount account,
-        CancellationToken ct
+        CancellationToken ct,
+        bool postingNameOnly = false
     )
     {
         InvalidatePostTargetSession(worker.Index);
@@ -76,6 +77,11 @@ public partial class AutoPostViewModel
             );
         await CreateRunSessionPreparation().PrepareAsync(account.Binding, Progress, ct);
         await RecoverRunStartingScreenAsync(account.Binding, account.Name, null, null, ct);
+        if (postingNameOnly)
+        {
+            await EnsurePostingAccountNameAsync(worker, account, Progress, ct);
+            return;
+        }
         // Preparing the device must not imply navigating the account switcher.
         // A fresh token identity can establish the account while leaving its current actor alone.
         await CheckPostProcessAsync(worker.Index, ct);
@@ -121,7 +127,7 @@ public partial class AutoPostViewModel
             index =>
                 new(
                     CreateAccountNavigator(),
-                    new PFlowCredentialStore(),
+                    CreateCredentialStore(),
                     c => RequireAccountTransitionIdleAsync(index, c)
                 )
         );
@@ -201,7 +207,14 @@ public partial class AutoPostViewModel
             .ToArray();
         await PFlowAccountBatchRunner.RunAsync(
             plan,
-            (account, c) => EnsureRunAccountAsync(worker, account, c),
+            (account, c) =>
+                EnsureRunAccountAsync(
+                    worker,
+                    account,
+                    c,
+                    // Both posting and ScreenTime use the explicit database-name policy.
+                    postingNameOnly: true
+                ),
             (account, c) =>
                 config.ScreenTime.HasActions
                     ? RunScreenTimeAccountAsync(worker, config.ScreenTime, account, c)
@@ -221,20 +234,20 @@ public partial class AutoPostViewModel
                     .OrderByDescending(p => p.IsProfile)
                     .ToArray();
                 // ScreenTime may have changed the actor since account preparation.
-                // Recheck the existing proof without adding a Graph request for ordering.
-                PFlowGraphIdentity? active = null;
-                if (
-                    _graphActivationProofs.TryGetValue(worker.Index, out var orderingProof)
-                    && _postProcessIds.TryGetValue(worker.Index, out var orderingProcess)
-                )
-                    active = await orderingProof.TryReuseAsync(
-                        account.Binding,
-                        orderingProcess,
+                // Observe current UI names without Graph or native UID lookup for posting order.
+                PFlowPostingNameVerification.Actor? active;
+                if (config.ScreenTime.HasActions && account.SelectedForScreenTime)
+                    active = await PFlowPostingNameVerification.ObserveAccountAsync(
                         _ldPlayerService,
+                        account.Binding,
+                        account.Name,
                         LdFolder,
-                        c
+                        c,
+                        Pages.Select(p => p.Model).Where(p => p.AccountBinding == account.Binding)
                     );
-                targets = PFlowTargetOrder.PreferActive(
+                else
+                    _postingActorHints.TryGetValue(worker.Index, out active);
+                targets = PFlowPostingNameVerification.PreferActive(
                     targets,
                     p => p.Model,
                     account.Binding,

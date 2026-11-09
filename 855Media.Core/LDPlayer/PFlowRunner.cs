@@ -10,11 +10,19 @@ namespace _855Media.Core.LDPlayer;
 
 public static class PFlowDeviceLease
 {
-    private static readonly ConcurrentDictionary<int, SemaphoreSlim> Gates = new();
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> Gates = new();
 
-    public static async Task<IDisposable> AcquireAsync(int index, CancellationToken ct)
+    public static async Task<IDisposable> AcquireAsync(
+        int index,
+        CancellationToken ct,
+        string? installationPath = null
+    )
     {
-        var gate = Gates.GetOrAdd(index, _ => new(1, 1));
+        var key =
+            installationPath == null
+                ? "ld-" + index
+                : "ld-install-" + PFlowInstallationRouting.Key(installationPath, index);
+        var gate = Gates.GetOrAdd(key, _ => new(1, 1));
         await gate.WaitAsync(ct);
         try
         {
@@ -32,7 +40,7 @@ public static class PFlowDeviceLease
                     return new Releaser(
                         gate,
                         new FileStream(
-                            Path.Combine(lockDirectory, $"ld-{index}.lock"),
+                            Path.Combine(lockDirectory, key + ".lock"),
                             FileMode.OpenOrCreate,
                             FileAccess.ReadWrite,
                             FileShare.None
@@ -105,19 +113,24 @@ public sealed partial class PFlowRunner
             }
         }
         await PFlowJobBindingGuard.RequireAsync(_ld, job, ldPath, ct);
-        var gate = SourceGates.GetOrAdd(Path.GetFullPath(job.SourcePath), _ => new(1, 1));
-        await gate.WaitAsync(ct);
-        try
+        var sourceLease = await AcquireSourceLeasesAsync(job, ct);
+        // Concurrent readers are allowed; writes, replacement and deletion remain denied
+        // until every reader has completed publication, remote cleanup and backup.
+        using (sourceLease)
         {
-            // Hold the same source stable across other processes until transfer/publication resolves.
-            using var sourceLease = new FileStream(
-                job.SourcePath,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.Read
-            );
             var snapshot = job.Sha256;
-            var check = new PFlowJob { SourcePath = job.SourcePath };
+            var check = new PFlowJob
+            {
+                SourcePath = job.SourcePath,
+                PostType = job.PostType,
+                PhotoFiles = job
+                    .PhotoFiles.Select(f => new PFlowPhotoFile
+                    {
+                        SourcePath = f.SourcePath,
+                        Sha256 = f.Sha256,
+                    })
+                    .ToList(),
+            };
             await PFlowJob.FingerprintAsync(check, ct);
             if (snapshot.Length > 0 && snapshot != check.Sha256)
                 throw new IOException("Source changed after queue snapshot; rebuild the job.");
@@ -125,6 +138,7 @@ public sealed partial class PFlowRunner
             job.Size = check.Size;
             job.ModifiedUtc = check.ModifiedUtc;
             job.SourcePath = check.SourcePath;
+            job.PhotoFiles = check.PhotoFiles;
             var planned = job.State == PFlowState.Queued;
             job.State = PFlowState.Reserved;
             if (!await _history.ReserveAsync(job, ct, dailyLimit))
@@ -155,6 +169,8 @@ public sealed partial class PFlowRunner
             job.NoPublicationVerified = false;
             job.TargetIdentityConfirmationRequired = false;
             job.ConfirmedUtc = null;
+            job.ScheduledAcceptedUtc = null;
+            job.ScheduleEvidence = "";
             job.RemoteCleanupState = "Pending";
             try
             {
@@ -217,7 +233,7 @@ public sealed partial class PFlowRunner
                 await CleanupRemoteAsync(job, ldPath, cleanup.Token);
                 await _history.SaveAsync(job, CancellationToken.None);
             }
-            if (job.State == PFlowState.Confirmed)
+            if (job.CompletedSuccessfully)
             {
                 using var backup = new CancellationTokenSource(TimeSpan.FromSeconds(20));
                 await progress("Backing up / retaining source");
@@ -229,11 +245,7 @@ public sealed partial class PFlowRunner
                     ? PFlowDispatchQueueStore.HistoryStatus(job)
                     : job.State + (job.Error.Length == 0 ? "" : ": " + job.Error)
             );
-            return job.State == PFlowState.Confirmed;
-        }
-        finally
-        {
-            gate.Release();
+            return job.CompletedSuccessfully;
         }
     }
 
@@ -252,41 +264,33 @@ public sealed partial class PFlowRunner
             job.RemoteCleanupState = "Held for publication review";
             return;
         }
-        if (job.MayHaveSubmitted && job.State != PFlowState.Confirmed)
+        if (job.MayHaveSubmitted && !job.CompletedSuccessfully)
             return;
         try
         {
-            for (var attempt = 0; ; attempt++)
-            {
-                try
-                {
-                    await PFlowJobBindingGuard.RequireAsync(_ld, job, ldPath, ct);
-                    break;
-                }
-                catch (InvalidOperationException ex)
-                    when (ex.Message == PFlowJobBindingGuard.UnavailableMessage && attempt < 2)
-                {
-                    await Task.Delay(600, ct);
-                }
-            }
+            await PFlowJobBindingGuard.RequireAsync(_ld, job, ldPath, ct);
             // Only generated paths owned by this job are eligible. No gallery/folder deletion.
             if (
                 !Guid.TryParseExact(job.JobId, "N", out _)
                 || !job.RemotePath.StartsWith("/sdcard/DCIM/855Media/", StringComparison.Ordinal)
             )
                 throw new IOException("Invalid job staging path.");
-            if (!await _ld.DeleteFileFromEmulatorAsync(job.DeviceIndex, job.RemotePath, ldPath, ct))
-                throw new IOException("Remote deletion failed.");
-            var removed = await _ld.ExecuteAdbAsync(
-                job.DeviceIndex,
-                $"shell sh -c {PFlowAutoPostService.ShellQuote("test ! -e " + PFlowAutoPostService.ShellQuote(job.RemotePath) + " && echo REMOVED")}",
-                ldPath,
-                ct
-            );
-            if (removed.Trim() != "REMOVED")
-                throw new IOException("Remote deletion was not verified.");
+            foreach (var remotePath in job.RemoteMediaPaths)
+            {
+                if (!await _ld.DeleteFileFromEmulatorAsync(job.DeviceIndex, remotePath, ldPath, ct))
+                    throw new IOException("Remote deletion failed.");
+                var removed = await _ld.ExecuteAdbAsync(
+                    job.DeviceIndex,
+                    $"shell sh -c {PFlowAutoPostService.ShellQuote("test ! -e " + PFlowAutoPostService.ShellQuote(remotePath) + " && echo REMOVED")}",
+                    ldPath,
+                    ct
+                );
+                if (removed.Trim() != "REMOVED")
+                    throw new IOException("Remote deletion was not verified.");
+            }
             var album =
-                job.PostType == "Story" ? "Story_" + job.JobId
+                job.IsPhotoGroup || job.NativePhotoAlbum ? "Photo_" + job.JobId
+                : job.PostType == "Story" ? "Story_" + job.JobId
                 : job.NativeReelAlbum && job.PostType is "Reel" or "Video" ? "Reel_" + job.JobId
                 : null;
             if (album != null)
@@ -335,6 +339,21 @@ public sealed partial class PFlowRunner
         }
     }
 
+    // Desktop posting retains originals. Keep verified legacy removal records intact
+    // so availability can still reconstruct totals for files deleted by older builds.
+    public async Task RetainPostedSourceAsync(PFlowJob job, CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (
+            job.State != PFlowState.Confirmed
+            || job.LocalDeleteState is "Verified" or "Verified; caption retained"
+        )
+            return;
+        job.DeleteRequested = false;
+        job.LocalDeleteState = "Retained (posted)";
+        await _history.SaveAsync(job, ct);
+    }
+
     public async Task DeleteSharedSourceAsync(
         PFlowJob job,
         IReadOnlyList<PFlowJob> intendedJobs,
@@ -343,6 +362,11 @@ public sealed partial class PFlowRunner
     {
         if (!job.DeleteRequested || job.State != PFlowState.Confirmed)
             return;
+        if (job.IsPhotoGroup)
+        {
+            await DeletePhotoGroupSourcesAsync(job, intendedJobs, ct);
+            return;
+        }
         if (job.RequiresPublicationReviewBeforeCleanup)
         {
             job.LocalDeleteState = "Held for publication review";
@@ -354,15 +378,7 @@ public sealed partial class PFlowRunner
         try
         {
             var history = await _history.ReadAsync(ct);
-            var consumers = intendedJobs
-                .Where(j =>
-                    string.Equals(
-                        Path.GetFullPath(j.SourcePath),
-                        Path.GetFullPath(job.SourcePath),
-                        StringComparison.OrdinalIgnoreCase
-                    )
-                )
-                .ToList();
+            var consumers = intendedJobs.Where(j => j.IncludesSource(job.SourcePath)).ToList();
             if (
                 consumers.Count == 0
                 || consumers.Any(j =>
@@ -373,7 +389,7 @@ public sealed partial class PFlowRunner
                     )
                 )
                 || history.Any(h =>
-                    h.SourcePath.Equals(job.SourcePath, StringComparison.OrdinalIgnoreCase)
+                    h.IncludesSource(job.SourcePath)
                     && (
                         h.RequiresPublicationReviewBeforeCleanup
                         || h.State
@@ -402,8 +418,7 @@ public sealed partial class PFlowRunner
             }
             if (
                 history.Any(h =>
-                    h.SourcePath.Equals(job.SourcePath, StringComparison.OrdinalIgnoreCase)
-                    && h.Sha256 == job.Sha256
+                    h.IncludesSource(job.SourcePath)
                     && h.State == PFlowState.Confirmed
                     && h.BackupRequested
                     && h.BackupState != "Verified"
@@ -416,8 +431,7 @@ public sealed partial class PFlowRunner
             }
             foreach (
                 var backup in history.Where(h =>
-                    h.SourcePath.Equals(job.SourcePath, StringComparison.OrdinalIgnoreCase)
-                    && h.Sha256 == job.Sha256
+                    h.IncludesSource(job.SourcePath)
                     && h.State == PFlowState.Confirmed
                     && h.BackupRequested
                 )

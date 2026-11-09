@@ -1,0 +1,22 @@
+# Exact queue selection and sorting
+
+Replace the Prepare post queue min/max controls with independent **Files per target** and **Groups per target** rows, each offering **1–5** keys. Both default to two. Ungrouped targets and Stories use Files; Reel Part series and same-caption photo grouping use Groups. A grouping-enabled pool counts its entries as groups, including singleton entries. Random picks exactly that many available files/groups, rather than drawing a count from a range. Availability, reservations and maturity/daily capacity may reduce the result. The count applies independently to each selected post type, with shared daily capacity.
+
+Selection modes are **Random**, **By name** and **By date modified**. Ordered modes support ascending/descending: A–Z/Z–A, or oldest/newest modified timestamp. Name comparisons ignore case; date ties use filename and full path for deterministic ordering. Random disables the direction control. File metadata sorting runs off the UI thread.
+
+Photo grouping still creates one row for the complete caption group. Reel selection counts series, and every chosen series retains numeric Part order regardless of descending group order. Group sorting uses its first file; existing unfinished series retain continuation priority. No selected-group/member history or ordering guard is bypassed. EP grouping remains unchanged/deferred.
+
+Preparation snapshots type/count/mode/direction choices before asynchronous work. Selection controls disable while preparing. The new settings participate in the existing AutoPostConfig export/import and run-settings save/load path. Old configurations default to Random/two; older saved shared counts initialize both rows to that count. Thereafter file and group counts are independent. Values are bounded to 1–5 and valid selection indices on load. Prepared queue rows remain snapshots.
+
+## Validation status
+
+- 85 focused Core checks passed, including 16 new exact-count/random/name/date/tie/group/Part cases. Existing Part/photo grouping, reservations, captions and queue-media tests passed.
+- Actual headless desktop check passed all five key bindings, bidirectional mode/direction bindings, configuration round trip/defaults, exact selection for Reel/Photo/Story, all four sort directions, persisted row order, availability/repeat protection, shared daily capacity, two series plus two multi-photo groups and busy guards. Initial render check found the diagnostic had not opened the queue panel; opening that panel fixed the fixture, then 1280×820 and 900×820 renders passed and were inspected.
+- Main Debug 3.2.0 and AccountTableCheck built with zero warnings/errors after fresh process-absence checks. When 855Media reopened, the final styling build waited for explicit user closure; after the user closed it, the final normal-folder build and desktop binding/queue/render checks passed. Rounded keys, blue selection and 900px layout were visually inspected. No additional build output or package was created to bypass the running app.
+- No live LD action, Share/Post or production queue/history/source edit. Desktop diagnostics use isolated account/Page/history/dispatch stores and synthetic media. Credit the complete exact-count/sorting improvement once: release counter 24/10 toward 3.2.1; current package remains 3.2.0.
+
+Evidence: `artifacts/queue-selection/focused.trx`, `desktop.log`, `build.log`, `selection-1280.png` and `selection-900.png`. Run `dotnet run --project tools/diagnostics/AccountTableCheck -- --queue-selection` for the actual desktop check. The diagnostic supports injected dispatch storage so preparation/persistence never writes the user's live queue.
+
+## Independent count follow-up (2026-10-26)
+
+The actual desktop check now verifies both five-key bindings independently, separate save/reload, old shared-count migration and separate bounds. A mixed preparation with Files=3 and Groups=1 produced three individual Stories, one two-part Reel series and one two-photo group; descending group order retained numeric Part order. Both selectors disable while preparing. Final 1280×820 and 900×820 renders passed and both rows were visually checked. Main Debug 3.2.0 and diagnostic built with zero warnings/errors after a fresh absence check. No live LD/post or production data edit. Credit this completed follow-up once; counter 25/10, no package. Evidence: `artifacts/queue-selection/separate-counts.log` and `separate-counts.trx`.

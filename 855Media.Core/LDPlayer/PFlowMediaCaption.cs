@@ -5,7 +5,14 @@ namespace _855Media.Core.LDPlayer;
 
 public static class PFlowMediaCaption
 {
-    public static string Resolve(string mediaFile, bool useTextFile)
+    public static string Resolve(string mediaFile, bool useTextFile, string? suffix = null)
+    {
+        var original = ResolveOriginal(mediaFile, useTextFile);
+        var extra = suffix?.Trim();
+        return string.IsNullOrEmpty(extra) ? original : original + "\n" + extra;
+    }
+
+    private static string ResolveOriginal(string mediaFile, bool useTextFile)
     {
         if (useTextFile)
         {

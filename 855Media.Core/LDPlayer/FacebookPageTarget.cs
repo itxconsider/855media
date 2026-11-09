@@ -22,6 +22,7 @@ public enum PageMaturityLevel
 
 public partial class FacebookPageTarget
 {
+    public bool FetchDetailsPending { get; set; }
     public string ProfilePictureUrl { get; set; } = string.Empty;
     public PFlowAccountBinding? AccountBinding { get; set; }
     public bool IsSelected { get; set; } = true;
@@ -77,7 +78,10 @@ public partial class FacebookPageTarget
     public System.Collections.Generic.List<ReelPartGroup> PendingReelPartGroups { get; set; } = [];
     public bool? ReelTitleFromTextFile { get; set; }
     public bool? PhotoTitleFromTextFile { get; set; }
+    public bool GroupPhotosWithSameCaption { get; set; }
     public bool? VideoTitleFromTextFile { get; set; }
+    public string ReelCaptionSuffix { get; set; } = string.Empty;
+    public string PhotoCaptionSuffix { get; set; } = string.Empty;
     public string TitleVideoReel { get; set; } = string.Empty;
     public string TitleVideoReelMode { get; set; } = "Replace All";
     public string VideoReelPath { get; set; } = string.Empty;
@@ -397,6 +401,16 @@ public partial class FacebookPageTarget
 
 public class AutoPostTaskItem : INotifyPropertyChanged
 {
+    public PFlowSchedule? Schedule { get; set; }
+    public string ScheduleDisplay => Schedule?.Display ?? "Post now";
+    public List<string> PhotoPaths { get; set; } = [];
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public IEnumerable<string> SourcePaths => PhotoPaths.Count > 1 ? PhotoPaths : [FilePath];
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string SourceDisplay =>
+        PhotoPaths.Count > 1 ? $"{PhotoPaths.Count} photos · {FilePath}" : FilePath;
     public string QueueId { get; set; } = Guid.NewGuid().ToString("N");
     private string _pFlowJobId = "";
     public string PFlowJobId
@@ -426,6 +440,7 @@ public class AutoPostTaskItem : INotifyPropertyChanged
             {
                 _title = value;
                 OnPropertyChanged(nameof(Title));
+                OnPropertyChanged(nameof(StatusDetails));
             }
         }
     }
@@ -439,6 +454,7 @@ public class AutoPostTaskItem : INotifyPropertyChanged
             {
                 _filePath = value;
                 OnPropertyChanged(nameof(FilePath));
+                OnPropertyChanged(nameof(StatusDetails));
             }
         }
     }
@@ -461,6 +477,19 @@ public class AutoPostTaskItem : INotifyPropertyChanged
             : $"{System.IO.Path.GetFileName(PartGroupKey)} · Part {PartNumber}";
     public string Page { get; set; } = string.Empty;
 
+    private readonly PFlowStatusTrail _statusTrail = new();
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string StatusSummary => PFlowStatusText.Summary(Status);
+
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string StatusDetails =>
+        $"Device: {DeviceName} · {App}\nTarget: {Page}\nMedia: {SourceDisplay}\nCaption: {Title}\n\n"
+        + "Publish time: "
+        + ScheduleDisplay
+        + "\n\n"
+        + _statusTrail.Details(Status);
+
     public string Status
     {
         get => _status;
@@ -469,7 +498,10 @@ public class AutoPostTaskItem : INotifyPropertyChanged
             if (_status != value)
             {
                 _status = value;
+                _statusTrail.Record(value);
                 OnPropertyChanged(nameof(Status));
+                OnPropertyChanged(nameof(StatusSummary));
+                OnPropertyChanged(nameof(StatusDetails));
             }
         }
     }
@@ -541,7 +573,7 @@ public class FacebookAccountDetails
     public bool SwitchedToProfile { get; set; }
     public List<FacebookPageInfo> Pages { get; set; } = [];
 
-    // Root data can be saved even when UI identity selection fails.
+    // Cached data can be retained even when UI identity selection fails.
     public bool IdentitySwitchFailed =>
         !SwitchedToProfile || Pages.Any(p => p.LivePageAccessVerified == false);
     public string FetchStatus =>
@@ -615,7 +647,7 @@ public class FacebookAccountDetails
 
 /// <summary>
 /// Account or Page information extracted directly from rooted device storage
-/// (/data/data/com.facebook.katana/) via root shell (LightSharedPreferences, prefs_db, cache).
+/// from historical migration data; runtime extraction has been removed.
 /// </summary>
 public class FacebookAccountInfo
 {

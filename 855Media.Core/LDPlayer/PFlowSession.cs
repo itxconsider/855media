@@ -45,7 +45,7 @@ public static class PFlowSession
             }
         }
         throw new InvalidOperationException(
-            "Facebook did not become foreground after two launch attempts. Root account data is saved; UI lookup was not started."
+            "Facebook did not become foreground after two launch attempts. Saved account data was retained; UI lookup was not started."
         );
     }
 
@@ -143,7 +143,7 @@ public static class PFlowSession
                 // Never infer these types from a launcher package/name or from missing fields.
                 var type = Regex.Match(
                     record,
-                    @"(?m)^[ \t]*autoRemoveRecents=(?:true|false) isPersistable=(?:true|false) numFullscreen=\d+ activityType=([23])[ \t]*$"
+                    @"(?m)^[ \t]*autoRemoveRecents=(?:true|false) isPersistable=(?:true|false) (?:numFullscreen=\d+ )?activityType=([23])[ \t]*$"
                 );
                 if (!type.Success)
                     return false;

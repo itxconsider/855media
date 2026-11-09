@@ -40,13 +40,24 @@ public partial class AtxAgentClient : IDisposable
 
     public const int DefaultBasePort = 7912;
 
-    public AtxAgentClient(int basePort = DefaultBasePort, HttpClient? httpClient = null)
+    public AtxAgentClient(
+        int basePort = DefaultBasePort,
+        HttpClient? httpClient = null,
+        string? routingDirectory = null
+    )
     {
         _basePort = basePort;
+        _routingDirectory = routingDirectory;
         _httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
     }
 
-    public int GetDevicePort(int deviceIndex) => _basePort + deviceIndex;
+    public int GetDevicePort(int deviceIndex) =>
+        _installationPath == null
+            ? _basePort + deviceIndex
+            : _installationPorts.GetOrAdd(
+                deviceIndex,
+                i => PFlowInstallationRouting.Port(_installationPath, i, _routingDirectory)
+            );
 
     public string GetDeviceBaseUrl(int deviceIndex) =>
         $"http://127.0.0.1:{GetDevicePort(deviceIndex)}";
@@ -68,7 +79,7 @@ public partial class AtxAgentClient : IDisposable
         }
     }
 
-    public async Task<string?> DumpHierarchyAsync(
+    private async Task<string?> DumpHierarchyCoreAsync(
         int deviceIndex,
         CancellationToken cancellationToken = default
     )
@@ -78,7 +89,10 @@ public partial class AtxAgentClient : IDisposable
             var url = $"{GetDeviceBaseUrl(deviceIndex)}/dump/hierarchy";
             using var resp = await _httpClient.GetAsync(url, cancellationToken);
             if (!resp.IsSuccessStatusCode)
+            {
+                Reader(deviceIndex).Failure = "http-" + (int)resp.StatusCode;
                 return null;
+            }
 
             var raw = await resp.Content.ReadAsStringAsync(cancellationToken);
             if (string.IsNullOrWhiteSpace(raw))
@@ -90,7 +104,7 @@ public partial class AtxAgentClient : IDisposable
                 || trimmed.StartsWith("<?xml", StringComparison.OrdinalIgnoreCase)
             )
             {
-                return raw;
+                return HierarchyHasNodes(raw) ? raw : null;
             }
 
             try
@@ -104,7 +118,7 @@ public partial class AtxAgentClient : IDisposable
                         && xml.Contains("<hierarchy", StringComparison.OrdinalIgnoreCase)
                     )
                     {
-                        return xml;
+                        return HierarchyHasNodes(xml) ? xml : null;
                     }
                 }
             }
@@ -112,8 +126,13 @@ public partial class AtxAgentClient : IDisposable
 
             return null;
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
         catch
         {
+            Reader(deviceIndex).Failure = "empty-malformed-or-transport";
             return null;
         }
     }
@@ -441,7 +460,7 @@ public partial class AtxAgentClient : IDisposable
             "settings get secure default_input_method",
             cancellationToken
         );
-        return ok && output.Contains(AdbKeyboardConstants.ImeComponent);
+        return ok && AndroidKeyboardActivator.IsHelper(output);
     }
 
     /// <summary>
@@ -452,10 +471,10 @@ public partial class AtxAgentClient : IDisposable
         CancellationToken cancellationToken = default
     )
     {
-        return await ExecuteShellAsync(
-            deviceIndex,
-            $"ime enable {AdbKeyboardConstants.ImeComponent} && ime set {AdbKeyboardConstants.ImeComponent} && settings put secure default_input_method {AdbKeyboardConstants.ImeComponent}",
-            cancellationToken
+        return await AndroidKeyboardActivator.EnableAsync(
+            (command, ct) => ExecuteShellWithOutputAsync(deviceIndex, command, ct),
+            cancellationToken,
+            (detail, ct) => PFlowTrace.SessionAsync(deviceIndex, "keyboard.activation", detail, ct)
         );
     }
 
@@ -495,6 +514,8 @@ public partial class AtxAgentClient : IDisposable
         CancellationToken cancellationToken = default
     )
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        PFlowDeviceAccessPolicy.RequireUnprivileged(command);
         try
         {
             var url = $"{GetDeviceBaseUrl(deviceIndex)}/shell";
@@ -561,9 +582,9 @@ public partial class AtxAgentClient : IDisposable
         CancellationToken cancellationToken = default
     )
     {
-        return await ExecuteShellAsync(
-            deviceIndex,
-            $"monkey -p {packageName} -c android.intent.category.LAUNCHER 1",
+        return await AndroidAppLauncher.StartAsync(
+            packageName,
+            (command, ct) => ExecuteShellWithOutputAsync(deviceIndex, command, ct),
             cancellationToken
         );
     }
@@ -581,16 +602,17 @@ public partial class AtxAgentClient : IDisposable
         );
     }
 
-    public async Task<bool> ClearAppCacheAsync(
+    public Task<bool> ClearAppCacheAsync(
         int deviceIndex,
         string packageName,
         CancellationToken cancellationToken = default
     )
     {
-        return await ExecuteShellAsync(
-            deviceIndex,
-            $"rm -rf /data/data/{packageName}/cache/* /data/data/{packageName}/code_cache/* /sdcard/Android/data/{packageName}/cache/*",
-            cancellationToken
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromException<bool>(
+            new NotSupportedException(
+                "Private cache clearing was removed. Use Android Settings to manage app storage."
+            )
         );
     }
 
@@ -689,6 +711,8 @@ public partial class AtxAgentClient : IDisposable
         CancellationToken cancellationToken = default
     )
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        PFlowDeviceAccessPolicy.RequireUnprivileged(remoteTargetPath);
         if (!File.Exists(localFilePath))
             return false;
 
@@ -722,6 +746,8 @@ public partial class AtxAgentClient : IDisposable
         CancellationToken cancellationToken = default
     )
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        PFlowDeviceAccessPolicy.RequireUnprivileged(remoteFilePath);
         try
         {
             var cleanPath = remoteFilePath.TrimStart('/');
@@ -1088,44 +1114,59 @@ public partial class AtxAgentClient : IDisposable
         CancellationToken cancellationToken = default
     )
     {
-        var (ok, output) = await ExecuteShellWithOutputAsync(
-            deviceIndex,
-            "dumpsys window windows",
-            cancellationToken
-        );
-
-        if (ok && !string.IsNullOrWhiteSpace(output))
+        foreach (var command in FocusObservationCommands)
         {
+            var (ok, output) = await ExecuteShellWithOutputAsync(
+                deviceIndex,
+                command,
+                cancellationToken
+            );
+            if (!ok || string.IsNullOrWhiteSpace(output))
+                continue;
             var activity = ParseFocusedActivity(output);
-            if (activity != null)
+            if (activity != null || HasAuthoritativeFocus(output))
                 return activity;
         }
-
-        var (topOk, topOutput) = await ExecuteShellWithOutputAsync(
-            deviceIndex,
-            "dumpsys activity top",
-            cancellationToken
-        );
-
-        if (topOk && !string.IsNullOrWhiteSpace(topOutput))
-        {
-            return ParseFocusedActivity(topOutput);
-        }
-
         return null;
     }
+
+    internal static readonly string[] FocusObservationCommands =
+    [
+        "dumpsys window windows",
+        "dumpsys activity activities",
+        "dumpsys activity top",
+    ];
+    private const string FocusComponent =
+        @"([A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)+/[A-Za-z0-9_.$]+)";
+
+    internal static bool HasAuthoritativeFocus(string output) =>
+        Regex.IsMatch(
+            output,
+            @"(?m)^\s*(?:mCurrentFocus=|topResumedActivity=|mResumedActivity:|ResumedActivity:).*?"
+                + FocusComponent
+        );
 
     public static string? ParseFocusedActivity(string? output)
     {
         if (string.IsNullOrWhiteSpace(output))
             return null;
-
-        const string component = @"([A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z0-9_]+)+/[A-Za-z0-9_.$]+)";
-        foreach (var prefix in new[] { @"mCurrentFocus=.*?", @"mFocusedApp=.*?", @"ACTIVITY\s+" })
+        foreach (
+            var prefix in new[]
+            {
+                @"mCurrentFocus=.*?",
+                @"(?:topResumedActivity=|mResumedActivity:|ResumedActivity:).*?",
+                @"mFocusedApp=.*?",
+                @"ACTIVITY\s+",
+            }
+        )
         {
-            var match = Regex.Match(output, prefix + component);
-            if (match.Success)
-                return match.Groups[1].Value;
+            var values = Regex
+                .Matches(output, @"(?m)^\s*" + prefix + FocusComponent)
+                .Select(m => m.Groups[1].Value)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            if (values.Length > 0)
+                return values.Length == 1 ? values[0] : null;
         }
         return null;
     }
@@ -1336,6 +1377,19 @@ public partial class AtxAgentClient : IDisposable
         if (screen == null || screen.AllElements.Count == 0)
             return null;
 
+        if (
+            PFlowPersonaSwitcherService.ReadSwitcherLayoutVariant(screen.RawXml)
+            is "typed"
+                or "untyped"
+        )
+        {
+            var personal = PFlowPersonaSwitcherService.FindPersonalProfileNodeInSwitcher(
+                screen.RawXml,
+                targetProfileName
+            );
+            return personal == null ? null : ScreenTimeHierarchy.Center(personal);
+        }
+
         var all = screen.AllElements;
         int screenWidth =
             screen.RootElements.FirstOrDefault()?.Bounds.Right > 0
@@ -1485,6 +1539,22 @@ public partial class AtxAgentClient : IDisposable
     {
         if (screen == null || screen.AllElements.Count == 0)
             return false;
+
+        if (
+            PFlowPersonaSwitcherService.ReadSwitcherLayoutVariant(screen.RawXml)
+            is "typed"
+                or "untyped"
+        )
+            return PFlowPersonaSwitcherService
+                .InferNativeSwitcherActors(screen.RawXml)
+                .Any(a =>
+                    a.Type == "Profile"
+                    && a.IsSelected
+                    && (
+                        string.IsNullOrWhiteSpace(targetProfileName)
+                        || PFlowNameMatch.Same(a.Name, targetProfileName)
+                    )
+                );
 
         var all = screen.AllElements;
         var selectedItem = all.FirstOrDefault(e => (e.Selected || e.Checked) && e.CenterY >= 250);
@@ -1785,7 +1855,10 @@ public partial class AtxAgentClient : IDisposable
     {
         if (!_disposed)
         {
-            _httpClient.Dispose();
+            foreach (var child in _installations.Values)
+                child.Dispose();
+            if (!_sharedHttp)
+                _httpClient.Dispose();
             _disposed = true;
         }
         GC.SuppressFinalize(this);

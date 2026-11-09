@@ -8,6 +8,115 @@ namespace _855Media.Core.Tests.LDPlayer;
 
 public sealed class PFlowNativeIdentityScopeTests
 {
+    [Theory]
+    [InlineData("same", true)]
+    [InlineData("pid", false)]
+    [InlineData("foreign", false)]
+    [InlineData("target", false)]
+    [InlineData("owner", false)]
+    [InlineData("not-submitted", false)]
+    public async Task ReaderRecoveryAllowsOnlySameSubmittedSessionObservation(
+        string mode,
+        bool expected
+    )
+    {
+        var (ld, device) = Fake();
+        var binding = Binding with
+        {
+            InstanceIdentity = "observation-" + Guid.NewGuid().ToString("N"),
+        };
+        var target = Target;
+        target.AccountBinding = binding;
+        var scope = PFlowNativeIdentityScope.FromSelectedName(
+            binding,
+            "123",
+            target,
+            new(target.PageName, target.Type),
+            [target]
+        )!;
+        var job = new PFlowJob
+        {
+            AccountBinding = binding,
+            DeviceIndex = binding.DeviceIndex,
+            AppPackage = binding.AppPackage,
+            OwnerUid = target.UserUid,
+            TargetId = target.PageId,
+            TargetName = target.PageName,
+            State = PFlowState.Submitted,
+            SubmittedUtc = DateTime.UtcNow,
+        };
+        Assert.True(scope.Matches(job));
+        PFlowUiReaderEpoch.Invalidate(binding.InstanceIdentity);
+        Assert.False(scope.Matches(job));
+        Assert.False(await scope.SessionUnchangedAsync(ld, null, default));
+        switch (mode)
+        {
+            case "pid":
+                device.Pid = "456";
+                break;
+            case "foreign":
+                device.Activity = "other.app/Main";
+                break;
+            case "target":
+                job.TargetId = "999";
+                break;
+            case "owner":
+                job.OwnerUid = "999";
+                break;
+            case "not-submitted":
+                job.State = PFlowState.ComposerReady;
+                break;
+        }
+        Assert.Equal(expected, await scope.ObserveSubmittedSessionAsync(job, ld, null, default));
+        Assert.False(scope.Matches(job)); // Never restores future input/actor proof.
+        Assert.Equal(0, device.Taps + device.Switches + device.Restarts + device.AuthReads);
+    }
+
+    [Theory]
+    [InlineData("456 123\n", true)]
+    [InlineData("123\t456", true)]
+    [InlineData("123", false)]
+    [InlineData("123 456 789", false)]
+    [InlineData("error: device offline", false)]
+    [InlineData("", false)]
+    public async Task NameContinuationUsesExactProcessSetWithoutDependingOnPidOrder(
+        string current,
+        bool expected
+    )
+    {
+        var (ld, device) = Fake();
+        var target = Target;
+        target.AccountBinding = Binding;
+        var scope = PFlowNativeIdentityScope.FromSelectedName(
+            Binding,
+            "123 456",
+            target,
+            new(target.PageName, target.Type),
+            [target]
+        )!;
+        device.Pid = current;
+        Assert.Equal(expected, await scope.SessionUnchangedAsync(ld, null, default));
+        Assert.Equal(
+            expected,
+            await scope.VerifyContinuationAsync(
+                new PFlowJob
+                {
+                    DeviceIndex = Binding.DeviceIndex,
+                    AccountBinding = Binding,
+                    OwnerUid = Owner,
+                    TargetId = Page,
+                    TargetName = target.PageName,
+                    AppPackage = Binding.AppPackage,
+                },
+                FacebookLayoutRegistryTests.Fixture("feed-home"),
+                ld,
+                null,
+                default
+            )
+        );
+        Assert.Equal(0, device.Taps);
+    }
+
     private const string Owner = "100000000000001";
     private const string Page = "100000000000002";
     private const string Token = "EAAFixtureIdentityOnly12345";
@@ -37,13 +146,61 @@ public sealed class PFlowNativeIdentityScopeTests
     }
 
     [Theory]
-    [InlineData("unchanged", true)]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task WaitingForOldUploadRetainsOnlyTheUnchangedNameScope(bool processChanged)
+    {
+        var (ld, device) = Fake();
+        var target = Target;
+        target.AccountBinding = Binding;
+        var scope = PFlowNativeIdentityScope.FromSelectedName(
+            Binding,
+            "123",
+            target,
+            new(target.PageName, target.Type),
+            [target]
+        )!;
+        var job = new PFlowJob
+        {
+            DeviceIndex = Binding.DeviceIndex,
+            AccountBinding = Binding,
+            OwnerUid = Owner,
+            TargetId = Page,
+            TargetName = target.PageName,
+            AppPackage = Binding.AppPackage,
+        };
+        if (processChanged)
+            device.Pid = "999";
+        const string pending =
+            "<hierarchy><node package='com.facebook.katana' text='Finishing reel upload. Keep Facebook open.'/></hierarchy>";
+        Assert.Equal(
+            !processChanged,
+            await scope.VerifyContinuationWaitAsync(job, pending, ld, null, default)
+        );
+        Assert.Equal(
+            !processChanged,
+            await scope.VerifyContinuationAsync(
+                job,
+                "<hierarchy><node package='com.facebook.katana' text='Home'/></hierarchy>",
+                ld,
+                null,
+                default
+            )
+        );
+        Assert.Equal(0, device.Taps);
+    }
+
+    [Theory]
+    [InlineData("unchanged", false)]
     [InlineData("token", false)]
     [InlineData("process", false)]
     [InlineData("owner", false)]
     [InlineData("target", false)]
     [InlineData("foreground", false)]
-    public async Task ContinuationChecksSessionWithoutProfileTaps(string change, bool expected)
+    public async Task LegacyGraphContinuationCannotRefreshItsRemovedPrivateFingerprint(
+        string change,
+        bool expected
+    )
     {
         var (ld, device) = Fake();
         var scope = Scope();
@@ -74,13 +231,13 @@ public sealed class PFlowNativeIdentityScopeTests
     }
 
     [Fact]
-    public async Task RepeatChecksRequireNewNativeEvidenceEveryTime()
+    public async Task LegacyGraphRepeatChecksNeverReadPrivateFilesOrInvokeLookup()
     {
         var (ld, device) = Fake();
         var scope = Scope();
         var lookups = 0;
         for (var n = 0; n < 3; n++)
-            Assert.True(
+            Assert.False(
                 await scope.VerifyAsync(
                     ld,
                     null,
@@ -92,8 +249,8 @@ public sealed class PFlowNativeIdentityScopeTests
                     default
                 )
             );
-        Assert.Equal(3, lookups);
-        Assert.Equal(6, device.AuthReads); // Before and after each native lookup.
+        Assert.Equal(0, lookups);
+        Assert.Equal(0, device.AuthReads);
     }
 
     [Theory]
@@ -160,21 +317,13 @@ public sealed class PFlowNativeIdentityScopeTests
     [Fact]
     public async Task CancellationPropagates()
     {
-        var (ld, _) = Fake();
+        var (ld, device) = Fake();
         using var cts = new CancellationTokenSource();
+        cts.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            Scope()
-                .VerifyAsync(
-                    ld,
-                    null,
-                    _ =>
-                    {
-                        cts.Cancel();
-                        return Task.FromResult(true);
-                    },
-                    cts.Token
-                )
+            Scope().VerifyAsync(ld, null, _ => throw new Exception("Must not navigate"), cts.Token)
         );
+        Assert.Equal(0, device.AuthReads);
     }
 
     [Fact]
@@ -242,11 +391,11 @@ public sealed class PFlowNativeIdentityScopeTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public async Task RealPageRouteChecksOwnProfileUiWithoutSettingsOrGraph(bool match)
+    public async Task LegacyGraphPageProofCannotBeReplacedByOwnProfileUi(bool match)
     {
         var (ld, device) = Fake();
         device.WrongName = !match;
-        Assert.Equal(match, await Scope().VerifyAsync(ld, null, default));
+        Assert.False(await Scope().VerifyAsync(ld, null, default));
         Assert.Equal(0, device.Switches);
         Assert.Equal(0, device.Restarts);
         Assert.Equal(0, device.Taps);
@@ -256,7 +405,7 @@ public sealed class PFlowNativeIdentityScopeTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public async Task RealPersonalRouteChecksOwnProfileUiWithoutSettings(bool match)
+    public async Task LegacyGraphPersonalProofCannotBeReplacedByOwnProfileUi(bool match)
     {
         var (ld, device) = Fake();
         device.Personal = true;
@@ -273,7 +422,7 @@ public sealed class PFlowNativeIdentityScopeTests
             AuthenticationFingerprint = Graph.AuthenticationFingerprint,
         };
         var scope = PFlowNativeIdentityScope.FromVerifiedGraph(Binding, "123", target, graph)!;
-        Assert.Equal(match, await scope.VerifyAsync(ld, null, default));
+        Assert.False(await scope.VerifyAsync(ld, null, default));
         Assert.Equal(0, device.Switches);
         Assert.Equal(0, device.Restarts);
         Assert.Equal(0, device.Taps);
@@ -352,17 +501,17 @@ public sealed class PFlowNativeIdentityScopeTests
         device.Pid = "123";
         Assert.False(await scope.VerifyAsync(ld, null, default));
         Assert.False(scope.Matches(Binding, "123", Target));
-        Assert.True(await Scope().VerifyAsync(ld, null, default));
+        Assert.False(await Scope().VerifyAsync(ld, null, default));
     }
 
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public async Task SessionUiMethodRequiresMatchingGraphBoundJobScope(bool attachProof)
+    public async Task SessionUiCannotAuthorizeUsingRetiredGraphProof(bool attachProof)
     {
         var (ld, device) = Fake();
         var scope = Scope();
-        Assert.True(await scope.VerifyAsync(ld, null, default));
+        Assert.False(await scope.VerifyAsync(ld, null, default));
         var job = new PFlowJob
         {
             DeviceIndex = Binding.DeviceIndex,
@@ -373,19 +522,16 @@ public sealed class PFlowNativeIdentityScopeTests
             OwnerUid = Owner,
             NativeIdentityScope = attachProof ? scope : null,
         };
-        var session = new PFlowPostTargetSession();
-        Task<bool> Verify() =>
-            session.VerifyAsync(
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            new PFlowPostTargetSession().VerifyAsync(
                 job,
                 _ => Task.FromResult("Session UI"),
                 _ => Task.FromResult(true),
                 _ => Task.FromResult(device.ProfileXml()),
                 default
-            );
-        if (attachProof)
-            Assert.True(await Verify());
-        else
-            await Assert.ThrowsAsync<InvalidOperationException>(Verify);
+            )
+        );
+        Assert.Equal(0, device.AuthReads);
     }
 
     [Fact]
@@ -416,14 +562,14 @@ public sealed class PFlowNativeIdentityScopeTests
     }
 
     [Fact]
-    public async Task OwnProfileNavigationUsesOnlyCurrentActorControl()
+    public async Task RetiredGraphProofStopsBeforeCurrentActorNavigation()
     {
         var (ld, device) = Fake();
         device.UiOverride =
             "<hierarchy><node package='com.facebook.katana' text='Go to profile' class='android.widget.Button' enabled='true' clickable='true' bounds='[10,10][110,80]'/></hierarchy>";
         device.OnTap = () => device.UiOverride = null;
-        Assert.True(await Scope().VerifyAsync(ld, null, default));
-        Assert.Equal(1, device.Taps);
+        Assert.False(await Scope().VerifyAsync(ld, null, default));
+        Assert.Equal(0, device.Taps);
         Assert.False(device.InSettings);
         Assert.Equal(0, device.Switches);
         Assert.Equal(0, device.Restarts);

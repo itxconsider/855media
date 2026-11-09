@@ -42,6 +42,7 @@ public sealed partial class PFlowAccountStore(
         public int Version { get; set; } = 1;
         public List<PFlowPersonalAccount> Accounts { get; set; } = [];
         public List<PFlowAccountBinding> RemovedBindings { get; set; } = [];
+        public long RemovalRevision { get; set; }
     }
 
     public async Task<List<PFlowPersonalAccount>> LoadAsync(CancellationToken ct = default)
@@ -349,7 +350,8 @@ public sealed partial class PFlowAccountStore(
         if (document.Version != 1)
             throw new PFlowAccountVersionException();
         if (
-            document.Accounts == null
+            document.RemovalRevision < 0
+            || document.Accounts == null
             || document.RemovedBindings == null
             || document.Accounts.Any(a => a == null || a.Binding == null || a.Pages == null)
         )

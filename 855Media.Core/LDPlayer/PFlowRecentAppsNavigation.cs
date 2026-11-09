@@ -18,15 +18,14 @@ internal static class PFlowRecentAppsNavigation
     )
     {
         delay ??= Task.Delay;
-        for (var observation = 0; observation < 5; observation++)
+        var swipes = 0;
+        for (var observation = 0; observation < 14; observation++)
         {
             ct.ThrowIfCancellationRequested();
             var xml = await ld.DumpUiHierarchyAsync(index, path, ct);
             var control = LDPlayerService.FindRecentAppsClearTarget(xml);
             if (control != null)
                 return control;
-            if (observation == 4)
-                break;
             var nodes = ScreenTimeHierarchy.Nodes(xml);
             // Do not scroll past a disabled/ambiguous Clear all, or gesture in an
             // app card when Android's Recents container cannot be established.
@@ -46,6 +45,7 @@ internal static class PFlowRecentAppsNavigation
                 .Where(n =>
                     (
                         (string?)n.Attribute("package") == "com.android.systemui"
+                        || IsLdQuickstepOverview(n)
                         || ((string?)n.Attribute("package") ?? "").StartsWith(
                             "com.android.launcher",
                             StringComparison.Ordinal
@@ -65,6 +65,11 @@ internal static class PFlowRecentAppsNavigation
             if (observation > 0 && !hasClearLabel && containers.Length == 1)
             {
                 var container = containers[0];
+                // LD14 places Clear all beyond the oldest card. Several app
+                // cards can require more than the legacy three-swipe budget.
+                var maximumSwipes = IsLdQuickstepOverview(container) ? 12 : 3;
+                if (swipes >= maximumSwipes)
+                    return null;
                 var bounds = Regex.Match(
                     (string?)container.Attribute("bounds") ?? "",
                     @"^\[(\d+),(\d+)\]\[(\d+),(\d+)\]$"
@@ -78,7 +83,8 @@ internal static class PFlowRecentAppsNavigation
                 if (right <= left || bottom <= top)
                     break;
                 var horizontal =
-                    (string?)container.Attribute("class") == "android.widget.HorizontalScrollView";
+                    (string?)container.Attribute("class") == "android.widget.HorizontalScrollView"
+                    || IsLdQuickstepOverview(container);
                 await PFlowTrace.SessionAsync(
                     index,
                     "session.recents.reveal",
@@ -98,9 +104,17 @@ internal static class PFlowRecentAppsNavigation
                     )
                 )
                     return null;
+                swipes++;
             }
+            else if (observation > 0)
+                return null;
             await delay(TimeSpan.FromMilliseconds(400), ct);
         }
         return null;
     }
+
+    internal static bool IsLdQuickstepOverview(XElement node) =>
+        (string?)node.Attribute("package") == "com.ldmnq.launcher3"
+        && (string?)node.Attribute("resource-id") == "com.ldmnq.launcher3:id/overview_panel"
+        && (string?)node.Attribute("class") == "android.widget.ListView";
 }

@@ -54,6 +54,9 @@ public sealed class ScreenTimeService : IScreenTimeService
     public ScreenTimeService(ILDPlayerService ld)
         : this(ld, Task.Delay, () => DateTimeOffset.UtcNow, new ScreenTimeHistoryStore()) { }
 
+    public ScreenTimeService(ILDPlayerService ld, ScreenTimeHistoryStore history)
+        : this(ld, Task.Delay, () => DateTimeOffset.UtcNow, history) { }
+
     internal ScreenTimeService(
         ILDPlayerService ld,
         Func<TimeSpan, CancellationToken, Task> delay,
@@ -160,7 +163,7 @@ public sealed class ScreenTimeService : IScreenTimeService
             return new(0, 0, 0);
         using var lease = deviceLeaseAlreadyHeld
             ? null
-            : await PFlowDeviceLease.AcquireAsync(index, ct);
+            : await PFlowDeviceLease.AcquireAsync(index, ct, path);
         var deadline = _now().AddSeconds(settings.Options.MaxSessionSeconds);
         var actions = new ScreenTimeInteractions(
             _ld,

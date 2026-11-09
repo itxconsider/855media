@@ -1,7 +1,8 @@
 param(
     [string]$SdkRoot = "$env:LOCALAPPDATA/855MediaBuildTools/android-sdk",
     [string]$JdkRoot = "",
-    [string]$OutputApk = ""
+    [string]$OutputApk = "",
+    [string]$SigningKeyStore = ""
 )
 $ErrorActionPreference = 'Stop'
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
@@ -33,7 +34,8 @@ Run-Tool (Join-Path $tools 'zipalign.exe') @('-f', '4', (Join-Path $work 'unsign
 # Development signing identity lives outside the repository and is reused for updates.
 $keyDirectory = Join-Path $env:LOCALAPPDATA '855MediaBuildTools/signing'
 New-Item -ItemType Directory -Force $keyDirectory | Out-Null
-$keyStore = Join-Path $keyDirectory '885Helper-development.keystore'
+$keyStore = if ($SigningKeyStore) { [IO.Path]::GetFullPath($SigningKeyStore) } else { Join-Path $keyDirectory '885Helper-development.keystore' }
+if ($SigningKeyStore -and !(Test-Path -LiteralPath $keyStore)) { throw "Signing keystore was not found: $keyStore" }
 if (!(Test-Path -LiteralPath $keyStore)) {
     Run-Tool (Join-Path $JdkRoot 'bin/keytool.exe') @('-genkeypair', '-keystore', $keyStore, '-storepass', 'android', '-keypass', 'android', '-alias', '885helper', '-keyalg', 'RSA', '-keysize', '3072', '-validity', '10000', '-dname', 'CN=885Helper Development')
 }

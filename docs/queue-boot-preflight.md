@@ -1,0 +1,7 @@
+# Queue check before boot delay
+
+November 8, 2026. Previously the batch assigned stagger indexes to all selected LDs; each lifecycle only checked its prepared account tasks after its delay and semaphore admission. Empty devices therefore consumed delay positions even though they ultimately skipped.
+
+After P-Flow preparation, the desktop now filters selected workers using the prepared queued jobs and selected mapped ScreenTime work. Empty workers immediately display Skipped. Launch-capacity membership, background inventory work and stagger ordering use only the remaining workers. The first active worker has index zero; subsequent active workers retain the configured Delay open each LD interval. Existing open-instance priority and concurrency remain in effect. An all-empty prepared run exits without starting workers; an all-empty raw posting queue also updates selected-device statuses immediately. The lifecycle retains a fresh work check after waiting, so removed work cannot authorize a boot.
+
+Actual desktop diagnostics seed leading/trailing empty workers around one queued worker, verify immediate skipped status, a single active worker at index zero and zero device launches during filtering. All six existing lifecycle cases (turnover, failed launch, keep/close final LD, Unknown and account attention) pass. Isolated desktop/diagnostic build has zero warnings/errors. Running main/output retained; no live emulator action, production queue/history/config edit or package. One related credit: 83/10 from82/10.

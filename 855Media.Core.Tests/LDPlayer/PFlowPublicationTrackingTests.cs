@@ -22,9 +22,18 @@ public sealed class PFlowPublicationTrackingTests
         ).ToString();
 
     [Theory]
+    [InlineData("Scheduling options")]
+    [InlineData("Scheduling options, Post now")]
+    public void SchedulingSettingsAreNotPendingUpload(string label) =>
+        Assert.Null(PFlowPublicationTracking.Pending(Screen(label)));
+
+    [Theory]
     [InlineData("Waiting to upload", PFlowPublicationStage.WaitingForUpload)]
+    [InlineData("Scheduling your reel…", PFlowPublicationStage.Processing)]
+    [InlineData("Scheduling...", PFlowPublicationStage.Processing)]
     [InlineData("Uploading your reel…", PFlowPublicationStage.Uploading)]
     [InlineData("Uploading 45%", PFlowPublicationStage.Uploading)]
+    [InlineData("Finishing reel upload. Keep Facebook open.", PFlowPublicationStage.Uploading)]
     [InlineData("Processing your reel", PFlowPublicationStage.Processing)]
     [InlineData("Processing your story", PFlowPublicationStage.Processing)]
     [InlineData("Running copyright scan...", PFlowPublicationStage.CopyrightScanning)]
@@ -57,7 +66,7 @@ public sealed class PFlowPublicationTrackingTests
         var xml = Screen("Uploading your reel")
             .Replace(
                 "</hierarchy>",
-                "<node package='com.facebook.katana' text='Running copyright scan'/></hierarchy>"
+                "<node package='com.facebook.katana' text='Scheduling your reel…'/><node package='com.facebook.katana' text='Running copyright scan'/></hierarchy>"
             );
         Assert.Equal(
             PFlowPublicationStage.CopyrightScanning,

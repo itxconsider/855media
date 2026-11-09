@@ -118,23 +118,81 @@ public static partial class ScreenTimeHierarchy
         System.Collections.Generic.ISet<string> opened
     )
     {
-        return Nodes(xml)
-            .FirstOrDefault(n =>
-                (
-                    Label(n).Trim().StartsWith("View story", StringComparison.OrdinalIgnoreCase)
-                    || ((string?)n.Attribute("content-desc") ?? "").Contains(
+        if (
+            PFlowLoginScreen.RequiresAuthentication(PFlowLoginScreen.Classify(xml))
+            || PFlowStoryLayout.ViewerPosition(xml ?? "") != null
+        )
+            return null;
+        var nodes = Nodes(xml);
+        if (
+            nodes.Any(n =>
+                n.Attribute("package")?.Value is { Length: > 0 } package
+                && package is not ("com.facebook.katana" or "com.android.systemui")
+            )
+        )
+            return null;
+        return nodes
+            .Where(n => n.Attribute("clickable")?.Value == "true")
+            .Where(n =>
+                !n.AncestorsAndSelf("node")
+                    .Any(a => a.Attribute("visible-to-user")?.Value == "false")
+            )
+            .Where(n =>
+                Label(n).Trim().StartsWith("View story", StringComparison.OrdinalIgnoreCase)
+                || (
+                    (n.Attribute("content-desc")?.Value ?? "").Contains(
                         "'s story,",
                         StringComparison.OrdinalIgnoreCase
                     )
+                    && n.Ancestors("node")
+                        .Any(a => a.Attribute("content-desc")?.Value == "Story tray")
                 )
-                && !Label(n).Contains("Your story", StringComparison.OrdinalIgnoreCase)
+            )
+            .Where(n =>
+                !Label(n).Contains("Your story", StringComparison.OrdinalIgnoreCase)
                 && !Label(n).Contains("Create", StringComparison.OrdinalIgnoreCase)
+                && (
+                    Label(n).Trim().StartsWith("View story", StringComparison.OrdinalIgnoreCase)
+                    || !string.IsNullOrWhiteSpace(
+                        (n.Attribute("content-desc")?.Value ?? "").Split("'s story,")[0]
+                    )
+                )
                 && !(
                     owner.Length > 0 && Label(n).Contains(owner, StringComparison.OrdinalIgnoreCase)
                 )
                 && !opened.Contains(Label(n))
-                && Center(n).HasValue
-            );
+                && !opened.Contains(StoryEntryKey(n))
+                && PFlowStoryLayout.ControlCenter(n).HasValue
+            )
+            .FirstOrDefault();
+    }
+
+    internal static (int FromX, int Y, int ToX)? StoryTraySwipe(string? xml)
+    {
+        if (!FacebookLayoutRegistry.Match(xml, FacebookScreenKind.NewsFeed).IsMatch)
+            return null;
+        var trays = Nodes(xml)
+            .Where(n =>
+                n.Attribute("content-desc")?.Value == "Story tray"
+                && !n.AncestorsAndSelf("node")
+                    .Any(a => a.Attribute("visible-to-user")?.Value == "false")
+            )
+            .ToArray();
+        if (trays.Length != 1)
+            return null;
+        var bounds = PFlowProfilePublicationVerifier.Bounds(trays[0]);
+        if (bounds == null || bounds.Width < 200 || bounds.Height < 100)
+            return null;
+        return (bounds.X + bounds.Width - 40, bounds.Y + bounds.Height / 2, bounds.X + 40);
+    }
+
+    public static string StoryEntryKey(XElement entry)
+    {
+        var label = (entry.Attribute("content-desc")?.Value ?? "").Trim();
+        var marker = label.IndexOf("'s story,", StringComparison.OrdinalIgnoreCase);
+        return marker > 0
+            ? "author:" + label[..marker].Trim().ToUpperInvariant()
+            : Label(entry).Trim();
     }
 
     public static bool IsReactionPicker(string? xml) =>
@@ -170,6 +228,72 @@ public static partial class ScreenTimeHierarchy
                 return null;
         }
         return selected;
+    }
+
+    // A playback key is local UI evidence, not a Facebook story ID or publication proof.
+    public static string? StoryPlaybackKey(string? xml)
+    {
+        if (
+            PFlowLoginScreen.RequiresAuthentication(PFlowLoginScreen.Classify(xml))
+            || Nodes(xml)
+                .Any(n =>
+                    n.Attribute("package")?.Value is { Length: > 0 } package
+                    && package is not ("com.facebook.katana" or "com.android.systemui")
+                )
+        )
+            return null;
+        var id = StoryId(xml);
+        if (id != null)
+            return "id:" + id;
+        var nodes = Nodes(xml);
+        if (
+            nodes.Any(n =>
+                n.Attribute("package")?.Value is { Length: > 0 } p
+                && p is not ("com.facebook.katana" or "com.android.systemui")
+            )
+        )
+            return null;
+        if (
+            nodes.Any(n =>
+                n.Attribute("content-desc")?.Value
+                    is "Add new story"
+                        or "Add new"
+                        or "Closes the list of viewers"
+            )
+        )
+            return null;
+        var position = PFlowStoryLayout.ViewerPosition(xml ?? "");
+        if (
+            position == null
+            || PFlowStoryLayout.IsOwnViewer(new FacebookLayoutObservation(xml ?? ""))
+        )
+            return null;
+        var tray = Control(xml, "Open story tray");
+        var options = Control(xml, "More options for this item");
+        if (tray == null || options == null)
+            return null;
+        var authors = nodes
+            .Where(n =>
+                n.Attribute("clickable")?.Value == "true"
+                && !n.AncestorsAndSelf("node")
+                    .Any(a => a.Attribute("visible-to-user")?.Value == "false")
+                && (n.Attribute("content-desc")?.Value ?? "").EndsWith(
+                    "'s profile picture",
+                    StringComparison.Ordinal
+                )
+                && PFlowStoryLayout.ControlCenter(n).HasValue
+            )
+            .Where(n =>
+            {
+                var r = PFlowProfilePublicationVerifier.Bounds(n);
+                return r != null && r.Y >= 0 && r.Y < 220;
+            })
+            .Select(n => n.Attribute("content-desc")!.Value)
+            .Distinct()
+            .ToArray();
+        if (authors.Length != 1 || authors[0] == "'s profile picture")
+            return null;
+        return $"native:{authors[0]}:{position.Value.Index}/{position.Value.Count}";
     }
 
     public static string? StoryId(string? xml)

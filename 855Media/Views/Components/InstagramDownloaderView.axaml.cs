@@ -25,6 +25,8 @@ public partial class InstagramDownloaderView : UserControl
     private CoreWebView2Controller? _controller;
     private InstagramDownloaderViewModel? _vm;
     private CancellationTokenSource? _import;
+    private readonly InstagramRequestCooldown _cooldown = new();
+    private InstagramProfileCapture? _capture;
     private readonly string _script;
     private readonly NativeBrowserDialogGuard _dialogGuard;
 
@@ -47,11 +49,21 @@ public partial class InstagramDownloaderView : UserControl
         AttachedToVisualTree += (_, _) =>
         {
             Bind();
+            if (_browser is not null && _capture is null)
+                _capture = new InstagramProfileCapture(
+                    _browser,
+                    () => _vm?.HasAccess == true,
+                    OnCaptureRateLimited,
+                    _cooldown
+                );
             _dialogGuard.Attach(this);
             SetActive(_vm?.IsActive == true);
         };
         DetachedFromVisualTree += (_, _) =>
         {
+            _import?.Cancel();
+            _capture?.Dispose();
+            _capture = null;
             SetActive(false);
             _dialogGuard.Dispose();
             Unbind();
@@ -70,6 +82,11 @@ public partial class InstagramDownloaderView : UserControl
 
     private void Bind()
     {
+        if (!ReferenceEquals(_vm, DataContext))
+        {
+            _import?.Cancel();
+            _capture?.Clear();
+        }
         Unbind();
         _vm = DataContext as InstagramDownloaderViewModel;
         if (_vm is not null)
@@ -84,7 +101,8 @@ public partial class InstagramDownloaderView : UserControl
         _dialogGuard.SetActive(active);
         if (!active)
         {
-            _import?.Cancel();
+            // Hide the profile browser and pause scrolling, but let the separate
+            // post-detail renderer finish the user's import in the background.
             _ = StopAsync();
         }
     }
@@ -108,6 +126,12 @@ public partial class InstagramDownloaderView : UserControl
                 await _browser.ExecuteScriptAsync("window.__ig855?.stop();");
         }
         catch { }
+    }
+
+    private void OnCaptureRateLimited()
+    {
+        _import?.Cancel();
+        _ = StopAsync();
     }
 
     private void Browser_OnLoaded(object sender, RoutedEventArgs e)
@@ -139,6 +163,13 @@ public partial class InstagramDownloaderView : UserControl
                     ?.GetValue(platform) as CoreWebView2Controller;
             if (_browser is null)
                 return;
+            _capture?.Dispose();
+            _capture = new InstagramProfileCapture(
+                _browser,
+                () => _vm?.HasAccess == true,
+                OnCaptureRateLimited,
+                _cooldown
+            );
             _browser.Settings.IsStatusBarEnabled = false;
             _browser.NewWindowRequested += (_, args) =>
             {
@@ -259,18 +290,23 @@ public partial class InstagramDownloaderView : UserControl
             }
             if (command == "clear")
             {
+                _capture?.Clear();
                 await _browser.ExecuteScriptAsync("window.__ig855?.clear();");
                 vm.DetectedCount = 0;
                 return;
             }
             if (command == "start")
             {
+                _cooldown.ThrowIfActive();
                 if (!vm.IsImporting)
                     await _browser.ExecuteScriptAsync("window.__ig855?.start();");
                 return;
             }
             if (command == "import")
+            {
+                _cooldown.ThrowIfActive();
                 await ImportAsync(vm);
+            }
         }
         catch (Exception error)
         {
@@ -288,7 +324,7 @@ public partial class InstagramDownloaderView : UserControl
         vm.IsCollecting = true; // Keep Stop available during detail resolution.
         try
         {
-            await StopAsync();
+            _cooldown.ThrowIfActive();
             var raw = await _browser.ExecuteScriptAsync("window.__ig855?.payload() ?? null");
             using var document = JsonDocument.Parse(raw);
             if (!document.RootElement.TryGetProperty("items", out var items))
@@ -308,38 +344,96 @@ public partial class InstagramDownloaderView : UserControl
                 return;
             }
             var kind = vm.MediaKind;
-            var resolved = new List<VideoInfo>();
-            using var reader = await InstagramPostDetailReader.CreateAsync(_browser, _controller);
-            for (var index = 0; index < posts.Length; index++)
+            if (_capture is not null)
+                await _capture.ReadInlineAsync(cancellation.Token);
+            var queue = await vm.CreateImportQueueAsync(_browser.Source, kind, cancellation.Token);
+            if (queue == null)
             {
-                cancellation.Token.ThrowIfCancellationRequested();
+                vm.CollectionStatus =
+                    "Import cancelled before starting. Collected links are retained.";
+                return;
+            }
+            InstagramPostDetailReader? reader = null;
+            async Task Guard(CancellationToken token)
+            {
+                token.ThrowIfCancellationRequested();
                 if (!vm.HasAccess)
                     throw new InvalidOperationException(
                         "An active subscription is required. Open Settings → Subscription."
                     );
-                vm.CollectionStatus =
-                    $"Opening Instagram post {index + 1}/{posts.Length}. {resolved.Count} media resolved. Stop cancels this import.";
-                resolved.AddRange(
-                    await reader.ResolveAsync(posts[index], kind, cancellation.Token)
-                );
-                if (index + 1 < posts.Length)
-                    await Task.Delay(2500, cancellation.Token);
+                _cooldown.ThrowIfActive();
+                var state = await _browser
+                    .ExecuteScriptAsync("window.__ig855?.accessState() ?? 'unavailable'")
+                    .WaitAsync(token);
+                if (state == "\"rate_limited\"")
+                {
+                    _cooldown.Observe(null);
+                    _cooldown.ThrowIfActive();
+                }
+                if (state != "\"ready\"")
+                    throw new InvalidOperationException(
+                        state == "\"rate_limited\""
+                            ? "Instagram is limiting activity. Import stopped; wait before retrying."
+                            : "Check the Instagram browser and sign in before importing again."
+                    );
             }
-            cancellation.Token.ThrowIfCancellationRequested();
-            if (resolved.Count == 0)
+            async Task<InstagramCollectionSnapshot> Discover(CancellationToken token)
             {
-                vm.CollectionStatus =
-                    "No media matched the selected type. Choose Photos, Videos & Reels, or both, then Import again.";
-                return;
+                var snapshot = await _browser
+                    .ExecuteScriptAsync("window.__ig855?.payload() ?? null")
+                    .WaitAsync(token);
+                using var payload = JsonDocument.Parse(snapshot);
+                var links = payload
+                    .RootElement.GetProperty("items")
+                    .EnumerateArray()
+                    .Select(i => i.GetProperty("url").GetString()!)
+                    .ToArray();
+                return new(links, payload.RootElement.GetProperty("running").GetBoolean());
             }
-            vm.CollectionStatus =
-                $"Resolved {resolved.Count} items from {posts.Length} posts. Choose a destination to download.";
-            await vm.QueueAsync(resolved, cancellation.Token);
+            try
+            {
+                var result = await InstagramImportRunner.RunAsync(
+                    posts,
+                    Guard,
+                    queue.CanResumePost,
+                    url => _capture?.TryGet(url, kind),
+                    async (url, token) =>
+                    {
+                        vm.CollectionStatus =
+                            "Loading missing media from Instagram post "
+                            + InstagramBrowserCollection.GetPostCode(url)
+                            + ". Stop cancels further imports.";
+                        reader ??= await InstagramPostDetailReader.CreateAsync(
+                            _browser,
+                            _controller,
+                            _cooldown
+                        );
+                        return await reader.ResolveAsync(url, kind, token);
+                    },
+                    queue.EnqueueAsync,
+                    queue.RememberPostAsync,
+                    result =>
+                        vm.CollectionStatus =
+                            $"Imported {result.Posts}/{result.Total} collected posts. "
+                            + $"{result.Queued} items queued · {result.Captured} ready · {result.Resumed} resumed. Stop cancels further imports.",
+                    cancellation.Token,
+                    discover: Discover
+                );
+                vm.CollectionStatus =
+                    $"Import complete. {result.Queued} items added to Download Manager. "
+                    + $"{result.Captured} posts reused loaded media, {result.Opened} opened, {result.Resumed} already imported. Loaded posts only.";
+            }
+            finally
+            {
+                reader?.Dispose();
+            }
         }
         catch (OperationCanceledException)
         {
             vm.CollectionStatus =
-                "Import stopped. Collected post links are retained. Items already queued can be stopped in Download Manager.";
+                _capture?.IsRateLimited == true
+                    ? _cooldown.Message
+                    : "Import stopped. Collected post links are retained. Items already queued can be stopped in Download Manager.";
         }
         catch (Exception error)
         {
@@ -350,6 +444,7 @@ public partial class InstagramDownloaderView : UserControl
         }
         finally
         {
+            await StopAsync();
             _import = null;
             vm.IsImporting = false;
             vm.IsCollecting = false;

@@ -9,6 +9,43 @@ namespace _855Media.Core.LDPlayer;
 
 internal static class PFlowNavigationPrompts
 {
+    internal static (int X, int Y)? ProfileWelcomeSkip(string? xml)
+    {
+        var nodes = ScreenTimeHierarchy.Nodes(xml);
+        if (
+            PFlowUiPrivacy.ContainsInput(xml)
+            || PFlowLoginScreen.RequiresAuthentication(PFlowLoginScreen.Classify(xml))
+            || nodes.Any(n =>
+                n.Attribute("package")?.Value is { Length: > 0 } p
+                && p is not ("com.facebook.katana" or "com.android.systemui")
+            )
+        )
+            return null;
+        bool Has(string text) =>
+            nodes.Any(n =>
+                Label(n, text)
+                && !n.AncestorsAndSelf().Any(a => a.Attribute("visible-to-user")?.Value == "false")
+            );
+        if (
+            !Has("Welcome to your profile")
+            || !Has("Choose how you'll show up across Facebook by adding a profile picture.")
+            || !Has("Profile pictures are public")
+            || !Has("Add picture")
+        )
+            return null;
+        var points = nodes
+            .Where(n =>
+                Label(n, "Skip")
+                && n.Attribute("package")?.Value == "com.facebook.katana"
+                && n.Attribute("clickable")?.Value == "true"
+            )
+            .Select(n => FacebookLayoutRegistry.UsableCenter(n))
+            .Where(p => p.HasValue)
+            .Distinct()
+            .ToArray();
+        return points.Length == 1 ? points[0] : null;
+    }
+
     private static bool Label(XElement node, string label) =>
         new[] { node.Attribute("text")?.Value, node.Attribute("content-desc")?.Value }.Any(s =>
             string.Equals(
@@ -120,6 +157,79 @@ internal static class PFlowNavigationPrompts
     )
     {
         delay ??= Task.Delay;
+        if (ProfileWelcomeSkip(xml) is { } skip)
+        {
+            if (!await ld.TapAsync(index, skip.X, skip.Y, path, ct))
+                throw new InvalidOperationException("Profile introduction could not be skipped.");
+            for (var poll = 0; poll < 10; poll++)
+            {
+                await delay(TimeSpan.FromMilliseconds(500), ct);
+                xml = await ld.DumpUiHierarchyAsync(index, path, ct);
+                if (ProfileWelcomeSkip(xml) == null)
+                    break;
+                if (poll == 9)
+                    throw new InvalidOperationException(
+                        "Profile introduction remained open after Skip."
+                    );
+            }
+        }
+        var mapLabels = PFlowAutoPostService.Labels(xml).ToArray();
+        var (mapWidth, mapHeight) = PFlowPersonaSwitcherService.ParseScreenDimensions(xml);
+        var boundedMapDialog = ScreenTimeHierarchy
+            .Nodes(xml)
+            .Where(n => Label(n, "Map information"))
+            .SelectMany(n => n.AncestorsAndSelf("node"))
+            .Any(card =>
+                PFlowProfilePublicationVerifier.Bounds(card) is { } b
+                && mapWidth > 0
+                && mapHeight > 0
+                && b.Width < mapWidth * 0.9
+                && b.Height < mapHeight * 0.7
+                && card.DescendantsAndSelf("node").Any(n => Label(n, "Map data legal notices"))
+                && card.DescendantsAndSelf("node").Any(n => Label(n, "OK"))
+            );
+        if (
+            boundedMapDialog
+            && mapLabels.Contains("Map information")
+            && mapLabels.Contains("Map data legal notices")
+            && mapLabels.Any(l => l.EndsWith("OpenStreetMap", StringComparison.Ordinal))
+            && !PFlowUiPrivacy.ContainsInput(xml)
+            && !PFlowLoginScreen.RequiresAuthentication(PFlowLoginScreen.Classify(xml))
+            && ScreenTimeHierarchy
+                .Nodes(xml)
+                .All(n =>
+                    n.Attribute("package")?.Value
+                        is null
+                            or ""
+                            or "com.facebook.katana"
+                            or "com.android.systemui"
+                )
+        )
+        {
+            var ok = ScreenTimeHierarchy
+                .Nodes(xml)
+                .Where(n =>
+                    n.Attribute("package")?.Value == "com.facebook.katana"
+                    && n.Attribute("clickable")?.Value == "true"
+                    && Label(n, "OK")
+                )
+                .Select(n => FacebookLayoutRegistry.UsableCenter(n))
+                .Where(p => p.HasValue)
+                .Distinct()
+                .ToArray();
+            if (
+                ok.Length == 1
+                && await ld.TapAsync(index, ok[0]!.Value.X, ok[0]!.Value.Y, path, ct)
+            )
+            {
+                await delay(TimeSpan.FromMilliseconds(400), ct);
+                xml = await ld.DumpUiHierarchyAsync(index, path, ct);
+                if (PFlowAutoPostService.Labels(xml).Contains("Map information"))
+                    throw new InvalidOperationException(
+                        "Map information dialog remained visible after dismissal."
+                    );
+            }
+        }
         xml = await PFlowSurveyPrompt.DismissAsync(ld, index, xml, path, ct, delay);
         xml = await DismissStreakAsync(ld, index, xml, path, ct, delay);
         xml = await PFlowEmailUpdatePrompt.DismissAsync(ld, index, xml, path, ct, delay);

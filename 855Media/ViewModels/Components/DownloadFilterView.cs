@@ -125,12 +125,40 @@ public sealed class DownloadFilterView : IDisposable
                 desired.Add(row);
         }
         ActiveCount = activeCount;
-        if (_resetPending || Math.Abs(desired.Count - _rows.Count) > 32)
+        if (_resetPending || NeedsBulkReset(desired))
             _rows.ReplaceAll(desired);
         else
             CollectionSync.Apply(_rows, desired);
         _resetPending = false;
         Refreshed?.Invoke();
+    }
+
+    // Bound changes, including equal-sized replacements/reorders. Ignore position
+    // shifts caused by a few insertions/removals so normal completions retain selection.
+    private bool NeedsBulkReset(IReadOnlyList<DownloadViewModel> desired)
+    {
+        if (Math.Abs(desired.Count - _rows.Count) > 32)
+            return true;
+        var existing = new HashSet<DownloadViewModel>(_rows);
+        var wanted = new HashSet<DownloadViewModel>(desired);
+        var changes = 0;
+        foreach (var row in _rows)
+            if (!wanted.Contains(row) && ++changes > 32)
+                return true;
+        foreach (var row in desired)
+            if (!existing.Contains(row) && ++changes > 32)
+                return true;
+        var index = 0;
+        foreach (var row in _rows)
+        {
+            if (!wanted.Contains(row))
+                continue;
+            while (index < desired.Count && !existing.Contains(desired[index]))
+                index++;
+            if (!ReferenceEquals(row, desired[index++]) && ++changes > 32)
+                return true;
+        }
+        return false;
     }
 
     public void Dispose()

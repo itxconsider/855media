@@ -165,7 +165,7 @@ public class ScreenTimeExpansionTests
     public void CapturedStoryTrayLabelsExcludeOwnAndCreateEntries()
     {
         var xml =
-            """<hierarchy><node content-desc='Create a story' clickable='true' bounds='[0,0][20,20]'/><node content-desc="Owner&apos;s story, Unseen" clickable='true' bounds='[0,0][20,20]'/><node content-desc="Example Author&apos;s story, Suggested, Unseen" clickable='true' bounds='[20,0][40,20]'/></hierarchy>""";
+            """<hierarchy><node content-desc="Story tray"><node content-desc='Create a story' clickable='true' bounds='[0,0][20,20]'/><node content-desc="Owner&apos;s story, Unseen" clickable='true' bounds='[0,0][20,20]'/><node content-desc="Example Author&apos;s story, Suggested, Unseen" clickable='true' bounds='[20,0][40,20]'/></node></hierarchy>""";
         var entry = ScreenTimeHierarchy.StoryEntry(
             xml,
             "Owner",

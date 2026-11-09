@@ -45,6 +45,11 @@ public partial class LDPlayerService : ILDPlayerService
             var cand = Path.Combine(customPath, "ldconsole.exe");
             if (File.Exists(cand))
                 return cand;
+            // An explicit installation must never silently resolve to another one.
+            return Path.GetFileName(customPath)
+                .Equals("ldconsole.exe", StringComparison.OrdinalIgnoreCase)
+                ? customPath
+                : cand;
         }
 
         foreach (var dir in DefaultProbeDirectories)
@@ -63,74 +68,17 @@ public partial class LDPlayerService : ILDPlayerService
         return File.Exists(resolved);
     }
 
-    public async Task<IReadOnlyList<LDInstanceInfo>> GetInstancesAsync(
+    public Task<IReadOnlyList<LDInstanceInfo>> GetInstancesAsync(
         string? customPath = null,
         CancellationToken cancellationToken = default
     )
     {
-        var ldConsole = ResolveLdConsolePath(customPath);
-        if (!File.Exists(ldConsole))
-            return Array.Empty<LDInstanceInfo>();
-
-        var (exitCode, stdout, _) = await RunProcessAsync(ldConsole, "list2", cancellationToken);
-        if (exitCode != 0 && string.IsNullOrWhiteSpace(stdout))
-            return Array.Empty<LDInstanceInfo>();
-
-        var instances = new List<LDInstanceInfo>();
-        var lines = stdout.Split(
-            new[] { "\r\n", "\r", "\n" },
-            StringSplitOptions.RemoveEmptyEntries
+        var console = ResolveLdConsolePath(customPath);
+        return InventoryScans.ReadAsync(
+            console,
+            () => ScanInventoryAsync(console),
+            cancellationToken
         );
-
-        foreach (var line in lines)
-        {
-            var parts = line.Split(',');
-            if (parts.Length < 7)
-                continue;
-
-            if (!int.TryParse(parts[0].Trim(), out var index))
-                continue;
-
-            var name = parts[1].Trim();
-            long.TryParse(parts[2].Trim(), out var topWindow);
-            long.TryParse(parts[3].Trim(), out var bindWindow);
-            var androidStarted = parts[4].Trim() == "1";
-            int.TryParse(parts[5].Trim(), out var pid);
-            int.TryParse(parts[6].Trim(), out var vboxPid);
-
-            int width = 720;
-            int height = 1280;
-            int dpi = 320;
-            if (parts.Length > 7)
-                int.TryParse(parts[7].Trim(), out width);
-            if (parts.Length > 8)
-                int.TryParse(parts[8].Trim(), out height);
-            if (parts.Length > 9)
-                int.TryParse(parts[9].Trim(), out dpi);
-
-            var status = androidStarted ? "Running" : "Idle";
-
-            instances.Add(
-                new LDInstanceInfo
-                {
-                    Index = index,
-                    Name = name,
-                    TopWindowHandle = topWindow,
-                    BindWindowHandle = bindWindow,
-                    IsAndroidStarted = androidStarted,
-                    Pid = pid,
-                    VboxPid = vboxPid,
-                    Width = width,
-                    Height = height,
-                    Dpi = dpi,
-                    Status = status,
-                    FbClone = "FB-01",
-                    IsSelected = true,
-                }
-            );
-        }
-
-        return instances;
     }
 
     public async Task<bool> LaunchInstanceAsync(
@@ -212,6 +160,8 @@ public partial class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        PFlowDeviceAccessPolicy.RequireAdbCommand(this, index, customPath, adbCommand);
         if (
             adbCommand.StartsWith("shell ", StringComparison.OrdinalIgnoreCase)
             && (
@@ -232,27 +182,16 @@ public partial class LDPlayerService : ILDPlayerService
         if (adbCommand.StartsWith("shell ", StringComparison.OrdinalIgnoreCase))
         {
             var shellCmd = adbCommand[6..].Trim();
-            if (Regex.IsMatch(shellCmd, @"^su(?:\s|$)", RegexOptions.IgnoreCase))
-                return await ExecuteDirectDeviceAdbAsync(
-                    index,
-                    adbCommand,
-                    customPath,
-                    cancellationToken,
-                    rootCommand: true
-                );
-            // Root commands must use ADB's shell identity. ATX runs in a
-            // different process context and can wait for a separate su grant
-            // after boot, exhausting discovery's timeout without any output.
             if (
                 CanExecuteThroughAtxShell(shellCmd)
-                && await _atxClient.IsRunningAsync(index, cancellationToken)
+                && await _atxClient
+                    .ForInstallation(customPath)
+                    .IsRunningAsync(index, cancellationToken)
             )
             {
-                var (ok, output) = await _atxClient.ExecuteShellWithOutputAsync(
-                    index,
-                    shellCmd,
-                    cancellationToken
-                );
+                var (ok, output) = await _atxClient
+                    .ForInstallation(customPath)
+                    .ExecuteShellWithOutputAsync(index, shellCmd, cancellationToken);
                 if (ok)
                 {
                     return output;
@@ -276,22 +215,30 @@ public partial class LDPlayerService : ILDPlayerService
         int index,
         string adbCommand,
         string? customPath,
-        CancellationToken cancellationToken,
-        bool rootCommand = false
+        CancellationToken cancellationToken
     )
     {
         var adbPath = Path.Combine(
             Path.GetDirectoryName(ResolveLdConsolePath(customPath))!,
             "adb.exe"
         );
-        string Failure(string message)
-        {
-            if (rootCommand)
-                throw new RootShellUnavailableException(message);
-            return $"error: {message}";
-        }
+        PFlowDeviceAccessPolicy.RequireAdbCommand(this, index, customPath, adbCommand);
+        string Failure(string message) => $"error: {message}";
         if (!File.Exists(adbPath))
             return Failure($"ADB was not found at {adbPath}.");
+
+        var installation = Path.GetDirectoryName(adbPath)!;
+        var instances = await GetAssignedInstancesAsync(index, installation, cancellationToken);
+        var matching = instances.Where(i => i.Index == index).ToArray();
+        if (
+            index < 0
+            || index > (65535 - 5555) / 2
+            || matching.Length != 1
+            || !PFlowAdbTransportOwnership.Verify(matching[0], installation, 5555 + index * 2)
+        )
+            return Failure(
+                $"LD-{index} connection does not belong to the selected installation. Check that instance is running; no other instance was used."
+            );
 
         // ldconsole truncates binary LightSharedPreferences output. Read it
         // through adb.exe itself so account names and delegate IDs survive.
@@ -316,31 +263,18 @@ public partial class LDPlayerService : ILDPlayerService
         return Failure($"ADB could not reach LD-{index}; wait for Android to boot.");
     }
 
-    public async Task<bool> ClearFacebookCacheAsync(
+    public Task<bool> ClearFacebookCacheAsync(
         int index,
         string? customPath = null,
         CancellationToken cancellationToken = default
     )
     {
-        if (await _atxClient.IsRunningAsync(index, cancellationToken))
-        {
-            var ok = await _atxClient.ClearAppCacheAsync(
-                index,
-                "com.facebook.katana",
-                cancellationToken
-            );
-            if (ok)
-                return true;
-        }
-
-        // Safely wipe temporary cache directories without destroying login session/tokens
-        await ExecuteAdbAsync(
-            index,
-            "shell rm -rf /data/data/com.facebook.katana/cache/* /data/data/com.facebook.katana/code_cache/* /sdcard/Android/data/com.facebook.katana/cache/*",
-            customPath,
-            cancellationToken
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromException<bool>(
+            new NotSupportedException(
+                "Private cache clearing was removed. Use Android Settings to manage app storage."
+            )
         );
-        return true;
     }
 
     public async Task<bool> StopFacebookAppAsync(
@@ -367,14 +301,11 @@ public partial class LDPlayerService : ILDPlayerService
     )
     {
         // 1. Fast path: OpenATX HTTP streaming file upload (~10x faster than ADB push)
-        if (await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken))
         {
-            var uploaded = await _atxClient.UploadFileAsync(
-                index,
-                sourceLocalPath,
-                targetRemotePath,
-                cancellationToken
-            );
+            var uploaded = await _atxClient
+                .ForInstallation(customPath)
+                .UploadFileAsync(index, sourceLocalPath, targetRemotePath, cancellationToken);
             if (uploaded)
                 return true;
         }
@@ -483,21 +414,29 @@ public partial class LDPlayerService : ILDPlayerService
         )
             return false;
 
-        if (await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken))
         {
-            var ok = await _atxClient.StartAppAsync(index, packageName, cancellationToken);
+            var ok = await _atxClient
+                .ForInstallation(customPath)
+                .StartAppAsync(index, packageName, cancellationToken);
             if (ok)
                 return true;
         }
 
-        var output = await ExecuteDirectDeviceAdbAsync(
-            index,
-            $"shell monkey -p {packageName} -c android.intent.category.LAUNCHER 1",
-            customPath,
+        return await AndroidAppLauncher.StartAsync(
+            packageName,
+            async (command, ct) =>
+            {
+                var output = await ExecuteDirectDeviceAdbAsync(
+                    index,
+                    "shell " + command,
+                    customPath,
+                    ct
+                );
+                return (IsSuccessfulInputCommand(output), output);
+            },
             cancellationToken
         );
-        return IsSuccessfulInputCommand(output)
-            && !output.Contains("No activities found", StringComparison.OrdinalIgnoreCase);
     }
 
     public async Task<bool> OpenDeepLinkAsync(
@@ -519,14 +458,11 @@ public partial class LDPlayerService : ILDPlayerService
         )
             return false;
 
-        if (await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken))
         {
-            var ok = await _atxClient.OpenDeepLinkAsync(
-                index,
-                deepLink,
-                packageName,
-                cancellationToken
-            );
+            var ok = await _atxClient
+                .ForInstallation(customPath)
+                .OpenDeepLinkAsync(index, deepLink, packageName, cancellationToken);
             if (ok)
                 return true;
         }
@@ -556,15 +492,17 @@ public partial class LDPlayerService : ILDPlayerService
     {
         // Bind this port to the requested instance before accepting a daemon.
         // A stale forward must not return another instance's hierarchy.
-        int targetPort = _atxClient.GetDevicePort(index);
-        await ExecuteAdbAsync(
+        int targetPort = _atxClient.ForInstallation(customPath).GetDevicePort(index);
+        var forwarded = await ExecuteAdbAsync(
             index,
             $"forward tcp:{targetPort} tcp:7912",
             customPath,
             cancellationToken
         );
+        if (!IsSuccessfulInputCommand(forwarded))
+            return false;
 
-        if (await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken))
             return true;
 
         // 3. Launch atx-agent daemon on device if binary exists in /data/local/tmp
@@ -590,7 +528,9 @@ public partial class LDPlayerService : ILDPlayerService
                 cancellationToken
             );
             await Task.Delay(1000, cancellationToken);
-            return await _atxClient.IsRunningAsync(index, cancellationToken);
+            return await _atxClient
+                .ForInstallation(customPath)
+                .IsRunningAsync(index, cancellationToken);
         }
 
         // 4. If binary not on device, check host machine to push it automatically
@@ -631,7 +571,9 @@ public partial class LDPlayerService : ILDPlayerService
                     cancellationToken
                 );
                 await Task.Delay(1000, cancellationToken);
-                return await _atxClient.IsRunningAsync(index, cancellationToken);
+                return await _atxClient
+                    .ForInstallation(customPath)
+                    .IsRunningAsync(index, cancellationToken);
             }
         }
 
@@ -650,9 +592,11 @@ public partial class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
-        if (await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken))
         {
-            var bytes = await _atxClient.TakeScreenshotAsync(index, cancellationToken);
+            var bytes = await _atxClient
+                .ForInstallation(customPath)
+                .TakeScreenshotAsync(index, cancellationToken);
             if (bytes != null && bytes.Length > 0)
                 return bytes;
         }
@@ -721,21 +665,23 @@ public partial class LDPlayerService : ILDPlayerService
     )
     {
         if (
-            !await _atxClient.IsRunningAsync(index, cancellationToken)
+            !await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken)
             && !await EnsureAtxAgentRunningAsync(index, customPath, cancellationToken)
         )
             return false;
         // Do not substitute an ADB swipe: it cannot preserve the separate stationary hold.
-        return await _atxClient.HoldAndSwipeAsync(
-            index,
-            startX,
-            startY,
-            endX,
-            endY,
-            holdMs,
-            movementTargetMs,
-            cancellationToken
-        );
+        return await _atxClient
+            .ForInstallation(customPath)
+            .HoldAndSwipeAsync(
+                index,
+                startX,
+                startY,
+                endX,
+                endY,
+                holdMs,
+                movementTargetMs,
+                cancellationToken
+            );
     }
 
     public async Task<bool> TapAsync(
@@ -746,7 +692,7 @@ public partial class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
-        var tapHierarchy = _atxClient.IsTapTracingEnabled
+        var tapHierarchy = _atxClient.ForInstallation(customPath).IsTapTracingEnabled
             ? await DumpUiHierarchyAsync(index, customPath, cancellationToken)
             : null;
 
@@ -762,7 +708,9 @@ public partial class LDPlayerService : ILDPlayerService
             @"SecurityException|Permission Denial|(?:^|\n)\s*error:|device.*(?:not found|offline)|no devices/emulators|/system/bin/sh:.*(?:not found|syntax error)",
             RegexOptions.IgnoreCase
         );
-        _atxClient.ReportTapObserved(index, x, y, tapHierarchy, "ADB", success);
+        _atxClient
+            .ForInstallation(customPath)
+            .ReportTapObserved(index, x, y, tapHierarchy, "ADB", success);
         return success;
     }
 
@@ -791,8 +739,10 @@ public partial class LDPlayerService : ILDPlayerService
     )
     {
         if (
-            await _atxClient.IsRunningAsync(index, cancellationToken)
-            && await _atxClient.ScanMediaFileAsync(index, remotePath, cancellationToken)
+            await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken)
+            && await _atxClient
+                .ForInstallation(customPath)
+                .ScanMediaFileAsync(index, remotePath, cancellationToken)
         )
             return true;
         cancellationToken.ThrowIfCancellationRequested();
@@ -817,8 +767,10 @@ public partial class LDPlayerService : ILDPlayerService
         if (command == null)
             return false;
         if (
-            await _atxClient.IsRunningAsync(index, cancellationToken)
-            && await _atxClient.ShareVideoAsync(index, remotePath, packageName, cancellationToken)
+            await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken)
+            && await _atxClient
+                .ForInstallation(customPath)
+                .ShareVideoAsync(index, remotePath, packageName, cancellationToken)
         )
             return true;
         cancellationToken.ThrowIfCancellationRequested();
@@ -843,13 +795,15 @@ public partial class LDPlayerService : ILDPlayerService
 
         try
         {
-            if (await _atxClient.IsRunningAsync(index, cancellationToken))
+            if (
+                await _atxClient
+                    .ForInstallation(customPath)
+                    .IsRunningAsync(index, cancellationToken)
+            )
             {
-                await _atxClient.ExecuteShellAsync(
-                    index,
-                    $"rm -f \"{remotePath}\"",
-                    cancellationToken
-                );
+                await _atxClient
+                    .ForInstallation(customPath)
+                    .ExecuteShellAsync(index, $"rm -f \"{remotePath}\"", cancellationToken);
             }
             else
             {
@@ -956,8 +910,10 @@ public partial class LDPlayerService : ILDPlayerService
         if (command == null)
             return false;
         if (
-            await _atxClient.IsRunningAsync(index, cancellationToken)
-            && await _atxClient.ShareImageAsync(index, remotePath, packageName, cancellationToken)
+            await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken)
+            && await _atxClient
+                .ForInstallation(customPath)
+                .ShareImageAsync(index, remotePath, packageName, cancellationToken)
         )
             return true;
         cancellationToken.ThrowIfCancellationRequested();
@@ -1554,45 +1510,21 @@ public partial class LDPlayerService : ILDPlayerService
 
     /// <summary>
     /// Step 7: Queries the Bloks / UI hierarchy of the switcher bottom sheet to find the personal profile account.
-    /// Distinguishes personal profile accounts (no "Page" badge) from Pages (which carry a "Page" badge/pill).
+    /// Uses shared switcher classification, including the selected Page's omitted badge.
     /// </summary>
-    public async Task<(int X, int Y)?> QueryPersonalProfileInSwitcherAsync(
+    public Task<(int X, int Y)?> QueryPersonalProfileInSwitcherAsync(
         int index,
         string? targetProfileName = null,
         string? customPath = null,
         CancellationToken cancellationToken = default
     )
     {
-        // 1. Try Bloks query first
-        var bloksScreen = await DumpBloksScreenAsync(index, customPath, cancellationToken);
-        if (bloksScreen != null && bloksScreen.AllElements.Count > 0)
-        {
-            var bloksCoords = AtxAgentClient.FindPersonalProfileCoordsInBloks(
-                bloksScreen,
-                targetProfileName
-            );
-            if (bloksCoords.HasValue)
-            {
-                return bloksCoords;
-            }
-        }
-
-        // 2. Fallback to UI hierarchy XML
-        var switcherXml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
-        if (!string.IsNullOrWhiteSpace(switcherXml))
-        {
-            var profileNode = FindPersonalProfileNodeInSwitcher(switcherXml, targetProfileName);
-            if (profileNode != null)
-            {
-                var (px, py) = ParseNodeBoundsCenter(profileNode);
-                if (px > 0 && py > 0)
-                {
-                    return (px, py);
-                }
-            }
-        }
-
-        return null;
+        return _personaSwitcher.QueryPersonalProfileInSwitcherAsync(
+            index,
+            targetProfileName,
+            customPath,
+            cancellationToken
+        );
     }
 
     public async Task<bool> LikeCurrentFeedPostAsync(
@@ -1874,7 +1806,7 @@ public partial class LDPlayerService : ILDPlayerService
         }
     }
 
-    public async Task<string?> DumpUiHierarchyAsync(
+    private async Task<string?> DumpUiHierarchyCoreAsync(
         int index,
         string? customPath = null,
         CancellationToken cancellationToken = default
@@ -1882,16 +1814,86 @@ public partial class LDPlayerService : ILDPlayerService
     {
         // Port forwards disappear when Android/ADB restarts. Repair the
         // connection before interpreting a missing hierarchy as missing data.
-        if (!await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (!await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken))
             await EnsureAtxAgentRunningAsync(index, customPath, cancellationToken);
         // 1. Fast path: Query atx-agent on-device daemon via HTTP (~15ms)
-        var atxDump = await _atxClient.DumpHierarchyAsync(index, cancellationToken);
+        var atxDump = await _atxClient
+            .ForInstallation(customPath)
+            .DumpHierarchyAsync(index, cancellationToken);
         if (
             !string.IsNullOrWhiteSpace(atxDump)
             && atxDump.Contains("<node", StringComparison.OrdinalIgnoreCase)
         )
         {
             return atxDump;
+        }
+
+        var client = _atxClient.ForInstallation(customPath);
+        if (await client.IsRunningAsync(index, cancellationToken))
+        {
+            // Refresh installation-owned forwarding before any service mutation.
+            if (!await EnsureAtxAgentRunningAsync(index, customPath, cancellationToken))
+                throw new PFlowUiReaderUnavailableException(
+                    "UI reader connection could not be verified; Facebook was left open."
+                );
+            var retry = await client.DumpHierarchyAsync(index, cancellationToken);
+            if (
+                !string.IsNullOrWhiteSpace(retry)
+                && retry.Contains("<node", StringComparison.OrdinalIgnoreCase)
+            )
+                return retry;
+            var pid = PFlowProcessIdentity.Normalize(
+                await ExecuteDirectDeviceAdbAsync(
+                    index,
+                    "shell pidof com.facebook.katana",
+                    customPath,
+                    cancellationToken
+                )
+            );
+            async Task<bool> SameFacebook(CancellationToken token)
+            {
+                var focus = await GetCurrentFocusedActivityAsync(index, customPath, token) ?? "";
+                if (
+                    pid == null
+                    || (
+                        focus != "com.facebook.katana"
+                        && !focus.StartsWith("com.facebook.katana/", StringComparison.Ordinal)
+                    )
+                )
+                    return false;
+                return pid
+                    == PFlowProcessIdentity.Normalize(
+                        await ExecuteDirectDeviceAdbAsync(
+                            index,
+                            "shell pidof com.facebook.katana",
+                            customPath,
+                            token
+                        )
+                    );
+            }
+            var recovered = await client.RecoverHierarchyAsync(
+                index,
+                SameFacebook,
+                cancellationToken
+            );
+            if (recovered != null)
+            {
+                var directory = PFlowDeviceRouting.ResolveInstallationDirectory(
+                    this,
+                    customPath ?? Path.GetDirectoryName(ResolveLdConsolePath())!
+                );
+                PFlowUiReaderEpoch.Invalidate(PFlowDeviceRouting.ReadIdentity(directory, index));
+                return recovered;
+            }
+            await PFlowTrace.SessionAsync(
+                index,
+                "ui.reader.recovery.failed",
+                "Reader unavailable or context changed; no Facebook restart/navigation; actor not verified.",
+                cancellationToken
+            );
+            throw new PFlowUiReaderUnavailableException(
+                "Facebook's UI reader failed to recover. Facebook was left open; retry when the UI reader is ready."
+            );
         }
 
         // 2. Standard ADB fallback path (~2.5s)
@@ -2182,61 +2184,28 @@ public partial class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
-        // 1. Fast path: Direct extraction from rooted storage via LightSharedPreferences / prefs_db
-        try
-        {
-            var rootAccounts = await ExtractFacebookAccountsFromRootShellAsync(
-                index,
-                "com.facebook.katana",
-                customPath,
-                cancellationToken
-            );
-
-            if (rootAccounts.Count > 0)
+        var details = await PFlowNativeDiscovery.ReadAsync(
+            this,
+            index,
+            customPath,
+            cancellationToken
+        );
+        return details == null
+            ? null
+            : new FacebookDeviceAccountInfo
             {
-                var devInfo = new FacebookDeviceAccountInfo { DeviceName = $"LD-{index}" };
-
-                var primaryProfile =
-                    rootAccounts.FirstOrDefault(a =>
-                        a.IsActive
-                        || string.Equals(a.Type, "Profile", StringComparison.OrdinalIgnoreCase)
-                    ) ?? rootAccounts.FirstOrDefault();
-
-                if (primaryProfile != null)
+                DeviceName = details.DeviceName,
+                UserUid = details.Uid,
+                UserName = details.Name,
+                UserProfile = new FacebookPageInfo
                 {
-                    devInfo.UserUid = !string.IsNullOrEmpty(primaryProfile.UserUid)
-                        ? primaryProfile.UserUid
-                        : primaryProfile.Uid;
-                    devInfo.UserName = primaryProfile.Name;
-                    devInfo.UserProfile = primaryProfile.ToFacebookPageInfo();
-                }
-
-                foreach (
-                    var pageAcc in rootAccounts.Where(a =>
-                        string.Equals(a.Type, "Page", StringComparison.OrdinalIgnoreCase)
-                    )
-                )
-                {
-                    devInfo.Pages.Add(pageAcc.ToFacebookPageInfo());
-                }
-
-                return devInfo;
-            }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (RootShellUnavailableException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"[LD-{index}] Root-shell device discovery failed: {ex.Message}");
-        }
-
-        return null;
+                    PageId = details.Uid,
+                    UserUid = details.Uid,
+                    PageName = details.Name,
+                    Type = "Profile",
+                },
+                Pages = details.Pages,
+            };
     }
 
     public static FacebookDeviceAccountInfo ParseDeviceAccountAndPagesFromXml(
@@ -2386,188 +2355,14 @@ public partial class LDPlayerService : ILDPlayerService
         Func<string, Task>? progress = null
     )
     {
-        var details = await ExtractFacebookAccountDetailsCoreAsync(
+        var details = await PFlowNativeDiscovery.ReadAsync(
+            this,
             index,
             customPath,
-            cancellationToken,
-            rootShellCompleted,
-            progress
-        );
-        if (!string.IsNullOrWhiteSpace(details?.Uid))
-            return details;
-        var xml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
-        if (
-            PFlowLoginScreen.RequiresAuthentication(PFlowLoginScreen.Classify(xml))
-            || PFlowUiPrivacy.ContainsInput(xml ?? "")
-            || PFlowAutoPostService.IsComposer(xml ?? "", "Reel")
-        )
-            return details;
-        if (progress != null)
-            await progress(
-                "Account UID unavailable: clearing recent apps and reopening Facebook before one retry."
-            );
-        await PFlowSession.RestartForUidRecoveryAsync(this, index, customPath, cancellationToken);
-        return await ExtractFacebookAccountDetailsCoreAsync(
-            index,
-            customPath,
-            cancellationToken,
-            rootShellCompleted,
-            progress
-        );
-    }
-
-    private async Task<FacebookAccountDetails?> ExtractFacebookAccountDetailsCoreAsync(
-        int index,
-        string? customPath,
-        CancellationToken cancellationToken,
-        Func<FacebookAccountDetails, Task>? rootShellCompleted,
-        Func<string, Task>? progress
-    )
-    {
-        await PFlowFetchTrace.WriteAsync(
-            index,
-            "root-shell.begin",
-            "Reading Facebook profile and Page records.",
             cancellationToken
         );
-        if (progress != null)
-            await progress("Root shell: reading the personal account and managed Page records.");
-
-        List<FacebookAccountInfo> rootAccounts;
-        try
-        {
-            rootAccounts = await ExtractFacebookAccountsFromRootShellAsync(
-                index,
-                "com.facebook.katana",
-                customPath,
-                cancellationToken
-            );
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (RootShellUnavailableException)
-        {
-            await PFlowFetchTrace.WriteAsync(
-                index,
-                "root-shell.unavailable",
-                "Root access or Facebook storage could not be read.",
-                cancellationToken
-            );
-            throw;
-        }
-        catch (Exception ex)
-        {
-            await PFlowFetchTrace.WriteAsync(
-                index,
-                "root-shell.error",
-                $"{ex.GetType().Name}: {ex.Message}",
-                cancellationToken
-            );
-            Debug.WriteLine($"[LD-{index}] Root-shell account extraction failed: {ex.Message}");
-            return null;
-        }
-
-        if (rootAccounts.Count == 0)
-        {
-            await PFlowFetchTrace.WriteAsync(
-                index,
-                "root-shell.empty",
-                "No account or Page records were found.",
-                cancellationToken
-            );
-            Debug.WriteLine(
-                $"[LD-{index}] Root-shell discovery returned no account or Page UIDs; UI scraping is disabled."
-            );
-            return null;
-        }
-
-        var profileAccount = rootAccounts.FirstOrDefault(a =>
-            string.Equals(a.Type, "Profile", StringComparison.OrdinalIgnoreCase)
-        );
-        var userUid =
-            !string.IsNullOrWhiteSpace(profileAccount?.UserUid) ? profileAccount.UserUid
-            : !string.IsNullOrWhiteSpace(profileAccount?.Uid) ? profileAccount.Uid
-            : rootAccounts
-                .Select(a => a.UserUid)
-                .FirstOrDefault(uid => !string.IsNullOrWhiteSpace(uid))
-                ?? string.Empty;
-
-        var details = new FacebookAccountDetails
-        {
-            DeviceName = $"LD-{index}",
-            Name = profileAccount?.Name ?? string.Empty,
-            Uid = userUid,
-            Email = profileAccount?.Email ?? string.Empty,
-            ProfilePictureUrl = profileAccount?.PicUrl ?? string.Empty,
-        };
-
-        if (string.IsNullOrWhiteSpace(userUid))
-            return null;
-
-        foreach (
-            var pageAccount in rootAccounts.Where(a =>
-                string.Equals(a.Type, "Page", StringComparison.OrdinalIgnoreCase)
-            )
-        )
-        {
-            var personaUid = !string.IsNullOrWhiteSpace(pageAccount.Uid)
-                ? pageAccount.Uid
-                : pageAccount.PageId;
-            if (
-                string.IsNullOrWhiteSpace(personaUid)
-                || string.Equals(personaUid, userUid, StringComparison.Ordinal)
-                || details.Pages.Any(p =>
-                    string.Equals(p.PersonaUid, personaUid, StringComparison.Ordinal)
-                )
-            )
-                continue;
-
-            details.Pages.Add(
-                new FacebookPageInfo
-                {
-                    PageId = pageAccount.PageId,
-                    PersonaUid = personaUid,
-                    UserUid = userUid,
-                    PageName = pageAccount.Name,
-                    Type = "Page",
-                    Email = pageAccount.Email,
-                    ManagedBy = details.Name,
-                }
-            );
-        }
-
-        if (progress != null)
-        {
-            await progress(
-                $"Root shell: found the personal account and {details.Pages.Count} managed Page(s)."
-            );
-        }
-
-        await PFlowFetchTrace.WriteAsync(
-            index,
-            "root-shell.complete",
-            $"profileFound={!string.IsNullOrWhiteSpace(details.Uid)}; pageCount={details.Pages.Count}",
-            cancellationToken
-        );
-
-        // Publish root-shell rows as soon as they are parsed, before any slower enrichment.
-        if (rootShellCompleted != null)
-        {
-            await PFlowFetchTrace.WriteAsync(
-                index,
-                "root-shell.callback.begin",
-                cancellationToken: cancellationToken
-            );
-            await rootShellCompleted(details);
-            await PFlowFetchTrace.WriteAsync(
-                index,
-                "root-shell.callback.complete",
-                cancellationToken: cancellationToken
-            );
-        }
-
+        if (details != null && rootShellCompleted != null)
+            await rootShellCompleted(details); // Compatibility callback; payload is native UI data.
         return details;
     }
 
@@ -3673,6 +3468,16 @@ public partial class LDPlayerService : ILDPlayerService
         if (string.IsNullOrWhiteSpace(switcherXml))
             return null;
 
+        if (
+            PFlowPersonaSwitcherService.ReadSwitcherLayoutVariant(switcherXml)
+            is "typed"
+                or "untyped"
+        )
+            return PFlowPersonaSwitcherService.FindPersonalProfileNodeInSwitcher(
+                switcherXml,
+                targetProfileName
+            );
+
         try
         {
             var docs = SafeParseXmlDocuments(switcherXml);
@@ -4260,9 +4065,11 @@ public partial class LDPlayerService : ILDPlayerService
         if (string.IsNullOrEmpty(text))
             return true;
 
-        if (await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken))
         {
-            var atxSent = await _atxClient.InputTextAsync(index, text, cancellationToken);
+            var atxSent = await _atxClient
+                .ForInstallation(customPath)
+                .InputTextAsync(index, text, cancellationToken);
             if (atxSent)
                 return true;
         }
@@ -4321,14 +4128,11 @@ public partial class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
-        if (await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken))
         {
-            return await _atxClient.InputTextAdbKeyboardAsync(
-                index,
-                text,
-                clearFirst,
-                cancellationToken
-            );
+            return await _atxClient
+                .ForInstallation(customPath)
+                .InputTextAdbKeyboardAsync(index, text, clearFirst, cancellationToken);
         }
 
         // Ensure ADB Keyboard is active IME before broadcasting
@@ -4359,9 +4163,11 @@ public partial class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
-        if (await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken))
         {
-            return await _atxClient.ClearTextAdbKeyboardAsync(index, cancellationToken);
+            return await _atxClient
+                .ForInstallation(customPath)
+                .ClearTextAdbKeyboardAsync(index, cancellationToken);
         }
 
         var output = await ExecuteAdbAsync(
@@ -4380,13 +4186,11 @@ public partial class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
-        if (await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken))
         {
-            return await _atxClient.SendAdbKeyboardEditorActionAsync(
-                index,
-                action,
-                cancellationToken
-            );
+            return await _atxClient
+                .ForInstallation(customPath)
+                .SendAdbKeyboardEditorActionAsync(index, action, cancellationToken);
         }
 
         var output = await ExecuteAdbAsync(
@@ -4405,9 +4209,11 @@ public partial class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
-        if (await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken))
         {
-            return await _atxClient.SendAdbKeyboardCodeAsync(index, keyCode, cancellationToken);
+            return await _atxClient
+                .ForInstallation(customPath)
+                .SendAdbKeyboardCodeAsync(index, keyCode, cancellationToken);
         }
 
         var output = await ExecuteAdbAsync(
@@ -4425,9 +4231,11 @@ public partial class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
-        if (await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken))
         {
-            return await _atxClient.IsAdbKeyboardInstalledAsync(index, cancellationToken);
+            return await _atxClient
+                .ForInstallation(customPath)
+                .IsAdbKeyboardInstalledAsync(index, cancellationToken);
         }
 
         var output = await ExecuteAdbAsync(
@@ -4446,9 +4254,11 @@ public partial class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
-        if (await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken))
         {
-            return await _atxClient.IsAdbKeyboardActiveAsync(index, cancellationToken);
+            return await _atxClient
+                .ForInstallation(customPath)
+                .IsAdbKeyboardActiveAsync(index, cancellationToken);
         }
 
         var output = await ExecuteAdbAsync(
@@ -4457,8 +4267,7 @@ public partial class LDPlayerService : ILDPlayerService
             customPath,
             cancellationToken
         );
-        return !string.IsNullOrWhiteSpace(output)
-            && output.Contains(AdbKeyboardConstants.ImeComponent);
+        return AndroidKeyboardActivator.IsHelper(output);
     }
 
     public async Task<bool> EnableAdbKeyboardAsync(
@@ -4467,18 +4276,25 @@ public partial class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
-        if (await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken))
         {
-            return await _atxClient.EnableAdbKeyboardAsync(index, cancellationToken);
+            return await _atxClient
+                .ForInstallation(customPath)
+                .EnableAdbKeyboardAsync(index, cancellationToken);
         }
 
-        var output = await ExecuteAdbAsync(
-            index,
-            $"shell ime enable {AdbKeyboardConstants.ImeComponent} && ime set {AdbKeyboardConstants.ImeComponent} && settings put secure default_input_method {AdbKeyboardConstants.ImeComponent}",
-            customPath,
-            cancellationToken
+        return await AndroidKeyboardActivator.EnableAsync(
+            async (command, ct) =>
+            {
+                var output = await ExecuteAdbAsync(index, "shell " + command, customPath, ct);
+                return (
+                    !string.IsNullOrWhiteSpace(output) || command.StartsWith("settings put "),
+                    output ?? string.Empty
+                );
+            },
+            cancellationToken,
+            (detail, ct) => PFlowTrace.SessionAsync(index, "keyboard.activation", detail, ct)
         );
-        return !string.IsNullOrWhiteSpace(output);
     }
 
     public async Task<bool> InstallAdbKeyboardAsync(
@@ -4658,9 +4474,11 @@ public partial class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
-        if (await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken))
         {
-            return await _atxClient.IsAppRunningAsync(index, packageName, cancellationToken);
+            return await _atxClient
+                .ForInstallation(customPath)
+                .IsAppRunningAsync(index, packageName, cancellationToken);
         }
 
         var res = await ExecuteAdbAsync(
@@ -4679,13 +4497,11 @@ public partial class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
-        if (await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken))
         {
-            var bytes = await _atxClient.DownloadFileBytesAsync(
-                index,
-                targetRemotePath,
-                cancellationToken
-            );
+            var bytes = await _atxClient
+                .ForInstallation(customPath)
+                .DownloadFileBytesAsync(index, targetRemotePath, cancellationToken);
             if (bytes != null)
                 return bytes;
         }
@@ -4760,24 +4576,28 @@ public partial class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
-        if (await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken))
         {
-            var activity = await _atxClient.GetCurrentFocusedActivityAsync(
-                index,
-                cancellationToken
-            );
+            var activity = await _atxClient
+                .ForInstallation(customPath)
+                .GetCurrentFocusedActivityAsync(index, cancellationToken);
             if (!string.IsNullOrWhiteSpace(activity))
                 return activity;
         }
 
-        var output = await ExecuteAdbAsync(
-            index,
-            "shell dumpsys window windows",
-            customPath,
-            cancellationToken
-        );
-
-        return AtxAgentClient.ParseFocusedActivity(output);
+        foreach (var command in AtxAgentClient.FocusObservationCommands)
+        {
+            var output = await ExecuteAdbAsync(
+                index,
+                "shell " + command,
+                customPath,
+                cancellationToken
+            );
+            var activity = AtxAgentClient.ParseFocusedActivity(output);
+            if (activity != null || AtxAgentClient.HasAuthoritativeFocus(output))
+                return activity;
+        }
+        return null;
     }
 
     public async Task<bool> IsBloksNativeShellActiveAsync(
@@ -4786,9 +4606,11 @@ public partial class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
-        if (await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken))
         {
-            return await _atxClient.IsBloksNativeShellActiveAsync(index, cancellationToken);
+            return await _atxClient
+                .ForInstallation(customPath)
+                .IsBloksNativeShellActiveAsync(index, cancellationToken);
         }
 
         var focus = await GetCurrentFocusedActivityAsync(index, customPath, cancellationToken);
@@ -4868,13 +4690,11 @@ public partial class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
-        if (await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken))
         {
-            return await _atxClient.OpenBloksAccountsCenterAsync(
-                index,
-                packageName,
-                cancellationToken
-            );
+            return await _atxClient
+                .ForInstallation(customPath)
+                .OpenBloksAccountsCenterAsync(index, packageName, cancellationToken);
         }
 
         var ok = await OpenDeepLinkAsync(
@@ -4907,13 +4727,11 @@ public partial class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
-        if (await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken))
         {
-            return await _atxClient.OpenBloksProfileSwitcherAsync(
-                index,
-                packageName,
-                cancellationToken
-            );
+            return await _atxClient
+                .ForInstallation(customPath)
+                .OpenBloksProfileSwitcherAsync(index, packageName, cancellationToken);
         }
 
         return await OpenDeepLinkAsync(
@@ -4931,9 +4749,11 @@ public partial class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
-        if (await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken))
         {
-            return await _atxClient.DumpBloksScreenAsync(index, cancellationToken);
+            return await _atxClient
+                .ForInstallation(customPath)
+                .DumpBloksScreenAsync(index, cancellationToken);
         }
 
         var xml = await DumpUiHierarchyAsync(index, customPath, cancellationToken);
@@ -4967,13 +4787,11 @@ public partial class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
-        if (await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken))
         {
-            return await _atxClient.ExtractBloksFieldValueAsync(
-                index,
-                fieldLabel,
-                cancellationToken
-            );
+            return await _atxClient
+                .ForInstallation(customPath)
+                .ExtractBloksFieldValueAsync(index, fieldLabel, cancellationToken);
         }
 
         var screen = await DumpBloksScreenAsync(index, customPath, cancellationToken);
@@ -4986,9 +4804,11 @@ public partial class LDPlayerService : ILDPlayerService
         CancellationToken cancellationToken = default
     )
     {
-        if (await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken))
         {
-            return await _atxClient.ExtractBloksAccountInfoAsync(index, cancellationToken);
+            return await _atxClient
+                .ForInstallation(customPath)
+                .ExtractBloksAccountInfoAsync(index, cancellationToken);
         }
 
         var screen = await DumpBloksScreenAsync(index, customPath, cancellationToken);
@@ -5697,15 +5517,26 @@ public partial class LDPlayerService : ILDPlayerService
             return false;
         if (progress != null)
             await progress($"Selecting and confirming personal profile {accountName}.");
-        // The native switcher owns the single navigation recovery attempt.
-        if (
-            !await EnsureSwitchedToPersonalProfileAsync(
+        // Fetch already selected its owner and pins the Facebook process. Open
+        // that actor's own profile without entering legacy restart recovery.
+        var opened = PFlowNativeFetchScope.Active(this, index, customPath)
+            ? await PFlowOwnProfileNavigation.OpenAsync(
+                this,
+                index,
+                accountName,
+                customPath,
+                s => IsExpectedOwnProfileVisible(s, accountUid, accountName),
+                cancellationToken,
+                progress,
+                navigateCurrentActor: true
+            )
+            : await EnsureSwitchedToPersonalProfileAsync(
                 index,
                 accountName,
                 customPath,
                 cancellationToken
-            )
-        )
+            );
+        if (!opened)
             return false;
         var current = await DumpBloksScreenAsync(index, customPath, cancellationToken);
         var confirmed =
@@ -5751,6 +5582,25 @@ public partial class LDPlayerService : ILDPlayerService
         // has already compared the live owner UID. Layout recognition supplies no UID.
         if (!flow.VerifyOwnerUid(accountUid).Allowed)
             return false;
+        var continuation = await PFlowFetchSelectionHandoff.TryConsumeAsync(
+            this,
+            index,
+            customPath,
+            pageName,
+            pageId,
+            accountUid,
+            cancellationToken
+        );
+        if (continuation != null)
+        {
+            await PFlowFetchTrace.WriteAsync(
+                index,
+                "page.selection.handoff",
+                $"verified={continuation.Value}; freshOwnProfileFrames=2; repeatedSelection=false",
+                cancellationToken
+            );
+            return flow.ConfirmPageSelection(continuation.Value).Allowed;
+        }
         if (progress != null)
             await progress($"Selecting and confirming managed Page {pageName}.");
         var switched = await SwitchToPersonaAsync(
@@ -6038,13 +5888,13 @@ public partial class LDPlayerService : ILDPlayerService
         }
 
         // Graph has no verified Page creation-date equivalent; fall back to Transparency.
-        // Creation dates use only the verified header-name -> transparency route.
-        // Do not search posts for an About link when the name sheet is unavailable.
+        // Use the verified header/name sheet or its explicit own-Page About tab;
+        // never search arbitrary posts for an About link or creation date.
         if (!string.IsNullOrWhiteSpace(expectedPageName))
         {
             if (progress != null)
                 await progress(
-                    $"Page UI: reading {expectedPageName} creation date through its header and transparency."
+                    $"Page UI: reading {expectedPageName} creation date through profile details or About → Page transparency."
                 );
             var dates = await PFlowProfileDetailsReader.ReadOwnProfileAsync(
                 this,
@@ -6059,12 +5909,12 @@ public partial class LDPlayerService : ILDPlayerService
             await PFlowFetchTrace.WriteAsync(
                 index,
                 "page.join.result",
-                $"creationDateFound={!string.IsNullOrWhiteSpace(dates.CreationDate)}; route=header-transparency",
+                $"creationDateFound={!string.IsNullOrWhiteSpace(dates.CreationDate)}; route=profile-details-or-about-transparency",
                 cancellationToken
             );
             if (string.IsNullOrWhiteSpace(dates.CreationDate) && progress != null)
                 await progress(
-                    "Page UI: creation date unavailable through the confirmed header/transparency route."
+                    "Page UI: creation date unavailable through the confirmed profile-details/About transparency routes."
                 );
         }
         // Professional dashboard analytics is where Facebook exposes Page
@@ -6806,7 +6656,14 @@ public partial class LDPlayerService : ILDPlayerService
             scrollAttempt++
         )
         {
-            if (PFlowProfileDates.ReachedProfileFeed(screen))
+            if (
+                !PFlowProfileDates.MatchesName(screen, accountName)
+                || PFlowUiPrivacy.ContainsInput(screen.RawXml)
+                || PFlowLoginScreen.RequiresAuthentication(PFlowLoginScreen.Classify(screen.RawXml))
+                || PFlowPersonaSwitcherService.IsNativeSwitcherSheetOpen(screen.RawXml)
+                || AtxAgentClient.IsMenuPageInBloks(screen)
+                || PFlowProfileDates.ReachedProfileFeed(screen, stopAtFriends: false)
+            )
                 break;
             if (progress != null)
                 await progress(
@@ -6833,6 +6690,14 @@ public partial class LDPlayerService : ILDPlayerService
                 StringComparison.Ordinal
             );
             screen = scrolledProfile;
+            if (
+                !PFlowProfileDates.MatchesName(screen, accountName)
+                || PFlowUiPrivacy.ContainsInput(screen.RawXml)
+                || PFlowLoginScreen.RequiresAuthentication(PFlowLoginScreen.Classify(screen.RawXml))
+                || PFlowPersonaSwitcherService.IsNativeSwitcherSheetOpen(screen.RawXml)
+                || AtxAgentClient.IsMenuPageInBloks(screen)
+            )
+                break;
             await PFlowFetchTrace.WriteAsync(
                 index,
                 $"personal.details.screen.{scrollAttempt + 1}",
@@ -6860,20 +6725,8 @@ public partial class LDPlayerService : ILDPlayerService
             cancellationToken
         );
 
-        // Birthday is usually private profile data. Try the signed-in user's
-        // Accounts Center through Facebook's public route and hierarchy labels.
-        if (string.IsNullOrWhiteSpace(result.Birthdate))
-        {
-            if (progress != null)
-                await progress("Personal account: opening Accounts Center to look for birthday.");
-            result.Birthdate = await PFlowPersonalBirthdayReader.ReadAsync(
-                this,
-                index,
-                accountName,
-                customPath,
-                cancellationToken
-            );
-        }
+        // Fetch reads only the confirmed main profile's exposed details.
+        // A hidden birthday remains unavailable; do not navigate into account settings.
 
         if (progress != null)
         {
@@ -7318,7 +7171,7 @@ public partial class LDPlayerService : ILDPlayerService
 
     private static bool IsPageTitleMatch(string visibleText, string expectedPageName)
     {
-        if (visibleText.Equals(expectedPageName, StringComparison.OrdinalIgnoreCase))
+        if (PFlowNameMatch.Same(visibleText, expectedPageName))
             return true;
         if (!visibleText.StartsWith(expectedPageName, StringComparison.OrdinalIgnoreCase))
             return false;
@@ -7388,269 +7241,35 @@ public partial class LDPlayerService : ILDPlayerService
 
     #region Root Shell Facebook Extraction
 
-    public async Task<List<FacebookAccountInfo>> ExtractFacebookAccountsFromRootShellAsync(
+    public Task<List<FacebookAccountInfo>> ExtractFacebookAccountsFromRootShellAsync(
         int index,
         string packageName = "com.facebook.katana",
         string? customPath = null,
         CancellationToken cancellationToken = default
     )
     {
-        if (string.IsNullOrWhiteSpace(packageName))
-            packageName = "com.facebook.katana";
-
-        // Read each logged_in_* file with a separate root ADB command. Compound
-        // shell commands get re-quoted by ldconsole.exe and can silently lose data.
-        return await ExtractFacebookAccountsDirectFromRootAdbAsync(
-            index,
-            packageName,
-            customPath,
-            cancellationToken
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromException<List<FacebookAccountInfo>>(
+            new NotSupportedException(
+                "Private Facebook storage extraction was removed. Use native UI Fetch."
+            )
         );
     }
 
-    public async Task<List<FacebookAccountInfo>> ExtractFacebookAccountsDirectFromRootAdbAsync(
+    public Task<List<FacebookAccountInfo>> ExtractFacebookAccountsDirectFromRootAdbAsync(
         int index,
         string packageName,
         string? customPath,
         CancellationToken cancellationToken
     )
     {
-        var result = new List<FacebookAccountInfo>();
-        var lightPrefs = $"/data/data/{packageName}/app_light_prefs/{packageName}";
-        try
-        {
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeout.CancelAfter(TimeSpan.FromSeconds(30));
-            var ct = timeout.Token;
-
-            var rootProbe = await ExecuteAdbAsync(index, "shell su 0 id", customPath, ct);
-            if (!Regex.IsMatch(rootProbe, @"\buid=0\b", RegexOptions.IgnoreCase))
-            {
-                var detail = string.IsNullOrWhiteSpace(rootProbe)
-                    ? "the root probe returned no output"
-                    : rootProbe.Trim();
-                throw new RootShellUnavailableException(
-                    $"Root shell is unavailable on LD-{index} ({detail}). Enable root access in LDPlayer settings, then restart the instance."
-                );
-            }
-
-            var fileList = await ExecuteAdbAsync(
-                index,
-                $"shell su 0 ls -1 {lightPrefs}",
-                customPath,
-                ct
-            );
-            var accountFiles = fileList
-                .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries)
-                .Select(line => line.Trim())
-                .Where(name => Regex.IsMatch(name, @"^logged_in_\d{10,20}$"))
-                .Distinct(StringComparer.Ordinal)
-                .ToList();
-
-            var authDump = await ReadRootTextFileAsync(
-                index,
-                $"{lightPrefs}/underlying_account",
-                customPath,
-                ct
-            );
-            authDump +=
-                "\n"
-                + await ReadRootTextFileAsync(
-                    index,
-                    $"{lightPrefs}/authentication",
-                    customPath,
-                    ct
-                );
-            authDump = SanitizeRootDump(authDump);
-            var underlyingUid = Regex
-                .Match(
-                    authDump,
-                    @"underlying_account_uid[\r\n\s]+(\d{10,20})",
-                    RegexOptions.IgnoreCase
-                )
-                .Groups[1]
-                .Value;
-            var activeUid = Regex
-                .Match(
-                    authDump,
-                    @"(?:underlying_account_uid|user_id)[\r\n\s]+(\d{10,20})",
-                    RegexOptions.IgnoreCase
-                )
-                .Groups[1]
-                .Value;
-            if (!string.IsNullOrWhiteSpace(underlyingUid))
-                activeUid = underlyingUid;
-            if (string.IsNullOrWhiteSpace(activeUid))
-                activeUid = Regex.Match(authDump, @"\b(615\d{11,13}|\d{14,16})\b").Groups[1].Value;
-            var activeName = Regex
-                .Match(
-                    authDump,
-                    @"(?:username|name)[\r\n\s]+([^\r\n]{2,60})",
-                    RegexOptions.IgnoreCase
-                )
-                .Groups[1]
-                .Value.Trim();
-
-            foreach (var fileName in accountFiles)
-            {
-                ct.ThrowIfCancellationRequested();
-                var uid = Regex.Match(fileName, @"^logged_in_(\d{10,20})$").Groups[1].Value;
-                var dump = SanitizeRootDump(
-                    await ReadRootTextFileAsync(index, $"{lightPrefs}/{fileName}", customPath, ct)
-                );
-                if (string.IsNullOrWhiteSpace(dump))
-                    continue;
-
-                var name = Regex
-                    .Match(
-                        dump,
-                        @"(?:^|[\r\n])name[\r\n\s]+([^\r\n]{2,60})",
-                        RegexOptions.IgnoreCase
-                    )
-                    .Groups[1]
-                    .Value.Trim();
-                if (string.IsNullOrWhiteSpace(name))
-                {
-                    var first = Regex
-                        .Match(
-                            dump,
-                            @"(?:^|[\r\n])first_name[\r\n\s]+([^\r\n]{1,30})",
-                            RegexOptions.IgnoreCase
-                        )
-                        .Groups[1]
-                        .Value.Trim();
-                    var last = Regex
-                        .Match(
-                            dump,
-                            @"(?:^|[\r\n])last_name[\r\n\s]+([^\r\n]{1,30})",
-                            RegexOptions.IgnoreCase
-                        )
-                        .Groups[1]
-                        .Value.Trim();
-                    name = $"{first} {last}".Trim();
-                }
-                var pageId = Regex
-                    .Match(
-                        dump,
-                        @"(?:delegate_page_id|page_id)[\r\n\s]+(\d{10,20})",
-                        RegexOptions.IgnoreCase
-                    )
-                    .Groups[1]
-                    .Value;
-                // Cached owner records can retain Page delegation. This classification
-                // does not prove the live actor; native identity checks remain required.
-                var isUnderlyingOwner =
-                    !string.IsNullOrWhiteSpace(underlyingUid) && uid == underlyingUid;
-                var isPage =
-                    !isUnderlyingOwner
-                    && (
-                        Regex.IsMatch(
-                            dump,
-                            @"(?:^|[\r\n])is_page[\r\n\s]+(?:1|true)(?=\s|$)",
-                            RegexOptions.IgnoreCase
-                        )
-                        || !string.IsNullOrWhiteSpace(pageId)
-                        || (!string.IsNullOrWhiteSpace(activeUid) && uid != activeUid)
-                    );
-                name = PFlowAccountDiscoveryService.ResolveRootPageName(name, dump, isPage);
-                var userUid = Regex
-                    .Match(
-                        dump,
-                        @"(?:^|[\r\n])user_id[\r\n\s]+(\d{10,20})",
-                        RegexOptions.IgnoreCase
-                    )
-                    .Groups[1]
-                    .Value;
-                if (string.IsNullOrWhiteSpace(userUid))
-                    userUid = activeUid;
-                if (isUnderlyingOwner)
-                    userUid = uid;
-                if (!isPage && (isUnderlyingOwner || string.IsNullOrWhiteSpace(pageId)))
-                    pageId = uid;
-
-                MergeRootAccount(
-                    result,
-                    new FacebookAccountInfo
-                    {
-                        Type = isPage ? "Page" : "Profile",
-                        Uid = uid,
-                        PageId = pageId,
-                        Name = name,
-                        UserUid = userUid,
-                        Email = Regex
-                            .Match(dump, @"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
-                            .Value,
-                        PicUrl = ReadRootProfilePicture(dump),
-                        IsActive = !string.IsNullOrWhiteSpace(activeUid) && uid == activeUid,
-                    }
-                );
-            }
-
-            if (!string.IsNullOrWhiteSpace(activeUid) && result.All(a => a.Uid != activeUid))
-            {
-                MergeRootAccount(
-                    result,
-                    new FacebookAccountInfo
-                    {
-                        Type = "Profile",
-                        Uid = activeUid,
-                        PageId = activeUid,
-                        Name = activeName,
-                        UserUid = activeUid,
-                        IsActive = true,
-                    }
-                );
-            }
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            await PFlowFetchTrace.WriteAsync(
-                index,
-                "root-shell.timeout",
-                "Direct ADB discovery exceeded 30 seconds; incomplete results were discarded."
-            );
-            throw new RootShellUnavailableException(
-                $"Root-shell discovery timed out on LD-{index} after 30 seconds; saved data was preserved."
-            );
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (RootShellUnavailableException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"[LD-{index}] Direct Facebook root read failed: {ex.Message}");
-        }
-
-        if (packageName == "com.facebook.katana" && result.Count > 0)
-        {
-            var graph = await new PFlowGraphIdentityReader().TryReadAsync(
-                this,
-                index,
-                customPath,
-                cancellationToken
-            );
-            var actor = graph == null ? null : result.SingleOrDefault(a => a.Uid == graph.Id);
-            if (actor != null && graph != null)
-            {
-                actor.Name = graph.Name;
-                actor.PicUrl = graph.PictureUrl ?? actor.PicUrl;
-            }
-        }
-        return result;
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromException<List<FacebookAccountInfo>>(
+            new NotSupportedException(
+                "Private Facebook storage extraction was removed. Use native UI Fetch."
+            )
+        );
     }
-
-    private async Task<string> ReadRootTextFileAsync(
-        int index,
-        string remotePath,
-        string? customPath,
-        CancellationToken cancellationToken
-    ) =>
-        await ExecuteAdbAsync(index, $"shell su 0 cat {remotePath}", customPath, cancellationToken);
 
     private static string SanitizeRootDump(string? raw)
     {
@@ -7718,11 +7337,14 @@ public partial class LDPlayerService : ILDPlayerService
     )
     {
         var targetDevice = !string.IsNullOrWhiteSpace(deviceName) ? deviceName : $"LD-{index}";
-        var discovered = await ExtractFacebookAccountsFromRootShellAsync(
+        if (packageName != "com.facebook.katana")
+            throw new NotSupportedException("Native Facebook discovery supports FB-01 only.");
+        var discovered = await PFlowNativeDiscovery.ReadAccountsAsync(
+            this,
             index,
-            packageName,
             customPath,
-            cancellationToken
+            cancellationToken,
+            storageFilePath
         );
 
         var existingPages = await PFlowPageStorage.LoadPagesAsync(storageFilePath);

@@ -47,7 +47,49 @@ public sealed class PFlowProfileLinkTests
         Assert.Equal(1, handler.Calls);
     }
 
+    [Fact]
+    public async Task ShareRedirectThroughOfficialWebHostResolvesCapturedPageId()
+    {
+        var handler = new Handler(request =>
+            Task.FromResult(
+                new HttpResponseMessage(HttpStatusCode.Found)
+                {
+                    Headers =
+                    {
+                        Location = new Uri(
+                            request.RequestUri!.Host == "www.facebook.com"
+                                ? "https://web.facebook.com/share/Example/"
+                                : "https://web.facebook.com/people/Caprani-Plumbing/61594246817570/?rdid=example"
+                        ),
+                    },
+                }
+            )
+        );
+        using var http = new HttpClient(handler);
+        using var resolver = new PFlowProfileLinkResolver(http);
+        Assert.Equal(
+            "61594246817570",
+            await resolver.ResolveUidAsync("https://www.facebook.com/share/Example/")
+        );
+        Assert.Equal(2, handler.Calls);
+    }
+
     [Theory]
+    [InlineData("https://web.facebook.com/people/Caprani-Plumbing/61594246817570/")]
+    [InlineData("https://web.facebook.com/profile.php?id=61594246817570")]
+    public async Task OfficialWebNumericLinkRequiresNoNetwork(string link)
+    {
+        var handler = new Handler(_ => throw new Exception("Numeric link should not use HTTP."));
+        using var http = new HttpClient(handler);
+        using var resolver = new PFlowProfileLinkResolver(http);
+        Assert.Equal("61594246817570", await resolver.ResolveUidAsync(link));
+        Assert.Equal(0, handler.Calls);
+    }
+
+    [Theory]
+    [InlineData("https://web.facebook.com.attacker.test/people/Fixture/123/")]
+    [InlineData("https://web.facebook.com@attacker.test/people/Fixture/123/")]
+    [InlineData("http://web.facebook.com/people/Fixture/123/")]
     [InlineData("https://outside.test/people/Fixture/123/")]
     [InlineData("http://www.facebook.com/people/Fixture/123/")]
     [InlineData("https://www.facebook.com/share/Abc123/")]

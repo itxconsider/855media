@@ -2341,16 +2341,48 @@ public partial class VideoEditorViewModel : ViewModelBase
             }
 
             var previewFilterParts = new List<string>();
+            var previewCenter = (X: 0.5, Y: 0.5);
+            ActionAnalysisResult? previewTracking = null;
+            if (
+                SelectedTrackingMode != SmartTrackingMode.StaticCenter
+                || (EnableMicroZoom && SelectedZoomMode != SmartZoomMode.CenterCrop)
+            )
+            {
+                var trackingMode =
+                    SelectedTrackingMode == SmartTrackingMode.StaticCenter
+                        ? SmartTrackingMode.ObjectFocus
+                        : SelectedTrackingMode;
+                var analysis = await SmartActionAnalyzer.AnalyzeVideoAsync(
+                    videoPath,
+                    trackingMode,
+                    _previewService.GetFfmpegPath(),
+                    speedMode: SelectedSpeedMode,
+                    cancellationToken: token,
+                    durationSeconds: VideoDurationSeconds
+                );
+                previewCenter = analysis.GetCentroidAt(
+                    TimeSpan.FromSeconds(PreviewTimestampSeconds)
+                );
+                previewTracking = new ActionAnalysisResult();
+                previewTracking.Trajectory.Add(
+                    new ActionTrajectoryPoint
+                    {
+                        NormalizedX = previewCenter.X,
+                        NormalizedY = previewCenter.Y,
+                    }
+                );
+            }
             double zoomPercent = EnableMicroZoom ? MicroZoomPercent : 0.0;
             var arFilter = AspectRatioFilterBuilder.BuildFilter(
                 SelectedTargetAspectRatio,
                 SelectedTargetResolution,
                 SelectedTrackingMode,
-                SelectedJob?.ActionCentroidX ?? 0.5,
-                SelectedJob?.ActionCentroidY ?? 0.5,
+                previewCenter.X,
+                previewCenter.Y,
                 zoomPercent: (SelectedTargetAspectRatio != AspectRatioMode.Original)
                     ? zoomPercent
-                    : 0.0
+                    : 0.0,
+                trajectory: previewTracking
             );
             if (!string.IsNullOrWhiteSpace(arFilter))
             {
@@ -2361,8 +2393,9 @@ public partial class VideoEditorViewModel : ViewModelBase
                 var zoomFilter = AspectRatioFilterBuilder.BuildMicroZoomFilter(
                     MicroZoomPercent,
                     SelectedZoomMode,
-                    SelectedJob?.ActionCentroidX ?? 0.5,
-                    SelectedJob?.ActionCentroidY ?? 0.5
+                    previewCenter.X,
+                    previewCenter.Y,
+                    trajectory: previewTracking
                 );
                 if (!string.IsNullOrWhiteSpace(zoomFilter))
                 {

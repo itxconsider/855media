@@ -39,7 +39,7 @@ public class LDPlayerServiceTests
         Assert.Equal(8, settings.RunThread);
         Assert.True(settings.AutoSortLDPlayer);
         Assert.True(settings.CloseLDAfterAction);
-        Assert.True(settings.ClearCacheFBBeforeOpen);
+        Assert.False(settings.ClearCacheFBBeforeOpen);
         Assert.Equal(30, settings.DelayAfterOpenLD);
         Assert.Equal(30, settings.DelayBeforeCloseLD);
     }
@@ -659,8 +659,9 @@ public class LDPlayerServiceTests
             Assert.True(pushed);
 
             // Test fast cache clear
-            var cleared = await service.ClearFacebookCacheAsync(0);
-            Assert.True(cleared);
+            await Assert.ThrowsAsync<NotSupportedException>(() =>
+                service.ClearFacebookCacheAsync(0)
+            );
 
             // StopFacebookApp uses direct device ADB; it is outside this HTTP-only mock test.
 

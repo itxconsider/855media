@@ -11,7 +11,7 @@ public class FacebookLayoutRegistryTests
 
     [Theory]
     [InlineData("own-profile", FacebookScreenKind.OwnProfile, "profile.own.v1")]
-    [InlineData("dashboard", FacebookScreenKind.Dashboard, "dashboard.analytics-tab.v1")]
+    [InlineData("dashboard", FacebookScreenKind.Dashboard, "dashboard.analytics-tab.v2")]
     [InlineData("analytics-summary", FacebookScreenKind.Analytics, "analytics.summary-cards.v1")]
     [InlineData("reel-settings", FacebookScreenKind.ReelComposer, "composer.reel-settings.v1")]
     public void SavedLayoutsHaveOneUnambiguousVariant(

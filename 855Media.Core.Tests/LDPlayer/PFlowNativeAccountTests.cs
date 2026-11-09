@@ -39,6 +39,113 @@ public sealed class PFlowNativeAccountTests : IDisposable
 
     public void Dispose() => Directory.Delete(_directory, true);
 
+    [Fact]
+    public async Task NamePreparationLoadingTimeoutDoesNotNavigateOrRestart()
+    {
+        var (nav, fake) = Native(postingPersonalName: _ => "Fixture Personal");
+        fake.Ui = Xml(Node("Loading..."));
+        var observed = await nav.ObserveAsync(Binding(), default);
+        Assert.Equal(PFlowAuthenticationState.Unavailable, observed.State);
+        Assert.Contains("Expected: Fixture Personal (Profile)", observed.FailureReason);
+        Assert.Equal(0, fake.Taps + fake.UidRecoveryStops + fake.UidRecoveryLaunches);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task NamePreparationWaitsForLateHeaderAndHonorsCancellation(bool cancel)
+    {
+        var ld = DispatchProxy.Create<ILDPlayerService, Device>();
+        var fake = (Device)(object)ld;
+        fake.Ui = Xml(Node("Loading..."));
+        using var cts = new CancellationTokenSource();
+        var waits = 0;
+        var nav = new PFlowNativeAccountNavigator(
+            ld,
+            _directory,
+            _ => "Fixture Personal",
+            delay: (_, ct) =>
+            {
+                waits++;
+                if (cancel)
+                {
+                    cts.Cancel();
+                    ct.ThrowIfCancellationRequested();
+                }
+                fake.Ui = Xml(Node("Fixture Personal, see your profile", true, "[24,80][500,160]"));
+                return Task.CompletedTask;
+            },
+            postingNameOnly: true
+        );
+        if (cancel)
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+                nav.ObserveAsync(Binding(), cts.Token)
+            );
+        else
+            Assert.True(
+                PFlowPostingNameVerification.Verified(
+                    await nav.ObserveAsync(Binding(), cts.Token),
+                    "Fixture Personal"
+                )
+            );
+        Assert.Equal(1, waits);
+        Assert.Equal(0, fake.Taps + fake.UidRecoveryStops + fake.UidRecoveryLaunches);
+    }
+
+    [Fact]
+    public async Task NamePreparationUsesMappingsForAllBadgeFreePersonalRow()
+    {
+        var ld = DispatchProxy.Create<ILDPlayerService, Device>();
+        var fake = (Device)(object)ld;
+        var doc = XDocument.Load(
+            Path.Combine(
+                AppContext.BaseDirectory,
+                "Fixtures/PFlowScreenTime/ld64-switcher-static-footer-captured.xml"
+            )
+        );
+        foreach (var node in doc.Descendants("node"))
+        {
+            if (node.Attribute("content-desc")?.Value == "Personal Owner")
+                node.SetAttributeValue("content-desc", "Fixture Personal");
+            if (node.Attribute("text")?.Value == "Personal Owner")
+                node.SetAttributeValue("text", "Fixture Personal");
+        }
+        fake.Ui = doc.ToString();
+        var binding = Binding();
+        FacebookPageTarget[] targets =
+        [
+            new()
+            {
+                AccountBinding = binding,
+                UserUid = binding.OwnerUid,
+                PageId = binding.OwnerUid,
+                PersonaUid = binding.OwnerUid,
+                PageName = "Fixture Personal",
+                Type = "Profile",
+            },
+            new()
+            {
+                AccountBinding = binding,
+                UserUid = binding.OwnerUid,
+                PageId = "234",
+                PersonaUid = "234",
+                PageName = "Mattea Page+",
+                Type = "Page",
+            },
+        ];
+        var nav = new PFlowNativeAccountNavigator(
+            ld,
+            _directory,
+            _ => "Fixture Personal",
+            delay: (_, _) => Task.CompletedTask,
+            postingNameOnly: true,
+            savedTargets: _ => targets
+        );
+        var observed = await nav.ObserveAsync(binding, default);
+        Assert.True(PFlowPostingNameVerification.Verified(observed, "Fixture Personal"));
+        Assert.Equal(0, fake.Taps + fake.UidRecoveryStops + fake.UidRecoveryLaunches);
+    }
+
     private static XElement Node(
         string label,
         bool clickable = false,
@@ -488,7 +595,8 @@ public sealed class PFlowNativeAccountTests : IDisposable
     private (PFlowNativeAccountNavigator Navigator, Device Fake) Native(
         Func<PFlowAccountBinding, CancellationToken, Task>? requireRecoveryIdle = null,
         Func<PFlowAccountBinding, CancellationToken, Task<PFlowGraphIdentity?>>? graphIdentity =
-            null
+            null,
+        Func<string, string?>? postingPersonalName = null
     )
     {
         var ld = DispatchProxy.Create<ILDPlayerService, Device>();
@@ -504,10 +612,47 @@ public sealed class PFlowNativeAccountTests : IDisposable
                     return Task.CompletedTask;
                 },
                 requireRecoveryIdle: requireRecoveryIdle,
-                graphIdentity: graphIdentity
+                graphIdentity: graphIdentity,
+                postingPersonalName: postingPersonalName
             ),
             fake
         );
+    }
+
+    [Fact]
+    public async Task PostingNameObservationNeverCallsGraphOrOpensUidSettings()
+    {
+        var (nav, fake) = Native(
+            graphIdentity: (_, _) => throw new Exception("Posting must not call Graph"),
+            postingPersonalName: xml =>
+                PFlowPostingNameVerification.PersonalName(xml, ["Fixture Personal"])
+        );
+        var sheet = XDocument.Load(
+            Path.Combine(
+                AppContext.BaseDirectory,
+                "Fixtures",
+                "PFlowScreenTime",
+                "ld55-switcher-selected-page-captured.xml"
+            )
+        );
+        var page = sheet
+            .Descendants("node")
+            .Single(n => (string?)n.Attribute("content-desc") == "Bushcraft improvisation");
+        foreach (var n in page.DescendantsAndSelf())
+            n.SetAttributeValue("selected", "false");
+        page.Add(new XElement("node", new XAttribute("text", "Page")));
+        var personal = sheet
+            .Descendants("node")
+            .Single(n => (string?)n.Attribute("content-desc") == "Personal Owner");
+        personal.SetAttributeValue("selected", "true");
+        fake.Ui = sheet.ToString().Replace("Personal Owner", "Fixture Personal");
+        var observed = await nav.ObserveAsync(Binding(), default);
+        Assert.True(PFlowPostingNameVerification.Verified(observed, "Fixture Personal"));
+        Assert.False(observed.IsLiveUid);
+        Assert.Empty(observed.OwnerUid);
+        Assert.Equal(0, fake.Taps);
+        Assert.Equal(1, fake.Backs);
+        Assert.DoesNotContain("ExecuteAdbAsync", fake.Calls);
     }
 
     [Fact]
@@ -1209,6 +1354,14 @@ public sealed class PFlowNativeAccountTests : IDisposable
                     if (ForegroundSequence.Count > 0)
                         Foreground = ForegroundSequence.Dequeue();
                     return Task.FromResult<string?>(Foreground);
+                case "DumpBloksScreenAsync":
+                    return Task.FromResult<BloksScreenInfo?>(
+                        AtxAgentClient.ParseBloksHierarchy(Ui)
+                    );
+                case "PressBackAsync":
+                    Backs++;
+                    Ui = Own();
+                    return Task.FromResult(true);
                 case "DumpUiHierarchyAsync":
                     if (UiSequence.Count > 0)
                         Ui = UiSequence.Dequeue();

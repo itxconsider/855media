@@ -61,7 +61,7 @@ public partial class AutoPostViewModel
                 MailAppPassword
             );
             await new PFlowMailService().TestAsync(mailbox, cancellation.Token);
-            await new PFlowMailboxStore().SaveAsync(input.Binding, mailbox, cancellation.Token);
+            await CreateMailboxStore().SaveAsync(input.Binding, mailbox, cancellation.Token);
             MailStatus =
                 "IMAP connection verified. Mailbox saved encrypted for this UID and LD/app binding.";
         }
@@ -101,10 +101,7 @@ public partial class AutoPostViewModel
         try
         {
             MailStatus = "Waiting up to 2 minutes for a new matching Facebook verification email…";
-            var mailbox = await new PFlowMailboxStore().LoadAsync(
-                request.Binding,
-                cancellation.Token
-            );
+            var mailbox = await CreateMailboxStore().LoadAsync(request.Binding, cancellation.Token);
             var code = await new PFlowMailService().WaitForCodeAsync(
                 mailbox,
                 request,

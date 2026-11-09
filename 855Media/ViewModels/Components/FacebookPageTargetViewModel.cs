@@ -23,16 +23,16 @@ public partial class FacebookPageTargetViewModel : ObservableObject
             };
 
     public string TableStatus =>
-        IsProfile
-            ? "Verified"
-            : Model.LivePageAccessVerified switch
-            {
-                true => "Verified",
-                false => Model.PageAccessIssue == PFlowPageAccessReconciliation.Unavailable
-                    ? "Access unavailable"
-                    : "Not verified",
-                _ => "Cached",
-            };
+        Model.FetchDetailsPending ? "Details pending"
+        : IsProfile ? "Verified"
+        : Model.LivePageAccessVerified switch
+        {
+            true => "Verified",
+            false => Model.PageAccessIssue == PFlowPageAccessReconciliation.Unavailable
+                ? "Access unavailable"
+                : "Not verified",
+            _ => "Cached",
+        };
 
     public void RefreshAccessStatus()
     {
@@ -378,7 +378,33 @@ public partial class FacebookPageTargetViewModel : ObservableObject
     private bool _photoTitleFromTextFile;
 
     [ObservableProperty]
+    private bool _groupPhotosWithSameCaption;
+
+    partial void OnGroupPhotosWithSameCaptionChanged(bool value)
+    {
+        if (_initializing)
+            return;
+        Model.GroupPhotosWithSameCaption = value;
+        RefreshMediaCounts();
+    }
+
+    partial void OnPhotoTitleFromTextFileChanged(bool value)
+    {
+        if (_initializing)
+            return;
+        Model.PhotoTitleFromTextFile = value;
+        if (GroupPhotosWithSameCaption)
+            RefreshMediaCounts();
+    }
+
+    [ObservableProperty]
     private bool _videoTitleFromTextFile;
+
+    [ObservableProperty]
+    private string _reelCaptionSuffix = string.Empty;
+
+    [ObservableProperty]
+    private string _photoCaptionSuffix = string.Empty;
 
     // Per-page Config
     [ObservableProperty]
@@ -528,7 +554,7 @@ public partial class FacebookPageTargetViewModel : ObservableObject
             : (
                 string.Equals(model.Type, "Profile", StringComparison.OrdinalIgnoreCase)
                     ? model.UserUid
-                    : model.PageId
+                    : string.Empty
             );
         UserUid = model.UserUid;
         PageName = model.PageName;
@@ -559,7 +585,10 @@ public partial class FacebookPageTargetViewModel : ObservableObject
         KeepReelPartsTogether = model.KeepReelPartsTogether;
         ReelTitleFromTextFile = model.ReelTitleFromTextFile ?? model.UseTitleFromTextFile;
         PhotoTitleFromTextFile = model.PhotoTitleFromTextFile ?? model.UseTitleFromTextFile;
+        GroupPhotosWithSameCaption = model.GroupPhotosWithSameCaption;
         VideoTitleFromTextFile = model.VideoTitleFromTextFile ?? model.UseTitleFromTextFile;
+        ReelCaptionSuffix = model.ReelCaptionSuffix;
+        PhotoCaptionSuffix = model.PhotoCaptionSuffix;
         UseTitleFromTextFile = model.UseTitleFromTextFile;
         UseCaptionFromFilename = model.UseCaptionFromFilename;
         TitleVideoReel = model.TitleVideoReel;
@@ -723,7 +752,10 @@ public partial class FacebookPageTargetViewModel : ObservableObject
         Model.KeepReelPartsTogether = KeepReelPartsTogether;
         Model.ReelTitleFromTextFile = ReelTitleFromTextFile;
         Model.PhotoTitleFromTextFile = PhotoTitleFromTextFile;
+        Model.GroupPhotosWithSameCaption = GroupPhotosWithSameCaption;
         Model.VideoTitleFromTextFile = VideoTitleFromTextFile;
+        Model.ReelCaptionSuffix = ReelCaptionSuffix;
+        Model.PhotoCaptionSuffix = PhotoCaptionSuffix;
         Model.UseTitleFromTextFile = UseTitleFromTextFile;
         Model.UseCaptionFromFilename = UseCaptionFromFilename;
         Model.TitleVideoReel = TitleVideoReel;

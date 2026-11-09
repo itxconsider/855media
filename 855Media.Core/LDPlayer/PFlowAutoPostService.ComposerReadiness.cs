@@ -188,7 +188,8 @@ public partial class PFlowAutoPostService
         string? path,
         CancellationToken ct,
         Func<TimeSpan, CancellationToken, Task>? delay = null,
-        Func<DateTime>? now = null
+        Func<DateTime>? now = null,
+        Func<string, bool>? captionProof = null
     )
     {
         delay ??= Task.Delay;
@@ -241,7 +242,7 @@ public partial class PFlowAutoPostService
         await CheckContext();
         // A settings list can scroll the caption out of the accessibility viewport.
         // Read its full value again before scrolling toward the publish control.
-        if (!string.IsNullOrWhiteSpace(job.Caption))
+        if (!string.IsNullOrWhiteSpace(job.Caption) && !(captionProof?.Invoke(xml) ?? false))
         {
             for (var scroll = 0; !CaptionTextMatches(xml, job.Caption); scroll++)
             {
@@ -362,15 +363,44 @@ public partial class PFlowAutoPostService
                 xml = await _ldPlayer.DumpUiHierarchyAsync(job.DeviceIndex, path, ct) ?? "";
             }
         }
-        await CheckContext();
-        if (
-            !string.IsNullOrWhiteSpace(job.Caption)
-            && FindPFlowCaptionField(xml) != null
-            && !CaptionTextMatches(xml, job.Caption)
-        )
-            throw new InvalidOperationException(
-                "Caption changed while checking the publish control."
-            );
-        return xml;
+        // Enabled once is not readiness: a delayed editor transition can replace
+        // the surface or move/disable the footer after the settings scroll.
+        string? previousControl = null;
+        var stableFrames = 0;
+        var stableUntil = now().AddSeconds(10);
+        for (var poll = 0; poll < 30 && now() < stableUntil; poll++)
+        {
+            await delay(TimeSpan.FromMilliseconds(350), ct);
+            xml = await _ldPlayer.DumpUiHierarchyAsync(job.DeviceIndex, path, ct) ?? "";
+            await CheckContext();
+            if (
+                !string.IsNullOrWhiteSpace(job.Caption)
+                && FindPFlowCaptionField(xml) != null
+                && !CaptionTextMatches(xml, job.Caption)
+            )
+                throw new InvalidOperationException(
+                    "Caption changed while checking the publish control."
+                );
+            var publish = FindVisiblePublishControl(xml, publishLabels);
+            var currentControl = publish?.Attribute("bounds")?.Value;
+            stableFrames =
+                currentControl != null && currentControl == previousControl ? stableFrames + 1
+                : currentControl != null ? 1
+                : 0;
+            previousControl = currentControl;
+            if (stableFrames >= 2)
+            {
+                await PFlowTrace.SessionAsync(
+                    job.DeviceIndex,
+                    "composer.ready.stable",
+                    "freshFrames=2; enabledVisiblePublish=true; captionRecheckedWhenVisible=true; noTap=true",
+                    ct
+                );
+                return xml;
+            }
+        }
+        throw new InvalidOperationException(
+            "Composer publish control did not stabilize; no Share tap was made."
+        );
     }
 }

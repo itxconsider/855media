@@ -30,7 +30,7 @@ public partial class AutoPostViewModel
 
     private async Task CheckPostProcessAsync(int index, CancellationToken ct)
     {
-        var pid = (
+        var observed = (
             await _ldPlayerService.ExecuteAdbAsync(
                 index,
                 "shell pidof com.facebook.katana",
@@ -38,19 +38,30 @@ public partial class AutoPostViewModel
                 ct
             ) ?? ""
         ).Trim();
-        if (
-            string.IsNullOrEmpty(pid)
-            || !pid.Split(' ', StringSplitOptions.RemoveEmptyEntries)
-                .All(p => p.All(char.IsAsciiDigit))
-            || !_postProcessIds.TryGetValue(index, out var previous)
-            || previous != pid
-        )
+        var pid = PFlowProcessIdentity.Normalize(observed);
+        var hadPrevious = _postProcessIds.TryGetValue(index, out var previous);
+        if (pid == null || !hadPrevious || !PFlowProcessIdentity.Same(previous, pid))
+        {
+            await PFlowTrace.SessionAsync(
+                index,
+                "identity.session.invalidated",
+                (
+                    string.IsNullOrEmpty(observed) ? "reason=process-unavailable"
+                    : pid == null ? "reason=process-response-invalid"
+                    : !hadPrevious ? "reason=initial-process-observation"
+                    : "reason=process-changed"
+                )
+                    + $"; previousPids={PFlowProcessIdentity.Normalize(previous) ?? "unavailable"}; currentPids={pid ?? "unavailable"}",
+                ct
+            );
             InvalidatePostTargetSession(index);
-        _postProcessIds[index] = pid;
+        }
+        _postProcessIds[index] = pid ?? "";
     }
 
     private void InvalidatePostTargetSession(int index)
     {
+        _postingActorHints.TryRemove(index, out _);
         _nativeIdentityScopes.TryRemove(index, out _);
         _graphActivationProofs.TryRemove(index, out _);
         if (_postTargetSessions.TryGetValue(index, out var session))
@@ -67,6 +78,15 @@ public partial class AutoPostViewModel
         string? initialXml = null
     )
     {
+        if (postingJob != null)
+            return await VerifyPostingTargetNameAsync(
+                worker,
+                target,
+                account,
+                postingJob,
+                initialXml,
+                ct
+            );
         if (
             !PFlowSessionProfileUi.UnambiguousMapping(
                 target,
@@ -85,6 +105,7 @@ public partial class AutoPostViewModel
         {
             if (
                 _nativeIdentityScopes.TryGetValue(worker.Index, out var existing)
+                && !existing.UsesDatabaseName
                 && _postProcessIds.TryGetValue(worker.Index, out var existingProcess)
                 && existing.Matches(account.Binding, existingProcess, target)
             )

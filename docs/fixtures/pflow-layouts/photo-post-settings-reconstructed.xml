@@ -1,0 +1,15 @@
+<hierarchy rotation="0">
+  <node package="com.facebook.katana" class="android.widget.FrameLayout" bounds="[0,0][720,1280]" visible-to-user="true" enabled="true">
+    <node text="Post settings" class="android.widget.TextView" bounds="[70,48][400,120]"/>
+    <node content-desc="Share" class="android.widget.Button" clickable="true" enabled="true" bounds="[540,48][712,120]"><node text="SHARE" class="android.widget.TextView" bounds="[570,65][680,101]"/></node>
+    <node class="android.widget.ScrollView" scrollable="true" bounds="[0,145][720,1280]">
+      <node text="Post audience" bounds="[90,160][600,220]"/><node text="Public" bounds="[90,220][600,250]"/>
+      <node text="Who can comment" bounds="[90,280][600,340]"/>
+      <node text="Scheduling options" bounds="[90,400][600,460]"/>
+      <node text="Share to story" bounds="[90,520][600,580]"/>
+      <node text="Share to your profile" bounds="[90,640][600,700]"/><node text="Off · Marc Aurelius" bounds="[90,700][600,730]"/>
+      <node text="Share to groups" bounds="[90,760][600,820]"/>
+      <node text="Add AI label" bounds="[90,1000][600,1060]"/>
+    </node>
+  </node>
+</hierarchy>

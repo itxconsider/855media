@@ -38,7 +38,9 @@ public class LDPlayerUiAutomationService : ILDPlayerUiAutomationService
         // 1. Fast path: Query atx-agent on-device daemon via HTTP (~15ms)
         if (_atxClient != null)
         {
-            var atxDump = await _atxClient.DumpHierarchyAsync(index, cancellationToken);
+            var atxDump = await _atxClient
+                .ForInstallation(customPath)
+                .DumpHierarchyAsync(index, cancellationToken);
             if (
                 !string.IsNullOrWhiteSpace(atxDump)
                 && atxDump.Contains("<hierarchy", StringComparison.OrdinalIgnoreCase)
@@ -75,13 +77,14 @@ public class LDPlayerUiAutomationService : ILDPlayerUiAutomationService
         CancellationToken cancellationToken = default
     )
     {
-        if (_atxClient != null && await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (
+            _atxClient != null
+            && await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken)
+        )
         {
-            var ok = await _atxClient.ClickElementAsync(
-                index,
-                text: text,
-                cancellationToken: cancellationToken
-            );
+            var ok = await _atxClient
+                .ForInstallation(customPath)
+                .ClickElementAsync(index, text: text, cancellationToken: cancellationToken);
             if (ok)
                 return true;
         }
@@ -107,13 +110,18 @@ public class LDPlayerUiAutomationService : ILDPlayerUiAutomationService
         CancellationToken cancellationToken = default
     )
     {
-        if (_atxClient != null && await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (
+            _atxClient != null
+            && await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken)
+        )
         {
-            var ok = await _atxClient.ClickElementAsync(
-                index,
-                resourceId: resourceId,
-                cancellationToken: cancellationToken
-            );
+            var ok = await _atxClient
+                .ForInstallation(customPath)
+                .ClickElementAsync(
+                    index,
+                    resourceId: resourceId,
+                    cancellationToken: cancellationToken
+                );
             if (ok)
                 return true;
         }
@@ -146,13 +154,18 @@ public class LDPlayerUiAutomationService : ILDPlayerUiAutomationService
         CancellationToken cancellationToken = default
     )
     {
-        if (_atxClient != null && await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (
+            _atxClient != null
+            && await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken)
+        )
         {
-            var ok = await _atxClient.ClickElementAsync(
-                index,
-                contentDesc: contentDesc,
-                cancellationToken: cancellationToken
-            );
+            var ok = await _atxClient
+                .ForInstallation(customPath)
+                .ClickElementAsync(
+                    index,
+                    contentDesc: contentDesc,
+                    cancellationToken: cancellationToken
+                );
             if (ok)
                 return true;
         }
@@ -185,9 +198,14 @@ public class LDPlayerUiAutomationService : ILDPlayerUiAutomationService
         if (string.IsNullOrEmpty(text))
             return true;
 
-        if (_atxClient != null && await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (
+            _atxClient != null
+            && await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken)
+        )
         {
-            var atxSent = await _atxClient.InputTextAsync(index, text, cancellationToken);
+            var atxSent = await _atxClient
+                .ForInstallation(customPath)
+                .InputTextAsync(index, text, cancellationToken);
             if (atxSent)
                 return true;
         }
@@ -283,9 +301,14 @@ public class LDPlayerUiAutomationService : ILDPlayerUiAutomationService
         CancellationToken cancellationToken = default
     )
     {
-        if (_atxClient != null && await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (
+            _atxClient != null
+            && await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken)
+        )
         {
-            var tapped = await _atxClient.TapAsync(index, x, y, cancellationToken);
+            var tapped = await _atxClient
+                .ForInstallation(customPath)
+                .TapAsync(index, x, y, cancellationToken);
             if (tapped)
                 return true;
         }
@@ -306,9 +329,14 @@ public class LDPlayerUiAutomationService : ILDPlayerUiAutomationService
         CancellationToken cancellationToken = default
     )
     {
-        if (_atxClient != null && await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (
+            _atxClient != null
+            && await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken)
+        )
         {
-            var ok = await _atxClient.SendKeyAsync(index, keyCode, cancellationToken);
+            var ok = await _atxClient
+                .ForInstallation(customPath)
+                .SendKeyAsync(index, keyCode, cancellationToken);
             if (ok)
                 return true;
         }
@@ -328,9 +356,14 @@ public class LDPlayerUiAutomationService : ILDPlayerUiAutomationService
         CancellationToken cancellationToken = default
     )
     {
-        if (_atxClient != null && await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (
+            _atxClient != null
+            && await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken)
+        )
         {
-            return await _atxClient.PressHomeAsync(index, cancellationToken);
+            return await _atxClient
+                .ForInstallation(customPath)
+                .PressHomeAsync(index, cancellationToken);
         }
 
         return await SendKeyAsync(index, 3, customPath, cancellationToken); // KEYCODE_HOME = 3
@@ -342,9 +375,14 @@ public class LDPlayerUiAutomationService : ILDPlayerUiAutomationService
         CancellationToken cancellationToken = default
     )
     {
-        if (_atxClient != null && await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (
+            _atxClient != null
+            && await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken)
+        )
         {
-            return await _atxClient.PressBackAsync(index, cancellationToken);
+            return await _atxClient
+                .ForInstallation(customPath)
+                .PressBackAsync(index, cancellationToken);
         }
 
         return await SendKeyAsync(index, 4, customPath, cancellationToken); // KEYCODE_BACK = 4
@@ -356,9 +394,14 @@ public class LDPlayerUiAutomationService : ILDPlayerUiAutomationService
         CancellationToken cancellationToken = default
     )
     {
-        if (_atxClient != null && await _atxClient.IsRunningAsync(index, cancellationToken))
+        if (
+            _atxClient != null
+            && await _atxClient.ForInstallation(customPath).IsRunningAsync(index, cancellationToken)
+        )
         {
-            return await _atxClient.PressRecentAppsAsync(index, cancellationToken);
+            return await _atxClient
+                .ForInstallation(customPath)
+                .PressRecentAppsAsync(index, cancellationToken);
         }
 
         return await SendKeyAsync(index, 187, customPath, cancellationToken); // KEYCODE_APP_SWITCH = 187

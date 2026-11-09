@@ -158,7 +158,7 @@ public static class PFlowLiveUidVerification
         return "Graph UID";
     }
 
-    public static async Task<bool> VerifyPagePersonaAsync(
+    public static Task<bool> VerifyPagePersonaAsync(
         ILDPlayerService ld,
         int index,
         string? path,
@@ -167,19 +167,9 @@ public static class PFlowLiveUidVerification
         CancellationToken ct
     )
     {
-        if (!Numeric(persona) || !Numeric(pageId))
-            return false;
-        var raw = await ld.ExecuteAdbAsync(
-            index,
-            "shell su 0 cat /data/data/com.facebook.katana/app_light_prefs/com.facebook.katana/logged_in_"
-                + persona,
-            path,
-            ct
-        );
-        return PFlowGraphIdentityReader.Field(
-                PFlowGraphIdentityReader.Clean(raw),
-                "delegate_page_id"
-            ) == pageId;
+        ct.ThrowIfCancellationRequested();
+        // Name/type proof does not establish a persona-to-canonical UID delegation.
+        return Task.FromResult(false);
     }
 
     internal static string? ReadOwnPageLink(string xml)

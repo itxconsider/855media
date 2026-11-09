@@ -258,36 +258,51 @@
                                 <StackPanel Spacing="14" Margin="0,0,14,14">
                                     <Border Classes="settings-card">
                                         <StackPanel Spacing="12">
-                                            <TextBlock Classes="settings-heading" Text="Publish &amp; file handling"/>
-                                            <TextBlock Classes="settings-note" Text="Choose posting types and how to handle original PC files."/>
-                                            <Grid ColumnDefinitions="*,100,100">
+                                            <TextBlock Classes="settings-heading" Text="Publishing time"/>
+                                            <CheckBox Content="Schedule Reels on Facebook" IsChecked="{Binding ScheduleOnFacebook}" IsEnabled="{Binding !IsBusy}"/>
+                                            <StackPanel IsVisible="{Binding ScheduleOnFacebook}" IsEnabled="{Binding !IsBusy}" Spacing="6">
+                                                <TextBlock Text="Phone clock source"/>
+                                                <ComboBox Name="ScheduleClockDevice" ItemsSource="{Binding Instances}" SelectedItem="{Binding SelectedManageInstance}" HorizontalAlignment="Stretch">
+                                                    <ComboBox.ItemTemplate>
+                                                        <DataTemplate x:DataType="components:LDInstanceItemViewModel"><TextBlock Text="{Binding Name}"/></DataTemplate>
+                                                    </ComboBox.ItemTemplate>
+                                                </ComboBox>
+                                                <Button Name="UseLdScheduleClock" Content="Use LD time + 1 hour" Command="{Binding UseLdScheduleClockCommand}"/>
+                                                <TextBlock Name="SchedulePhoneClockStatus" Text="{Binding SchedulePhoneClockStatus}" TextWrapping="Wrap" Opacity="0.75"/>
+                                                <TextBlock Text="First publication (yyyy-MM-dd HH:mm)"/>
+                                                <TextBox Text="{Binding ScheduleFirstLocalTime}"/>
+                                                <TextBlock Text="Publication timezone (for example Asia/Bangkok)"/>
+                                                <TextBox Text="{Binding ScheduleTimeZoneId}"/>
+                                                <TextBlock Text="Minutes between Reels for each Page/profile"/>
+                                                <NumericUpDown Value="{Binding ScheduleIntervalMinutes}" Minimum="1" Maximum="10080"/>
+                                                <TextBlock Text="Upload now for future publication. Prepare a new queue to apply changes; each row keeps its assigned time. Reels require a nonempty caption for schedule verification." TextWrapping="Wrap" Opacity="0.75"/>
+                                            </StackPanel>
+                                            <TextBlock Classes="settings-heading" Text="Publish &amp; file handling" Margin="0,12,0,0"/>
+                                            <TextBlock Classes="settings-note" Text="Choose posting types and optional backups. Originals are kept after posting."/>
+                                            <Grid ColumnDefinitions="*,100">
                                                 <TextBlock Text="Publish" Classes="settings-label"/>
-                                                <TextBlock Grid.Column="1" Text="Delete PC file" Classes="settings-label" TextAlignment="Center"/>
-                                                <TextBlock Grid.Column="2" Text="Back up" Classes="settings-label" TextAlignment="Center"/>
+                                                <TextBlock Grid.Column="1" Text="Back up" Classes="settings-label" TextAlignment="Center"/>
                                             </Grid>
                                             <Border BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="0,0,0,1" Padding="0,4,0,10">
-                                                <Grid ColumnDefinitions="*,100,100">
+                                                <Grid ColumnDefinitions="*,100">
                                                     <CheckBox IsChecked="{Binding IsPostReel}" Content="Post Reel" FontWeight="SemiBold"/>
-                                                    <CheckBox IsChecked="{Binding IsDeleteReelFile}" Content="" Grid.Column="1" HorizontalAlignment="Center" AutomationProperties.Name="Delete Reel source file" ToolTip.Tip="Delete the PC source after confirmed publication and all queued targets using it succeed."/>
-                                                    <CheckBox IsChecked="{Binding IsBackupReelFile}" Content="" Grid.Column="2" HorizontalAlignment="Center" AutomationProperties.Name="Back up Reel source file" ToolTip.Tip="Back up the PC source after confirmed publication."/>
+                                                    <CheckBox IsChecked="{Binding IsBackupReelFile}" Content="" Grid.Column="1" HorizontalAlignment="Center" AutomationProperties.Name="Back up Reel source file" ToolTip.Tip="Back up the PC source after confirmed publication."/>
                                                 </Grid>
                                             </Border>
                                             <Border BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="0,0,0,1" Padding="0,4,0,10">
-                                                <Grid ColumnDefinitions="*,100,100">
+                                                <Grid ColumnDefinitions="*,100">
                                                     <CheckBox IsChecked="{Binding IsPostPicture}" Content="Post Picture" FontWeight="SemiBold"/>
-                                                    <CheckBox IsChecked="{Binding IsDeletePictureFile}" Content="" Grid.Column="1" HorizontalAlignment="Center" AutomationProperties.Name="Delete Picture source file" ToolTip.Tip="Delete the PC source after confirmed publication and all queued targets using it succeed."/>
-                                                    <CheckBox IsChecked="{Binding IsBackupPictureFile}" Content="" Grid.Column="2" HorizontalAlignment="Center" AutomationProperties.Name="Back up Picture source file" ToolTip.Tip="Back up the PC source after confirmed publication."/>
+                                                    <CheckBox IsChecked="{Binding IsBackupPictureFile}" Content="" Grid.Column="1" HorizontalAlignment="Center" AutomationProperties.Name="Back up Picture source file" ToolTip.Tip="Back up the PC source after confirmed publication."/>
                                                 </Grid>
                                             </Border>
                                             <Border BorderBrush="{DynamicResource AntigravityBorderBrush}" BorderThickness="0,0,0,1" Padding="0,4,0,10">
-                                                <Grid ColumnDefinitions="*,100,100">
+                                                <Grid ColumnDefinitions="*,100">
                                                     <CheckBox IsChecked="{Binding IsPostStory}" Content="Post Story" FontWeight="SemiBold"/>
-                                                    <CheckBox IsChecked="{Binding IsDeleteStoryFile}" Content="" Grid.Column="1" HorizontalAlignment="Center" AutomationProperties.Name="Delete Story source file" ToolTip.Tip="Delete the PC source after confirmed publication and all queued targets using it succeed."/>
-                                                    <CheckBox IsChecked="{Binding IsBackupStoryFile}" Content="" Grid.Column="2" HorizontalAlignment="Center" AutomationProperties.Name="Back up Story source file" ToolTip.Tip="Back up the PC source after confirmed publication."/>
+                                                    <CheckBox IsChecked="{Binding IsBackupStoryFile}" Content="" Grid.Column="1" HorizontalAlignment="Center" AutomationProperties.Name="Back up Story source file" ToolTip.Tip="Back up the PC source after confirmed publication."/>
                                                 </Grid>
                                             </Border>
                                             <TextBlock Classes="settings-note" Text="Prepare jobs in Targets &amp; media. Only queued jobs run; enabling a type does not create posts."/>
-                                            <TextBlock Classes="settings-note" Text="PC originals stay saved unless Delete PC file is selected. Shared files wait for every queued target to succeed. Temporary LD copies are cleaned up separately."/>
+                                            <TextBlock Classes="settings-note" Text="PC originals and captions stay saved. Confirmed history prevents posting the same media again to the same Page or profile. Temporary LD copies are cleaned up separately."/>
                                         </StackPanel>
                                     </Border>
                                     <Border Classes="settings-card">
@@ -331,7 +346,6 @@
                                     <Border Classes="settings-card">
                                         <StackPanel Spacing="12">
                                             <TextBlock Classes="settings-heading" Text="Before run"/>
-                                            <CheckBox IsChecked="{Binding ClearCacheFBBeforeOpen}" Content="Clear Facebook cache"/>
                                             <CheckBox IsChecked="{Binding CheckSurfsharkConnection}" Content="Check Surfshark connection" ToolTip.Tip="Wait up to 180 seconds for a validated Surfshark VPN connection inside each LD before running. Does not connect the VPN automatically."/>
                                         </StackPanel>
                                     </Border>
@@ -340,7 +354,7 @@
                                             <TextBlock Classes="settings-heading" Text="After run"/>
                                             <CheckBox IsChecked="{Binding SwitchToProfileAfterPost}" Content="Return to profile" ToolTip.Tip="Switch back to the personal profile after the run."/>
                                             <CheckBox IsChecked="{Binding IsClearRecentApp}" Content="Clear Facebook App" ToolTip.Tip="Stop Facebook and clear recent apps after the run. Login and app data are kept."/>
-                                            <CheckBox IsChecked="{Binding CloseLDAfterAction}" Content="Close LDPlayer"/>
+                                            <CheckBox IsChecked="{Binding CloseLDAfterAction}" Content="Close LDPlayer" ToolTip.Tip="Also close the final completed LDs. Finished LDs close automatically when queued workers need capacity. LDs needing publication, account or keyboard review remain open."/>
                                             <CheckBox IsChecked="{Binding SleepPcAfterActionDone}" Content="Sleep PC"/>
                                         </StackPanel>
                                     </Border>
@@ -353,6 +367,11 @@
                                     </Border>
                                     <Border Classes="settings-card">
                                         <StackPanel Spacing="12">
+                                            <TextBlock Classes="settings-heading" Text="Fetch"/>
+                                            <CheckBox IsChecked="{Binding GetPagesByApi}" IsEnabled="{Binding !IsBusy}" Content="Get Pages by API" ToolTip.Tip="Optional API lookup during account or single-Page Fetch using the existing device session."/>
+                                            <CheckBox IsChecked="{Binding SkipVerifiedFetchAccounts}" Content="Skip verified accounts" ToolTip.Tip="Keep verified profile details while still discovering and fetching Pages. The current LD/app binding and native owner identity are still checked."/>
+                                            <CheckBox IsChecked="{Binding SkipVerifiedFetchPages}" Content="Skip verified Pages" ToolTip.Tip="Retain verified saved Pages without refreshing their details. Unverified Pages are still fetched; explicit single-Page Fetch always refreshes."/>
+                                            <TextBlock Classes="settings-note" Text="Skipped items retain saved data. Turn skipping off to refresh them."/>
                                             <TextBlock Classes="settings-heading" Text="Additional options"/>
                                             <Expander Header="Post checks" HorizontalContentAlignment="Stretch">
                                                 <StackPanel Spacing="12" Margin="0,12,0,0">
@@ -379,3 +398,4 @@
         </Border>
     </Border>
 </UserControl>
+

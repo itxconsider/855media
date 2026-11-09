@@ -1,0 +1,2 @@
+topResumedActivity=ActivityRecord{9bb8f29 u0 com.facebook.katana/.activity.FbMainTabActivity t7}
+ResumedActivity: ActivityRecord{9bb8f29 u0 com.facebook.katana/.activity.FbMainTabActivity t7}

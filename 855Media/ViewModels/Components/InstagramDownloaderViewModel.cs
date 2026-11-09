@@ -166,6 +166,17 @@ public partial class InstagramDownloaderViewModel : ViewModelBase
         );
     }
 
+    public Task<_855Media.Services.InstagramImportQueue?> CreateImportQueueAsync(
+        string profileUrl,
+        InstagramMediaKind kind,
+        CancellationToken ct
+    )
+    {
+        RequireSubscription();
+        return _dashboard?.CreateBrowserImportQueueAsync(profileUrl, kind, ct)
+            ?? Task.FromResult<_855Media.Services.InstagramImportQueue?>(null);
+    }
+
     protected override void Dispose(bool disposing)
     {
         if (disposing)

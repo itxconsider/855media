@@ -37,6 +37,12 @@ Application.Current!.Styles.Add(
     }
 );
 
+if (args.Contains("--instagram-import-only"))
+{
+    InstagramImportChecks.Run();
+    return;
+}
+
 // Exercise the actual source-generated settings contract after the Editor rename.
 var settingsContextType = typeof(SettingsService).GetNestedType(
     "SerializerContext",
@@ -301,6 +307,8 @@ Console.WriteLine(
 );
 var instagramView = new InstagramDownloaderView { DataContext = instagramVm };
 
+InstagramImportChecks.CheckResume(photo);
+
 // Native WebView rendering is covered separately by BrowserCheck; headless has no native child host.
 var nativeBrowser = instagramView.FindControl<Control>("InstagramWebBrowser")!;
 ((Panel)nativeBrowser.Parent!).Children.Remove(nativeBrowser);
@@ -325,6 +333,39 @@ foreach (var width in new[] { 700, 1440 })
     bitmap.Save($"artifacts/responsive-ui/instagram-browser-{width}.png");
     Console.WriteLine($"PASS Instagram browser Auto-Scroll/Import/media toolbar at {width}px");
 }
+
+// Exercise actual view lifecycle without navigating an authenticated browser.
+var importField = typeof(InstagramDownloaderView).GetField(
+    "_import",
+    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance
+)!;
+var setInstagramActive = typeof(InstagramDownloaderView).GetMethod(
+    "SetActive",
+    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance
+)!;
+using (var pendingImport = new CancellationTokenSource())
+{
+    importField.SetValue(instagramView, pendingImport);
+    instagramVm.IsImporting = true;
+    setInstagramActive.Invoke(instagramView, [false]);
+    setInstagramActive.Invoke(instagramView, [true]);
+    if (pendingImport.IsCancellationRequested || !instagramVm.IsImporting)
+        throw new Exception("Tab switching cancelled background Instagram import");
+    instagramVm.StopPendingWork();
+    if (!pendingImport.IsCancellationRequested)
+        throw new Exception("Explicit Stop failed for background Instagram import");
+}
+using (var pendingImport = new CancellationTokenSource())
+{
+    importField.SetValue(instagramView, pendingImport);
+    window.Content = null;
+    Dispatcher.UIThread.RunJobs();
+    if (!pendingImport.IsCancellationRequested)
+        throw new Exception("Detached Instagram view retained background import");
+}
+importField.SetValue(instagramView, null);
+instagramVm.IsImporting = false;
+Console.WriteLine("PASS Instagram background import survives tab switches; Stop and detach cancel");
 
 // Reproduce browser import's seven-item selection inside the real modal host.
 multiple.AvailableVideos = Enumerable

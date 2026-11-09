@@ -34,113 +34,17 @@ public class PagePostDeletionTests
         }
     }
 
-    [Theory]
-    [InlineData(true, true, true)]
-    [InlineData(false, true, true)]
-    [InlineData(true, false, true)]
-    [InlineData(true, true, false)]
-    public async Task PersonaAliasRequiresExactSavedUidDelegationAndCanonicalGraphId(
-        bool savedMatches,
-        bool cacheMatches,
-        bool graphMatches
-    )
-    {
-        const string persona = "61594688834095";
-        var ld = DispatchProxy.Create<ILDPlayerService, Device>();
-        var device = (Device)(object)ld;
-        device.DelegatePageId = cacheMatches ? Page : "999";
-        var postReads = 0;
-        using var http = new HttpClient(
-            new Handler(r =>
-            {
-                Assert.Equal(HttpMethod.Get, r.Method);
-                if (r.RequestUri!.AbsolutePath == "/me")
-                    return Json(Me(persona));
-                if (r.RequestUri.AbsolutePath == "/" + Page)
-                    return Json(Me(graphMatches ? Page : "999"));
-                postReads++;
-                return Json("{\"data\":[" + Item() + "]}");
-            })
-        );
-        var service = PagePostDeletionService.ForDevice(
-            ld,
-            19,
-            "fixture",
-            device.Owner,
-            savedMatches ? persona : "888",
-            http
-        );
-        if (savedMatches && cacheMatches && graphMatches)
-        {
-            var preview = await service.PreviewAsync(Page, default);
-            Assert.Equal(Page, preview.PageId);
-            Assert.Single(preview.Posts);
-            Assert.Equal(1, postReads);
-        }
-        else
-        {
-            await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                service.PreviewAsync(Page, default)
-            );
-            Assert.Equal(0, postReads);
-        }
-    }
-
     [Fact]
-    public async Task ChangedPersonaDelegationBlocksDeletionAfterSuccessfulPreview()
+    public Task DeviceDeletionCannotStartWithoutAuthorizedCredentialSource()
     {
-        const string persona = "61594688834095";
-        var ld = DispatchProxy.Create<ILDPlayerService, Device>();
-        var device = (Device)(object)ld;
-        using var http = new HttpClient(
-            new Handler(r =>
-            {
-                Assert.Equal(HttpMethod.Get, r.Method);
-                if (r.RequestUri!.AbsolutePath == "/me")
-                    return Json(Me(persona));
-                if (r.RequestUri.AbsolutePath == "/" + Page)
-                    return Json(Me());
-                return Json("{\"data\":[" + Item() + "]}");
-            })
+        var ld = DispatchProxy.Create<ILDPlayerService, PFlowRootRemovalTests.DenyDevice>();
+        using var handler = new PFlowRootRemovalTests.DenyHttp();
+        using var http = new HttpClient(handler);
+        Assert.Throws<NotSupportedException>(() =>
+            PagePostDeletionService.ForDevice(ld, 1, "fixture", "555555555555555", client: http)
         );
-        var service = PagePostDeletionService.ForDevice(
-            ld,
-            19,
-            "fixture",
-            device.Owner,
-            persona,
-            http
-        );
-        var preview = await service.PreviewAsync(Page, default);
-        device.DelegatePageId = "999";
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.DeleteAsync(
-                preview,
-                [Post],
-                _ => throw new Xunit.Sdk.XunitException("No audit or mutation expected"),
-                default
-            )
-        );
-    }
-
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task DeviceRejectsChangedSessionOrWrongUnderlyingOwner(bool changeToken)
-    {
-        var ld = DispatchProxy.Create<ILDPlayerService, Device>();
-        var device = (Device)(object)ld;
-        device.ChangeToken = changeToken;
-        var service = PagePostDeletionService.ForDevice(
-            ld,
-            1,
-            "fixture",
-            changeToken ? device.Owner : "999"
-        );
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.PreviewAsync(Page, default)
-        );
-        Assert.DoesNotContain(Secret, error.ToString());
+        Assert.Equal(0, handler.Reads + ((PFlowRootRemovalTests.DenyDevice)(object)ld).Reads);
+        return Task.CompletedTask;
     }
 
     private const string Page = "123456789012345";

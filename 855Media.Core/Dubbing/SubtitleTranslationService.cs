@@ -375,7 +375,8 @@ public class SubtitleTranslationService
         string sourceLang = "auto",
         string geminiModel = GeminiTranslationService.DefaultModel,
         Action<int, int>? progressCallback = null,
-        CancellationToken cancellationToken = default
+        CancellationToken cancellationToken = default,
+        string? translationBrief = null
     )
     {
         if (segments.Count == 0)
@@ -410,7 +411,8 @@ public class SubtitleTranslationService
                         batch,
                         sourceLang,
                         geminiModel,
-                        ct
+                        ct,
+                        translationBrief
                     );
                 }
                 catch

@@ -113,7 +113,11 @@ public sealed class PFlowAddAccountService(
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
         deadline.CancelAfter(TimeSpan.FromMinutes(5));
         var token = deadline.Token;
-        using var lease = await PFlowDeviceLease.AcquireAsync(input.Binding.DeviceIndex, token);
+        using var lease = await PFlowDeviceLease.AcquireAsync(
+            input.Binding.DeviceIndex,
+            token,
+            (navigator as IPFlowInstallationNavigator)?.InstallationPath
+        );
         // Lock and validate before any login input reaches Android.
         await accounts.UpdateAsync(saved => RequireAccountLock(saved, input.Binding), token);
         async Task RequireWorker()

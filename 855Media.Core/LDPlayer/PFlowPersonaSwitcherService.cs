@@ -14,21 +14,34 @@ public partial class PFlowPersonaSwitcherService : IPFlowPersonaSwitcherService
     private readonly AtxAgentClient? _atxClient;
     private readonly Func<TimeSpan, CancellationToken, Task> _nativeDelay;
     private readonly Func<DateTime> _nativeNow;
+    private readonly PFlowAccountBinding? _mappedBinding;
+    private readonly FacebookPageTarget[]? _mappedTargets;
 
     public PFlowPersonaSwitcherService(ILDPlayerService ldPlayer, AtxAgentClient? atxClient = null)
         : this(ldPlayer, atxClient, Task.Delay, () => DateTime.UtcNow) { }
+
+    public PFlowPersonaSwitcherService(
+        ILDPlayerService ldPlayer,
+        PFlowAccountBinding binding,
+        IEnumerable<FacebookPageTarget> savedTargets
+    )
+        : this(ldPlayer, null, Task.Delay, () => DateTime.UtcNow, binding, savedTargets) { }
 
     internal PFlowPersonaSwitcherService(
         ILDPlayerService ldPlayer,
         AtxAgentClient? atxClient,
         Func<TimeSpan, CancellationToken, Task> delay,
-        Func<DateTime> now
+        Func<DateTime> now,
+        PFlowAccountBinding? binding = null,
+        IEnumerable<FacebookPageTarget>? savedTargets = null
     )
     {
         _ldPlayer = ldPlayer ?? throw new ArgumentNullException(nameof(ldPlayer));
         _atxClient = atxClient;
         _nativeDelay = delay;
         _nativeNow = now;
+        _mappedBinding = binding;
+        _mappedTargets = savedTargets?.Select(t => t.CreateSnapshot()).ToArray();
     }
 
     public Task<bool> SwitchToPersonaAsync(
@@ -481,7 +494,7 @@ public partial class PFlowPersonaSwitcherService : IPFlowPersonaSwitcherService
 
     /// <summary>
     /// Step 7: Queries the Bloks / UI hierarchy of the switcher bottom sheet to find the personal profile account.
-    /// Distinguishes personal profile accounts (no "Page" badge) from Pages (which carry a "Page" badge/pill).
+    /// Uses complete native switcher badge/selection evidence to distinguish the personal actor.
     /// </summary>
     public async Task<(int X, int Y)?> QueryPersonalProfileInSwitcherAsync(
         int index,
@@ -498,6 +511,13 @@ public partial class PFlowPersonaSwitcherService : IPFlowPersonaSwitcherService
         );
         if (bloksScreen != null && bloksScreen.AllElements.Count > 0)
         {
+            if (ReadSwitcherLayoutVariant(bloksScreen.RawXml) is "typed" or "untyped")
+                return await QueryInferredPersonalProfileAsync(
+                    index,
+                    targetProfileName,
+                    customPath,
+                    cancellationToken
+                );
             var bloksCoords = AtxAgentClient.FindPersonalProfileCoordsInBloks(
                 bloksScreen,
                 targetProfileName
@@ -516,6 +536,13 @@ public partial class PFlowPersonaSwitcherService : IPFlowPersonaSwitcherService
         );
         if (!string.IsNullOrWhiteSpace(switcherXml))
         {
+            if (ReadSwitcherLayoutVariant(switcherXml) is "typed" or "untyped")
+                return await QueryInferredPersonalProfileAsync(
+                    index,
+                    targetProfileName,
+                    customPath,
+                    cancellationToken
+                );
             var profileNode = FindPersonalProfileNodeInSwitcher(switcherXml, targetProfileName);
             if (profileNode != null)
             {
@@ -961,6 +988,23 @@ public partial class PFlowPersonaSwitcherService : IPFlowPersonaSwitcherService
         if (string.IsNullOrWhiteSpace(switcherXml))
             return null;
 
+        if (FindNativeSwitcherRows(switcherXml).Count > 0)
+        {
+            var personal = InferNativeSwitcherActors(switcherXml)
+                .SingleOrDefault(a => a.Type == "Profile");
+            if (
+                personal == null
+                || personal.IsSelected
+                || (
+                    !string.IsNullOrWhiteSpace(targetProfileName)
+                    && !PFlowNameMatch.Same(personal.Name, targetProfileName)
+                )
+            )
+                return null;
+            return FindNativeSwitcherRows(switcherXml)
+                .Single(r => PFlowNameMatch.Same(NativeRowName(r), personal.Name));
+        }
+
         try
         {
             var docs = SafeParseXmlDocuments(switcherXml);
@@ -1137,6 +1181,16 @@ public partial class PFlowPersonaSwitcherService : IPFlowPersonaSwitcherService
                 // 1. If targetProfileName is specified and matches a candidate:
                 if (!string.IsNullOrWhiteSpace(targetProfileName))
                 {
+                    var exact = candidates
+                        .Where(c => PFlowNameMatch.Same(c.Name, targetProfileName))
+                        .GroupBy(c => c.RowContainer)
+                        .Select(g => g.First())
+                        .Take(2)
+                        .ToArray();
+                    if (exact.Length > 1)
+                        return null;
+                    if (exact.Length == 1)
+                        return exact[0].IsSelected ? null : exact[0].Node;
                     var matchedCandidate = candidates.FirstOrDefault(c =>
                         c.Name.Contains(targetProfileName, StringComparison.OrdinalIgnoreCase)
                         || targetProfileName.Contains(c.Name, StringComparison.OrdinalIgnoreCase)

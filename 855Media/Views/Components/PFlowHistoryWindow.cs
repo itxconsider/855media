@@ -7,7 +7,9 @@ using System.Threading.Tasks;
 using _855Media.Core.LDPlayer;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Selection;
+using Avalonia.Data;
 using Avalonia.Layout;
 
 namespace _855Media.Views.Components;
@@ -23,13 +25,45 @@ public sealed class PFlowHistoryWindow : Window
     private List<PFlowJob> _jobs = [];
     private bool _running;
     private Grid _body = null!;
-    private readonly ListBox _list = new()
+    private readonly DataGrid _list = new()
     {
-        SelectionMode = SelectionMode.Multiple | SelectionMode.Toggle,
+        Name = "PostHistoryTable",
+        IsReadOnly = true,
+        AutoGenerateColumns = false,
+        SelectionMode = DataGridSelectionMode.Extended,
+        CanUserResizeColumns = true,
+        CanUserSortColumns = true,
+        GridLinesVisibility = DataGridGridLinesVisibility.Horizontal,
+        HorizontalScrollBarVisibility = ScrollBarVisibility.Visible,
     };
+    private readonly ComboBox _outcome = new()
+    {
+        Name = "HistoryOutcomeFilter",
+        ItemsSource = new[]
+        {
+            "All outcomes",
+            "Needs review",
+            "Published",
+            "Ready to retry",
+            "Failed / cancelled",
+            "In progress",
+        },
+        SelectedIndex = 0,
+        MinWidth = 170,
+    };
+    private readonly ComboBox _period = new()
+    {
+        Name = "HistoryDateFilter",
+        ItemsSource = new[] { "All dates", "Today", "Last 7 days", "Last 30 days" },
+        SelectedIndex = 0,
+        MinWidth = 135,
+    };
+    private readonly TextBlock _summary = new() { TextWrapping = Avalonia.Media.TextWrapping.Wrap };
+    private ToggleButton _reviewPanel = null!;
     private readonly TextBox _filter = new()
     {
-        Watermark = "Filter Page, status, date (yyyy-MM-dd), or file",
+        Name = "HistorySearch",
+        Watermark = "Search LD, Page, caption, file or Part series…",
     };
     private readonly TextBlock _selection = new();
     private readonly ComboBox _reason = new() { HorizontalAlignment = HorizontalAlignment.Stretch };
@@ -53,7 +87,7 @@ public sealed class PFlowHistoryWindow : Window
     {
         Watermark = "One verified time for selected posts: yyyy-MM-dd HH:mm",
         IsEnabled = false,
-        MinWidth = 350,
+        MinWidth = 230,
     };
     private readonly TextBlock _status = new() { TextWrapping = Avalonia.Media.TextWrapping.Wrap };
     private readonly TextBox _details = new()
@@ -122,7 +156,7 @@ public sealed class PFlowHistoryWindow : Window
         Title = "PFlow — History & review";
         Width = 1100;
         Height = 850;
-        MinWidth = 900;
+        MinWidth = 760;
         MinHeight = 650;
         Button Action(string label, Func<Task> action)
         {
@@ -131,10 +165,16 @@ public sealed class PFlowHistoryWindow : Window
             return button;
         }
         var selectAll = new Button { Content = "Select all visible" };
-        selectAll.Click += (_, _) => _list.SelectAll();
+        selectAll.Click += (_, _) =>
+        {
+            _list.SelectedItems.Clear();
+            foreach (var row in VisibleRows())
+                _list.SelectedItems.Add(row);
+        };
         var selectReview = new Button { Content = "Select needing review" };
         selectReview.Click += (_, _) =>
         {
+            _reviewPanel.IsChecked = true;
             _list.SelectedItems?.Clear();
             foreach (
                 var row in VisibleRows().Where(r => r.Job.RequiresPublicationReviewBeforeCleanup)
@@ -143,19 +183,23 @@ public sealed class PFlowHistoryWindow : Window
         };
         var clear = new Button { Content = "Clear selection" };
         clear.Click += (_, _) => _list.SelectedItems?.Clear();
-        var selectionBar = new StackPanel
+        var selectionBar = new WrapPanel
         {
             Orientation = Orientation.Horizontal,
-            Spacing = 10,
-            Children = { selectAll, selectReview, clear, _selection },
-        };
-        var actions = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 10,
             Children =
             {
                 Action("Refresh", RefreshAsync),
+                selectAll,
+                selectReview,
+                clear,
+                _selection,
+            },
+        };
+        var actions = new WrapPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Children =
+            {
                 Action("Confirm published", () => ResolveAsync(true)),
                 Action("Confirm not published · allow retry", () => ResolveAsync(false)),
                 Action("Retry selected file cleanup", CleanupAsync),
@@ -175,17 +219,83 @@ public sealed class PFlowHistoryWindow : Window
         _publishedAt.TextChanged += (_, _) => _review.IsChecked = false;
         _reason.SelectionChanged += (_, _) => _review.IsChecked = false;
         _evidence.TextChanged += (_, _) => _review.IsChecked = false;
-        var timeRow = new StackPanel
+        var timeRow = new WrapPanel
         {
             Orientation = Orientation.Horizontal,
-            Spacing = 12,
             Children = { _recordedTime, _publishedAt },
         };
+        void Column(string header, string property, double width) =>
+            _list.Columns.Add(
+                new DataGridTextColumn
+                {
+                    Header = header,
+                    Binding = new Binding(property),
+                    Width = new DataGridLength(width),
+                }
+            );
+        Column("Created", nameof(Row.Date), 145);
+        Column("LD", nameof(Row.Device), 95);
+        Column("Page / account", nameof(Row.Target), 170);
+        Column("Type", nameof(Row.Type), 70);
+        Column("Outcome", nameof(Row.Outcome), 145);
+        Column("Part", nameof(Row.Part), 65);
+        Column("Caption / file", nameof(Row.Caption), 280);
+        Column("Cleanup", nameof(Row.Cleanup), 180);
+        foreach (
+            var button in selectionBar
+                .Children.OfType<Button>()
+                .Concat(actions.Children.OfType<Button>())
+        )
+            button.Margin = new Thickness(0, 0, 8, 4);
+        var filters = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto"),
+            ColumnSpacing = 8,
+        };
+        filters.Children.Add(_filter);
+        Grid.SetColumn(_outcome, 1);
+        filters.Children.Add(_outcome);
+        Grid.SetColumn(_period, 2);
+        filters.Children.Add(_period);
+        var reviewFields = new StackPanel
+        {
+            Spacing = 8,
+            Children = { _reason, _evidence, timeRow, _review, actions },
+        };
+        var reviewScroll = new ScrollViewer
+        {
+            Name = "HistoryReviewScroll",
+            Content = reviewFields,
+            MaxHeight = 260,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Visible,
+            IsVisible = false,
+        };
+        _reviewPanel = new ToggleButton
+        {
+            Name = "HistoryReviewPanel",
+            Content = "Review selected outcomes or retry file cleanup ▾",
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+        _reviewPanel.IsCheckedChanged += (_, _) =>
+            reviewScroll.IsVisible = _reviewPanel.IsChecked == true;
+        var reviewContainer = new StackPanel
+        {
+            Spacing = 6,
+            Children = { _reviewPanel, reviewScroll },
+        };
+        _details.IsVisible = false;
+        var detailsToggle = new ToggleButton
+        {
+            Name = "HistoryDetailsPanel",
+            Content = "Selected post details & publication timeline ▾",
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+        detailsToggle.IsCheckedChanged += (_, _) =>
+            _details.IsVisible = detailsToggle.IsChecked == true;
+        var detailsPanel = new StackPanel { Spacing = 6, Children = { detailsToggle, _details } };
         _body = new Grid
         {
-            RowDefinitions = new RowDefinitions(
-                "Auto,Auto,Auto,*,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
-            ),
+            RowDefinitions = new RowDefinitions("Auto,Auto,Auto,*,Auto,Auto,Auto,Auto"),
             Margin = new Thickness(16),
             RowSpacing = 8,
         };
@@ -197,30 +307,42 @@ public sealed class PFlowHistoryWindow : Window
         Add(
             new TextBlock
             {
-                Text =
-                    "Select multiple rows with clicks or Shift. Apply one outcome and reason to selected posts needing review; already resolved rows are skipped. File cleanup is a separate action.",
-                TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+                Text = "Post history · publication outcomes and Part progress",
+                FontSize = 20,
+                FontWeight = Avalonia.Media.FontWeight.Bold,
             },
             0
         );
-        Add(_filter, 1);
+        Add(filters, 1);
         Add(selectionBar, 2);
         Add(_list, 3);
-        Add(_details, 4);
-        Add(_reason, 5);
-        Add(_evidence, 6);
-        Add(timeRow, 7);
-        Add(_review, 8);
-        Add(actions, 9);
-        Add(_status, 10);
+        Add(_summary, 4);
+        Add(detailsPanel, 5);
+        Add(reviewContainer, 6);
+        Add(_status, 7);
         Content = _body;
         _filter.TextChanged += (_, _) => Filter();
+        _outcome.SelectionChanged += (_, _) => Filter();
+        _period.SelectionChanged += (_, _) => Filter();
         _list.SelectionChanged += (_, _) => SelectionChanged();
         SelectionChanged();
     }
 
-    private sealed record Row(PFlowJob Job)
+    public sealed record Row(PFlowJob Job)
     {
+        public string Date => Job.CreatedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+        public string Device => "LD-" + Job.DeviceIndex;
+        public string Target => Job.TargetName;
+        public string Type => Job.PostType == "Picture" ? "Photo" : Job.PostType;
+        public string Outcome => PFlowHistoryPresentation.Outcome(Job);
+        public string Part => Job.PartNumber > 0 ? "Part " + Job.PartNumber : "—";
+        public string Caption =>
+            string.IsNullOrWhiteSpace(Job.Caption)
+                ? System.IO.Path.GetFileName(Job.SourcePath)
+                : Job.Caption.Replace('\n', ' ');
+        public string Cleanup =>
+            Job.RequiresPublicationReviewBeforeCleanup ? "Held for review" : Job.RemoteCleanupState;
+
         public override string ToString() =>
             $"{Job.CreatedUtc.ToLocalTime():yyyy-MM-dd HH:mm}  LD-{Job.DeviceIndex}  {Job.TargetName}  {Job.PostType}  {System.IO.Path.GetFileName(Job.SourcePath)}  — {(Job.TargetIdentityConfirmationRequired ? "Page phone verification required" : Job.HasFacebookPublicationFailure ? "Failed: " + Job.Error : Job.RequiresPublicationReviewBeforeCleanup ? "Needs publication review" : Job.State.ToString())}";
     }
@@ -249,7 +371,7 @@ public sealed class PFlowHistoryWindow : Window
             $"Job: {job.JobId}\nState: {job.State}; last step: {job.CurrentStep}\nSubmitted: {job.SubmittedUtc?.ToLocalTime():yyyy-MM-dd HH:mm:ss}; confirmed: {job.ConfirmedUtc?.ToLocalTime():yyyy-MM-dd HH:mm:ss}"
             + $"\nTarget: {job.TargetId} / owner {job.OwnerUid}\nSource: {job.SourcePath}\nSHA-256: {job.Sha256}\nCaption: {job.Caption}\nPost link: {job.PostUrl}\nEvidence: {job.Evidence}\nError: {job.Error}"
             + $"\nBackup: {job.BackupState}; local: {job.LocalDeleteState}; remote: {job.RemoteCleanupState}"
-            + $"\nPublication stage: {job.PublicationStage} � {job.PublicationStageEvidence}"
+            + $"\nPart series: {job.PartGroupKey}; Part {job.PartNumber}\nPublication stage: {job.PublicationStage} · {job.PublicationStageEvidence}"
             + (
                 job.PublicationTransitions.Count == 0
                     ? ""
@@ -263,7 +385,7 @@ public sealed class PFlowHistoryWindow : Window
                                         index + 1 < job.PublicationTransitions.Count
                                             ? job.PublicationTransitions[index + 1].StartedUtc
                                             : job.UpdatedUtc;
-                                    return $"{transition.StartedUtc.ToLocalTime():HH:mm:ss}  {transition.Stage}  ({Math.Max(0, (ended - transition.StartedUtc).TotalSeconds):F1}s) � {transition.Signal}";
+                                    return $"{transition.StartedUtc.ToLocalTime():HH:mm:ss}  {transition.Stage}  ({Math.Max(0, (ended - transition.StartedUtc).TotalSeconds):F1}s) · {transition.Signal}";
                                 }
                             )
                         )
@@ -272,23 +394,33 @@ public sealed class PFlowHistoryWindow : Window
 
     private void Filter()
     {
-        var query = _filter.Text?.Trim() ?? "";
-        _list.SelectedItems?.Clear();
-        _list.ItemsSource = _jobs
-            .Select(j => new Row(j))
-            .Where(r =>
-                query.Length == 0
-                || r.ToString().Contains(query, StringComparison.OrdinalIgnoreCase)
-                || r.Job.State.ToString().Contains(query, StringComparison.OrdinalIgnoreCase)
+        var selected = SelectedRows().Select(r => r.Job.JobId).ToHashSet();
+        _list.SelectedItems.Clear();
+        var rows = PFlowHistoryPresentation
+            .Filter(
+                _jobs,
+                _filter.Text,
+                _outcome.SelectedIndex,
+                _period.SelectedIndex,
+                DateTime.Now
             )
+            .Select(j => new Row(j))
             .ToList();
+        _list.ItemsSource = rows;
+        foreach (var row in rows.Where(r => selected.Contains(r.Job.JobId)))
+            _list.SelectedItems.Add(row);
+        _summary.Text =
+            $"Showing {rows.Count:N0} of {_jobs.Count:N0} · {_jobs.Count(j => j.RequiresPublicationReviewBeforeCleanup):N0} need review · {_jobs.Count(j => j.State == PFlowState.Confirmed && !j.RequiresPublicationReviewBeforeCleanup):N0} published · {_jobs.Count(j => j.CanRetry && !j.RequiresPublicationReviewBeforeCleanup):N0} ready to retry";
         SelectionChanged();
     }
 
     public async Task RefreshAsync()
     {
         await _history.RecoverAsync();
-        _jobs = await _history.ReadAsync();
+        _jobs = (await _history.ReadAsync())
+            .OrderByDescending(j => j.CreatedUtc)
+            .ThenByDescending(j => j.UpdatedUtc)
+            .ToList();
         Filter();
         _status.Text = $"{_jobs.Count} jobs · {_history.FilePath}";
     }
@@ -358,7 +490,13 @@ public sealed class PFlowHistoryWindow : Window
         try
         {
             foreach (var index in rows.Select(r => r.Job.DeviceIndex).Distinct().Order())
-                leases.Add(await PFlowDeviceLease.AcquireAsync(index, CancellationToken.None));
+                leases.Add(
+                    await PFlowDeviceLease.AcquireAsync(index, CancellationToken.None, _ldPath)
+                );
+            if (_busy())
+                throw new InvalidOperationException(
+                    "Posting started while waiting for review access. Stop it before applying outcomes."
+                );
             var count = await _history.ReviewAsync(
                 rows.Select(r => r.Job).ToArray(),
                 confirmed,
@@ -403,9 +541,14 @@ public sealed class PFlowHistoryWindow : Window
             {
                 using var lease = await PFlowDeviceLease.AcquireAsync(
                     row.Job.DeviceIndex,
-                    CancellationToken.None
+                    CancellationToken.None,
+                    _ldPath
                 );
                 using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                if (_busy())
+                    throw new InvalidOperationException(
+                        "Posting started while waiting for cleanup access. Stop it before cleanup recovery."
+                    );
                 var job = (await _history.ReadAsync(timeout.Token)).SingleOrDefault(j =>
                     j.JobId == row.Job.JobId
                 );
@@ -429,10 +572,7 @@ public sealed class PFlowHistoryWindow : Window
                 )
                     await _runner.CleanupRemoteAsync(job, _ldPath, timeout.Token);
                 await _history.SaveAsync(job);
-                var batch = (await _history.ReadAsync(timeout.Token))
-                    .Where(j => j.BatchId == job.BatchId)
-                    .ToList();
-                await _runner.DeleteSharedSourceAsync(job, batch, timeout.Token);
+                await _runner.RetainPostedSourceAsync(job, timeout.Token);
                 if (
                     job.RemoteCleanupState == "Pending"
                     || job.BackupState == "Pending"

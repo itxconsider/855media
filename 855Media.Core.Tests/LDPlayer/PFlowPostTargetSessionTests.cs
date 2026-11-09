@@ -6,6 +6,108 @@ namespace _855Media.Core.Tests.LDPlayer;
 
 public class PFlowPostTargetSessionTests
 {
+    private const string PendingContinuation =
+        "<hierarchy><node package='com.facebook.katana' content-desc='Finishing reel upload. Keep Facebook open.'/></hierarchy>";
+
+    [Fact]
+    public async Task ConfirmedTargetWaitsForTwoClearFramesWithoutLosingItsProof()
+    {
+        var h = new Harness();
+        await h.ConfirmFirst();
+        var next = Job();
+        next.State = PFlowState.Reserved;
+        var now = DateTimeOffset.UtcNow;
+        var observations = 0;
+        var checks = 0;
+        var notificationChecks = 0;
+        var xml = await h.Session.WaitForConfirmedUploadClearAsync(
+            next,
+            PendingContinuation,
+            _ => Task.FromResult(++observations < 2 ? PendingContinuation : Feed),
+            (_, _) =>
+            {
+                checks++;
+                return Task.FromResult(true);
+            },
+            _ => Task.FromResult(++notificationChecks != 2),
+            default,
+            (delay, _) =>
+            {
+                now += delay;
+                return Task.CompletedTask;
+            },
+            () => now
+        );
+        Assert.Equal(Feed, xml);
+        Assert.True(checks >= 5);
+        Assert.Equal(4, notificationChecks);
+        Assert.True(await h.Verify(next, xml));
+        Assert.Equal(1, h.UidReads);
+        Assert.Equal(1, h.Opens);
+        next.State = PFlowState.IdentityVerified;
+        Assert.True(PFlowPostTargetSession.ConsumeContinuation(next, xml));
+    }
+
+    [Theory]
+    [InlineData("unconfirmed")]
+    [InlineData("target")]
+    [InlineData("batch")]
+    [InlineData("process")]
+    [InlineData("foreign")]
+    [InlineData("input")]
+    [InlineData("cancel")]
+    [InlineData("ongoing")]
+    [InlineData("invalidated")]
+    [InlineData("submitted")]
+    public async Task UploadWaitCannotReuseChangedUnsafeOrUnconfirmedSession(string change)
+    {
+        var h = new Harness();
+        var previous = await h.ConfirmFirst();
+        var next = Job();
+        next.State = PFlowState.Reserved;
+        if (change == "unconfirmed")
+            previous.State = PFlowState.Unknown;
+        if (change == "target")
+            next.TargetId = "other";
+        if (change == "batch")
+            next.BatchId = "other";
+        if (change == "submitted")
+        {
+            next.State = PFlowState.Submitted;
+            next.SubmittedUtc = DateTime.UtcNow;
+        }
+        var xml =
+            change == "foreign" ? PendingContinuation.Replace("com.facebook.katana", "other.app")
+            : change == "input"
+                ? PendingContinuation.Replace("<node ", "<node class='android.widget.EditText' ")
+            : PendingContinuation;
+        var now = DateTimeOffset.UtcNow;
+        using var cancellation = new CancellationTokenSource();
+        if (change == "cancel")
+            cancellation.Cancel();
+        await Assert.ThrowsAnyAsync<Exception>(() =>
+            h.Session.WaitForConfirmedUploadClearAsync(
+                next,
+                xml,
+                _ => Task.FromResult(change == "ongoing" ? PendingContinuation : Feed),
+                (_, _) => Task.FromResult(change != "process"),
+                _ => Task.FromResult(false),
+                cancellation.Token,
+                (delay, _) =>
+                {
+                    now += TimeSpan.FromSeconds(10);
+                    if (change == "invalidated")
+                        h.Session.Invalidate();
+                    return Task.CompletedTask;
+                },
+                () => now
+            )
+        );
+        Assert.Null(next.TargetContinuation);
+        Assert.Equal(1, h.UidReads);
+        Assert.Equal(1, h.Opens);
+    }
+
     [Fact]
     public async Task ConsecutivePostUsesSessionGuardWithoutUidOrProfileNavigation()
     {

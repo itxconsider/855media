@@ -1,0 +1,7 @@
+# Incremental Instagram import queue
+
+2026-10-30. Import asks once for a destination before opening posts. Each successfully resolved post is immediately passed to Download Manager with all of its matching media, caption and original direct URLs; it no longer accumulates the entire batch in memory before queueing. MP4/JPG are selected per media type. Existing download concurrency/retry handling remains responsible for the queued downloads.
+
+One invocation snapshots the destination, filename template, translation options and skip-existing setting, uses a running filename number and suppresses duplicate media IDs. It stays on the importer tab, displays queued counts and does not repeatedly open download setup dialogs. Stop or a later resolution error stops further import work without cancelling downloads already queued. Destination cancellation exits before post resolution and preserves links.
+
+Validation: all 55 Instagram Core regression checks passed (artifacts/instagram-incremental-queue/validated.trx), covering resolved media/metadata/downloading contracts. Final main Debug 3.2.4 built zero warnings/errors after fresh app-absence verification. Source review confirmed queueing is awaited inside the per-post loop and uses independent download cancellation. No live Instagram download batch or interactive destination/Stop test was run; those scenarios remain unvalidated end to end. No package produced.

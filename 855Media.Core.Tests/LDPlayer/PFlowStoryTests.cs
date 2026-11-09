@@ -715,6 +715,8 @@ public class PFlowStoryTests
         Assert.Equal(dryRun ? 0 : 1, device.ShareTaps);
         Assert.Equal(0, device.IntentCalls);
         Assert.Contains("sha256=", job.MediaSelectionEvidence);
+        if (noConfirmation)
+            Assert.Equal(1, device.ForegroundReads);
         if (!dryRun)
         {
             Assert.True(device.DurableBeforeShare);
@@ -854,6 +856,7 @@ public class PFlowStoryTests
         public int PostingReadsRemaining,
             PostingObserved;
         public bool DelayedGallery;
+        public int ForegroundReads;
         public int SelectedReads;
         public int ExistingStories;
         public string? PublicationErrorDescription;
@@ -939,6 +942,11 @@ public class PFlowStoryTests
                             _ => PostShareXml(),
                         }
                     );
+                case "GetCurrentFocusedActivityAsync":
+                    // This timeout fixture cannot prove foreground ownership, so
+                    // recovery must retain Unknown without a second Share.
+                    ForegroundReads++;
+                    return Task.FromResult<string?>(null);
                 case "ExecuteAdbAsync":
                     var command = (string)args![1]!;
                     if (command.Contains("fb://feed"))

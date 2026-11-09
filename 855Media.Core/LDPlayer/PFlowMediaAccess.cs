@@ -48,6 +48,18 @@ internal static class PFlowMediaAccess
         );
         if (
             facebookForeground
+            && facebook.Any(n => Label(n, "Allow Facebook to access your camera roll?"))
+            && facebook.Any(n =>
+                Label(
+                    n,
+                    "This lets you share from your camera roll, and enables other features for photos and videos."
+                )
+            )
+            && facebook.Any(n => Label(n, "Deny"))
+        )
+            return Unique("facebook-camera-roll", facebook.Where(n => Label(n, "Allow")).ToArray());
+        if (
+            facebookForeground
             && facebook.Any(n =>
                 Label(n, "Allow Facebook to use your phone’s storage?")
                 || Label(n, "Allow Facebook to use your phone's storage?")

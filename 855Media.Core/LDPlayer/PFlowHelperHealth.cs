@@ -6,6 +6,9 @@ namespace _855Media.Core.LDPlayer;
 public sealed record PFlowHelperHealth
 {
     public int ProtocolVersion { get; init; }
+    public int NetworkProtocolVersion { get; init; }
+    public int ClipboardProtocolVersion { get; init; }
+    public int ClockProtocolVersion { get; init; }
     public bool Heartbeat { get; init; }
     public long SampleUtcMillis { get; init; }
     public long ElapsedRealtimeMillis { get; init; }

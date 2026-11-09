@@ -25,6 +25,9 @@ public class PFlowPublicationFailureTests
     [InlineData("content-desc", "Unable to publish: connection lost")]
     [InlineData("text", "Couldn't share story")]
     [InlineData("text", "Couldn't upload your story")]
+    [InlineData("text", "Couldn't schedule your reel. Try again later.")]
+    [InlineData("content-desc", "Unable to schedule: connection lost")]
+    [InlineData("text", "Scheduling failed. Tap to retry")]
     public void FailureReasonPreservesActualTextOrDescription(string attribute, string message)
     {
         var xml = new XElement("hierarchy", Node(attribute, message)).ToString();

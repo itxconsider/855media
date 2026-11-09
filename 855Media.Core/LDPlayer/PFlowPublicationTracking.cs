@@ -51,6 +51,11 @@ internal static class PFlowPublicationTracking
         ),
         (
             PFlowPublicationStage.Processing,
+            @"^Scheduling(?:(?: your)? (?:reel|post))?(?:\.{1,3}|…)?$",
+            "Facebook UI: scheduling"
+        ),
+        (
+            PFlowPublicationStage.Processing,
             @"^Processing(?: your (?:reel|story|post))?(?:\b|[. …])",
             "Facebook UI: processing"
         ),
@@ -61,7 +66,7 @@ internal static class PFlowPublicationTracking
         ),
         (
             PFlowPublicationStage.Uploading,
-            @"^Uploading(?: your (?:reel|story|post))?(?:\b|[. …])",
+            @"^(?:Uploading(?: your (?:reel|story|post))?|Finishing (?:reel|story|post) upload)(?:\b|[. …])",
             "Facebook UI: uploading"
         ),
         (

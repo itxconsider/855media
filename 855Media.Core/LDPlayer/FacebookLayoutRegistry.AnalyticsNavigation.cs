@@ -34,6 +34,11 @@ public static partial class FacebookLayoutRegistry
                 Chooser,
                 ComposerOverlay,
                 Rule(
+                    "menu-drawer",
+                    "A dashboard entry inside Menu is not the dashboard",
+                    o => AtxAgentClient.IsMenuPageInBloks(o.Screen)
+                ),
+                Rule(
                     "weekly-profile-card",
                     "Inline profile tasks with a dashboard entry button are not the dashboard",
                     o =>

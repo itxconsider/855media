@@ -1,0 +1,18 @@
+# Automation dashboard and status details
+
+Implemented 2026-11-05 for the Devices and Post queue tables.
+
+The dashboard now puts device identity and the current step first. The queue puts device, target and outcome before caption and source metadata. Both grids freeze their first two columns, retain horizontal scrolling and user column resizing, and share the existing native DataGrid scrollbar/wheel implementation. The old worker ScrollViewer-offset interception was removed; scrolling stays with DataGrid's virtualized row offsets. Below 1350 pixels the tables stack vertically; the toolbar also wraps. Fixed-height, single-line status cells avoid row layout changes on long messages. Each table has a separate expandable, scrollable, copyable details area for the selected row.
+
+Status labels are presentation only: examples include Published, Returning to Feed, Blocked · verify phone, and Failed · cannot switch account. Unknown/new messages retain a bounded fallback. Raw Status, publication state, queue serialization and outcome counters retain their existing semantics. Details show the raw message, a suggested next step and the last 20 timestamped transitions, newest first. Post details include device/app, target, source and caption. This trail is bounded in memory for the app session; it does not replace durable History or existing diagnostic files. Display-only properties are excluded from queue JSON and from persistence notifications, so additional UI notifications do not cause extra queue writes.
+
+Performance changes remove the full Tasks/Instances/Pages subscription rebuild on ordinary collection additions and removals; Reset and the existing prepare-queue bulk completion still synchronize all subscriptions. Queue totals are computed in one cached pass after invalidation, rather than one full scan for each bound counter. The device ItemsSource remains the same object until its actual membership/order changes, preserving sorting/selection on ordinary live status updates. Existing coalesced dashboard refresh and network-start hooks remain.
+
+Validation:
+
+- 32 actual view-model/headless UI checks passed against both isolated and main desktop output: 10,000 posts and 1,000 devices, coalesced updates, exact counters, replacement/removal/move/reset, detached rows, stable source, running filter, selected log updates, responsive 800/1000/1800 layouts, final-row scrolling and retained selection.
+- The test observed 12 device and 10 queue row controls, rather than controls for the entire source. These include cached/recycled viewport rows. Sample 10,000-row additions took 16ms without production persistence or live device activity; this is a fixture measurement, not an end-to-end posting benchmark.
+- 29 Core status/dispatch-store tests passed, including original raw status and JSON compatibility. Existing actual desktop Stop and queue-selection diagnostics passed, including grouped media, sort orders, persisted order and busy guards.
+- Main Debug and diagnostic builds passed with zero warnings/errors after fresh app-absence checks. Screenshots were rendered and reviewed. The earlier isolated assembly had a different hash from main, so the UI checks were rerun against a diagnostic built from the main project rather than claiming binary equivalence across output roots.
+
+Evidence: `artifacts/dashboard-performance/main-ui-checks.txt`, `dashboard-status.trx`, and `dashboard-800.png`, `dashboard-1000.png`, `dashboard-1800.png`. No live emulator, posting, production queue/history mutation or release package. Packaged version remains 3.2.4. Credit this related dashboard performance/readability change once: 53/10 toward 3.2.5.

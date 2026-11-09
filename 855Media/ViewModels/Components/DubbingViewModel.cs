@@ -63,6 +63,7 @@ public partial class DubbingViewModel : ViewModelBase
             {
                 _timelineRefreshPending = false;
                 UpdateTimelineVisuals();
+                QualityReportNeedsRefresh = true;
             },
             DispatcherPriority.Background
         );
@@ -2114,6 +2115,8 @@ public partial class DubbingViewModel : ViewModelBase
                 VideoFilePath = VideoFilePath,
                 OutputFilePath = filePath,
                 EnableSmartTimeStretch = EnableSmartTimeStretch,
+                RequireTranslatedDialogue = RequireTranslatedDialogue,
+                TranslationBrief = TranslationBrief,
             };
             foreach (var s in Segments)
                 tempJob.Segments.Add(s);
@@ -3965,6 +3968,9 @@ public partial class DubbingViewModel : ViewModelBase
             await AutoDetectSpeakersAsync();
         }
 
+        if (!CheckStudioSynthesisReady())
+            return;
+
         IsPreSynthesizing = true;
         StatusMessage = "Batch synthesizing dubbed speech for all scenes...";
         var tempDir = Path.Combine(Path.GetTempPath(), "855Media_Dubbing_StudioAudio");
@@ -4245,6 +4251,10 @@ public partial class DubbingViewModel : ViewModelBase
 
         CurrentProjectPath = null;
         ProjectName = "Untitled Project";
+        RequireTranslatedDialogue = true;
+        TranslationBrief = string.Empty;
+        QualityIssues.Clear();
+        QualitySummary = "Import subtitles or transcribe the movie to begin.";
         VideoFilePath = string.Empty;
         OutputFilePath = string.Empty;
         Segments.Clear();
@@ -4343,6 +4353,8 @@ public partial class DubbingViewModel : ViewModelBase
                 Meta = CreateMetaOptions(),
                 EnableLoudnessNormalization = EnableLoudnessNormalization,
                 EnableSmartTimeStretch = EnableSmartTimeStretch,
+                RequireTranslatedDialogue = RequireTranslatedDialogue,
+                TranslationBrief = TranslationBrief,
             };
 
             foreach (var c in Characters)
@@ -4441,6 +4453,8 @@ public partial class DubbingViewModel : ViewModelBase
             ApplyMetaOptions(project.Meta);
             EnableLoudnessNormalization = project.EnableLoudnessNormalization;
             EnableSmartTimeStretch = project.EnableSmartTimeStretch;
+            RequireTranslatedDialogue = project.RequireTranslatedDialogue;
+            TranslationBrief = project.TranslationBrief ?? string.Empty;
 
             if (project.Characters.Count > 0)
             {
@@ -4854,7 +4868,8 @@ public partial class DubbingViewModel : ViewModelBase
                     (curr, tot) =>
                     {
                         StatusMessage = $"Translated {curr}/{tot} lines with Gemini AI...";
-                    }
+                    },
+                    translationBrief: TranslationBrief
                 );
             }
             else
@@ -4951,6 +4966,19 @@ public partial class DubbingViewModel : ViewModelBase
         if (IsProcessing)
             return;
 
+        RunStudioQualityCheck();
+        var structuralErrors = QualityIssues
+            .Where(i => i.Severity == DubbingIssueSeverity.Error && i.Code != "missing-translation")
+            .ToList();
+        if (structuralErrors.Count > 0)
+        {
+            SelectedStudioTab = 4;
+            _snackbarManager.Notify(
+                "Resolve the Studio QC errors before exporting. Missing translations will be checked again after automatic translation."
+            );
+            return;
+        }
+
         IsProcessing = true;
         Progress = 0;
         StatusMessage = "Initializing dubbing pipeline...";
@@ -4974,6 +5002,8 @@ public partial class DubbingViewModel : ViewModelBase
             EnableDynamicDucking = EnableDynamicDucking,
             EnableLoudnessNormalization = EnableLoudnessNormalization,
             EnableSmartTimeStretch = EnableSmartTimeStretch,
+            RequireTranslatedDialogue = RequireTranslatedDialogue,
+            TranslationBrief = TranslationBrief,
             GeminiApiKey = _settingsService.GeminiApiKey,
             GeminiModel = _settingsService.GeminiModel,
         };
@@ -5130,6 +5160,8 @@ public partial class DubbingViewModel : ViewModelBase
                 EnableDynamicDucking = EnableDynamicDucking,
                 EnableLoudnessNormalization = EnableLoudnessNormalization,
                 EnableSmartTimeStretch = EnableSmartTimeStretch,
+                RequireTranslatedDialogue = RequireTranslatedDialogue,
+                TranslationBrief = TranslationBrief,
                 GeminiApiKey = _settingsService.GeminiApiKey,
                 GeminiModel = _settingsService.GeminiModel,
                 Status = DubbingJobStatus.Queued,
@@ -5185,6 +5217,8 @@ public partial class DubbingViewModel : ViewModelBase
             EnableDynamicDucking = EnableDynamicDucking,
             EnableLoudnessNormalization = EnableLoudnessNormalization,
             EnableSmartTimeStretch = EnableSmartTimeStretch,
+            RequireTranslatedDialogue = RequireTranslatedDialogue,
+            TranslationBrief = TranslationBrief,
             GeminiApiKey = _settingsService.GeminiApiKey,
             GeminiModel = _settingsService.GeminiModel,
             Status = DubbingJobStatus.Queued,

@@ -9,9 +9,11 @@ if (args.Contains("--live"))
 {
     var liveService = new LDPlayerService();
     var network = new LDNetworkInfoService(liveService);
-    var folder = @"C:\LDPlayer\LDPlayer9";
+    var folder =
+        args.FirstOrDefault(a => a.StartsWith("--folder="))?[9..] ?? @"C:\LDPlayer\LDPlayer9";
+    var only = args.FirstOrDefault(a => a.StartsWith("--only="))?[7..];
     var running = (await liveService.GetInstancesAsync(folder))
-        .Where(i => i.IsAndroidStarted)
+        .Where(i => i.IsAndroidStarted && (only == null || i.Index.ToString() == only))
         .ToArray();
     foreach (var row in running)
     {
@@ -151,6 +153,8 @@ public class NetworkFixture : DispatchProxy
 
     protected override object? Invoke(MethodInfo? method, object?[]? args)
     {
+        if (method?.Name == nameof(ILDPlayerService.Read885NetworkAsync))
+            return Task.FromResult<string?>(null);
         if (method?.Name != nameof(ILDPlayerService.ExecuteAdbAsync))
             throw new InvalidOperationException("Unexpected device command: " + method?.Name);
         Indices.Add((int)args![0]!);

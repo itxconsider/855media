@@ -68,6 +68,8 @@ public class DubbingProject
     public MetaDubbingOptions Meta { get; set; } = new();
     public bool EnableLoudnessNormalization { get; set; } = true;
     public bool EnableSmartTimeStretch { get; set; } = true;
+    public bool RequireTranslatedDialogue { get; set; } = true;
+    public string TranslationBrief { get; set; } = string.Empty;
 
     // Cast & Dialogue Timelines
     public List<MovieCharacterData> Characters { get; set; } = [];
